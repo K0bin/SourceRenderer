@@ -34,7 +34,6 @@ pub mod asset;
 pub mod camera;
 pub mod fps_camera;
 pub mod math;
-mod spinning_cube;
 pub mod transform;
 
 mod input;

@@ -11,6 +11,7 @@ use bevy_input::ButtonInput;
 use bevy_transform::bundles::TransformBundle;
 use bevy_transform::components::Transform;
 use bevy_log::*;
+use sourcerenderer_core::gpu::{Format, SampleCount, TextureDimension, TextureInfo, TextureUsage};
 use sourcerenderer_core::input::Key;
 use sourcerenderer_core::{
     Platform, PlatformPhantomData, Quaternion, Vec2, Vec3
@@ -20,6 +21,7 @@ use sourcerenderer_engine::Engine;
 use sourcerenderer_engine::asset::{
     AssetManager,
     MeshRange,
+    Vertex
 };
 use sourcerenderer_engine::camera::ActiveCamera;
 use crate::fps_camera::FPSCameraComponent;
@@ -27,7 +29,6 @@ use sourcerenderer_engine::math::BoundingBox;
 use sourcerenderer_engine::renderer::{
     PointLightComponent,
     StaticRenderableComponent,
-    Vertex,
 };
 use sourcerenderer_engine::Camera;
 
@@ -65,222 +66,153 @@ impl<P: Platform> Plugin for SpinningCubePlugin<P> {
                 Vertex {
                     position: Vec3::new(-1.0f32, -1.0f32, -1.0f32),
                     normal: Vec3::new(0.0f32, 0.0f32, -1.0f32),
-                    uv: Vec2::new(0.0f32, 0.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(0.0f32, 0.0f32),
+                    color: [255u8; 4],
                 },
                 Vertex {
                     position: Vec3::new(1.0f32, -1.0f32, -1.0f32),
                     normal: Vec3::new(1.0f32, 0.0f32, -1.0f32),
-                    uv: Vec2::new(1.0f32, 0.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(1.0f32, 0.0f32),
+                    color: [255u8; 4],
                 },
                 Vertex {
                     position: Vec3::new(1.0f32, 1.0f32, -1.0f32),
                     normal: Vec3::new(0.0f32, 0.0f32, -1.0f32),
-                    uv: Vec2::new(1.0f32, 1.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(1.0f32, 1.0f32),
+                    color: [255u8; 4],
                 },
                 Vertex {
                     position: Vec3::new(-1.0f32, 1.0f32, -1.0f32),
                     normal: Vec3::new(0.0f32, 0.0f32, -1.0f32),
-                    uv: Vec2::new(0.0f32, 1.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(0.0f32, 1.0f32),
+                    color: [255u8; 4],
                 },
                 // BACK
                 Vertex {
                     position: Vec3::new(-1.0f32, -1.0f32, 1.0f32),
                     normal: Vec3::new(0.0f32, 0.0f32, 1.0f32),
-                    uv: Vec2::new(1.0f32, 0.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(1.0f32, 0.0f32),
+                    color: [255u8; 4],
                 },
                 Vertex {
                     position: Vec3::new(1.0f32, -1.0f32, 1.0f32),
                     normal: Vec3::new(0.0f32, 0.0f32, 1.0f32),
-                    uv: Vec2::new(0.0f32, 0.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(0.0f32, 0.0f32),
+                    color: [255u8; 4],
                 },
                 Vertex {
                     position: Vec3::new(1.0f32, 1.0f32, 1.0f32),
                     normal: Vec3::new(0.0f32, 0.0f32, 1.0f32),
-                    uv: Vec2::new(0.0f32, 1.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(0.0f32, 1.0f32),
+                    color: [255u8; 4],
                 },
                 Vertex {
                     position: Vec3::new(-1.0f32, 1.0f32, 1.0f32),
                     normal: Vec3::new(0.0f32, 0.0f32, 1.0f32),
-                    uv: Vec2::new(1.0f32, 1.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(1.0f32, 1.0f32),
+                    color: [255u8; 4],
                 },
                 // TOP
                 Vertex {
                     position: Vec3::new(-1.0f32, 1.0f32, -1.0f32),
                     normal: Vec3::new(0.0f32, 1.0f32, 0.0f32),
-                    uv: Vec2::new(1.0f32, 0.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(1.0f32, 0.0f32),
+                    color: [255u8; 4],
                 },
                 Vertex {
                     position: Vec3::new(1.0f32, 1.0f32, -1.0f32),
                     normal: Vec3::new(0.0f32, 1.0f32, 0.0f32),
-                    uv: Vec2::new(0.0f32, 0.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(0.0f32, 0.0f32),
+                    color: [255u8; 4],
                 },
                 Vertex {
                     position: Vec3::new(1.0f32, 1.0f32, 1.0f32),
                     normal: Vec3::new(0.0f32, 1.0f32, 0.0f32),
-                    uv: Vec2::new(0.0f32, 1.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(0.0f32, 1.0f32),
+                    color: [255u8; 4],
                 },
                 Vertex {
                     position: Vec3::new(-1.0f32, 1.0f32, 1.0f32),
                     normal: Vec3::new(0.0f32, 1.0f32, 0.0f32),
-                    uv: Vec2::new(1.0f32, 1.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(1.0f32, 1.0f32),
+                    color: [255u8; 4],
                 },
                 // BOTTOM
                 Vertex {
                     position: Vec3::new(-1.0f32, -1.0f32, -1.0f32),
                     normal: Vec3::new(0.0f32, -1.0f32, 0.0f32),
-                    uv: Vec2::new(1.0f32, 0.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(1.0f32, 0.0f32),
+                    color: [255u8; 4],
                 },
                 Vertex {
                     position: Vec3::new(1.0f32, -1.0f32, -1.0f32),
                     normal: Vec3::new(0.0f32, -1.0f32, 0.0f32),
-                    uv: Vec2::new(0.0f32, 0.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(0.0f32, 0.0f32),
+                    color: [255u8; 4],
                 },
                 Vertex {
                     position: Vec3::new(1.0f32, -1.0f32, 1.0f32),
                     normal: Vec3::new(0.0f32, -1.0f32, 0.0f32),
-                    uv: Vec2::new(0.0f32, 1.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(0.0f32, 1.0f32),
+                    color: [255u8; 4],
                 },
                 Vertex {
                     position: Vec3::new(-1.0f32, -1.0f32, 1.0f32),
                     normal: Vec3::new(0.0f32, -1.0f32, 0.0f32),
-                    uv: Vec2::new(1.0f32, 1.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(1.0f32, 1.0f32),
+                    color: [255u8; 4],
                 },
                 // LEFT
                 Vertex {
                     position: Vec3::new(-1.0f32, -1.0f32, -1.0f32),
                     normal: Vec3::new(-1.0f32, 0.0f32, 0.0f32),
-                    uv: Vec2::new(1.0f32, 0.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(1.0f32, 0.0f32),
+                    color: [255u8; 4],
                 },
                 Vertex {
                     position: Vec3::new(-1.0f32, 1.0f32, -1.0f32),
                     normal: Vec3::new(-1.0f32, 0.0f32, 0.0f32),
-                    uv: Vec2::new(0.0f32, 0.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(0.0f32, 0.0f32),
+                    color: [255u8; 4],
                 },
                 Vertex {
                     position: Vec3::new(-1.0f32, 1.0f32, 1.0f32),
                     normal: Vec3::new(-1.0f32, 0.0f32, 0.0f32),
-                    uv: Vec2::new(0.0f32, 1.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(0.0f32, 1.0f32),
+                    color: [255u8; 4],
                 },
                 Vertex {
                     position: Vec3::new(-1.0f32, -1.0f32, 1.0f32),
                     normal: Vec3::new(-1.0f32, 0.0f32, 0.0f32),
-                    uv: Vec2::new(1.0f32, 1.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(1.0f32, 1.0f32),
+                    color: [255u8; 4],
                 },
                 // RIGHT
                 Vertex {
                     position: Vec3::new(1.0f32, -1.0f32, -1.0f32),
                     normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
-                    uv: Vec2::new(1.0f32, 0.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(1.0f32, 0.0f32),
+                    color: [255u8; 4],
                 },
                 Vertex {
                     position: Vec3::new(1.0f32, 1.0f32, -1.0f32),
                     normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
-                    uv: Vec2::new(0.0f32, 0.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(0.0f32, 0.0f32),
+                    color: [255u8; 4],
                 },
                 Vertex {
                     position: Vec3::new(1.0f32, 1.0f32, 1.0f32),
                     normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
-                    uv: Vec2::new(0.0f32, 1.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(0.0f32, 1.0f32),
+                    color: [255u8; 4],
                 },
                 Vertex {
                     position: Vec3::new(1.0f32, -1.0f32, 1.0f32),
                     normal: Vec3::new(1.0f32, 0.0f32, 0.0f32),
-                    uv: Vec2::new(1.0f32, 1.0f32),
-                    lightmap_uv: Vec2::new(0.0f32, 0.0f32),
-                    alpha: 0f32,
-                    ..Default::default()
+                    tex_coord: Vec2::new(1.0f32, 1.0f32),
+                    color: [255u8; 4],
                 },
             ];
-
-            /*let mut image_file = <P::IO as IO>::open_asset("texture.png").expect("Failed to open texture");
-            let length = image_file.seek(SeekFrom::End(0)).unwrap();
-            image_file.seek(SeekFrom::Start(0)).unwrap();
-            let mut data = Vec::<u8>::with_capacity(length as usize);
-            unsafe {
-            data.set_len(length as usize);
-            }
-            image_file.read_exact(&mut data).unwrap();
-            let image = image::load_from_memory(&data).unwrap();
-            let data = image.to_rgba8();
-            let texture_info = TextureInfo {
-            format: Format::RGBA8,
-            width: image.width(),
-            height: image.height(),
-            depth: 1,
-            mip_levels: 1,
-            array_length: 1,
-            samples: SampleCount::Samples1,
-                supports_srgb: false
-            };*/
 
             let triangle_data = unsafe {
                 std::slice::from_raw_parts(
@@ -312,7 +244,28 @@ impl<P: Platform> Plugin for SpinningCubePlugin<P> {
                 .into_boxed_slice(),
                 Some(bounding_box),
             );
-            //asset_manager.add_texture("cube_texture_albedo", &texture_info, data.to_vec().into_boxed_slice());
+
+            let texture_info = TextureInfo {
+                format: Format::RGBA8UNorm,
+                width: 256,
+                height: 256,
+                depth: 1,
+                mip_levels: 1,
+                array_length: 1,
+                samples: SampleCount::Samples1,
+                supports_srgb: false,
+                dimension: TextureDimension::Dim2D,
+                usage: TextureUsage::SAMPLED | TextureUsage::INITIAL_COPY
+            };
+            let mut data = Vec::<u8>::new();
+            data.resize(256 * 256 * 4, 255u8);
+            for (i, val) in data.iter_mut().enumerate() {
+                if i % 4 == 0 {
+                    *val = 0u8; // Set red to 0
+                }
+            }
+
+            asset_manager.add_texture_data("cube_texture_albedo", &texture_info, data.to_vec().into_boxed_slice());
             asset_manager.add_material_data("cube_material", "cube_texture_albedo", 0f32, 0f32);
             asset_manager.add_model_data("cube_model", "cube_mesh", &["cube_material"]);
         }
