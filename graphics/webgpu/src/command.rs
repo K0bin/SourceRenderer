@@ -614,15 +614,12 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                 binding_manager
             });
         } else {
-            let (render_bundle, binding_manager) = match handle {
-                WebGPUCommandBufferHandle::Secondary(cmd_buffer) => {
-                    (cmd_buffer.bundle.finish(), cmd_buffer.binding_manager)
-                }
+            let render_bundle = match handle {
+                WebGPUCommandBufferHandle::Secondary(cmd_buffer) => cmd_buffer.bundle.finish(),
                 _ => unreachable!()
             };
             self.handle = WebGPUCommandBufferHandle::SecondaryFinished(WebGPUFinishedRenderBundleCommandBuffer {
-                bundle: render_bundle,
-                binding_manager
+                bundle: render_bundle
             });
         }
     }

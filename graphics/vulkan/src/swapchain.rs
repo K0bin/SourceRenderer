@@ -460,6 +460,10 @@ impl Swapchain<VkBackend> for VkSwapchain {
         &self.textures[backbuffer.texture_index as usize]
     }
 
+    fn will_reuse_backbuffers(&self) -> bool {
+        true
+    }
+
     unsafe fn recreate(&mut self) {
         self.device.wait_for_idle();
 

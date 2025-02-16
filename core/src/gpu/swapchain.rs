@@ -17,6 +17,7 @@ pub trait Backbuffer {
 pub trait Swapchain<B: GPUBackend> : Sized {
   type Backbuffer : Backbuffer + Send + Sync;
 
+  fn will_reuse_backbuffers(&self) -> bool;
   unsafe fn next_backbuffer(&mut self) -> Result<Self::Backbuffer, SwapchainError>;
   unsafe fn recreate(&mut self);
   unsafe fn texture_for_backbuffer<'a>(&'a self, backbuffer: &'a Self::Backbuffer) -> &'a B::Texture;

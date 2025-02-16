@@ -85,6 +85,10 @@ impl MTLSwapchain {
 impl gpu::Swapchain<MTLBackend> for MTLSwapchain {
     type Backbuffer = MTLBackbuffer;
 
+    fn will_reuse_backbuffers(&self) -> bool {
+        false
+    }
+
     unsafe fn next_backbuffer(&mut self) -> Result<MTLBackbuffer, gpu::SwapchainError> {
         let drawable = self.surface.layer.next_drawable().unwrap().to_owned();
         let texture = MTLTexture::from_mtl_texture(drawable.texture(), true);
