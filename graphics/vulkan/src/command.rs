@@ -1376,6 +1376,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
     unsafe fn begin(&mut self, frame: u64, inner_info: Option<&VkInnerCommandBufferInfo>) {
         assert_eq!(self.state.load(), VkCommandBufferState::Ready);
 
+        self.descriptor_manager.mark_all_dirty();
         self.state.store(VkCommandBufferState::Recording);
         self.frame = frame;
 

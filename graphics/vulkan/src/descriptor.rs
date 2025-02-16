@@ -71,6 +71,7 @@ pub(crate) struct VkDescriptorSetLayout {
     binding_infos: SmallVec<[Option<VkDescriptorSetEntryInfo>; DEFAULT_PER_SET_PREALLOCATED_SIZE]>,
     is_empty: bool,
     template: Option<vk::DescriptorUpdateTemplate>,
+    max_used_binding: u32
 }
 
 impl VkDescriptorSetLayout {
@@ -84,6 +85,8 @@ impl VkDescriptorSetLayout {
         let mut vk_template_entries: Vec<vk::DescriptorUpdateTemplateEntry> = Vec::new();
         let mut binding_infos: SmallVec<[Option<VkDescriptorSetEntryInfo>; DEFAULT_PER_SET_PREALLOCATED_SIZE]> =
             SmallVec::with_capacity(bindings.len());
+
+        let mut max_used_binding = 0u32;
 
         for binding in bindings.iter() {
             if binding.index as usize >= binding_infos.len() {
@@ -109,6 +112,7 @@ impl VkDescriptorSetLayout {
                 offset: binding.index as usize * std::mem::size_of::<VkDescriptorEntry>(),
                 stride: std::mem::size_of::<VkDescriptorEntry>(),
             });
+            max_used_binding = max_used_binding.max(binding.index);
         }
 
         let binding_flags_struct = vk::DescriptorSetLayoutBindingFlagsCreateInfo {
@@ -160,6 +164,7 @@ impl VkDescriptorSetLayout {
             binding_infos,
             template,
             is_empty: bindings.is_empty(),
+            max_used_binding
         }
     }
 
@@ -169,6 +174,10 @@ impl VkDescriptorSetLayout {
 
     pub(crate) fn is_empty(&self) -> bool {
         self.is_empty
+    }
+
+    pub(crate) fn max_used_binding(&self) -> u32 {
+        self.max_used_binding
     }
 
     pub(crate) fn binding(&self, slot: u32) -> Option<&VkDescriptorSetEntryInfo> {
@@ -1327,7 +1336,6 @@ pub(crate) struct VkBindingManager {
     current_sets: [Option<Arc<VkDescriptorSet>>; gpu::NON_BINDLESS_SET_COUNT as usize],
     dirty: DirtyDescriptorSets,
     bindings: [[VkBoundResource; gpu::PER_SET_BINDINGS as usize]; gpu::NON_BINDLESS_SET_COUNT as usize],
-    used_bindings: [usize; gpu::NON_BINDLESS_SET_COUNT as usize],
     transient_cache: RefCell<HashMap<Arc<VkDescriptorSetLayout>, Vec<VkDescriptorSetCacheEntry>>>,
     permanent_cache: RefCell<HashMap<Arc<VkDescriptorSetLayout>, Vec<VkDescriptorSetCacheEntry>>>,
     last_cleanup_frame: u64,
@@ -1352,9 +1360,8 @@ impl VkBindingManager {
             }),
             device: device.clone(),
             current_sets: Default::default(),
-            dirty: DirtyDescriptorSets::empty(),
+            dirty: DirtyDescriptorSets::all(),
             bindings: Default::default(),
-            used_bindings: Default::default(),
             transient_cache: RefCell::new(HashMap::new()),
             permanent_cache: RefCell::new(HashMap::new()),
             last_cleanup_frame: 0,
@@ -1362,9 +1369,8 @@ impl VkBindingManager {
     }
 
     pub(crate) fn reset(&mut self, frame: u64) {
-        self.dirty = DirtyDescriptorSets::empty();
+        self.dirty = DirtyDescriptorSets::all();
         self.bindings = Default::default();
-        self.used_bindings = Default::default();
         self.current_sets = Default::default();
         self.clean_permanent_cache(frame);
         if self.cache_mode != CacheMode::None {
@@ -1394,10 +1400,6 @@ impl VkBindingManager {
         if !identical {
             self.dirty.insert(DirtyDescriptorSets::from(frequency));
             *existing_binding = (&binding).into();
-
-            if VkBoundResourceRef::None != binding {
-                self.used_bindings[frequency as usize] = self.used_bindings[frequency as usize].max((slot + 1) as usize);
-            }
         }
     }
 
@@ -1434,14 +1436,13 @@ impl VkBindingManager {
         frequency: gpu::BindingFrequency,
     ) -> Option<VkDescriptorSetBinding> {
         let layout_option = pipeline_layout.descriptor_set_layout(frequency as u32);
-        let used_bindings = self.used_bindings[frequency as usize];
-        if !self.dirty.contains(DirtyDescriptorSets::from(frequency)) || layout_option.is_none() || used_bindings == 0 {
+        if !self.dirty.contains(DirtyDescriptorSets::from(frequency)) || layout_option.is_none() {
             return None;
         }
         let layout = layout_option.unwrap();
 
         let mut set: Option<Arc<VkDescriptorSet>> = None;
-        let bindings = &self.bindings[frequency as usize][..used_bindings];
+        let bindings = &self.bindings[frequency as usize][..(layout.max_used_binding() + 1) as usize];
         if let Some(current_set) = &self.current_sets[frequency as usize] {
             // This should cover the hottest case.
             if current_set.is_compatible(layout, bindings) {
