@@ -660,7 +660,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         } else {
             assert_eq!(region.texture_extent.z, 1);
             assert_eq!(region.texture_offset.z, 0);
-            copy_size.set_depth_or_array_layers(region.texture_subresource.array_layer);
+            copy_size.set_depth_or_array_layers(1);
             origin.set(2, JsValue::from(region.texture_subresource.array_layer as f64));
         }
         dst_info.set_origin(&origin);

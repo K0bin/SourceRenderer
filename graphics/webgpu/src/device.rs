@@ -227,7 +227,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
 
         src_info.set_bytes_per_row(row_pitch as u32);
         src_info.set_rows_per_image((slice_pitch / row_pitch) as u32);
-        let dst_info = (&GpuTexelCopyTextureInfo::new)(dst.handle());
+        let dst_info = GpuTexelCopyTextureInfo::new(dst.handle());
         dst_info.set_mip_level(region.texture_subresource.mip_level);
         let origin = Array::new_with_length(3);
         origin.set(0, JsValue::from(region.texture_offset.x as f64));
@@ -242,13 +242,14 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         } else {
             assert_eq!(region.texture_extent.z, 1);
             assert_eq!(region.texture_offset.z, 0);
-            copy_size.set_depth_or_array_layers(region.texture_subresource.array_layer);
+            copy_size.set_depth_or_array_layers(1);
             origin.set(2, JsValue::from(region.texture_subresource.array_layer as f64));
         }
         dst_info.set_origin(&origin);
 
         let queue = self.queue.handle();
-        let slice = unsafe { std::slice::from_raw_parts(src as *const u8, (slice_pitch * row_pitch * (region.texture_extent.y as u64) * (region.texture_extent.z as u64)) as usize) };
+        let data_len = slice_pitch as usize * dst.info().depth as usize;
+        let slice = unsafe { std::slice::from_raw_parts(src as *const u8, data_len) };
         queue.write_texture_with_u8_slice_and_gpu_extent_3d_dict(&dst_info, slice, &src_info, &copy_size).unwrap();
     }
 }
