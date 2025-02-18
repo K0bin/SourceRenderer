@@ -37,6 +37,16 @@ impl<B: GPUBackend> BufferSlice<B> {
         &self.0.data().buffer
     }
 
+    pub unsafe fn map_part(&self, offset: u64, length: u64, invalidate: bool) -> Option<*mut c_void> {
+        debug_assert!(self.0.range.length >= offset + length);
+        self.handle().map(self.0.range.offset + offset, length, invalidate)
+    }
+
+    pub unsafe fn unmap_part(&self, offset: u64, length: u64, flush: bool) {
+        debug_assert!(self.0.range.length >= offset + length);
+        self.handle().unmap(self.0.range.offset + offset, length, flush)
+    }
+
     pub unsafe fn map(&self, invalidate: bool) -> Option<*mut c_void> {
         self.handle().map(self.0.range.offset, self.0.range.length, invalidate)
     }

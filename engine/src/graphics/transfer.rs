@@ -361,12 +361,12 @@ impl<B: GPUBackend> Transfer<B> {
       dst_offset: u64
     ) -> bool {
       unsafe {
-        let dst_ptr = dst_buffer.map(false);
+        let actual_len = data.len().min(dst_buffer.length() as usize - dst_offset as usize);
+        let dst_ptr = dst_buffer.map_part(dst_offset, actual_len as u64, false);
         if let Some(ptr_void) = dst_ptr {
-          let actual_len = data.len().min(dst_buffer.length() as usize - dst_offset as usize);
           let ptr = ptr_void as *mut u8;
-          ptr.offset(dst_offset as isize).copy_from(data.as_ptr(), actual_len);
-          dst_buffer.unmap(true);
+          ptr.copy_from(data.as_ptr(), actual_len);
+          dst_buffer.unmap_part(dst_offset, actual_len as u64, true);
           return true;
         }
       }
