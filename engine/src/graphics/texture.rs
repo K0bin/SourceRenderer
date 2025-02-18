@@ -26,8 +26,9 @@ impl<B: GPUBackend> Texture<B> {
         let heap_info = unsafe { device.get_texture_heap_info(info) };
         let (texture, allocation) = if heap_info.dedicated_allocation_preference == DedicatedAllocationPreference::RequireDedicated || heap_info.dedicated_allocation_preference == DedicatedAllocationPreference::PreferDedicated {
             let memory_types = unsafe { device.memory_type_infos() };
-            let mut mask = allocator.find_memory_type_mask(MemoryUsage::GPUMemory, MemoryTypeMatchingStrictness::Normal) & heap_info.memory_type_mask;
             let mut texture: Result<B::Texture, OutOfMemoryError> = Err(OutOfMemoryError {});
+
+            let mask = allocator.find_memory_type_mask(MemoryUsage::GPUMemory, MemoryTypeMatchingStrictness::Strict) & heap_info.memory_type_mask;
             for i in 0..memory_types.len() as u32 {
                 if (mask & (1 << i)) == 0 {
                     continue;
@@ -39,7 +40,20 @@ impl<B: GPUBackend> Texture<B> {
             }
 
             if texture.is_err() {
-                mask = allocator.find_memory_type_mask(MemoryUsage::GPUMemory, MemoryTypeMatchingStrictness::Fallback) & heap_info.memory_type_mask;
+                let mask = allocator.find_memory_type_mask(MemoryUsage::GPUMemory, MemoryTypeMatchingStrictness::Normal) & heap_info.memory_type_mask;
+                for i in 0..memory_types.len() as u32 {
+                    if (mask & (1 << i)) == 0 {
+                        continue;
+                    }
+                    texture = unsafe { device.create_texture(info, i, name) };
+                    if texture.is_ok() {
+                        break;
+                    }
+                }
+            }
+
+            if texture.is_err() {
+                let mask = allocator.find_memory_type_mask(MemoryUsage::GPUMemory, MemoryTypeMatchingStrictness::Fallback) & heap_info.memory_type_mask;
                 for i in 0..memory_types.len() as u32 {
                     if (mask & (1 <<i)) == 0 {
                         continue;
