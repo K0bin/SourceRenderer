@@ -28,6 +28,13 @@ impl<B: GPUBackend> Device<B> {
         let memory_allocator = ManuallyDrop::new(Arc::new(MemoryAllocator::new(&device)));
         let destroyer = ManuallyDrop::new(Arc::new(DeferredDestroyer::new()));
         let buffer_allocator = Arc::new(BufferAllocator::new(&device, &memory_allocator));
+
+        let prerendered_frames = if cfg!(not(target_arch = "wasm32")) {
+            3
+        } else {
+            1 // WebGPU handles synchronization completely.
+        };
+
         Self {
             device: device.clone(),
             instance: instance,
@@ -36,7 +43,7 @@ impl<B: GPUBackend> Device<B> {
             bindless_slot_allocator: BindlessSlotAllocator::new(gpu::BINDLESS_TEXTURE_COUNT),
             transfer: ManuallyDrop::new(Transfer::new(&device, &destroyer, &buffer_allocator)),
             buffer_allocator: ManuallyDrop::new(buffer_allocator),
-            prerendered_frames: 3,
+            prerendered_frames,
             has_context: AtomicBool::new(false),
             graphics_queue: Queue::new(QueueType::Graphics),
             compute_queue: device.compute_queue().map(|_| Queue::new(QueueType::Compute)),
