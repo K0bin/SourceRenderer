@@ -8,7 +8,7 @@ use crate::{WebGPUBackend, WebGPUBuffer, WebGPUComputePipeline, WebGPUFence, Web
 pub struct WebGPUDevice {
     device: GpuDevice,
     shared: WebGPUShared,
-    memory_infos: [gpu::MemoryTypeInfo; 3],
+    memory_infos: [gpu::MemoryTypeInfo; 1],
     queue: WebGPUQueue
 }
 
@@ -17,26 +17,12 @@ unsafe impl Sync for WebGPUDevice {}
 
 impl WebGPUDevice {
     pub fn new(device: GpuDevice, debug: bool) -> Self {
-        let memory_infos: [gpu::MemoryTypeInfo; 3] = [
-            gpu::MemoryTypeInfo {
-                is_cached: false,
-                is_coherent: true,
-                is_cpu_accessible: true,
-                memory_index: 0,
-                memory_kind: gpu::MemoryKind::RAM
-            },
+        let memory_infos: [gpu::MemoryTypeInfo; 1] = [
             gpu::MemoryTypeInfo {
                 is_cached: true,
-                is_coherent: true,
+                is_coherent: false,
                 is_cpu_accessible: true,
                 memory_index: 0,
-                memory_kind: gpu::MemoryKind::RAM
-            },
-            gpu::MemoryTypeInfo {
-                is_cached: false,
-                is_coherent: false,
-                is_cpu_accessible: false,
-                memory_index: 1,
                 memory_kind: gpu::MemoryKind::VRAM
             }
         ];
@@ -118,9 +104,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
             Increase it in the constructor and decrease it in the destructor.
          */
         vec![gpu::MemoryInfo {
-            available: (u32::MAX as u64) / 2u64, total: (u32::MAX as u64) / 2u64, memory_kind: gpu::MemoryKind::RAM
-        }, gpu::MemoryInfo {
-            available: (u32::MAX as u64) / 2u64, total: (u32::MAX as u64) / 2u64, memory_kind: gpu::MemoryKind::VRAM
+            available: (u32::MAX as u64) / 3u64, total: (u32::MAX as u64) / 3u64, memory_kind: gpu::MemoryKind::VRAM
         }]
     }
 
@@ -136,7 +120,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
     unsafe fn get_buffer_heap_info(&self, info: &gpu::BufferInfo) -> gpu::ResourceHeapInfo {
         gpu::ResourceHeapInfo {
             dedicated_allocation_preference: gpu::DedicatedAllocationPreference::PreferDedicated,
-            memory_type_mask: 1 | (1 << 1) | (1 << 2),
+            memory_type_mask: 1,
             alignment: 4,
             size: info.size,
         }
@@ -145,7 +129,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
     unsafe fn get_texture_heap_info(&self, info: &gpu::TextureInfo) -> gpu::ResourceHeapInfo {
         gpu::ResourceHeapInfo {
             dedicated_allocation_preference: gpu::DedicatedAllocationPreference::PreferDedicated,
-            memory_type_mask: 1 << 2,
+            memory_type_mask: 1,
             alignment: 4,
             size: (info.width * info.height * info.array_length * (4 * 4)) as u64, // TODO: We just assume RGBA Float32, make this take the format into account properly
         }
