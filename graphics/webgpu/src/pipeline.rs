@@ -255,7 +255,7 @@ impl WebGPUGraphicsPipeline {
             texture_dimension: gpu::TextureDimension::Dim1D,
             is_multisampled: false,
             storage_format: gpu::Format::Unknown,
-            struct_size: 0
+            struct_size: info.vs.push_constant_size
         };
         bind_group_layout_keys[gpu::BindingFrequency::VeryFrequent as usize].push(entry);
         let entry = WebGPUBindGroupEntryInfo {
@@ -269,7 +269,7 @@ impl WebGPUGraphicsPipeline {
             texture_dimension: gpu::TextureDimension::Dim1D,
             is_multisampled: false,
             storage_format: gpu::Format::Unknown,
-            struct_size: 0
+            struct_size: info.fs.map(|fs| fs.push_constant_size).unwrap_or(8)
         };
         bind_group_layout_keys[gpu::BindingFrequency::VeryFrequent as usize].push(entry);
 
