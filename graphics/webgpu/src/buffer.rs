@@ -68,9 +68,6 @@ impl WebGPUBuffer {
         if info.usage == BufferUsage::COPY_DST && mappable {
             usage = web_sys::gpu_buffer_usage::COPY_DST | web_sys::gpu_buffer_usage::MAP_READ;
         }
-        if info.usage == BufferUsage::COPY_SRC && mappable {
-            usage = web_sys::gpu_buffer_usage::COPY_SRC | web_sys::gpu_buffer_usage::MAP_WRITE;
-        }
         if info.usage == BufferUsage::CONSTANT && mappable {
             // Allocating new Rust memory for every single map operation is too slow.
             retained_rust_memory_limit = 256;
@@ -103,7 +100,9 @@ impl WebGPUBuffer {
             log::error!("Failed to create buffer: {:?}", e);
             ()
         })?;
-        descriptor.set_mapped_at_creation(mappable && !info.usage.gpu_writable());
+        let mapped_at_creation = mappable && !info.usage.gpu_writable();
+        assert!(!mapped_at_creation || info.size % 4 == 0);
+        descriptor.set_mapped_at_creation(mapped_at_creation);
         Ok(Self {
             device: device.clone(),
             buffer: RefCell::new(buffer),
