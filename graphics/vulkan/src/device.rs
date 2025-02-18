@@ -1,11 +1,11 @@
-use std::{cmp::max, ffi::c_void, pin::Pin, sync::{
+use std::{ffi::c_void, pin::Pin, sync::{
     atomic::AtomicU64,
     Arc,
 }};
 
 use ash::vk;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, Device as _, TextureLayout};
+use sourcerenderer_core::gpu::{self, BufferUsage, Device as _, TextureLayout};
 
 use super::*;
 
@@ -99,7 +99,7 @@ impl VkDevice {
             transfer_queue,
             shared,
             query_count: AtomicU64::new(0),
-            memory_type_infos,
+            memory_type_infos
         }
     }
 
@@ -299,6 +299,18 @@ impl gpu::Device<VkBackend> for VkDevice {
         };
         self.device.get_device_buffer_memory_requirements(&buffer_requirements_info, &mut requirements);
 
+        let mut alignment = requirements.memory_requirements.alignment;
+        alignment = alignment.max(self.device.properties.limits.min_memory_map_alignment as u64);
+        if info.usage.contains(BufferUsage::COPY_DST | BufferUsage::COPY_SRC) {
+            alignment = alignment.max(self.device.properties.limits.min_uniform_buffer_offset_alignment);
+        }
+        if info.usage.contains(BufferUsage::CONSTANT) {
+            alignment = alignment.max(self.device.properties.limits.min_uniform_buffer_offset_alignment);
+        }
+        if info.usage.contains(BufferUsage::STORAGE) {
+            alignment = alignment.max(self.device.properties.limits.min_storage_buffer_offset_alignment);
+        }
+
         gpu::ResourceHeapInfo {
             dedicated_allocation_preference: if dedicated_requirements.requires_dedicated_allocation == vk::TRUE {
                 gpu::DedicatedAllocationPreference::RequireDedicated
@@ -308,7 +320,7 @@ impl gpu::Device<VkBackend> for VkDevice {
                 gpu::DedicatedAllocationPreference::DontCare
             },
             memory_type_mask: requirements.memory_requirements.memory_type_bits,
-            alignment: requirements.memory_requirements.alignment,
+            alignment,
             size: requirements.memory_requirements.size
         }
     }
