@@ -5,7 +5,7 @@ use log::warn;
 use sourcerenderer_core::{align_up_32, gpu::{self, Buffer, LoadOpDepthStencil, ResolveAttachment, StoreOp, Texture, TextureView}};
 use web_sys::{GpuCommandBuffer, GpuCommandEncoder, GpuComputePassEncoder, GpuDevice, GpuExtent3dDict, GpuIndexFormat, GpuLoadOp, GpuRenderBundle, GpuRenderBundleEncoder, GpuRenderBundleEncoderDescriptor, GpuRenderPassColorAttachment, GpuRenderPassDepthStencilAttachment, GpuRenderPassDescriptor, GpuRenderPassEncoder, GpuStoreOp, GpuTexelCopyBufferInfo, GpuTexelCopyTextureInfo};
 
-use crate::{binding::{self, WebGPUBindingManager, WebGPUBoundResourceRef, WebGPUBufferBindingInfo, WebGPUHashableSampler, WebGPUHashableTextureView, WebGPUPipelineLayout}, buffer::WebGPUBuffer, pipeline::sample_count_to_webgpu, sampler::WebGPUSampler, stubs::WebGPUAccelerationStructure, texture::{format_to_webgpu, WebGPUTexture, WebGPUTextureView}, WebGPUBackend, WebGPUBindGroupBinding};
+use crate::{binding::{self, WebGPUBindingManager, WebGPUBoundResourceRef, WebGPUBufferBindingInfo, WebGPUHashableSampler, WebGPUHashableTextureView, WebGPUPipelineLayout}, buffer::WebGPUBuffer, pipeline::sample_count_to_webgpu, sampler::WebGPUSampler, stubs::WebGPUAccelerationStructure, texture::{format_to_webgpu, WebGPUTexture, WebGPUTextureView}, WebGPUBackend, WebGPUBindGroupBinding, WebGPULimits};
 
 enum WebGPUPassEncoder {
     None,
@@ -96,18 +96,21 @@ fn store_op_to_webgpu<'a>(store_op: &'a gpu::StoreOp<'a, WebGPUBackend>) -> (Gpu
 }
 
 impl WebGPUCommandBuffer {
-    fn new(device: &GpuDevice, is_inner: bool) -> Self {
+    fn new(device: &GpuDevice,
+        is_inner: bool,
+        limits: &WebGPULimits
+    ) -> Self {
         Self {
             device: device.clone(),
             handle: if is_inner {
                 WebGPUCommandBufferHandle::SecondaryReset(WebGPUResetRenderBundleCommandBuffer {
-                    binding_manager: WebGPUBindingManager::new(device)
+                    binding_manager: WebGPUBindingManager::new(device, limits),
                 })
             } else {
                 let cmd_buffer = device.create_command_encoder();
                 WebGPUCommandBufferHandle::Reset(WebGPUResetCommandBuffer {
                     command_encoder: cmd_buffer,
-                    binding_manager: WebGPUBindingManager::new(device),
+                    binding_manager: WebGPUBindingManager::new(device, limits),
                 })
             },
             is_inner,
@@ -407,13 +410,13 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
             let cmd_buffer = self.get_recording_mut();
             binding_infos = cmd_buffer.binding_manager.finish(frame, pipeline_layout.as_ref().expect("Need to bind pipeline before you can finish binding.").as_ref());
 
-            for (index, binding) in binding_infos.iter().enumerate(){
+            for (set_index, binding) in binding_infos.iter().enumerate(){
                 if binding.is_none() {
                     continue;
                 }
                 let binding = binding.as_ref().unwrap();
-                for offset in &binding.dynamic_offsets {
-                    dynamic_offsets_js.set_index((index as u32) * gpu::PER_SET_BINDINGS, *offset as u32);
+                for (offset_index, offset) in binding.dynamic_offsets.iter().enumerate() {
+                    dynamic_offsets_js.set_index((set_index as u32) * gpu::PER_SET_BINDINGS + offset_index as u32, *offset as u32);
                 }
             }
         }
@@ -424,31 +427,31 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
             match &cmd_buffer.pass_encoder {
                 WebGPUPassEncoder::None => {},
                 WebGPUPassEncoder::Render(gpu_render_pass_encoder, _) => {
-                    for (index, binding) in binding_infos.iter().enumerate() {
+                    for (set_index, binding) in binding_infos.iter().enumerate() {
                         if binding.is_none() {
                             continue;
                         }
                         let binding = binding.as_ref().unwrap();
                         gpu_render_pass_encoder.set_bind_group_with_u32_array_and_f64_and_dynamic_offsets_data_length(
-                            index as u32,
+                            set_index as u32,
                             Some(binding.set.handle()),
                             &dynamic_offsets_js,
-                            (gpu::PER_SET_BINDINGS * (index as u32)) as f64,
+                            (gpu::PER_SET_BINDINGS * (set_index as u32)) as f64,
                             binding.dynamic_offsets.len() as u32
                         ).unwrap();
                     }
                 },
                 WebGPUPassEncoder::Compute(gpu_compute_pass_encoder) => {
-                    for (index, binding) in binding_infos.iter().enumerate() {
+                    for (set_index, binding) in binding_infos.iter().enumerate() {
                         if binding.is_none() {
                             continue;
                         }
                         let binding = binding.as_ref().unwrap();
                         gpu_compute_pass_encoder.set_bind_group_with_u32_array_and_f64_and_dynamic_offsets_data_length(
-                            index as u32,
+                            set_index as u32,
                             Some(binding.set.handle()),
                             &dynamic_offsets_js,
-                            (gpu::PER_SET_BINDINGS * (index as u32)) as f64,
+                            (gpu::PER_SET_BINDINGS * (set_index as u32)) as f64,
                             binding.dynamic_offsets.len() as u32
                         ).unwrap();
                     }
@@ -456,16 +459,16 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
             }
         } else {
             let bundle_encoder = self.get_encoder_inner();
-            for (index, binding) in binding_infos.iter().enumerate() {
+            for (set_index, binding) in binding_infos.iter().enumerate() {
                 if binding.is_none() {
                     continue;
                 }
                 let binding: &binding::WebGPUBindGroupBinding = binding.as_ref().unwrap();
                 bundle_encoder.set_bind_group_with_u32_array_and_f64_and_dynamic_offsets_data_length(
-                    index as u32,
+                    set_index as u32,
                     Some(binding.set.handle()),
                     &dynamic_offsets_js,
-                    (gpu::PER_SET_BINDINGS * (index as u32)) as f64,
+                    (gpu::PER_SET_BINDINGS * (set_index as u32)) as f64,
                     binding.dynamic_offsets.len() as u32
                 ).unwrap();
             }
@@ -878,24 +881,30 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
 
 pub struct WebGPUCommandPool {
     device: GpuDevice,
-    pool_type: gpu::CommandPoolType
+    pool_type: gpu::CommandPoolType,
+    limits: WebGPULimits
 }
 
 unsafe impl Send for WebGPUCommandPool {}
 unsafe impl Sync for WebGPUCommandPool {}
 
 impl WebGPUCommandPool {
-    pub(crate) fn new(device: &GpuDevice, pool_type: gpu::CommandPoolType) -> Self {
+    pub(crate) fn new(
+        device: &GpuDevice,
+        pool_type: gpu::CommandPoolType,
+        limits: &WebGPULimits
+    ) -> Self {
         Self {
             device: device.clone(),
-            pool_type
+            pool_type,
+            limits: limits.clone()
         }
     }
 }
 
 impl gpu::CommandPool<WebGPUBackend> for WebGPUCommandPool {
     unsafe fn create_command_buffer(&mut self) -> WebGPUCommandBuffer {
-        WebGPUCommandBuffer::new(&self.device, self.pool_type == gpu::CommandPoolType::InnerCommandBuffers)
+        WebGPUCommandBuffer::new(&self.device, self.pool_type == gpu::CommandPoolType::InnerCommandBuffers, &self.limits)
     }
 
     unsafe fn reset(&mut self) {}

@@ -5,7 +5,7 @@ use sourcerenderer_core::gpu::{self, SampleCount};
 use web_sys::{GpuBlendComponent, GpuBlendFactor, GpuBlendOperation, GpuBlendState, GpuColorTargetState, GpuCompareFunction, GpuComputePipeline, GpuComputePipelineDescriptor, GpuCullMode, GpuDepthStencilState, GpuDevice, GpuFragmentState, GpuFrontFace, GpuMultisampleState, GpuPrimitiveState, GpuPrimitiveTopology, GpuProgrammableStage, GpuRenderPipeline, GpuRenderPipelineDescriptor, GpuShaderModule, GpuShaderModuleDescriptor, GpuStencilFaceState, GpuStencilOperation, GpuVertexAttribute, GpuVertexBufferLayout, GpuVertexFormat, GpuVertexState, GpuVertexStepMode};
 use std::{hash::Hash, sync::Arc};
 
-use crate::{binding::WebGPUBindGroupEntryInfo, shared::{WebGPUBindGroupLayoutKey, WebGPUShared}, texture::format_to_webgpu, WebGPUBackend, WebGPUPipelineLayout};
+use crate::{binding::WebGPUBindGroupEntryInfo, shared::{WebGPUBindGroupLayoutKey, WebGPUShared}, texture::format_to_webgpu, WebGPUBackend, WebGPULimits, WebGPUPipelineLayout};
 
 pub struct WebGPUShader {
     module: GpuShaderModule,
@@ -56,15 +56,12 @@ impl WebGPUShader {
                     index: binding.binding * 2,
                     writable: binding.writable,
                     resource_type: binding.resource_type,
-                    has_dynamic_offset: match binding.resource_type {
-                        gpu::ResourceType::UniformBuffer
-                        | gpu::ResourceType::StorageBuffer => true,
-                        _ => false
-                    },
+                    has_dynamic_offset: false,
                     sampling_type: binding.sampling_type,
                     texture_dimension: binding.texture_dimension,
                     is_multisampled: binding.is_multisampled,
                     storage_format: binding.storage_format,
+                    struct_size: binding.struct_size
                 };
                 if binding.resource_type == gpu::ResourceType::CombinedTextureSampler {
                     binding_info.resource_type = gpu::ResourceType::SampledTexture;
@@ -221,7 +218,7 @@ pub(crate) fn sample_count_to_webgpu(sample_count: SampleCount) -> u32 {
 }
 
 impl WebGPUGraphicsPipeline {
-    pub fn new(device: &GpuDevice, info: &gpu::GraphicsPipelineInfo<WebGPUBackend>, shared: &WebGPUShared, name: Option<&str>) -> Result<Self, ()> {
+    pub(crate) fn new(device: &GpuDevice, info: &gpu::GraphicsPipelineInfo<WebGPUBackend>, shared: &WebGPUShared, name: Option<&str>, limits: &WebGPULimits) -> Result<Self, ()> {
         let vertex_buffers = Array::new_with_length(info.vertex_layout.input_assembler.len() as u32);
         for vb_info in info.vertex_layout.input_assembler {
             let mut attributes_count = 0;
@@ -258,6 +255,7 @@ impl WebGPUGraphicsPipeline {
             texture_dimension: gpu::TextureDimension::Dim1D,
             is_multisampled: false,
             storage_format: gpu::Format::Unknown,
+            struct_size: 0
         };
         bind_group_layout_keys[gpu::BindingFrequency::VeryFrequent as usize].push(entry);
         let entry = WebGPUBindGroupEntryInfo {
@@ -271,8 +269,12 @@ impl WebGPUGraphicsPipeline {
             texture_dimension: gpu::TextureDimension::Dim1D,
             is_multisampled: false,
             storage_format: gpu::Format::Unknown,
+            struct_size: 0
         };
         bind_group_layout_keys[gpu::BindingFrequency::VeryFrequent as usize].push(entry);
+
+        let mut uniform_dynamic_offsets_count = 2u32;
+        let mut storage_dynamic_offsets_count = 0u32;
 
         for (set_index, shader_set) in info.vs.bindings.iter().enumerate() {
             let set = &mut bind_group_layout_keys[set_index];
@@ -294,10 +296,22 @@ impl WebGPUGraphicsPipeline {
                     assert!(!existing_binding.writable);
                     assert!(!binding.writable);
                     existing_binding.shader_stage |= binding.shader_stage;
-                    existing_binding.has_dynamic_offset = existing_binding.has_dynamic_offset || binding.has_dynamic_offset;
                 } else {
                     let mut adjusted_binding = binding.clone();
                     adjusted_binding.index += push_const_binding_offset;
+                    adjusted_binding.has_dynamic_offset = match binding.resource_type {
+                        gpu::ResourceType::UniformBuffer => {
+                            let dynamic = uniform_dynamic_offsets_count < limits.max_dynamic_uniform_buffers_per_pipeline_layout;
+                            uniform_dynamic_offsets_count += 1;
+                            dynamic
+                        },
+                        gpu::ResourceType::StorageBuffer => {
+                            let dynamic = storage_dynamic_offsets_count < limits.max_dynamic_storage_buffers_per_pipeline_layout;
+                            storage_dynamic_offsets_count += 1;
+                            dynamic
+                        },
+                        _ => false
+                    };
                     set.push(adjusted_binding);
                 }
             }
@@ -323,10 +337,22 @@ impl WebGPUGraphicsPipeline {
                         assert!(!existing_binding.writable);
                         assert!(!binding.writable);
                         existing_binding.shader_stage |= binding.shader_stage;
-                        existing_binding.has_dynamic_offset = existing_binding.has_dynamic_offset || binding.has_dynamic_offset;
                     } else {
                         let mut adjusted_binding = binding.clone();
                         adjusted_binding.index += push_const_binding_offset;
+                        adjusted_binding.has_dynamic_offset = match binding.resource_type {
+                            gpu::ResourceType::UniformBuffer => {
+                                let dynamic = uniform_dynamic_offsets_count < limits.max_dynamic_uniform_buffers_per_pipeline_layout;
+                                uniform_dynamic_offsets_count += 1;
+                                dynamic
+                            },
+                            gpu::ResourceType::StorageBuffer => {
+                                let dynamic = storage_dynamic_offsets_count < limits.max_dynamic_storage_buffers_per_pipeline_layout;
+                                storage_dynamic_offsets_count += 1;
+                                dynamic
+                            },
+                            _ => false
+                        };
                         set.push(adjusted_binding);
                     }
                 }
@@ -455,7 +481,7 @@ unsafe impl Send for WebGPUComputePipeline {}
 unsafe impl Sync for WebGPUComputePipeline {}
 
 impl WebGPUComputePipeline {
-    pub fn new(device: &GpuDevice, shader: &WebGPUShader, shared: &WebGPUShared, name: Option<&str>) -> Result<Self, ()> {
+    pub(crate) fn new(device: &GpuDevice, shader: &WebGPUShader, shared: &WebGPUShared, name: Option<&str>, limits: &WebGPULimits) -> Result<Self, ()> {
         let stage = GpuProgrammableStage::new(shader.module());
 
         let mut bind_group_layout_keys: [WebGPUBindGroupLayoutKey; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
@@ -470,6 +496,7 @@ impl WebGPUComputePipeline {
             texture_dimension: gpu::TextureDimension::Dim1D,
             is_multisampled: false,
             storage_format: gpu::Format::Unknown,
+            struct_size: 0,
         };
         bind_group_layout_keys[gpu::BindingFrequency::VeryFrequent as usize].push(entry);
 
@@ -481,13 +508,16 @@ impl WebGPUComputePipeline {
             index: 0,
             writable: false,
             resource_type: gpu::ResourceType::UniformBuffer,
-            has_dynamic_offset: true,
+            has_dynamic_offset: false,
             sampling_type: gpu::SamplingType::Float,
             texture_dimension: gpu::TextureDimension::Dim1D,
             is_multisampled: false,
             storage_format: gpu::Format::Unknown,
+            struct_size: 0,
         };
         bind_group_layout_keys[gpu::BindingFrequency::VeryFrequent as usize].push(entry);
+        let mut uniform_dynamic_offsets_count = 1u32;
+        let mut storage_dynamic_offsets_count = 0u32;
 
         for (set_index, shader_set) in shader.bindings.iter().enumerate() {
             let set = &mut bind_group_layout_keys[set_index];
@@ -510,10 +540,24 @@ impl WebGPUComputePipeline {
                     assert!(!existing_binding.writable);
                     assert!(!binding.writable);
                     existing_binding.shader_stage |= binding.shader_stage;
-                    existing_binding.has_dynamic_offset = existing_binding.has_dynamic_offset || binding.has_dynamic_offset;
                 } else {
                     let mut adjusted_binding = binding.clone();
                     adjusted_binding.index += push_const_binding_offset;
+
+                    adjusted_binding.has_dynamic_offset = match binding.resource_type {
+                        gpu::ResourceType::UniformBuffer => {
+                            let dynamic = uniform_dynamic_offsets_count < limits.max_dynamic_uniform_buffers_per_pipeline_layout;
+                            uniform_dynamic_offsets_count += 1;
+                            dynamic
+                        },
+                        gpu::ResourceType::StorageBuffer => {
+                            let dynamic = storage_dynamic_offsets_count < limits.max_dynamic_storage_buffers_per_pipeline_layout;
+                            storage_dynamic_offsets_count += 1;
+                            dynamic
+                        },
+                        _ => false
+                    };
+
                     set.push(adjusted_binding);
                 }
             }

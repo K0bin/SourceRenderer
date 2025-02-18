@@ -33,7 +33,8 @@ pub struct Resource {
     pub texture_dimension: TextureDimension,
     pub is_multisampled: bool,
     pub sampling_type: SamplingType,
-    pub storage_format: Format
+    pub storage_format: Format,
+    pub struct_size: u32
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

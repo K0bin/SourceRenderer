@@ -417,11 +417,14 @@ fn read_metadata(
             let spv_base_type = spirv_cross_sys::spvc_type_get_basetype(type_handle);
             let is_image = spv_base_type == spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_IMAGE
                 || spv_base_type == spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_SAMPLED_IMAGE;
+            let is_buffer = spv_resource_type == spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_UNIFORM_BUFFER
+                || spv_resource_type == spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_STORAGE_BUFFER;
 
             let mut dim = gpu::TextureDimension::Dim1D;
             let mut multisampled = false;
             let mut sampling_type = gpu::SamplingType::Float;
             let mut storage_format = gpu::Format::Unknown;
+            let mut struct_size: u32 = 0;
             if is_image {
                 let spvc_is_array = spirv_cross_sys::spvc_type_get_image_arrayed(type_handle) != 0;
                 let spv_dim = spirv_cross_sys::spvc_type_get_image_dimension(type_handle);
@@ -460,6 +463,10 @@ fn read_metadata(
                         _ => gpu::SamplingType::Float
                     };
                 }
+            } else if is_buffer {
+                let mut size: usize = 0usize;
+                assert_eq!(spirv_cross_sys::spvc_compiler_get_declared_struct_size(compiler, type_handle, &mut size as *mut usize), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
+                struct_size = size as u32;
             }
 
             set.push(gpu::Resource {
@@ -472,7 +479,8 @@ fn read_metadata(
                 texture_dimension: dim,
                 is_multisampled: multisampled,
                 sampling_type,
-                storage_format
+                storage_format,
+                struct_size
             });
         }
     }

@@ -3,20 +3,22 @@ use smallvec::{SmallVec, smallvec};
 use sourcerenderer_core::{align_up_32, gpu::{self, Texture as _, TextureLayout}};
 use web_sys::{GpuAdapter, GpuDevice, GpuQueue, GpuTexelCopyTextureInfo, GpuTexelCopyBufferLayout, GpuExtent3dDict};
 
-use crate::{WebGPUBackend, WebGPUBuffer, WebGPUComputePipeline, WebGPUFence, WebGPUGraphicsPipeline, WebGPUHeap, WebGPUQueue, WebGPUSampler, WebGPUShader, WebGPUShared, WebGPUTexture, WebGPUTextureView};
+use crate::{WebGPUBackend, WebGPUBuffer, WebGPUComputePipeline, WebGPUFeatures, WebGPUFence, WebGPUGraphicsPipeline, WebGPUHeap, WebGPULimits, WebGPUQueue, WebGPUSampler, WebGPUShader, WebGPUShared, WebGPUTexture, WebGPUTextureView};
 
 pub struct WebGPUDevice {
     device: GpuDevice,
     shared: WebGPUShared,
     memory_infos: [gpu::MemoryTypeInfo; 1],
-    queue: WebGPUQueue
+    queue: WebGPUQueue,
+    features: WebGPUFeatures,
+    limits: WebGPULimits
 }
 
 unsafe impl Send for WebGPUDevice {}
 unsafe impl Sync for WebGPUDevice {}
 
 impl WebGPUDevice {
-    pub fn new(device: GpuDevice, debug: bool) -> Self {
+    pub(crate) fn new(device: GpuDevice, features: &WebGPUFeatures, limits: &WebGPULimits, debug: bool) -> Self {
         let memory_infos: [gpu::MemoryTypeInfo; 1] = [
             gpu::MemoryTypeInfo {
                 is_cached: true,
@@ -28,7 +30,7 @@ impl WebGPUDevice {
         ];
 
         let shared = WebGPUShared::new(&device);
-        let queue = WebGPUQueue::new(&device);
+        let queue = WebGPUQueue::new(&device, limits);
 
         if debug {
             log::info!("Initializing device with error callback.");
@@ -41,7 +43,9 @@ impl WebGPUDevice {
             device,
             shared,
             memory_infos,
-            queue
+            queue,
+            features: features.clone(),
+            limits: limits.clone(),
         }
     }
 
@@ -81,7 +85,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
     }
 
     unsafe fn create_compute_pipeline(&self, shader: &WebGPUShader, name: Option<&str>) -> WebGPUComputePipeline {
-        WebGPUComputePipeline::new(&self.device, shader, &self.shared, name).unwrap()
+        WebGPUComputePipeline::new(&self.device, shader, &self.shared, name, &self.limits).unwrap()
     }
 
     unsafe fn create_sampler(&self, info: &gpu::SamplerInfo) -> WebGPUSampler {
@@ -89,7 +93,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
     }
 
     unsafe fn create_graphics_pipeline(&self, info: &gpu::GraphicsPipelineInfo<WebGPUBackend>, name: Option<&str>) -> WebGPUGraphicsPipeline {
-        WebGPUGraphicsPipeline::new(&self.device, info, &self.shared, name).unwrap()
+        WebGPUGraphicsPipeline::new(&self.device, info, &self.shared, name, &self.limits).unwrap()
     }
 
     unsafe fn wait_for_idle(&self) {}
@@ -118,10 +122,17 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
     }
 
     unsafe fn get_buffer_heap_info(&self, info: &gpu::BufferInfo) -> gpu::ResourceHeapInfo {
+        let mut alignment = 4;
+        if info.usage.contains(gpu::BufferUsage::CONSTANT) {
+            alignment = alignment.max(self.limits.min_uniform_buffer_offset_alignment);
+        }
+        if info.usage.contains(gpu::BufferUsage::STORAGE) {
+            alignment = alignment.max(self.limits.min_storage_buffer_offset_alignment);
+        }
         gpu::ResourceHeapInfo {
             dedicated_allocation_preference: gpu::DedicatedAllocationPreference::PreferDedicated,
             memory_type_mask: 1,
-            alignment: 4,
+            alignment: alignment as u64,
             size: info.size,
         }
     }

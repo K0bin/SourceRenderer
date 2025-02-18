@@ -4,7 +4,7 @@ use sourcerenderer_core::gpu::{Buffer, BufferInfo, BufferUsage};
 
 use web_sys::{js_sys::Uint8Array, GpuBuffer, GpuBufferDescriptor, GpuDevice};
 
-const PREFER_DISCARD_OVER_QUEUE_WRITE: bool = false;
+pub(crate) const PREFER_DISCARD_OVER_QUEUE_WRITE: bool = false;
 
 pub struct WebGPUBuffer {
     device: GpuDevice,
@@ -137,8 +137,6 @@ impl Buffer for WebGPUBuffer {
             return None;
         }
         length = length.min(self.info.size - offset);
-        assert_eq!(offset % 8, 0);
-        assert_eq!(length % 4, 0);
         debug_assert!(offset + length <= self.info.size);
 
         let mut memory_opt: std::cell::RefMut<'_, Option<Box<[u8]>>> = self.rust_memory.borrow_mut();
@@ -194,8 +192,6 @@ impl Buffer for WebGPUBuffer {
         if flush {
             let mut buffer = self.buffer.borrow_mut();
             length = length.min(self.info.size - offset);
-            assert_eq!(offset % 8, 0);
-            assert_eq!(length % 4, 0);
             assert!(offset + length <= self.info.size);
             assert!((memory.len() as u64) >= length);
 
@@ -219,7 +215,6 @@ impl Buffer for WebGPUBuffer {
             if map_directly {
                 if buffer.map_state() != web_sys::GpuBufferMapState::Mapped {
                     // Create a new buffer that's mapped at creation
-                    buffer.destroy();
                     *buffer = self.device.create_buffer(&self.descriptor).unwrap();
                     if cfg!(debug_assertions) {
                         log::info!("Discarding buffer! Buffer size: {:?}, buffer usage: {:?}", self.info.size, self.info.usage);

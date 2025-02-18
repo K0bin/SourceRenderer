@@ -4,20 +4,22 @@ use js_sys::Array;
 use sourcerenderer_core::gpu;
 use web_sys::{GpuDevice, GpuQueue};
 
-use crate::{command::WebGPUCommandPool, swapchain::WebGPUSwapchain, WebGPUBackbuffer, WebGPUBackend};
+use crate::{command::WebGPUCommandPool, swapchain::WebGPUSwapchain, WebGPUBackbuffer, WebGPUBackend, WebGPULimits};
 
 
 pub struct WebGPUQueue {
     device: GpuDevice,
     queue: GpuQueue,
+    limits: WebGPULimits
 }
 
 impl WebGPUQueue {
-    pub fn new(device: &GpuDevice) -> Self {
+    pub(crate) fn new(device: &GpuDevice, limits: &WebGPULimits) -> Self {
         let queue = device.queue();
         Self {
             device: device.clone(),
             queue,
+            limits: limits.clone()
         }
     }
 
@@ -31,7 +33,7 @@ unsafe impl Sync for WebGPUQueue {}
 
 impl gpu::Queue<WebGPUBackend> for WebGPUQueue {
     unsafe fn create_command_pool(&self, command_pool_type: gpu::CommandPoolType, _flags: gpu::CommandPoolFlags) -> WebGPUCommandPool {
-        WebGPUCommandPool::new(&self.device, command_pool_type)
+        WebGPUCommandPool::new(&self.device, command_pool_type, &self.limits)
     }
 
     unsafe fn submit(&self, submissions: &[gpu::Submission<WebGPUBackend>]) {
