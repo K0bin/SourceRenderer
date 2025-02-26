@@ -719,7 +719,10 @@ impl<B: GPUBackend> Transfer<B> {
     fn upload_data<T>(&self, data: &[T], length: u64, memory_usage: MemoryUsage, usage: BufferUsage) -> Result<Arc<BufferSlice<B>>, OutOfMemoryError> {
       let required_size = std::mem::size_of_val(data) as u64;
       assert_ne!(required_size, 0u64);
-      let size = align_up_64(required_size.max(length), 256u64);
+      let size = align_up_64(
+        if length == 0 { required_size } else { required_size.min(length) },
+        256u64
+      );
 
       let slice = self.buffer_allocator.get_slice(&BufferInfo {
           size,

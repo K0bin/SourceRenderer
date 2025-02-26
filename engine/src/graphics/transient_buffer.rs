@@ -175,7 +175,8 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
         for (index, sliced_buffer) in (&mut matching_buffers.buffers[matching_buffers.first_free_index..]).iter_mut().enumerate() {
             let actual_index = index + matching_buffers.first_free_index;
             let aligned_offset = align_up_64(sliced_buffer.offset, alignment);
-            if sliced_buffer.size - aligned_offset < info.size {
+            let alignment_diff = aligned_offset - sliced_buffer.offset;
+            if sliced_buffer.size < info.size + alignment_diff {
                 continue;
             }
 
