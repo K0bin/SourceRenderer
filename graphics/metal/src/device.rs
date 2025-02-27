@@ -18,6 +18,9 @@ pub struct MTLDevice {
 
 impl MTLDevice {
     pub(crate) fn new(device: &metal::DeviceRef, _surface: &MTLSurface) -> Self {
+        // We basically have to set up memory types similar to a device with a discrete GPU
+        // despite the fact that almost all devices supported by Metal are UMA devices.
+        // Metals weird rules for the StorageMode force us to do this.
         let mut infos: SmallVec<[gpu::MemoryTypeInfo; 3]> = smallvec![
             gpu::MemoryTypeInfo {
                 is_cached: false,
@@ -38,13 +41,12 @@ impl MTLDevice {
                 is_coherent: false,
                 is_cpu_accessible: false,
                 memory_index: 0,
-                memory_kind: gpu::MemoryKind::RAM
+                memory_kind: gpu::MemoryKind::VRAM
             }
         ];
 
         if !device.has_unified_memory() {
             infos[2].memory_index = 1;
-            infos[2].memory_kind = gpu::MemoryKind::VRAM;
         }
 
         let bindless = MTLBindlessArgumentBuffer::new(&device, gpu::BINDLESS_TEXTURE_COUNT as usize);
