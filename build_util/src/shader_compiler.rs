@@ -1190,7 +1190,7 @@ fn compile_shader_naga(
     spirv: &[u8]
 ) -> Result<String, ()> {
     let module = naga::front::spv::parse_u8_slice(spirv, &Options {
-        adjust_coordinate_space: true,
+        adjust_coordinate_space: false,
         strict_capabilities: true,
         block_ctx_dump_prefix: None,
     }).map_err(|e| { error!("Error parsing SPIR-V when compiling WGSL: {} - {}", shader_name, e); ()})?;
