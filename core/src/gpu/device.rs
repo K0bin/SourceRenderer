@@ -15,7 +15,7 @@ pub enum AdapterType {
 
 pub trait Adapter<B: GPUBackend> {
   fn adapter_type(&self) -> AdapterType;
-  fn create_device(&self, surface: &B::Surface) -> B::Device;
+  unsafe fn create_device(&self, surface: &B::Surface) -> B::Device;
 }
 
 pub const WHOLE_BUFFER: u64 = u64::MAX;

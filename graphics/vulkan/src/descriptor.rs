@@ -122,7 +122,7 @@ impl VkDescriptorSetLayout {
         };
 
         let info = vk::DescriptorSetLayoutCreateInfo {
-            p_next: if device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) {
+            p_next: if device.features_12.buffer_device_address == vk::TRUE {
                 &binding_flags_struct as *const vk::DescriptorSetLayoutBindingFlagsCreateInfo
                     as *const c_void
             } else {

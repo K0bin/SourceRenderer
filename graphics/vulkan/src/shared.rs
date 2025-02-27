@@ -43,7 +43,7 @@ impl VkShared {
             HashMap::<VkDescriptorSetLayoutKey, Arc<VkDescriptorSetLayout>>::new();
 
         let bindless_texture_descriptor_set =
-        if device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) {
+        if device.features_12.descriptor_indexing == vk::TRUE {
             let bindless_set = VkBindlessDescriptorSet::new(device);
             let (layout_key, descriptor_layout) = bindless_set.layout();
             descriptor_set_layouts.insert(layout_key.clone(), descriptor_layout.clone());

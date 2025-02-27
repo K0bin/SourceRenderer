@@ -5,7 +5,8 @@ mod instance;
 pub use crate::raw::command::RawVkCommandPool;
 pub use crate::raw::device::{
     RawVkDevice,
-    VkFeatures,
+    RawVkRTEntries,
+    RawVkHostImageCopyEntries,
 };
 pub use crate::raw::instance::{
     RawInstanceVkDebugUtils,

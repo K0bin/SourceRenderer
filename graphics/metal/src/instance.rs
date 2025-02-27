@@ -46,7 +46,7 @@ impl gpu::Adapter<MTLBackend> for MTLAdapter {
         gpu::AdapterType::Integrated
     }
 
-    fn create_device(&self, surface: &MTLSurface) -> MTLDevice {
+    unsafe fn create_device(&self, surface: &MTLSurface) -> MTLDevice {
         MTLDevice::new(&self.device, surface)
     }
 }

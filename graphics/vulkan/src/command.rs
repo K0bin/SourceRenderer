@@ -215,8 +215,8 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                 if graphics_pipeline.uses_bindless_texture_set()
                     && !self
                         .device
-                        .features
-                        .contains(VkFeatures::DESCRIPTOR_INDEXING)
+                        .features_12
+                        .descriptor_indexing == vk::TRUE
                 {
                     panic!("Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this.");
                 }
@@ -240,8 +240,8 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                 if compute_pipeline.uses_bindless_texture_set()
                     && !self
                         .device
-                        .features
-                        .contains(VkFeatures::DESCRIPTOR_INDEXING)
+                        .features_12
+                        .descriptor_indexing == vk::TRUE
                 {
                     panic!("Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this.");
                 }
@@ -268,8 +268,8 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                 if rt_pipeline.uses_bindless_texture_set()
                     && !self
                         .device
-                        .features
-                        .contains(VkFeatures::DESCRIPTOR_INDEXING)
+                        .features_12
+                        .descriptor_indexing == vk::TRUE
                 {
                     panic!("Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this.");
                 }

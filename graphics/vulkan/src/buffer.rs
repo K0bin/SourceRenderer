@@ -55,7 +55,7 @@ impl VkBuffer {
             size: info.size as u64,
             usage: buffer_usage_to_vk(
                 info.usage,
-                device.features.contains(VkFeatures::RAY_TRACING),
+                device.rt.is_some(),
             ),
             sharing_mode,
             p_queue_family_indices: queue_families.as_ptr(),
@@ -98,7 +98,7 @@ impl VkBuffer {
                     p_next: &dedicated_alloc as *const vk::MemoryDedicatedAllocateInfo as *const c_void,
                     ..Default::default()
                 };
-                if !device.features.contains(VkFeatures::BDA) {
+                if device.features_12.buffer_device_address == vk::FALSE {
                     flags_info.flags &= !vk::MemoryAllocateFlags::DEVICE_ADDRESS;
                 }
                 let memory_info = vk::MemoryAllocateInfo {

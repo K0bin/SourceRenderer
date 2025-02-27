@@ -21,57 +21,25 @@ pub struct VkDevice {
 
 impl VkDevice {
     pub unsafe fn new(
-        device: ash::Device,
-        instance: &Arc<RawVkInstance>,
-        physical_device: vk::PhysicalDevice,
+        device: Arc<RawVkDevice>,
         graphics_queue_info: VkQueueInfo,
         compute_queue_info: Option<VkQueueInfo>,
         transfer_queue_info: Option<VkQueueInfo>,
-        features: VkFeatures
     ) -> Self {
-        let raw_graphics_queue = unsafe {
-            device.get_device_queue(
-                graphics_queue_info.queue_family_index as u32,
-                graphics_queue_info.queue_index as u32,
-            )
-        };
-        let raw_compute_queue = compute_queue_info.map(|info| unsafe {
-            device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32)
-        });
-        let raw_transfer_queue = transfer_queue_info.map(|info| unsafe {
-            device.get_device_queue(info.queue_family_index as u32, info.queue_index as u32)
-        });
-
-        let raw = Arc::new(RawVkDevice::new(
-            device,
-            physical_device,
-            instance.clone(),
-            features,
-            graphics_queue_info,
-            compute_queue_info,
-            transfer_queue_info,
-            raw_graphics_queue,
-            raw_compute_queue,
-            raw_transfer_queue,
-        ));
-
-        let shared = Arc::new(VkShared::new(&raw));
+        let shared = Arc::new(VkShared::new(&device));
 
         let graphics_queue =
-            { VkQueue::new(graphics_queue_info, VkQueueType::Graphics, &raw, &shared) };
+            { VkQueue::new(graphics_queue_info, VkQueueType::Graphics, &device, &shared) };
 
         let compute_queue =
-            compute_queue_info.map(|info| VkQueue::new(info, VkQueueType::Compute, &raw, &shared));
+            compute_queue_info.map(|info| VkQueue::new(info, VkQueueType::Compute, &device, &shared));
 
         let transfer_queue = transfer_queue_info
-            .map(|info| VkQueue::new(info, VkQueueType::Transfer, &raw, &shared));
+            .map(|info| VkQueue::new(info, VkQueueType::Transfer, &device, &shared));
 
         // Memory types
-        let mut memory_properties = vk::PhysicalDeviceMemoryProperties2::default();
-        instance.get_physical_device_memory_properties2(physical_device, &mut memory_properties);
-
-        let memory_type_count = memory_properties.memory_properties.memory_type_count as usize;
-        let memory_types = &memory_properties.memory_properties.memory_types[.. memory_type_count];
+        let memory_type_count = device.memory_properties.memory_type_count as usize;
+        let memory_types = &device.memory_properties.memory_types[.. memory_type_count];
 
         let mut memory_type_infos = Vec::<gpu::MemoryTypeInfo>::new();
         for memory_type in memory_types {
@@ -93,7 +61,7 @@ impl VkDevice {
         }
 
         VkDevice {
-            device: raw,
+            device,
             graphics_queue,
             compute_queue,
             transfer_queue,
@@ -194,20 +162,21 @@ impl gpu::Device<VkBackend> for VkDevice {
 
     fn supports_bindless(&self) -> bool {
         self.device
-        .features
-        .contains(VkFeatures::DESCRIPTOR_INDEXING)
+            .features_12.descriptor_indexing == vk::TRUE
     }
 
     fn supports_ray_tracing(&self) -> bool {
-        self.device.features.contains(VkFeatures::RAY_TRACING)
+        self.device.acceleration_structure.is_some()
     }
 
     fn supports_indirect(&self) -> bool {
-        self.device.features.contains(VkFeatures::ADVANCED_INDIRECT)
+        self.device.features.draw_indirect_first_instance == vk::TRUE
+            && self.device.features.multi_draw_indirect == vk::TRUE
+            && self.device.features_12.draw_indirect_count == vk::TRUE
     }
 
     fn supports_min_max_filter(&self) -> bool {
-        self.device.features.contains(VkFeatures::MIN_MAX_FILTER)
+        self.device.features_12.sampler_filter_minmax == vk::TRUE
     }
 
     unsafe fn insert_texture_into_bindless_heap(&self, slot: u32, texture: &VkTextureView) {
@@ -217,13 +186,13 @@ impl gpu::Device<VkBackend> for VkDevice {
     }
 
     fn supports_barycentrics(&self) -> bool {
-        self.device.features.contains(VkFeatures::BARYCENTRICS)
+        self.device.features_barycentrics.fragment_shader_barycentric == vk::TRUE
     }
 
     unsafe fn memory_infos(&self) -> Vec<gpu::MemoryInfo> {
         let mut memory_infos = Vec::<gpu::MemoryInfo>::new();
 
-        let supports_ext_budget = self.device.features.contains(VkFeatures::MEMORY_BUDGET);
+        let supports_ext_budget = self.device.feature_memory_budget;
 
         let mut memory_properties = vk::PhysicalDeviceMemoryProperties2::default();
         let mut budget = vk::PhysicalDeviceMemoryBudgetPropertiesEXT::default();
@@ -282,7 +251,7 @@ impl gpu::Device<VkBackend> for VkDevice {
             size: info.size as u64,
             usage: buffer_usage_to_vk(
                 info.usage,
-                self.device.features.contains(VkFeatures::RAY_TRACING),
+                self.device.acceleration_structure.is_some(),
             ),
             sharing_mode,
             p_queue_family_indices: queue_families.as_ptr(),
@@ -327,19 +296,19 @@ impl gpu::Device<VkBackend> for VkDevice {
 
     unsafe fn get_texture_heap_info(&self, info: &gpu::TextureInfo) -> gpu::ResourceHeapInfo {
         let mut create_info_collection = VkImageCreateInfoCollection::default();
-        let pinned = Pin::new(&mut create_info_collection);
-        VkTexture::build_create_info(&self.device, pinned, info);
+        let mut pinned = Pin::new(&mut create_info_collection);
+        VkTexture::build_create_info(&self.device, pinned.as_mut(), info);
 
         let mut requirements = vk::MemoryRequirements2::default();
         let mut dedicated_requirements = vk::MemoryDedicatedRequirements::default();
         requirements.p_next = &mut dedicated_requirements as *mut vk::MemoryDedicatedRequirements as *mut c_void;
         let image_requirements_info = vk::DeviceImageMemoryRequirements {
-            p_create_info: &create_info_collection.create_info as *const vk::ImageCreateInfo,
+            p_create_info: &pinned.create_info as *const vk::ImageCreateInfo,
             ..Default::default()
         };
         self.device.get_device_image_memory_requirements(&image_requirements_info, &mut requirements);
 
-        gpu::ResourceHeapInfo {
+        let result = gpu::ResourceHeapInfo {
             dedicated_allocation_preference: if dedicated_requirements.requires_dedicated_allocation == vk::TRUE {
                 gpu::DedicatedAllocationPreference::RequireDedicated
             } else if dedicated_requirements.prefers_dedicated_allocation == vk::TRUE {
@@ -350,7 +319,82 @@ impl gpu::Device<VkBackend> for VkDevice {
             memory_type_mask: requirements.memory_requirements.memory_type_bits,
             alignment: requirements.memory_requirements.alignment.max(self.device.properties.limits.buffer_image_granularity),
             size: requirements.memory_requirements.size
+        };
+
+        if pinned.create_info.usage.contains(vk::ImageUsageFlags::HOST_TRANSFER_EXT)
+            && self.device.host_image_copy.as_ref().unwrap().properties_host_image_copy.identical_memory_type_requirements == vk::FALSE {
+
+            pinned.create_info.usage |= vk::ImageUsageFlags::TRANSFER_DST;
+            pinned.create_info.usage &= !vk::ImageUsageFlags::HOST_TRANSFER_EXT;
+            self.device.get_device_image_memory_requirements(&image_requirements_info, &mut requirements);
+
+            let mut memory_type_mask_without_host_image_copy = requirements.memory_requirements.memory_type_bits;
+            let mut preferred_memory_type_index = Option::<usize>::None;
+            while memory_type_mask_without_host_image_copy != 0 {
+                let bit_pos = memory_type_mask_without_host_image_copy.trailing_zeros();
+
+                let memory_type = &self.device.memory_properties.memory_types[bit_pos as usize];
+                let memory_heap = &self.device.memory_properties.memory_heaps[memory_type.heap_index as usize];
+
+                if let Some(preferred_memory_type_index) = &mut preferred_memory_type_index {
+                    let preferred_memory_type = &self.device.memory_properties.memory_types[*preferred_memory_type_index];
+                    let preferred_memory_heap = &self.device.memory_properties.memory_heaps[memory_type.heap_index as usize];
+                    if memory_heap.size > preferred_memory_heap.size {
+                        *preferred_memory_type_index = bit_pos as usize;
+                    } else if !preferred_memory_type.property_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL)
+                        && memory_type.property_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL) {
+                        *preferred_memory_type_index = bit_pos as usize;
+                    }
+                } else {
+                    preferred_memory_type_index = Some(bit_pos as usize)
+                };
+
+                let bit_mask = 1 << bit_pos;
+                memory_type_mask_without_host_image_copy &= !bit_mask;
+            }
+
+            let mut memory_type_mask_with_host_image_copy = requirements.memory_requirements.memory_type_bits;
+            let mut found_acceptable_heap = false;
+            while memory_type_mask_with_host_image_copy != 0 {
+                let bit_pos = memory_type_mask_with_host_image_copy.trailing_zeros();
+
+                let memory_type = &self.device.memory_properties.memory_types[bit_pos as usize];
+                let memory_heap = &self.device.memory_properties.memory_heaps[memory_type.heap_index as usize];
+
+                let preferred_memory_type = &self.device.memory_properties.memory_types[preferred_memory_type_index.unwrap()];
+                let preferred_memory_heap = &self.device.memory_properties.memory_heaps[memory_type.heap_index as usize];
+
+                if (!preferred_memory_type.property_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL)
+                    || memory_type.property_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL))
+                    && memory_heap.size >= preferred_memory_heap.size {
+                    // We found a heap that has a decent size. This is meant to avoid the 256 MiB BAR heap on non ReBar systems.
+                    // If the requirements without HOST_TRANSFER support a DEVICE_LOCAL memory type, the current memory type is device local too.
+                    found_acceptable_heap = true;
+                    break;
+                }
+
+                let bit_mask = 1 << bit_pos;
+                memory_type_mask_with_host_image_copy &= !bit_mask;
+            }
+
+            if !found_acceptable_heap {
+                let result_without_host_image_copy = gpu::ResourceHeapInfo {
+                    dedicated_allocation_preference: if dedicated_requirements.requires_dedicated_allocation == vk::TRUE {
+                        gpu::DedicatedAllocationPreference::RequireDedicated
+                    } else if dedicated_requirements.prefers_dedicated_allocation == vk::TRUE {
+                        gpu::DedicatedAllocationPreference::PreferDedicated
+                    } else {
+                        gpu::DedicatedAllocationPreference::DontCare
+                    },
+                    memory_type_mask: requirements.memory_requirements.memory_type_bits,
+                    alignment: requirements.memory_requirements.alignment.max(self.device.properties.limits.buffer_image_granularity),
+                    size: requirements.memory_requirements.size
+                };
+
+                log::info!("Fitting memory types with HOST_TRANSFER are not acceptable. Assuming regular GPU copies.\nWith: {:?}\nWithout: {:?}", &result, &result_without_host_image_copy);
+            }
         }
+        result
     }
 
     unsafe fn get_bottom_level_acceleration_structure_size(&self, info: &gpu::BottomLevelAccelerationStructureInfo<VkBackend>) -> gpu::AccelerationStructureSizes {
@@ -375,7 +419,7 @@ impl gpu::Device<VkBackend> for VkDevice {
 
     unsafe fn transition_texture(&self, dst: &VkTexture, transition: &gpu::CPUTextureTransition<'_, VkBackend>) {
         let host_img_copy = self.device.host_image_copy.as_ref().unwrap();
-        host_img_copy.transition_image_layout(&[vk::HostImageLayoutTransitionInfoEXT {
+        host_img_copy.host_image_copy.transition_image_layout(&[vk::HostImageLayoutTransitionInfoEXT {
             image: dst.handle(),
             old_layout: texture_layout_to_image_layout(transition.old_layout),
             new_layout: texture_layout_to_image_layout(transition.new_layout),
@@ -392,18 +436,23 @@ impl gpu::Device<VkBackend> for VkDevice {
 
     unsafe fn copy_to_texture(&self, src: *const c_void, dst: &VkTexture, texture_layout: TextureLayout, region: &gpu::MemoryTextureCopyRegion) {
         let host_img_copy = self.device.host_image_copy.as_ref().unwrap();
+        let format = dst.info().format;
+        let texels_width = if region.row_pitch != 0 {
+            (region.row_pitch as u32) * format.block_size().x / format.element_size()
+        } else {
+            0
+        };
+        let texels_height = if region.slice_pitch != 0 {
+            (region.slice_pitch as u32) / texels_width * format.block_size().y / format.element_size()
+        } else {
+            0
+        };
 
-        assert_eq!(region.slice_pitch % region.row_pitch, 0);
         let region = vk::MemoryToImageCopyEXT {
             p_host_pointer: src,
-            memory_row_length: region.row_pitch as u32,
-            memory_image_height: (region.slice_pitch / region.row_pitch) as u32,
-            image_subresource: vk::ImageSubresourceLayers {
-                aspect_mask: aspect_mask_from_format(dst.info().format),
-                mip_level: region.texture_subresource.mip_level,
-                base_array_layer: region.texture_subresource.array_layer,
-                layer_count: 1,
-            },
+            memory_row_length: texels_width,
+            memory_image_height: texels_height,
+            image_subresource: texture_subresource_to_vk_layers(&region.texture_subresource, format, 1),
             image_offset: vk::Offset3D {
                 x: region.texture_offset.x as i32,
                 y: region.texture_offset.y as i32,
@@ -417,7 +466,7 @@ impl gpu::Device<VkBackend> for VkDevice {
             ..Default::default()
         };
 
-        host_img_copy.copy_memory_to_image(&vk::CopyMemoryToImageInfoEXT {
+        host_img_copy.host_image_copy.copy_memory_to_image(&vk::CopyMemoryToImageInfoEXT {
             flags: vk::HostImageCopyFlagsEXT::empty(),
             dst_image: dst.handle(),
             dst_image_layout: texture_layout_to_image_layout(texture_layout),

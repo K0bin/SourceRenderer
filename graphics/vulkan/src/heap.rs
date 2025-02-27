@@ -6,6 +6,7 @@ use super::*;
 
 use ash::vk;
 
+#[derive(Clone)]
 pub(crate) enum ResourceMemory<'a> {
     Dedicated {
         memory_type_index: u32
@@ -46,7 +47,7 @@ impl VkMemoryHeap {
             device_mask: 0u32,
             ..Default::default()
         };
-        if !device.features.contains(VkFeatures::BDA) {
+        if device.features_12.buffer_device_address == vk::FALSE  {
             flags_info.flags &= !vk::MemoryAllocateFlags::DEVICE_ADDRESS;
         }
 
@@ -89,6 +90,10 @@ impl VkMemoryHeap {
 
     pub(crate) fn properties(&self) -> vk::MemoryPropertyFlags {
         self.memory_properties
+    }
+
+    pub(crate) fn memory_type_index(&self) -> u32 {
+        self.memory_type_index
     }
 
     pub(crate) unsafe fn map_ptr(&self, offset: u64) -> Option<*mut c_void> {

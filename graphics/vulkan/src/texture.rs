@@ -47,13 +47,12 @@ unsafe impl Sync for VkTexture {}
 
 impl VkTexture {
     pub(crate) fn build_create_info(device: &RawVkDevice, mut target: Pin<&mut VkImageCreateInfoCollection>, info: &gpu::TextureInfo) {
-        let mut supports_direct_copy = device.features.contains(VkFeatures::HOST_IMAGE_COPY);
         target.create_info = vk::ImageCreateInfo {
             flags: vk::ImageCreateFlags::empty(),
             tiling: vk::ImageTiling::OPTIMAL,
             initial_layout: vk::ImageLayout::UNDEFINED,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
-            usage: texture_usage_to_vk(info.usage, false),
+            usage: texture_usage_to_vk(info.usage, device.host_image_copy.is_some()),
             image_type: match info.dimension {
                 gpu::TextureDimension::Dim1DArray | gpu::TextureDimension::Dim1D => vk::ImageType::TYPE_1D,
                 gpu::TextureDimension::Dim2DArray
@@ -110,7 +109,7 @@ impl VkTexture {
 
         let mut props: vk::ImageFormatProperties2 = Default::default();
         let mut host_image_copy_format_info = vk::HostImageCopyDevicePerformanceQueryEXT::default();
-        let mut format_info = vk::PhysicalDeviceImageFormatInfo2 {
+        let format_info = vk::PhysicalDeviceImageFormatInfo2 {
             format: target.create_info.format,
             ty: target.create_info.image_type,
             tiling: target.create_info.tiling,
@@ -118,8 +117,8 @@ impl VkTexture {
             flags: target.create_info.flags,
             ..Default::default()
         };
-        if supports_direct_copy {
-            format_info.p_next = &mut host_image_copy_format_info as *mut vk::HostImageCopyDevicePerformanceQueryEXT
+        if target.create_info.usage.contains(vk::ImageUsageFlags::HOST_TRANSFER_EXT) {
+            props.p_next = &mut host_image_copy_format_info as *mut vk::HostImageCopyDevicePerformanceQueryEXT
                 as *mut c_void;
         }
         unsafe {
@@ -133,16 +132,39 @@ impl VkTexture {
                 .unwrap()
         };
 
-        if supports_direct_copy {
-            supports_direct_copy = supports_direct_copy && host_image_copy_format_info.identical_memory_layout == vk::TRUE;
-            target.create_info.usage = texture_usage_to_vk(info.usage, supports_direct_copy);
+        if target.create_info.usage.contains(vk::ImageUsageFlags::HOST_TRANSFER_EXT)
+            && host_image_copy_format_info.optimal_device_access != vk::TRUE {
+            target.create_info.usage = texture_usage_to_vk(info.usage, false);
         }
     }
 
     pub(crate) unsafe fn new(device: &Arc<RawVkDevice>, info: &gpu::TextureInfo, memory: ResourceMemory, name: Option<&str>) -> Result<Self, gpu::OutOfMemoryError> {
+        let memory_type_index = match &memory {
+            ResourceMemory::Suballocated { memory, .. } => { memory.memory_type_index() },
+            ResourceMemory::Dedicated { memory_type_index } => *memory_type_index
+        };
+
         let mut create_info_collection = VkImageCreateInfoCollection::default();
-        let pinned = Pin::new(&mut create_info_collection);
-        Self::build_create_info(device, pinned, info);
+        let mut pinned = Pin::new(&mut create_info_collection);
+        Self::build_create_info(device, pinned.as_mut(), info);
+
+        if pinned.create_info.usage.contains(vk::ImageUsageFlags::HOST_TRANSFER_EXT)
+            && device.host_image_copy.as_ref().unwrap().properties_host_image_copy.identical_memory_type_requirements == vk::FALSE {
+            // Memory type requirements might change based on HOST_TRANSFER, so we need to check
+            // if the allocated memory (or predetermined memory type) is actually compatible.
+
+            let mut requirements = vk::MemoryRequirements2::default();
+            let image_requirements_info = vk::DeviceImageMemoryRequirements {
+                p_create_info: &pinned.create_info as *const vk::ImageCreateInfo,
+                ..Default::default()
+            };
+            unsafe { device.get_device_image_memory_requirements(&image_requirements_info, &mut requirements); }
+            if (requirements.memory_requirements.memory_type_bits & (1 << memory_type_index)) == 0 {
+                log::info!("Switching from HOST_IMAGE_COPY to gpu image copy because memory type is not compatible.");
+                pinned.create_info.usage |= vk::ImageUsageFlags::TRANSFER_DST;
+                pinned.create_info.usage &= !vk::ImageUsageFlags::HOST_TRANSFER_EXT;
+            }
+        }
 
         let image_res = device.create_image(&create_info_collection.create_info, None);
         if let Err(e) = image_res {
@@ -179,6 +201,7 @@ impl VkTexture {
                 let memory_result: Result<vk::DeviceMemory, vk::Result> = device.allocate_memory(&memory_info, None);
                 if let Err(e) = memory_result {
                     if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
+                        device.destroy_image(image, None);
                         return Err(gpu::OutOfMemoryError {});
                     }
                 }
@@ -194,6 +217,7 @@ impl VkTexture {
                 ]);
                 if let Err(e) = bind_result {
                     if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
+                        device.destroy_image(image, None);
                         return Err(gpu::OutOfMemoryError {});
                     }
                 }
@@ -215,6 +239,7 @@ impl VkTexture {
                 ]);
                 if let Err(e) = bind_result {
                     if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
+                        device.destroy_image(image, None);
                         return Err(gpu::OutOfMemoryError {});
                     }
                 }
@@ -240,6 +265,11 @@ impl VkTexture {
                 }
             }
         }
+
+        if create_info_collection.create_info.usage.contains(vk::ImageUsageFlags::HOST_TRANSFER_EXT) {
+            log::info!("Texture supports direct copy!");
+        }
+
         Ok(Self {
             image,
             device: device.clone(),
@@ -349,7 +379,7 @@ impl gpu::Texture for VkTexture {
     }
 
     unsafe fn can_be_written_directly(&self) -> bool {
-        false
+        self.supports_direct_copy
     }
 }
 
@@ -533,7 +563,7 @@ impl VkSampler {
 
         let mut sampler_minmax_info = vk::SamplerReductionModeCreateInfo::default();
         if info.min_filter == gpu::Filter::Min || info.min_filter == gpu::Filter::Max {
-            assert!(device.features.contains(VkFeatures::MIN_MAX_FILTER));
+            assert!(device.features_12.sampler_filter_minmax == vk::TRUE);
 
             sampler_minmax_info.reduction_mode = filter_to_reduction_mode(info.min_filter);
             sampler_create_info.p_next =

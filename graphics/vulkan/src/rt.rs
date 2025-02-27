@@ -68,7 +68,7 @@ impl VkAccelerationStructure {
         device: &Arc<RawVkDevice>,
         info: &gpu::TopLevelAccelerationStructureInfo<VkBackend>,
     ) -> gpu::AccelerationStructureSizes {
-        let rt = device.rt.as_ref().unwrap();
+        let acceleration_structure_funcs = device.acceleration_structure.as_ref().unwrap();
 
         let instances_data = vk::AccelerationStructureGeometryInstancesDataKHR {
             array_of_pointers: vk::FALSE,
@@ -104,7 +104,7 @@ impl VkAccelerationStructure {
         let size_info = unsafe {
             let mut size_info = AccelerationStructureBuildSizesInfoKHR::default();
 
-            rt.acceleration_structure
+            acceleration_structure_funcs
                 .get_acceleration_structure_build_sizes(
                     vk::AccelerationStructureBuildTypeKHR::DEVICE,
                     &build_info,
@@ -131,10 +131,10 @@ impl VkAccelerationStructure {
         scratch_buffer_offset: u64,
         cmd_buffer: &vk::CommandBuffer,
     ) -> Self {
-        let rt = device.rt.as_ref().unwrap();
+        let acceleration_structure_funcs = device.acceleration_structure.as_ref().unwrap();
 
         let acceleration_structure = unsafe {
-            rt.acceleration_structure.create_acceleration_structure(
+            acceleration_structure_funcs.create_acceleration_structure(
                 &vk::AccelerationStructureCreateInfoKHR {
                     create_flags: vk::AccelerationStructureCreateFlagsKHR::empty(),
                     buffer: target_buffer.handle(),
@@ -150,7 +150,7 @@ impl VkAccelerationStructure {
         .unwrap();
 
         let va = unsafe {
-            rt.acceleration_structure
+            acceleration_structure_funcs
                 .get_acceleration_structure_device_address(
                     &vk::AccelerationStructureDeviceAddressInfoKHR {
                         acceleration_structure,
@@ -191,7 +191,7 @@ impl VkAccelerationStructure {
         };
 
         unsafe {
-            rt.acceleration_structure.cmd_build_acceleration_structures(
+            acceleration_structure_funcs.cmd_build_acceleration_structures(
                 *cmd_buffer,
                 &[build_info],
                 &[&[vk::AccelerationStructureBuildRangeInfoKHR {
@@ -215,7 +215,7 @@ impl VkAccelerationStructure {
         device: &Arc<RawVkDevice>,
         info: &gpu::BottomLevelAccelerationStructureInfo<VkBackend>,
     ) -> gpu::AccelerationStructureSizes {
-        let rt = device.rt.as_ref().unwrap();
+        let acceleration_structure_funcs = device.acceleration_structure.as_ref().unwrap();
 
         let geometry_data = vk::AccelerationStructureGeometryTrianglesDataKHR {
             vertex_format: format_to_vk(info.vertex_format, false),
@@ -293,7 +293,7 @@ impl VkAccelerationStructure {
         let size_info = unsafe {
             let mut size_info = AccelerationStructureBuildSizesInfoKHR::default();
 
-            rt.acceleration_structure
+            acceleration_structure_funcs
                 .get_acceleration_structure_build_sizes(
                     vk::AccelerationStructureBuildTypeKHR::DEVICE,
                     &build_info,
@@ -320,10 +320,10 @@ impl VkAccelerationStructure {
         scratch_buffer_offset: u64,
         cmd_buffer: &vk::CommandBuffer,
     ) -> Self {
-        let rt = device.rt.as_ref().unwrap();
+        let acceleration_structure_funcs = device.acceleration_structure.as_ref().unwrap();
 
         let acceleration_structure = unsafe {
-            rt.acceleration_structure.create_acceleration_structure(
+            acceleration_structure_funcs.create_acceleration_structure(
                 &vk::AccelerationStructureCreateInfoKHR {
                     create_flags: vk::AccelerationStructureCreateFlagsKHR::empty(),
                     buffer: target_buffer.handle(),
@@ -339,7 +339,7 @@ impl VkAccelerationStructure {
         .unwrap();
 
         let va = unsafe {
-            rt.acceleration_structure
+            acceleration_structure_funcs
                 .get_acceleration_structure_device_address(
                     &vk::AccelerationStructureDeviceAddressInfoKHR {
                         acceleration_structure,
@@ -426,7 +426,7 @@ impl VkAccelerationStructure {
         };
 
         unsafe {
-            rt.acceleration_structure.cmd_build_acceleration_structures(
+            acceleration_structure_funcs.cmd_build_acceleration_structures(
                 *cmd_buffer,
                 &[build_info],
                 &[&range_infos[..]],
@@ -465,9 +465,9 @@ impl Hash for VkAccelerationStructure {
 
 impl Drop for VkAccelerationStructure {
     fn drop(&mut self) {
-        let rt = self.device.rt.as_ref().unwrap();
+        let acceleration_structure_funcs = self.device.acceleration_structure.as_ref().unwrap();
         unsafe {
-            rt.acceleration_structure
+            acceleration_structure_funcs
                 .destroy_acceleration_structure(self.acceleration_structure, None);
         }
     }

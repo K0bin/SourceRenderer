@@ -125,7 +125,7 @@ impl Adapter<WebGPUBackend> for WebGPUAdapter {
         AdapterType::Other
     }
 
-    fn create_device(&self, _surface: &<WebGPUBackend as sourcerenderer_core::gpu::GPUBackend>::Surface) -> WebGPUDevice {
+    unsafe fn create_device(&self, _surface: &<WebGPUBackend as sourcerenderer_core::gpu::GPUBackend>::Surface) -> WebGPUDevice {
         WebGPUDevice::new(self.device.clone(), &self.features, &self.limits, self.debug)
     }
 }

@@ -13,7 +13,6 @@ use super::*;
 #[derive(Clone, Debug, Copy)]
 pub struct VkQueueInfo {
     pub queue_family_index: usize,
-    pub queue_index: usize,
     pub supports_presentation: bool,
 }
 

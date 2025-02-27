@@ -392,7 +392,7 @@ fn add_bindless_set_if_used(device: &Arc<RawVkDevice>, context: &mut DescriptorS
         return;
     }
 
-    if !device.features.contains(VkFeatures::DESCRIPTOR_INDEXING) {
+    if device.features_12.descriptor_indexing == vk::FALSE {
         panic!("Pipeline {:?} is trying to use the bindless texture descriptor set but the Vulkan device does not support descriptor indexing.", pipeline_name);
     }
 
@@ -853,10 +853,10 @@ impl VkPipeline {
         let shader_count = 1 + info.closest_hit_shaders.len() + info.miss_shaders.len();
 
         let rt = device.rt.as_ref().unwrap();
-        let handle_size = rt.rt_pipeline_properties.shader_group_handle_size;
-        let handle_alignment = rt.rt_pipeline_properties.shader_group_handle_alignment;
+        let handle_size = rt.properties_rt.shader_group_handle_size;
+        let handle_alignment = rt.properties_rt.shader_group_handle_alignment;
         let handle_stride = align_up_32(handle_size, handle_alignment);
-        let group_alignment = rt.rt_pipeline_properties.shader_group_base_alignment as u64;
+        let group_alignment = rt.properties_rt.shader_group_base_alignment as u64;
 
         align_up_32(handle_stride, group_alignment as u32) as u64 * shader_count as u64
     }
@@ -996,10 +996,10 @@ impl VkPipeline {
         }
 
         // SBT
-        let handle_size = rt.rt_pipeline_properties.shader_group_handle_size;
-        let handle_alignment = rt.rt_pipeline_properties.shader_group_handle_alignment;
+        let handle_size = rt.properties_rt.shader_group_handle_size;
+        let handle_alignment = rt.properties_rt.shader_group_handle_alignment;
         let handle_stride = align_up_32(handle_size, handle_alignment);
-        let group_alignment = rt.rt_pipeline_properties.shader_group_base_alignment as u64;
+        let group_alignment = rt.properties_rt.shader_group_base_alignment as u64;
 
         let size = Self::ray_tracing_buffer_size(device, info, shared);
         assert!(buffer.info().size - buffer_offset >= size);
