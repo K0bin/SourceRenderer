@@ -19,7 +19,7 @@ impl WebWindow {
 
 impl Window<WebPlatform> for WebWindow {
     fn create_surface(&self, graphics_instance: &WebGPUInstance) -> WebGPUSurface {
-        WebGPUSurface::new(graphics_instance.device(), self.canvas.clone()).unwrap()
+        WebGPUSurface::new(graphics_instance, self.canvas.clone()).unwrap()
     }
 
     fn create_swapchain(&self, _vsync: bool, device: &WebGPUDevice, surface: WebGPUSurface) -> WebGPUSwapchain {

@@ -40,9 +40,13 @@ pub(crate) fn format_to_webgpu(format: Format) -> GpuTextureFormat {
     }
 }
 
-fn format_from_webgpu(format: GpuTextureFormat) -> Format {
+pub(crate) fn format_from_webgpu(format: GpuTextureFormat) -> Format {
     match format {
         GpuTextureFormat::Rgba8unorm => Format::RGBA8UNorm,
+        GpuTextureFormat::Rgba8unormSrgb => Format::RGBA8Srgb,
+        GpuTextureFormat::Bgra8unorm => Format::BGRA8UNorm,
+        GpuTextureFormat::Rgba32float => Format::RGBA32Float,
+        GpuTextureFormat::Rgba16float => Format::RGBA16Float,
         _ => todo!(),
     }
 }

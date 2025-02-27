@@ -3,18 +3,19 @@ use bitflags::bitflags;
 use sourcerenderer_core::gpu::{Adapter, AdapterType};
 use web_sys::{GpuAdapter, GpuDevice};
 
-use crate::{WebGPUBackend, WebGPUDevice};
+use crate::{WebGPUBackend, WebGPUDevice, WebGPUSurface};
 
 pub struct WebGPUAdapter {
-    adapter: GpuAdapter,
+    _adapter: GpuAdapter,
     device: GpuDevice,
     debug: bool,
     features: WebGPUFeatures,
-    limits: WebGPULimits
+    limits: WebGPULimits,
+    adapter_type: AdapterType
 }
 
 impl WebGPUAdapter {
-    pub fn new(adapter: GpuAdapter, device: GpuDevice, debug: bool) -> Self {
+    pub fn new(adapter: GpuAdapter, device: GpuDevice, adapter_type: AdapterType, debug: bool) -> Self {
         let mut features = WebGPUFeatures::empty();
         let js_features = adapter.features();
         if js_features.has("bgra8unorm-storage") {
@@ -104,16 +105,13 @@ impl WebGPUAdapter {
         log::info!("Adapter limits: {:?}", &limits);
 
         Self {
-            adapter,
+            _adapter: adapter,
             device,
             debug,
             features,
-            limits
+            limits,
+            adapter_type
         }
-    }
-
-    pub(crate) fn device(&self) -> &GpuDevice {
-        &self.device
     }
 }
 
@@ -122,10 +120,10 @@ unsafe impl Sync for WebGPUAdapter {}
 
 impl Adapter<WebGPUBackend> for WebGPUAdapter {
     fn adapter_type(&self) -> sourcerenderer_core::gpu::AdapterType {
-        AdapterType::Other
+        self.adapter_type
     }
 
-    unsafe fn create_device(&self, _surface: &<WebGPUBackend as sourcerenderer_core::gpu::GPUBackend>::Surface) -> WebGPUDevice {
+    unsafe fn create_device(&self, _surface: &WebGPUSurface) -> WebGPUDevice {
         WebGPUDevice::new(self.device.clone(), &self.features, &self.limits, self.debug)
     }
 }

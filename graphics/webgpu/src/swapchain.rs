@@ -1,15 +1,16 @@
 
-use sourcerenderer_core::{gpu::{Backbuffer, Format, Swapchain, SwapchainError}, Matrix4};
-use web_sys::GpuDevice;
+use sourcerenderer_core::{gpu, Matrix4};
+use js_sys::wasm_bindgen::JsValue;
+use web_sys::{gpu_texture_usage, Gpu, GpuCanvasConfiguration, GpuCanvasContext, GpuDevice};
 
-use crate::{surface::WebGPUSurface, texture::WebGPUTexture, WebGPUBackend};
+use crate::{surface::WebGPUSurface, texture::WebGPUTexture, WebGPUBackend, texture::format_from_webgpu, texture::format_to_webgpu};
 
 pub struct WebGPUBackbuffer {
     texture: WebGPUTexture,
     key: u64
 }
 
-impl Backbuffer for WebGPUBackbuffer {
+impl gpu::Backbuffer for WebGPUBackbuffer {
     fn key(&self) -> u64 {
         self.key
     }
@@ -18,6 +19,8 @@ impl Backbuffer for WebGPUBackbuffer {
 pub struct WebGPUSwapchain {
     device: GpuDevice,
     surface: WebGPUSurface,
+    texture_info: gpu::TextureInfo,
+    canvas_context: GpuCanvasContext,
     backbuffer_counter: u64,
 }
 
@@ -26,15 +29,43 @@ unsafe impl Sync for WebGPUSwapchain {}
 
 impl WebGPUSwapchain {
     pub fn new(device: &GpuDevice, surface: WebGPUSurface) -> Self {
+        let context_obj: JsValue = surface.canvas().get_context("webgpu")
+            .expect("Failed to retrieve context from OffscreenCanvas")
+            .expect("Failed to retrieve context from OffscreenCanvas")
+            .into();
+        let context: GpuCanvasContext = context_obj.into();
+        let preferred_format = surface.instance_handle().get_preferred_canvas_format();
+
+        let texture_info = gpu::TextureInfo {
+            dimension: gpu::TextureDimension::Dim2D,
+            format: format_from_webgpu(preferred_format),
+            width: surface.canvas().width(),
+            height: surface.canvas().height(),
+            depth: 1,
+            mip_levels: 1,
+            array_length: 1,
+            samples: gpu::SampleCount::Samples1,
+            usage: gpu::TextureUsage::RENDER_TARGET
+            | gpu::TextureUsage::COPY_DST
+            | gpu::TextureUsage::BLIT_DST,
+            supports_srgb: false,
+        };
+
+        let config = GpuCanvasConfiguration::new(device, format_to_webgpu(texture_info.format));
+        config.set_usage(gpu_texture_usage::RENDER_ATTACHMENT | gpu_texture_usage::COPY_DST);
+        context.configure(&config).unwrap();
+
         Self {
             device: device.clone(),
             surface,
             backbuffer_counter: 0u64,
+            texture_info,
+            canvas_context: context
         }
     }
 }
 
-impl Swapchain<WebGPUBackend> for WebGPUSwapchain {
+impl gpu::Swapchain<WebGPUBackend> for WebGPUSwapchain {
     type Backbuffer = WebGPUBackbuffer;
 
     unsafe fn recreate(&mut self) {}
@@ -43,9 +74,9 @@ impl Swapchain<WebGPUBackend> for WebGPUSwapchain {
         false
     }
 
-    unsafe fn next_backbuffer(&mut self) -> Result<WebGPUBackbuffer, SwapchainError> {
-        let web_texture = self.surface.canvas_context().get_current_texture()
-            .map_err(|_e| SwapchainError::Other)?;
+    unsafe fn next_backbuffer(&mut self) -> Result<WebGPUBackbuffer, gpu::SwapchainError> {
+        let web_texture = self.canvas_context.get_current_texture()
+            .map_err(|_e| gpu::SwapchainError::Other)?;
 
         let key = self.backbuffer_counter;
         self.backbuffer_counter += 1;
@@ -62,8 +93,8 @@ impl Swapchain<WebGPUBackend> for WebGPUSwapchain {
         &backbuffer.texture
     }
 
-    fn format(&self) -> Format {
-        self.surface.texture_info().format
+    fn format(&self) -> gpu::Format {
+        self.texture_info.format
     }
 
     fn surface(&self) -> &WebGPUSurface {
@@ -75,10 +106,10 @@ impl Swapchain<WebGPUBackend> for WebGPUSwapchain {
     }
 
     fn width(&self) -> u32 {
-        self.surface.texture_info().width
+        self.texture_info.width
     }
 
     fn height(&self) -> u32 {
-        self.surface.texture_info().height
+        self.texture_info.height
     }
 }

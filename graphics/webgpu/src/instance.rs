@@ -1,15 +1,17 @@
 use std::{error::Error, fmt::{Debug, Display}};
 
-use log::{error, warn};
-use sourcerenderer_core::gpu::Instance;
-use web_sys::{GpuAdapter, GpuDevice, Navigator};
+use sourcerenderer_core::gpu::{AdapterType, Instance};
+use web_sys::{GpuAdapter, GpuDevice, Navigator, GpuRequestAdapterOptions, GpuPowerPreference, Gpu};
 use wasm_bindgen_futures::*;
 
 use crate::{adapter::WebGPUAdapter, WebGPUBackend};
 
 pub struct WebGPUInstanceAsyncInitResult {
-    adapter: GpuAdapter,
-    device: GpuDevice
+    instance: Gpu,
+    discrete_adapter: GpuAdapter,
+    discrete_device: GpuDevice,
+    integrated_adapter: GpuAdapter,
+    integrated_device: GpuDevice
 }
 
 #[derive(Clone)]
@@ -36,8 +38,12 @@ impl Debug for WebGPUInstanceInitError {
 impl Error for WebGPUInstanceInitError {}
 
 pub struct WebGPUInstance {
-    adapters: [WebGPUAdapter; 1]
+    instance: Gpu,
+    adapters: [WebGPUAdapter; 2]
 }
+
+unsafe impl Send for WebGPUInstance {}
+unsafe impl Sync for WebGPUInstance {}
 
 impl WebGPUInstance {
     pub async fn async_init(navigator: Navigator) -> Result<WebGPUInstanceAsyncInitResult, WebGPUInstanceInitError> {
@@ -45,46 +51,81 @@ impl WebGPUInstance {
         if !gpu.is_object() || gpu.is_null() || gpu.is_undefined() {
             return Err(WebGPUInstanceInitError::new("Browser does not support WebGPU"));
         }
-        let adapter_future = JsFuture::from(gpu.request_adapter());
-        let adapter: GpuAdapter = adapter_future
+        let adapter_options = GpuRequestAdapterOptions::new();
+        adapter_options.set_feature_level("core");
+        adapter_options.set_power_preference(GpuPowerPreference::HighPerformance);
+        let discrete_adapter_future = JsFuture::from(gpu.request_adapter_with_options(&adapter_options));
+        let discrete_adapter: GpuAdapter = discrete_adapter_future
             .await
             .map_err(|_| WebGPUInstanceInitError::new("Failed to retrieve WebGPU adapter"))?
             .into();
 
-        if !adapter.is_object() || adapter.is_null() || adapter.is_undefined() {
+        if !discrete_adapter.is_object() || discrete_adapter.is_null() || discrete_adapter.is_undefined() {
             return Err(WebGPUInstanceInitError::new("Failed to retrieve WebGPU adapter"));
         }
 
-        let device_future = JsFuture::from(adapter.request_device());
-        let device: GpuDevice = device_future
+        let discrete_device_future = JsFuture::from(discrete_adapter.request_device());
+        let discrete_device: GpuDevice = discrete_device_future
             .await
             .map_err(|_| WebGPUInstanceInitError::new("Failed to retrieve WebGPU device"))?
             .into();
 
-        if !device.is_object() || device.is_null() || device.is_undefined() {
+        if !discrete_device.is_object() || discrete_device.is_null() || discrete_device.is_undefined() {
+            return Err(WebGPUInstanceInitError::new("Failed to retrieve WebGPU device"));
+        }
+
+        adapter_options.set_power_preference(GpuPowerPreference::LowPower);
+        let integrated_adapter_future = JsFuture::from(gpu.request_adapter_with_options(&adapter_options));
+        let integrated_adapter: GpuAdapter = integrated_adapter_future
+            .await
+            .map_err(|_| WebGPUInstanceInitError::new("Failed to retrieve WebGPU adapter"))?
+            .into();
+
+        if !integrated_adapter.is_object() || integrated_adapter.is_null() || integrated_adapter.is_undefined() {
+            return Err(WebGPUInstanceInitError::new("Failed to retrieve WebGPU adapter"));
+        }
+
+        let integrated_device_future = JsFuture::from(integrated_adapter.request_device());
+        let integrated_device: GpuDevice = integrated_device_future
+            .await
+            .map_err(|_| WebGPUInstanceInitError::new("Failed to retrieve WebGPU device"))?
+            .into();
+
+        if !integrated_device.is_object() || integrated_device.is_null() || integrated_device.is_undefined() {
             return Err(WebGPUInstanceInitError::new("Failed to retrieve WebGPU device"));
         }
 
         Ok(WebGPUInstanceAsyncInitResult {
-            adapter,
-            device
+            instance: gpu,
+            discrete_adapter,
+            discrete_device,
+            integrated_adapter,
+            integrated_device
         })
     }
 
     pub fn new(async_result: &WebGPUInstanceAsyncInitResult, debug: bool) -> Self {
         Self {
+            instance: async_result.instance.clone(),
             adapters: [
                 WebGPUAdapter::new(
-                    async_result.adapter.clone(),
-                    async_result.device.clone(),
+                    async_result.discrete_adapter.clone(),
+                    async_result.discrete_device.clone(),
+                    AdapterType::Discrete,
+                    debug
+                ),
+                WebGPUAdapter::new(
+                    async_result.integrated_adapter.clone(),
+                    async_result.integrated_device.clone(),
+                    AdapterType::Integrated,
                     debug
                 )
             ]
         }
     }
 
-    pub fn device(&self) -> &GpuDevice {
-        self.adapters[0].device()
+    pub fn handle(&self) -> &Gpu {
+        &self.instance
     }
 }
 
