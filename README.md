@@ -12,19 +12,21 @@ I had code for that before Bevy existed and I prefer my solutions.
     * WebGPU (web only, not for native)
   * Features:
     * Binding model based on slots but grouped by binding frequency
-    * Push constants for small very frequently changed data
+    * Push constants for small very frequently changed data (Emulated using a bump allocated UBO on WebGPU)
+    * Combined image+sampler emulation on Metal & WebGPU
     * Bindless (if supported)
     * Ray tracing (if supported, RT pipelines on Vulkan, RT queries on Vulkan & Metal)
     * Multi draw indirect (if supported on Vulkan & Metal)
+    * Texture uploads either directly on the CPU or via a separate transfer queue
     * Occlusion queries (TODO)
 * Shared graphics abstraction on top of that:
     * Submission batching (runs on a worker thread if multi-threading is enabled)
-    * Resource lifetimes are automatically handled by delaying destruction as soon as they are unused
+    * Resource lifetimes are automatically handled by delaying destruction to when they are unused
     * Automatic reuse of command buffers
     * Handles memory allocation (allocator is rather primitive right now)
     * Buffer allocator for long-lived buffers
     * Buffer allocator for per-frame buffers using a bump allocator
-    * Resource upload handling, batching and running it on separate transfer queue (TODO: implement support for direct uploads from the CPU on devices with unified memory)
+    * Resource upload handling and batching
 * Platform abstraction with support for:
   * Windows & Linux
     * SDL window
@@ -39,7 +41,7 @@ I had code for that before Bevy existed and I prefer my solutions.
     * HTML + Typescript window
     * Requires cutting edge browser features
     * Engine running entirely in a worker
-    * WebGPU renderer (WIP: needs work on shader translation, single threaded)
+    * WebGPU renderer (single threaded)
 * Async asset manager
   * Optionally multi-threaded asset loading
   * Asset hot-reloading
