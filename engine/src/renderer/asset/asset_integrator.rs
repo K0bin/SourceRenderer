@@ -30,12 +30,12 @@ impl<P: Platform> AssetIntegrator<P> {
 
         let vertex_buffer = AssetBuffer::<P::GPUBackend>::new(
             device,
-            AssetBuffer::<P::GPUBackend>::SIZE_BIG,
+            if cfg!(not(target_arch = "wasm32")) { AssetBuffer::<P::GPUBackend>::SIZE_BIG } else { 64 },
             BufferUsage::VERTEX | BufferUsage::COPY_DST | BufferUsage::STORAGE,
         );
         let index_buffer = AssetBuffer::<P::GPUBackend>::new(
             device,
-            AssetBuffer::<P::GPUBackend>::SIZE_SMALL,
+            if cfg!(not(target_arch = "wasm32")) { AssetBuffer::<P::GPUBackend>::SIZE_SMALL } else { 64 },
             BufferUsage::INDEX | BufferUsage::COPY_DST | BufferUsage::STORAGE,
         );
 
@@ -101,6 +101,44 @@ impl<P: Platform> AssetIntegrator<P> {
         &self,
         mesh: &MeshData
     ) -> RendererMesh<P::GPUBackend> {
+        if cfg!(target_arch = "wasm32") {
+            // WebGPU can't do multi draw indirect or bindless anyway and likely prefers having single buffer objects per mesh.
+
+            let mut buffer_usage = BufferUsage::VERTEX | BufferUsage::INITIAL_COPY;
+            let mut buffer_size = align_up(std::mem::size_of_val(&mesh.vertices[..]), std::mem::size_of::<crate::asset::Vertex>());
+            if let Some(indices) = mesh.indices.as_ref() {
+                buffer_size += align_up(std::mem::size_of_val(&indices[..]), std::mem::size_of::<u32>());
+                buffer_usage |= BufferUsage::INDEX;
+            };
+            let buffer = AssetBuffer::<P::GPUBackend>::new(&self.device, buffer_size as u32, buffer_usage);
+            let vertex_buffer = buffer.get_slice(std::mem::size_of_val(&mesh.vertices[..]), std::mem::size_of::<crate::asset::Vertex>());
+            self.device.init_buffer(
+                &mesh.vertices[..],
+                vertex_buffer.buffer(),
+                vertex_buffer.offset() as u64
+            ).unwrap();
+
+            let index_buffer = mesh.indices.as_ref().map(|indices| {
+                let ib_slice = buffer.get_slice(
+                    std::mem::size_of_val(&indices[..]),
+                    std::mem::size_of::<u32>(),
+                );
+                self.device.init_buffer(
+                    &indices,
+                    ib_slice.buffer(),
+                    ib_slice.offset() as u64,
+                ).unwrap();
+                ib_slice
+            });
+            return RendererMesh {
+                vertices: vertex_buffer,
+                indices: index_buffer,
+                parts: mesh.parts.iter().cloned().collect(), // TODO: change base type to boxed slice
+                bounding_box: mesh.bounding_box.clone(),
+                vertex_count: mesh.vertex_count,
+            };
+        }
+
         assert_ne!(mesh.vertex_count, 0);
 
         let vertex_buffer = self.vertex_buffer.get_slice(
