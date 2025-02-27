@@ -12,7 +12,6 @@ use crossbeam_channel::{
     unbounded,
     Receiver,
 };
-use log::trace;
 use sourcerenderer_core::platform::{
     FileWatcher,
     IO,
@@ -35,6 +34,7 @@ impl<P: Platform> AssetContainer for FSContainer<P> {
     // TODO: replace / with platform specific separator
 
     async fn contains(&self, path: &str) -> bool {
+        log::trace!("Looking for file {:?} in FSContainer", path);
         let path_without_metadata = if let Some(dot_pos) = path.rfind('.') {
             if let Some(first_slash_pos) = path[dot_pos..].find('/') {
                 &path[..dot_pos + first_slash_pos]
@@ -48,7 +48,7 @@ impl<P: Platform> AssetContainer for FSContainer<P> {
     }
 
     async fn load(&self, path: &str) -> Option<AssetFile> {
-        trace!("Looking for file: {} in FSContainer", path);
+        log::trace!("Loading file: {:?} from FSContainer", path);
         let path_without_metadata = if let Some(dot_pos) = path.rfind('.') {
             if let Some(first_slash_pos) = path[dot_pos..].find('/') {
                 &path[..dot_pos + first_slash_pos]
@@ -66,7 +66,7 @@ impl<P: Platform> AssetContainer for FSContainer<P> {
         }
         let mut file = file_res.unwrap();
         if let Some(watcher) = self.watcher.as_ref() {
-            trace!("Registering file for watcher: {} in FSContainer", path);
+            log::trace!("Registering file for watcher: {} in FSContainer", path);
             let mut watcher_locked = watcher.lock().unwrap();
             watcher_locked.watch(final_path);
         }

@@ -4,7 +4,7 @@ use std::usize;
 
 use bevy_tasks::futures_lite::io::{BufReader, Cursor};
 use bevy_tasks::futures_lite::{AsyncReadExt, AsyncSeekExt};
-use log::warn;
+use futures_io::{AsyncRead, AsyncSeek};
 use sourcerenderer_core::platform::IO;
 use sourcerenderer_core::Platform;
 
@@ -12,34 +12,49 @@ use crate::asset::asset_manager::AssetFile;
 use crate::asset::loaders::gltf::glb;
 use crate::asset::AssetContainer;
 
-pub struct GltfContainer<P: Platform> {
+pub struct GltfContainer<R: AsyncRead + AsyncSeek + Unpin> {
     json_offset: u64,
     data_offset: u64,
-    reader: async_mutex::Mutex<BufReader<<P::IO as IO>::File>>,
+    reader: async_mutex::Mutex<R>,
     _base_path: String,
     scene_base_path: String,
     buffer_base_path: String,
     texture_base_path: String,
 }
 
-impl<P: Platform> GltfContainer<P> {
-    pub async fn load(path: &str, external: bool) -> IOResult<Self> {
-        let mut file = BufReader::new(if external {
-            P::IO::open_external_asset(path).await?
-        } else {
-            P::IO::open_asset(path).await?
-        });
-        let header = glb::GlbHeader::read(&mut file).await?;
+pub async fn load_memory_gltf_container<P: Platform>(path: &str, external: bool) -> IOResult<GltfContainer<Cursor<Box<[u8]>>>> {
+    let mut file = if external {
+        P::IO::open_external_asset(path).await?
+    } else {
+        P::IO::open_asset(path).await?
+    };
+    let mut data = Vec::<u8>::new();
+    file.read_to_end(&mut data).await?;
+    GltfContainer::<Cursor<Box<[u8]>>>::new(path, Cursor::new(data.into_boxed_slice())).await
+}
 
-        let json_chunk_header = glb::GlbChunkHeader::read(&mut file).await?;
-        let json_offset = file.seek(SeekFrom::Current(0)).await?;
-        file.seek(SeekFrom::Current(json_chunk_header.length as i64)).await?;
+pub async fn load_file_gltf_container<P: Platform>(path: &str, external: bool) -> IOResult<GltfContainer<BufReader<<P::IO as IO>::File>>> {
+    let mut file = BufReader::new(if external {
+        P::IO::open_external_asset(path).await?
+    } else {
+        P::IO::open_asset(path).await?
+    });
+    GltfContainer::<BufReader<<P::IO as IO>::File>>::new(path, file).await
+}
 
-        let data_chunk_header = glb::GlbChunkHeader::read(&mut file).await?;
-        let data_offset = file.seek(SeekFrom::Current(0)).await?;
+impl<R: AsyncRead + AsyncSeek + Unpin> GltfContainer<R> {
+    pub async fn new(path: &str, mut reader: R) -> IOResult<Self> {
+        let header = glb::GlbHeader::read(&mut reader).await?;
+
+        let json_chunk_header = glb::GlbChunkHeader::read(&mut reader).await?;
+        let json_offset = reader.seek(SeekFrom::Current(0)).await?;
+        reader.seek(SeekFrom::Current(json_chunk_header.length as i64)).await?;
+
+        let data_chunk_header = glb::GlbChunkHeader::read(&mut reader).await?;
+        let data_offset = reader.seek(SeekFrom::Current(0)).await?;
 
         if data_offset + data_chunk_header.length as u64 != header.length as u64 {
-            warn!("GLB file contains more than 3 chunks. This is currently unsupported.");
+            log::error!("GLB file contains more than 3 chunks. This is currently unsupported.");
             return Err(IOError::new(
                 ErrorKind::Other,
                 "GLB file contains more than 3 chunks. This is currently unsupported.",
@@ -56,7 +71,7 @@ impl<P: Platform> GltfContainer<P> {
         let texture_base_path = base_path.clone() + "texture/";
 
         Ok(Self {
-            reader: async_mutex::Mutex::new(file),
+            reader: async_mutex::Mutex::new(reader),
             json_offset,
             data_offset,
             _base_path: base_path,
@@ -67,14 +82,16 @@ impl<P: Platform> GltfContainer<P> {
     }
 }
 
-impl<P: Platform> AssetContainer for GltfContainer<P> {
+impl<R: AsyncRead + AsyncSeek + Unpin + Send + Sync + 'static> AssetContainer for GltfContainer<R> {
     async fn contains(&self, path: &str) -> bool {
+        log::trace!("Looking for file {:?} in GLTFContainer", path);
         path.starts_with(&self.scene_base_path)
             || path.starts_with(&self.texture_base_path)
             || path.starts_with(&self.buffer_base_path)
     }
 
     async fn load(&self, path: &str) -> Option<crate::asset::asset_manager::AssetFile> {
+        log::trace!("Loading file: {:?} from GLTFContainer", path);
         let mut reader = self.reader.lock().await;
         if path.starts_with(&self.scene_base_path) {
             let length =
