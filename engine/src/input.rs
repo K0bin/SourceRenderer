@@ -9,12 +9,14 @@ use sourcerenderer_core::{
     Vec2I,
 };
 
-use crate::bitset_core::BitSet;
+use bitset_core::BitSet;
 
+#[allow(dead_code)]
 pub struct Input {
     state: Mutex<InputState>,
 }
 
+#[allow(dead_code)]
 impl Input {
     pub fn new() -> Self {
         let input_state = InputState {
@@ -58,6 +60,7 @@ impl Input {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Default, Resource)]
 pub struct InputState {
     keyboard_keys: [u32; 4],
@@ -69,6 +72,7 @@ pub struct InputState {
 }
 
 impl InputState {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self::default()
     }
@@ -77,6 +81,7 @@ impl InputState {
       self.lock_mouse = is_locked;
     }*/
 
+    #[allow(dead_code)]
     pub fn mouse_locked(&self) -> bool {
         self.lock_mouse
     }
@@ -109,18 +114,23 @@ impl InputState {
       self.finger_pos[finger_index as usize] = position;
     }*/
 
+    #[allow(dead_code)]
     pub fn is_key_down(&self, key: Key) -> bool {
         self.keyboard_keys.bit_test(key as usize)
     }
+    #[allow(dead_code)]
     pub fn is_finger_down(&self, finger_index: u32) -> bool {
         self.fingers_down.bit_test(finger_index as usize)
     }
+    #[allow(dead_code)]
     pub fn is_mouse_down(&self, mouse_button: u32) -> bool {
         self.mouse_buttons.bit_test(mouse_button as usize)
     }
+    #[allow(dead_code)]
     pub fn mouse_position(&self) -> Vec2I {
         self.mouse_pos
     }
+    #[allow(dead_code)]
     pub fn finger_position(&self, finger_index: u32) -> Vec2 {
         self.finger_pos[finger_index as usize]
     }

@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use super::*;
 
+use bitflags::bitflags;
+
 bitflags! {
   #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
   pub struct TextureUsage: u32 {

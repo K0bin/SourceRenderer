@@ -42,7 +42,9 @@ mod instance;
 mod util;
 mod graphics_plugin;
 
-pub use sourcerenderer_core::gpu::{
+pub(crate) use sourcerenderer_core::gpu::{
+    BINDLESS_TEXTURE_COUNT,
+    AdapterType,
     LoadOpColor,
     LoadOpDepthStencil,
     BarrierSync,
@@ -51,24 +53,13 @@ pub use sourcerenderer_core::gpu::{
     ShaderType,
     Viewport,
     Scissor,
-    BindingFrequency,
-    TextureInfo,
-    TextureViewInfo,
-    BufferInfo,
-    Instance as CoreInstance,
-    Adapter as CoreAdapter,
     Swapchain as CoreSwapchain,
     Device as CoreDevice,
     GPUBackend,
     RayTracingPipelineInfo,
     GraphicsPipelineInfo,
-    TextureUsage,
-    SampleCount,
-    Format,
-    TextureDimension,
     QueueSharingMode,
     QueueType,
-    BufferUsage,
     TextureLayout,
     WHOLE_BUFFER,
     ShaderInputElement,
@@ -83,9 +74,6 @@ pub use sourcerenderer_core::gpu::{
     RasterizerInfo,
     DepthStencilInfo,
     PrimitiveType,
-    Filter,
-    AddressMode,
-    SamplerInfo,
     BarrierTextureRange,
     SwapchainError,
     InputRate,
@@ -101,4 +89,27 @@ pub use sourcerenderer_core::gpu::{
     BindingInfo,
     ClearColor,
     ClearDepthStencilValue,
+    PackedShader,
+    ResolveMode,
+    TextureSubresource,
+    MemoryTextureCopyRegion,
+    BufferTextureCopyRegion,
+    BufferCopyRegion
+};
+
+
+
+pub use sourcerenderer_core::gpu::{
+    BufferUsage,
+    TextureUsage,
+    BufferInfo,
+    TextureInfo,
+    TextureViewInfo,
+    BindingFrequency,
+    SampleCount,
+    Format,
+    TextureDimension,
+    Filter,
+    AddressMode,
+    SamplerInfo,
 };

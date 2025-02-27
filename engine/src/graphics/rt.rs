@@ -31,12 +31,6 @@ pub struct AccelerationStructureInstance<'a, B: GPUBackend> {
 
 pub use sourcerenderer_core::gpu::AccelerationStructureMeshRange;
 
-pub struct RayTracingPipelineInfo<'a, B: GPUBackend> {
-    pub ray_gen_shader: &'a Arc<B::Shader>,
-    pub closest_hit_shaders: &'a [&'a Arc<B::Shader>],
-    pub miss_shaders: &'a [&'a Arc<B::Shader>],
-}
-
 pub struct AccelerationStructure<B: GPUBackend> {
     acceleration_structure: ManuallyDrop<B::AccelerationStructure>,
     buffer: ManuallyDrop<Arc<BufferSlice<B>>>,
@@ -52,10 +46,13 @@ impl<B: GPUBackend> AccelerationStructure<B> {
         }
     }
 
+    #[inline(always)]
     pub(super) fn handle(&self) -> &B::AccelerationStructure {
         &self.acceleration_structure
     }
 
+    #[allow(unused)]
+    #[inline(always)]
     pub(super) fn buffer(&self) -> &Arc<BufferSlice<B>> {
         &self.buffer
     }

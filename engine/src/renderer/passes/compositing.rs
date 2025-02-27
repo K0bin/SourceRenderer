@@ -16,8 +16,6 @@ use crate::renderer::renderer_resources::{
 
 use crate::graphics::*;
 
-const USE_CAS: bool = true;
-
 pub struct CompositingPass {
     pipeline: ComputePipelineHandle,
 }
@@ -25,6 +23,7 @@ pub struct CompositingPass {
 impl CompositingPass {
     pub const COMPOSITION_TEXTURE_NAME: &'static str = "Composition";
 
+    #[allow(unused)]
     pub fn new<P: Platform>(
         resolution: Vec2UI,
         resources: &mut RendererResources<P::GPUBackend>,
@@ -52,6 +51,7 @@ impl CompositingPass {
         Self { pipeline }
     }
 
+    #[inline(always)]
     pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
         assets.get_compute_pipeline(self.pipeline).is_some()
     }

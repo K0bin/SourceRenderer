@@ -45,11 +45,13 @@ unsafe impl<T> Sync for Allocation<T> where T : Send + Sync {}
 impl<T> Allocation<T>
     where T : Send + Sync
 {
+    #[allow(unused)]
     #[inline(always)]
     pub fn offset(&self) -> u64 {
         self.range.offset
     }
 
+    #[allow(unused)]
     #[inline(always)]
     pub fn length(&self) -> u64 {
         self.range.length
@@ -83,6 +85,7 @@ impl<T> Chunk<T>
         }
     }
 
+    #[allow(unused)]
     pub fn with_callback<F>(data: T, chunk_size: u64, free_callback: F) -> Self
     where F: Fn(&[Range]) + Send + Sync + 'static {
         let mut free_list = SmallVec::<[Range; 16]>::new();
@@ -190,6 +193,8 @@ impl<T> Chunk<T>
         first.offset == 0 && first.length == self.size
     }
 
+    #[allow(unused)]
+    #[inline(always)]
     pub fn size(&self) -> u64 {
         self.size
     }

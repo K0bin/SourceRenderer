@@ -18,6 +18,7 @@ impl<B: GPUBackend> Sampler<B> {
         }
     }
 
+    #[inline(always)]
     pub(super) fn handle(&self) -> &B::Sampler {
         &self.sampler
     }

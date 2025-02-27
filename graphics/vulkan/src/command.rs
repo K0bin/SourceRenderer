@@ -92,17 +92,14 @@ pub struct VkInnerCommandBufferInfo {
 
 pub(super) enum BoundPipeline {
     Graphics {
-        pipeline: vk::Pipeline,
         pipeline_layout: Arc<VkPipelineLayout>,
         uses_bindless: bool
     },
     Compute {
-        pipeline: vk::Pipeline,
         pipeline_layout: Arc<VkPipelineLayout>,
         uses_bindless: bool
     },
     RayTracing {
-        pipeline: vk::Pipeline,
         pipeline_layout: Arc<VkPipelineLayout>,
         raygen_sbt_region: vk::StridedDeviceAddressRegionKHR,
         closest_hit_sbt_region: vk::StridedDeviceAddressRegionKHR,
@@ -113,13 +110,12 @@ pub(super) enum BoundPipeline {
 
 pub struct VkCommandBuffer {
     cmd_buffer: vk::CommandBuffer,
-    pool: Arc<RawVkCommandPool>,
+    _pool: Arc<RawVkCommandPool>,
     device: Arc<RawVkDevice>,
     state: AtomicCell<VkCommandBufferState>,
     command_buffer_type: gpu::CommandBufferType,
     shared: Arc<VkShared>,
     pipeline: Option<BoundPipeline>,
-    queue_family_index: u32,
     descriptor_manager: VkBindingManager,
     inheritance: Option<VkInnerCommandBufferInfo>,
     frame: u64,
@@ -132,7 +128,7 @@ impl VkCommandBuffer {
         device: &Arc<RawVkDevice>,
         pool: &Arc<RawVkCommandPool>,
         command_buffer_type: gpu::CommandBufferType,
-        queue_family_index: u32,
+        _queue_family_index: u32,
         reset_individually: bool,
         shared: &Arc<VkShared>,
     ) -> Self {
@@ -149,13 +145,12 @@ impl VkCommandBuffer {
         let mut buffers = unsafe { device.allocate_command_buffers(&buffers_create_info) }.unwrap();
         VkCommandBuffer {
             cmd_buffer: buffers.pop().unwrap(),
-            pool: pool.clone(),
+            _pool: pool.clone(),
             device: device.clone(),
             command_buffer_type,
             pipeline: None,
             shared: shared.clone(),
             state: AtomicCell::new(VkCommandBufferState::Ready),
-            queue_family_index,
             descriptor_manager: VkBindingManager::new(device),
             inheritance: None,
             frame: 0u64,
@@ -164,18 +159,22 @@ impl VkCommandBuffer {
         }
     }
 
+    #[inline(always)]
     pub fn handle(&self) -> vk::CommandBuffer {
         self.cmd_buffer
     }
 
+    #[inline(always)]
     pub fn cmd_buffer_type(&self) -> gpu::CommandBufferType {
         self.command_buffer_type
     }
 
+    #[inline(always)]
     pub(crate) fn mark_submitted(&self) {
         assert_eq!(self.state.swap(VkCommandBufferState::Submitted), VkCommandBufferState::Finished);
     }
 
+    #[inline(always)]
     pub(crate) fn command_buffer_type(&self) -> gpu::CommandBufferType {
         self.command_buffer_type
     }
@@ -207,7 +206,6 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                 }
 
                 self.pipeline = Some(BoundPipeline::Graphics {
-                    pipeline: vk_pipeline,
                     pipeline_layout: graphics_pipeline.layout().clone(),
                     uses_bindless: graphics_pipeline.uses_bindless_texture_set()
                 });
@@ -232,7 +230,6 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                 }
 
                 self.pipeline = Some(BoundPipeline::Compute {
-                    pipeline: vk_pipeline,
                     pipeline_layout: compute_pipeline.layout().clone(),
                     uses_bindless: compute_pipeline.uses_bindless_texture_set()
                 });
@@ -257,7 +254,6 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                 }
 
                 self.pipeline = Some(BoundPipeline::RayTracing {
-                    pipeline: vk_pipeline,
                     pipeline_layout: rt_pipeline.layout().clone(),
                     miss_sbt_region: rt_pipeline.miss_sbt_region().clone(),
                     closest_hit_sbt_region: rt_pipeline.closest_hit_sbt_region().clone(),
@@ -1305,6 +1301,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         let length_in_bytes = actual_length_in_u32s * 4;
         debug_assert!(buffer.info().size - offset >= length_in_bytes);
 
+        #[allow(unused)]
         #[repr(packed)]
         struct MetaClearShaderData {
             length: u32,
@@ -1649,12 +1646,3 @@ pub(crate) fn index_format_to_vk(format: gpu::IndexFormat) -> vk::IndexType {
         gpu::IndexFormat::U32 => vk::IndexType::UINT32,
     }
 }
-
-const WRITE_ACCESS_MASK: vk::AccessFlags2 = vk::AccessFlags2::from_raw(
-    vk::AccessFlags2::HOST_WRITE.as_raw()
-        | vk::AccessFlags2::MEMORY_WRITE.as_raw()
-        | vk::AccessFlags2::SHADER_WRITE.as_raw()
-        | vk::AccessFlags2::TRANSFER_WRITE.as_raw()
-        | vk::AccessFlags2::COLOR_ATTACHMENT_WRITE.as_raw()
-        | vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE.as_raw(),
-);

@@ -1,6 +1,6 @@
 use std::{mem::ManuallyDrop, sync::Arc};
 
-use sourcerenderer_core::gpu::{*, Fence as GPUFence};
+use sourcerenderer_core::gpu::Fence as _;
 
 use super::*;
 
@@ -25,16 +25,19 @@ impl<B: GPUBackend> Fence<B> {
         }
     }
 
+    #[inline(always)]
     pub fn value(&self) -> u64 {
         unsafe { self.fence.value() }
     }
 
+    #[inline(always)]
     pub fn await_value(&self, value: u64) {
         unsafe {
             self.fence.await_value(value);
         }
     }
 
+    #[inline(always)]
     pub(super) fn handle(&self) -> &B::Fence {
         &self.fence
     }
@@ -47,10 +50,12 @@ pub struct SharedFenceValuePairRef<'a, B: GPUBackend> {
 }
 
 impl<'a, B: GPUBackend> SharedFenceValuePairRef<'a, B> {
+    #[inline(always)]
     pub unsafe fn is_signalled(&self) -> bool {
         self.fence.value() >= self.value
     }
 
+    #[inline(always)]
     pub unsafe fn await_signal(&self) {
         self.fence.await_value(self.value);
     }
@@ -73,14 +78,17 @@ impl<B: GPUBackend> Clone for SharedFenceValuePair<B> {
 }
 
 impl<B: GPUBackend> SharedFenceValuePair<B> {
+    #[inline(always)]
     pub fn is_signalled(&self) -> bool {
         self.fence.value() >= self.value
     }
 
+    #[inline(always)]
     pub fn await_signal(&self) {
         self.fence.await_value(self.value);
     }
 
+    #[inline(always)]
     pub fn as_ref(&self) -> SharedFenceValuePairRef<B> {
         SharedFenceValuePairRef {
             fence: &self.fence,
@@ -89,6 +97,7 @@ impl<B: GPUBackend> SharedFenceValuePair<B> {
         }
     }
 
+    #[inline(always)]
     pub fn as_handle_ref(&self) -> sourcerenderer_core::gpu::FenceValuePairRef<B> {
         sourcerenderer_core::gpu::FenceValuePairRef {
             fence: self.fence.handle(),

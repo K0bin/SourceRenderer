@@ -4,7 +4,7 @@ use std::{
         max,
         min,
     }, fmt::Debug, hash::Hash, sync::{
-        Arc, Condvar, Mutex, MutexGuard
+        Arc, Condvar
     }
 };
 
@@ -58,7 +58,7 @@ pub struct VkSwapchain {
     acquire_semaphores: SmallVec<[VkBinarySemaphore; 5]>,
     present_semaphores: SmallVec<[VkBinarySemaphore; 5]>,
     swapchain_device: SwapchainDevice,
-    instance: Arc<RawVkInstance>,
+    _instance: Arc<RawVkInstance>,
     surface: VkSurface,
     device: Arc<RawVkDevice>,
     vsync: bool,
@@ -284,7 +284,7 @@ impl VkSwapchain {
             present_semaphores,
             cond_var: Condvar::new(),
             swapchain_device,
-            instance: device.instance.clone(),
+            _instance: device.instance.clone(),
             surface,
             device: device.clone(),
             vsync,
@@ -546,19 +546,6 @@ impl Swapchain<VkBackend> for VkSwapchain {
     }
 }
 
-pub(crate) enum VkSwapchainAcquireResult<'a> {
-    Success {
-        back_buffer: &'a Arc<VkTexture>,
-        back_buffer_index: u32,
-    },
-    SubOptimal {
-        back_buffer: &'a Arc<VkTexture>,
-        back_buffer_index: u32,
-    },
-    Broken,
-    DeviceLost,
-}
-
 fn surface_vk_format_to_core(format: vk::Format) -> Format {
     match format {
         vk::Format::B8G8R8A8_UNORM => Format::BGRA8UNorm,
@@ -591,6 +578,7 @@ impl VkBinarySemaphore {
         }
     }
 
+    #[inline(always)]
     pub fn handle(&self) -> vk::Semaphore {
         self.semaphore
     }

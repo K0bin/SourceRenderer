@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use smallvec::SmallVec;
 use crate::asset::AssetManager;
-use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, Device, FinishedCommandBuffer, QueueSubmission, QueueType, Swapchain, SwapchainError, TextureInfo, TextureLayout, WHOLE_BUFFER};
+use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, Device, QueueSubmission, QueueType, Swapchain, SwapchainError, TextureInfo, TextureLayout, WHOLE_BUFFER};
 use crate::renderer::asset::RendererAssetsReadOnly;
 use sourcerenderer_core::{
     Matrix4,
@@ -25,7 +25,6 @@ use super::ssao::SsaoPass;
 use super::taa::TAAPass;
 use super::visibility_buffer::VisibilityBufferPass;
 use crate::graphics::{GraphicsContext, CommandBufferRecorder};
-use crate::input::Input;
 use crate::renderer::passes::blue_noise::BlueNoise;
 use crate::renderer::passes::compositing::CompositingPass;
 use crate::renderer::passes::fsr2::Fsr2Pass;
@@ -61,7 +60,7 @@ pub struct ModernRenderer<P: Platform> {
     motion_vector_pass: MotionVectorPass,
     anti_aliasing: AntiAliasing<P>,
     shadow_map_pass: ShadowMapPass<P>,
-    ui_pass: UIPass<P>
+    ui_pass: UIPass
 }
 
 enum AntiAliasing<P: Platform> {
@@ -93,6 +92,7 @@ struct CameraBuffer {
 impl<P: Platform> ModernRenderer<P> {
     const USE_FSR2: bool = false;
 
+    #[allow(unused)]
     pub fn new(
         device: &Arc<crate::graphics::Device<P::GPUBackend>>,
         swapchain: &crate::graphics::Swapchain<P::GPUBackend>,
@@ -348,7 +348,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
 
     fn on_swapchain_changed(
         &mut self,
-        swapchain: &Swapchain<P::GPUBackend>,
+        _swapchain: &Swapchain<P::GPUBackend>,
     ) {
         // TODO: resize render targets
     }

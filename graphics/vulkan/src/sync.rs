@@ -39,10 +39,12 @@ impl VkTimelineSemaphore {
         }
     }
 
+    #[inline(always)]
     pub fn handle(&self) -> vk::Semaphore {
         self.semaphore
     }
 
+    #[inline(always)]
     pub unsafe fn await_value(&self, value: u64) {
         unsafe {
             self.device
@@ -60,6 +62,7 @@ impl VkTimelineSemaphore {
         }
     }
 
+    #[inline(always)]
     pub unsafe fn value(&self) -> u64 {
         unsafe {
             self.device

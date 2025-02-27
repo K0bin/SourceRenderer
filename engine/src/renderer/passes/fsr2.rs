@@ -3,9 +3,7 @@ use std::collections::{
     VecDeque,
 };
 use std::ffi::c_void;
-use std::io::Read;
 use std::mem::MaybeUninit;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use fsr2::*;
@@ -15,8 +13,7 @@ use sourcerenderer_core::atomic_refcell::{
     AtomicRefCell,
     AtomicRefMut,
 };
-use sourcerenderer_core::gpu::{GPUBackend, PackedShader};
-use sourcerenderer_core::platform::IO;
+use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::{
     Platform,
     Vec2,
@@ -38,7 +35,7 @@ use crate::renderer::renderer_resources::{
 use crate::graphics::*;
 
 pub struct Fsr2Pass<P: Platform> {
-    device: Arc<Device<P::GPUBackend>>,
+    _device: Arc<Device<P::GPUBackend>>,
     context: FfxFsr2Context,
     scratch_context: *mut AtomicRefCell<ScratchContext<P>>
 }
@@ -48,6 +45,7 @@ unsafe impl<P: Platform> Send for Fsr2Pass<P> {}
 impl<P: Platform> Fsr2Pass<P> {
     pub const UPSCALED_TEXTURE_NAME: &'static str = "FSR2Upscaled";
 
+    #[allow(unused)]
     pub fn new(
         device: &Arc<Device<P::GPUBackend>>,
         resources: &mut RendererResources<P::GPUBackend>,
@@ -148,14 +146,15 @@ impl<P: Platform> Fsr2Pass<P> {
         device.flush_transfers();
 
         Self {
-            device: device.clone(),
+            _device: device.clone(),
             context,
             scratch_context: context_ptr,
         }
     }
 
-    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
-        false
+    #[inline(always)]
+    pub(super) fn is_ready(&self, _assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+        todo!()
     }
 
     pub fn execute(
@@ -305,6 +304,7 @@ impl<P: Platform> Fsr2Pass<P> {
         }
     }
 
+    #[allow(unused)]
     fn jitter(render_dimensions: Vec2UI, frame: u64) -> Vec2 {
         unsafe {
             let jitter_phase_count =
@@ -322,6 +322,7 @@ impl<P: Platform> Fsr2Pass<P> {
         }
     }
 
+    #[allow(unused)]
     fn scaled_jitter(render_dimensions: Vec2UI, frame: u64) -> Vec2 {
         unsafe {
             let jitter_phase_count =
@@ -364,6 +365,7 @@ unsafe fn command_buffer_into_ffx<P: Platform>(
     (command_buffer as *mut CommandBufferRecorder<P::GPUBackend>) as FfxCommandList
 }
 
+#[allow(unused)]
 struct Fsr2TextureViews<P: Platform> {
     sampling_view: Arc<TextureView<P::GPUBackend>>,
     storage_view: Option<Arc<TextureView<P::GPUBackend>>>,
@@ -437,6 +439,7 @@ impl Default for TextureSubresourceState {
     }
 }
 
+#[allow(unused)]
 enum Resource<B: GPUBackend> {
     Texture {
         texture: Arc<Texture<B>>,

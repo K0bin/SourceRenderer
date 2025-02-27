@@ -1,6 +1,5 @@
 use std::io::{Error as IOError, ErrorKind, Result as IOResult, SeekFrom};
 use std::path::Path;
-use crate::Mutex;
 use std::usize;
 
 use bevy_tasks::futures_lite::io::{BufReader, Cursor};
@@ -17,7 +16,7 @@ pub struct GltfContainer<P: Platform> {
     json_offset: u64,
     data_offset: u64,
     reader: async_mutex::Mutex<BufReader<<P::IO as IO>::File>>,
-    base_path: String,
+    _base_path: String,
     scene_base_path: String,
     buffer_base_path: String,
     texture_base_path: String,
@@ -60,7 +59,7 @@ impl<P: Platform> GltfContainer<P> {
             reader: async_mutex::Mutex::new(file),
             json_offset,
             data_offset,
-            base_path,
+            _base_path: base_path,
             scene_base_path,
             texture_base_path,
             buffer_base_path,

@@ -1,6 +1,6 @@
 use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;
-use sourcerenderer_core::{gpu::GPUBackend, Matrix4, Vec2UI};
+use sourcerenderer_core::gpu::GPUBackend;
 
 use crate::{engine::WindowState, ui::UIDrawData};
 

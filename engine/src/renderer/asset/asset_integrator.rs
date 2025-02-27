@@ -320,15 +320,18 @@ impl<P: Platform> AssetIntegrator<P> {
         self.device.free_completed_transfers();
     }
 
+    #[inline(always)]
     pub(crate) fn bump_frame(&self, context: &GraphicsContext<P::GPUBackend>) {
         self.vertex_buffer.bump_frame(context);
         self.index_buffer.bump_frame(context);
     }
 
+    #[inline(always)]
     pub(crate) fn vertex_buffer(&self) -> &Arc<BufferSlice<P::GPUBackend>> {
         self.vertex_buffer.buffer()
     }
 
+    #[inline(always)]
     pub(crate) fn index_buffer(&self) -> &Arc<BufferSlice<P::GPUBackend>> {
         self.index_buffer.buffer()
     }

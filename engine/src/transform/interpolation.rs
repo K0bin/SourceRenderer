@@ -1,6 +1,6 @@
-use bevy_app::{App, FixedPostUpdate, Plugin, PostUpdate, PreUpdate, Update};
-use bevy_ecs::{component::Component, entity::Entity, query::{Added, Without}, system::{Commands, Query, Res}};
-use bevy_math::{Affine3A, VectorSpace};
+use bevy_app::{App, FixedPostUpdate, Plugin, PostUpdate, PreUpdate};
+use bevy_ecs::{component::Component, entity::Entity, query::Added, system::{Commands, Query, Res}};
+use bevy_math::Affine3A;
 use bevy_time::{Fixed, Time};
 use bevy_transform::components::{GlobalTransform, Transform};
 

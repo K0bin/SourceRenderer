@@ -1,21 +1,8 @@
-#![allow(dead_code)]
-#[macro_use]
-extern crate bitflags;
-extern crate crossbeam_channel;
-extern crate crossbeam_deque;
-extern crate crossbeam_utils;
-extern crate num_cpus;
-extern crate nalgebra;
-extern crate rayon;
-extern crate bitset_core;
-
 pub mod gpu;
 pub mod platform;
 pub mod pool;
 pub mod input;
-mod console;
-
-pub use console::{Console, Command};
+pub mod console;
 
 pub mod atomic_refcell;
 

@@ -4,24 +4,17 @@ use std::sync::atomic::{
 };
 use std::sync::Arc;
 use crate::{Mutex, Condvar};
-use web_time::Instant;
 
+use web_time::{Duration, Instant};
 use bevy_ecs::entity::Entity;
-use bevy_ecs::system::Resource;
 use bevy_math::Affine3A;
 use crossbeam_channel::{
     unbounded, Receiver, Sender, TryRecvError
 };
-use web_time::Duration;
 use log::{info, trace, warn};
-use sourcerenderer_core::atomic_refcell::AtomicRefCell;
-use sourcerenderer_core::platform::{
-    Event,
-    Platform,
-    ThreadHandle,
-};
+use sourcerenderer_core::platform::Platform;
 use sourcerenderer_core::{
-    Console, Matrix4, Vec2UI, Vec3
+    console::Console, Vec3
 };
 
 use super::drawable::{make_camera_proj, make_camera_view, RendererStaticDrawable};
@@ -31,14 +24,13 @@ use super::ecs::{
 };
 use super::light::DirectionalLight;
 use super::passes::web::WebRenderer;
-use super::render_path::{FrameInfo, NoOpRenderPath, RenderPath, SceneInfo};
+use super::render_path::{FrameInfo, RenderPath, SceneInfo};
 use super::renderer_culling::update_visibility;
 use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
 use super::{PointLight, StaticRenderableComponent};
 use crate::asset::{AssetHandle, AssetManager, AssetType};
 use crate::engine::WindowState;
-use crate::input::Input;
 use crate::renderer::command::RendererCommand;
 use crate::transform::InterpolatedTransform;
 use crate::ui::UIDrawData;
@@ -121,10 +113,13 @@ impl<P: Platform> Renderer<P> {
         (renderer, renderer_sender)
     }
 
+    #[allow(unused)]
+    #[inline(always)]
     pub(crate) fn instance(&self) -> &Arc<Instance<P::GPUBackend>> {
         self.device.instance()
     }
 
+    #[inline(always)]
     pub fn device(&self) -> &Arc<Device<P::GPUBackend>> {
         &self.device
     }
@@ -176,6 +171,8 @@ impl<P: Platform> Renderer<P> {
 
         let mut swapchain_guard = self.swapchain.lock().unwrap();
         self.context.begin_frame();
+        self.asset_manager.bump_frame(&self.context);
+
         let render_path_result = self.render_path.render(
             &mut self.context,
             &mut swapchain_guard,
@@ -357,8 +354,8 @@ impl<P: Platform> Renderer<P> {
 
                 RendererCommand::WindowChanged(window_state) => {
                     match window_state {
-                        WindowState::Fullscreen(size) => {},
-                        WindowState::Window(size) => {},
+                        WindowState::Fullscreen(_size) => {},
+                        WindowState::Window(_size) => {},
                         WindowState::Minimized => {}
                     }
                 }
@@ -507,14 +504,18 @@ impl<B: GPUBackend> RendererSender<B> {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn wait_until_available(&self, timeout: Duration) {
         let queued_guard = self.state.queued_frames_counter.lock().unwrap();
-        #[cfg(not(target_arch = "wasm32"))]
         let _ = self.state.cond_var
             .wait_timeout_while(queued_guard, timeout, |queued| {
                 *queued > 1 || !self.state.is_running.load(Ordering::Acquire)
             })
             .unwrap();
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn wait_until_available(&self, _timeout: Duration) {
     }
 
     pub fn is_saturated(&self) -> bool {

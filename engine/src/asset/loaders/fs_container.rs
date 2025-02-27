@@ -1,7 +1,4 @@
-use std::path::{
-    Path,
-    PathBuf,
-};
+use std::path::PathBuf;
 use std::sync::{
     Arc,
     Weak,
@@ -30,7 +27,6 @@ use crate::asset::AssetManager;
 
 pub struct FSContainer<P: Platform> {
     path: PathBuf,
-    external: bool,
     watcher: Option<Mutex<<P::IO as IO>::FileWatcher>>,
 }
 
@@ -48,11 +44,7 @@ impl<P: Platform> AssetContainer for FSContainer<P> {
         } else {
             path
         };
-        if !self.external {
-            <P::IO as IO>::asset_exists(self.path.join(path_without_metadata)).await
-        } else {
-            <P::IO as IO>::external_asset_exists(self.path.join(path_without_metadata)).await
-        }
+        <P::IO as IO>::asset_exists(self.path.join(path_without_metadata)).await
     }
 
     async fn load(&self, path: &str) -> Option<AssetFile> {
@@ -67,11 +59,7 @@ impl<P: Platform> AssetContainer for FSContainer<P> {
             path
         };
         let final_path = self.path.join(path_without_metadata);
-        let mut file_res = if !self.external {
-            <P::IO as IO>::open_asset(final_path.clone()).await
-        } else {
-            <P::IO as IO>::open_external_asset(final_path.clone()).await
-        };
+        let file_res = <P::IO as IO>::open_asset(final_path.clone()).await;
         if let Err(e) = file_res {
             log::error!("Failed to load file using platform API. Path: {}, Error: \n{:?}", path, e);
             return None;
@@ -107,17 +95,7 @@ impl<P: Platform> FSContainer<P> {
         }
         Self {
             path: PathBuf::from(""),
-            external: false,
             watcher: Some(Mutex::new(file_watcher)),
-        }
-    }
-
-    fn new_external(base_path: &str) -> Self {
-        let path: PathBuf = Path::new(base_path).to_path_buf();
-        Self {
-            path,
-            external: true,
-            watcher: None,
         }
     }
 }

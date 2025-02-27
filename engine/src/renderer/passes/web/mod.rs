@@ -4,7 +4,6 @@ use sourcerenderer_core::{Platform, Vec4, Matrix4};
 
 use crate::asset::AssetManager;
 use crate::graphics::GraphicsContext;
-use crate::input::Input;
 use crate::renderer::asset::RendererAssetsReadOnly;
 use crate::renderer::render_path::{
     FrameInfo, RenderPath, RenderPathResult, SceneInfo
@@ -17,6 +16,7 @@ mod geometry;
 
 use self::geometry::GeometryPass;
 
+#[allow(unused)]
 #[derive(Clone)]
 #[repr(C)]
 struct CameraBuffer {
@@ -34,7 +34,6 @@ struct CameraBuffer {
 }
 
 pub struct WebRenderer<P: Platform> {
-    device: Arc<Device<P::GPUBackend>>,
     geometry: GeometryPass<P>,
     resources: RendererResources<P::GPUBackend>,
 }
@@ -71,7 +70,6 @@ impl<P: Platform> WebRenderer<P> {
         task_pool.spawn(async move { c_device.flush(QueueType::Graphics); }).detach();
 
         Self {
-            device: device.clone(),
             geometry: geometry_pass,
             resources,
         }
@@ -103,7 +101,7 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
         context: &mut GraphicsContext<P::GPUBackend>,
         swapchain: &mut Swapchain<P::GPUBackend>,
         scene: &SceneInfo<P::GPUBackend>,
-        frame_info: &FrameInfo,
+        _frame_info: &FrameInfo,
         assets: &RendererAssetsReadOnly<'_, P>
     ) -> Result<RenderPathResult<P::GPUBackend>, sourcerenderer_core::gpu::SwapchainError> {
         let backbuffer = swapchain.next_backbuffer()?;
@@ -149,6 +147,6 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
         });
     }
 
-    fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {
+    fn set_ui_data(&mut self, _data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {
     }
 }

@@ -210,19 +210,23 @@ impl VkBuffer {
         })
     }
 
+    #[inline(always)]
     pub fn handle(&self) -> vk::Buffer {
         self.buffer
     }
 
+    #[inline(always)]
     pub fn va(&self) -> Option<vk::DeviceAddress> {
         self.va
     }
 
+    #[inline(always)]
     pub fn va_offset(&self, offset: u64) -> Option<vk::DeviceAddress> {
         self.va
             .map(|va| va + offset as vk::DeviceSize)
     }
 
+    #[inline(always)]
     pub(crate) fn info(&self) -> &gpu::BufferInfo {
         &self.info
     }
@@ -345,52 +349,4 @@ pub fn buffer_usage_to_vk(usage: gpu::BufferUsage, rt_supported: bool) -> vk::Bu
     }
 
     flags
-}
-
-pub(crate) fn align_up(value: usize, alignment: usize) -> usize {
-    if alignment == 0 {
-        return value;
-    }
-    if value == 0 {
-        return 0;
-    }
-    (value + alignment - 1) & !(alignment - 1)
-}
-
-pub(crate) fn align_down(value: usize, alignment: usize) -> usize {
-    if alignment == 0 {
-        return value;
-    }
-    (value / alignment) * alignment
-}
-
-pub(crate) fn align_up_32(value: u32, alignment: u32) -> u32 {
-    if alignment == 0 {
-        return value;
-    }
-    if value == 0 {
-        return 0;
-    }
-    (value + alignment - 1) & !(alignment - 1)
-}
-
-pub(crate) fn align_down_32(value: u32, alignment: u32) -> u32 {
-    if alignment == 0 {
-        return value;
-    }
-    (value / alignment) * alignment
-}
-
-pub(crate) fn align_up_64(value: u64, alignment: u64) -> u64 {
-    if alignment == 0 {
-        return value;
-    }
-    (value + alignment - 1) & !(alignment - 1)
-}
-
-pub(crate) fn align_down_64(value: u64, alignment: u64) -> u64 {
-    if alignment == 0 {
-        return value;
-    }
-    (value / alignment) * alignment
 }

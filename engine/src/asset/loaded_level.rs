@@ -2,7 +2,7 @@ use std::{any::{Any, TypeId}, marker::PhantomPinned, ops::Deref, pin::Pin};
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use bevy_hierarchy::{BuildChildren, Parent};
+use bevy_hierarchy::BuildChildren;
 use bevy_transform::components::Transform;
 use bumpalo::Bump;
 use bumpalo::collections::Vec;
@@ -100,14 +100,17 @@ impl LevelData {
         None
     }
 
+    #[inline(always)]
     pub fn entity_count(&self) -> usize {
         self.entities.len()
     }
 
+    #[inline(always)]
     pub fn memory_usage(&self) -> usize {
         self.bump.allocated_bytes()
     }
 
+    #[inline(always)]
     pub fn component_count(&self) -> usize {
         self.total_component_count
     }

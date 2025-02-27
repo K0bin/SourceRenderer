@@ -2,13 +2,14 @@ use std::sync::Arc;
 
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
 
-use crate::{asset::AssetManager, graphics::*, renderer::{asset::{GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssetsReadOnly}, render_path::RenderPassParameters, renderer_resources::RendererResources}};
+use crate::{asset::AssetManager, graphics::*, renderer::{asset::{GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssetsReadOnly}, renderer_resources::RendererResources}};
 
 pub struct BlitPass {
     pipeline_handle: GraphicsPipelineHandle
 }
 
 impl BlitPass {
+    #[allow(unused)]
     pub fn new<P: Platform>(
         _barriers: &mut RendererResources<P::GPUBackend>,
         asset_manager: &Arc<AssetManager<P>>,
@@ -46,6 +47,7 @@ impl BlitPass {
         }
     }
 
+    #[inline(always)]
     pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
         assets.get_graphics_pipeline(self.pipeline_handle).is_some()
     }

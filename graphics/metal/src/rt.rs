@@ -5,7 +5,7 @@ use metal::foreign_types::ForeignType;
 
 use objc::{msg_send, sel, sel_impl};
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, Buffer};
+use sourcerenderer_core::gpu::{self, Buffer as _};
 
 use super::*;
 

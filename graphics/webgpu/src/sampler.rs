@@ -1,4 +1,4 @@
-use sourcerenderer_core::gpu::{self, SamplerInfo};
+use sourcerenderer_core::gpu;
 use web_sys::{GpuAddressMode, GpuDevice, GpuFilterMode, GpuMipmapFilterMode, GpuSampler, GpuSamplerDescriptor};
 
 use crate::pipeline::compare_func_to_webgpu;
@@ -38,7 +38,7 @@ fn address_mode_to_webgpu(address_mode: gpu::AddressMode) -> GpuAddressMode {
 }
 
 impl WebGPUSampler {
-    pub fn new(device: &GpuDevice, info: &SamplerInfo, name: Option<&str>) -> Result<Self, ()> {
+    pub fn new(device: &GpuDevice, info: &gpu::SamplerInfo, name: Option<&str>) -> Result<Self, ()> {
         let descriptor = GpuSamplerDescriptor::new();
         descriptor.set_min_filter(filter_to_webgpu(info.min_filter));
         descriptor.set_mag_filter(filter_to_webgpu(info.mag_filter));
@@ -64,6 +64,7 @@ impl WebGPUSampler {
         })
     }
 
+    #[inline(always)]
     pub(crate) fn handle(&self) -> &GpuSampler {
         &self.sampler
     }

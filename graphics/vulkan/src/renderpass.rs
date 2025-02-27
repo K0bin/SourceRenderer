@@ -1,18 +1,6 @@
-use std::{
-    cmp::max,
-    collections::HashMap,
-    hash::{
-        Hash,
-        Hasher,
-    },
-    marker::PhantomData,
-    sync::Arc,
-    usize,
-};
-
 use ash::vk;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, ClearDepthStencilValue, LoadOpColor, LoadOpDepthStencil, StoreOp};
+use sourcerenderer_core::gpu;
 
 use super::*;
 
@@ -97,7 +85,7 @@ pub(crate) fn begin_render_pass(
     let mut stencil_attachment: *const vk::RenderingAttachmentInfo = std::ptr::null();
 
     if let Some(dsv) = render_pass.depth_stencil.as_ref() {
-        let clear_value = if let LoadOpDepthStencil::Clear(clear_value) = dsv.load_op { clear_value } else { ClearDepthStencilValue::DEPTH_ONE };
+        let clear_value = if let gpu::LoadOpDepthStencil::Clear(clear_value) = dsv.load_op { clear_value } else { gpu::ClearDepthStencilValue::DEPTH_ONE };
         depth_stencil_attachment.clear_value = vk::ClearValue {
             depth_stencil: vk::ClearDepthStencilValue {
                 depth: clear_value.depth,
@@ -106,7 +94,7 @@ pub(crate) fn begin_render_pass(
         };
         depth_stencil_attachment.image_layout = vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         depth_stencil_attachment.image_view = dsv.view.view_handle();
-        if let StoreOp::<VkBackend>::Resolve(resolve_view) = &dsv.store_op {
+        if let gpu::StoreOp::<VkBackend>::Resolve(resolve_view) = &dsv.store_op {
             depth_stencil_attachment.resolve_image_layout = vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL;
             depth_stencil_attachment.resolve_image_view = resolve_view.view.view_handle();
             depth_stencil_attachment.resolve_mode = resolve_mode_to_vk(resolve_view.mode);
@@ -141,7 +129,7 @@ pub(crate) fn begin_render_pass(
 
 
 pub(crate) fn render_target_to_rendering_attachment_info<'a>(render_target: &'a gpu::RenderTarget<'a, VkBackend>) -> vk::RenderingAttachmentInfo<'a> {
-    let (resolve_view, resolve_layout, resolve_mode) = if let StoreOp::<VkBackend>::Resolve(resolve_attachment) = &render_target.store_op {
+    let (resolve_view, resolve_layout, resolve_mode) = if let gpu::StoreOp::<VkBackend>::Resolve(resolve_attachment) = &render_target.store_op {
         (resolve_attachment.view.view_handle(), vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL, resolve_mode_to_vk(resolve_attachment.mode))
     } else { Default::default() };
 
@@ -153,7 +141,7 @@ pub(crate) fn render_target_to_rendering_attachment_info<'a>(render_target: &'a 
         image_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
         load_op: load_op_color_to_vk(render_target.load_op),
         store_op: store_op_to_vk(&render_target.store_op),
-        clear_value: if let LoadOpColor::Clear(clear_color) = render_target.load_op { clear_color_to_vk(clear_color) } else { vk::ClearValue::default() },
+        clear_value: if let gpu::LoadOpColor::Clear(clear_color) = render_target.load_op { clear_color_to_vk(clear_color) } else { vk::ClearValue::default() },
         ..Default::default()
     }
 }

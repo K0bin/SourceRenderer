@@ -17,7 +17,7 @@ use super::*;
 pub struct VkBindlessDescriptorSet {
     device: Arc<RawVkDevice>,
     inner: Mutex<VkBindlessInner>,
-    descriptor_count: u32,
+    _descriptor_count: u32,
     layout: Arc<VkDescriptorSetLayout>,
     key: VkDescriptorSetLayoutKey,
 }
@@ -116,7 +116,7 @@ impl VkBindlessDescriptorSet {
 
         Self {
             device: device.clone(),
-            descriptor_count: BINDLESS_TEXTURE_COUNT,
+            _descriptor_count: BINDLESS_TEXTURE_COUNT,
             inner: Mutex::new(VkBindlessInner {
                 descriptor_pool,
                 descriptor_set,
@@ -126,10 +126,12 @@ impl VkBindlessDescriptorSet {
         }
     }
 
+    #[inline(always)]
     pub(super) fn layout(&self) -> (&VkDescriptorSetLayoutKey, &Arc<VkDescriptorSetLayout>) {
         (&self.key, &self.layout)
     }
 
+    #[inline(always)]
     pub fn descriptor_set_handle(&self) -> vk::DescriptorSet {
         let lock = self.inner.lock().unwrap();
         lock.descriptor_set

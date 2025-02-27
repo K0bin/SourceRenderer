@@ -27,12 +27,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-extern crate md5;
-extern crate rsa;
-extern crate crc;
-extern crate rand;
-extern crate io_util;
-
 mod utilities;
 mod package;
 mod archive_md5_section_entry;

@@ -9,14 +9,13 @@ use crate::asset::ModelHandle;
 use crate::graphics::*;
 
 pub struct AccelerationStructureUpdatePass<P: Platform> {
-    device: Arc<Device<P::GPUBackend>>,
     blas_map: HashMap<ModelHandle, Arc<AccelerationStructure<P::GPUBackend>>>,
     acceleration_structure: Arc<AccelerationStructure<P::GPUBackend>>,
 }
 
 impl<P: Platform> AccelerationStructureUpdatePass<P> {
     pub fn new(
-        device: &Arc<Device<P::GPUBackend>>,
+        _device: &Arc<Device<P::GPUBackend>>,
         init_cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>
     ) -> Self {
         let info = TopLevelAccelerationStructureInfo {
@@ -27,7 +26,6 @@ impl<P: Platform> AccelerationStructureUpdatePass<P> {
         ).unwrap();
 
         Self {
-            device: device.clone(),
             blas_map: HashMap::new(),
             acceleration_structure: Arc::new(acceleration_structure),
         }
@@ -152,6 +150,7 @@ impl<P: Platform> AccelerationStructureUpdatePass<P> {
         }]);
     }
 
+    #[inline(always)]
     pub fn acceleration_structure(
         &self,
     ) -> &Arc<AccelerationStructure<P::GPUBackend>> {

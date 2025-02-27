@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::{path::Path, sync::Arc};
 
 use bevy_math::Vec4Swizzles as _;
@@ -254,6 +253,7 @@ impl<P: Platform> ShadowMapPass<P> {
         cmd_buffer.end_label();
     }
 
+    #[inline(always)]
     pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
         assets.get_graphics_pipeline(self.pipeline).is_some() && assets.get_compute_pipeline(self.draw_prep_pipeline).is_some()
     }
@@ -419,10 +419,13 @@ impl<P: Platform> ShadowMapPass<P> {
         }
     }
 
+    #[allow(unused)]
+    #[inline(always)]
     pub fn resolution(&self) -> u32 {
         self.shadow_map_res
     }
 
+    #[inline(always)]
     pub fn cascades(&self) -> &[ShadowMapCascade] {
         return &self.cascades;
     }

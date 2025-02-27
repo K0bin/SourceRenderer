@@ -9,7 +9,7 @@ use super::*;
 
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::GPUBackend;
-use sourcerenderer_core::{Platform, Vec4};
+use sourcerenderer_core::Vec4;
 
 pub struct RendererTexture<B: GPUBackend> {
     pub(crate) view: Arc<TextureView<B>>,
@@ -201,10 +201,12 @@ impl RendererModel {
         }
     }
 
+    #[inline(always)]
     pub fn mesh_handle(&self) -> MeshHandle {
         self.mesh
     }
 
+    #[inline(always)]
     pub fn material_handles(&self) -> &[MaterialHandle] {
         &self.materials
     }

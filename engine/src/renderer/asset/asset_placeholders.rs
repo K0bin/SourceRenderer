@@ -1,6 +1,8 @@
-use sourcerenderer_core::{gpu::{Format, SampleCount, TextureDimension, TextureInfo, TextureUsage, TextureViewInfo}, Platform, Vec4};
+use sourcerenderer_core::{Platform, Vec4};
 
 use super::*;
+
+use crate::graphics::*;
 
 pub struct AssetPlaceholders<P: Platform> {
     texture_white: RendererTexture<P::GPUBackend>,
@@ -84,14 +86,17 @@ impl<P: Platform> AssetPlaceholders<P> {
         }
     }
 
+    #[inline(always)]
     pub fn texture_black(&self) -> &RendererTexture<P::GPUBackend> {
         &self.texture_black
     }
 
+    #[inline(always)]
     pub fn texture_white(&self) -> &RendererTexture<P::GPUBackend> {
         &self.texture_white
     }
 
+    #[inline(always)]
     pub fn material(&self) -> &RendererMaterial {
         &self.material
     }

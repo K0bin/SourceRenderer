@@ -1,8 +1,7 @@
-use std::{marker::PhantomData, sync::Arc};
+use std::sync::Arc;
 
 use bevy_app::{Plugin, PreUpdate};
-use bevy_ecs::schedule::Schedule;
-use bevy_ecs::system::{Res, Resource};
+use bevy_ecs::system::Resource;
 use bevy_ecs::world::World;
 use sourcerenderer_core::{Platform, PlatformPhantomData};
 

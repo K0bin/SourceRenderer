@@ -18,6 +18,8 @@ use sourcerenderer_core::gpu;
 
 use super::*;
 
+use bitflags::bitflags;
+
 const SWAPCHAIN_EXT_NAME: &str = "VK_KHR_swapchain";
 const MEMORY_BUDGET_EXT_NAME: &str = "VK_EXT_memory_budget";
 const ACCELERATION_STRUCTURE_EXT_NAME: &str = "VK_KHR_acceleration_structure";
@@ -83,10 +85,12 @@ impl VkAdapter {
         }
     }
 
+    #[inline(always)]
     pub fn physical_device_handle(&self) -> vk::PhysicalDevice {
         self.physical_device
     }
 
+    #[inline(always)]
     pub fn raw_instance(&self) -> &Arc<RawVkInstance> {
         &self.instance
     }
@@ -735,6 +739,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         )
     }
 
+    #[inline(always)]
     fn adapter_type(&self) -> gpu::AdapterType {
         match self.properties.device_type {
             vk::PhysicalDeviceType::DISCRETE_GPU => gpu::AdapterType::Discrete,

@@ -1,5 +1,3 @@
-use std::hash::Hash;
-
 use crate::Matrix4;
 
 use super::*;

@@ -1,4 +1,3 @@
-use std::ffi::c_void;
 use std::ops::Deref;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -62,14 +61,17 @@ pub struct RawVkHostImageCopyEntries {
 }
 
 impl RawVkDevice {
+    #[inline(always)]
     pub fn graphics_queue(&self) -> ReentrantMutexGuard<vk::Queue> {
         self.graphics_queue.lock()
     }
 
+    #[inline(always)]
     pub fn compute_queue(&self) -> Option<ReentrantMutexGuard<vk::Queue>> {
         self.compute_queue.as_ref().map(|queue| queue.lock())
     }
 
+    #[inline(always)]
     pub fn transfer_queue(&self) -> Option<ReentrantMutexGuard<vk::Queue>> {
         self.transfer_queue.as_ref().map(|queue| queue.lock())
     }

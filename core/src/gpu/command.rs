@@ -5,6 +5,8 @@ use crate::Vec3UI;
 
 use super::*;
 
+use bitflags::bitflags;
+
 #[derive(Clone)]
 pub struct Viewport {
   pub position: Vec2,

@@ -11,6 +11,7 @@ use std::{
 use ash::vk::{self, Handle as _};
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{self, Buffer as _, Shader as _};
+use sourcerenderer_core::{align_up_32, align_up_64};
 
 use super::*;
 
@@ -1096,46 +1097,50 @@ impl VkPipeline {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub(super) fn handle(&self) -> vk::Pipeline {
         self.pipeline
     }
 
-    #[inline]
+    #[inline(always)]
     pub(super) fn layout(&self) -> &Arc<VkPipelineLayout> {
         &self.layout
     }
 
+    #[allow(unused)]
+    #[inline(always)]
     pub(super) fn pipeline_type(&self) -> VkPipelineType {
         self.pipeline_type
     }
 
-    #[inline]
+    #[inline(always)]
     pub(super) fn uses_bindless_texture_set(&self) -> bool {
         self.uses_bindless_texture_set
     }
 
-    #[inline]
+    #[allow(unused)]
+    #[inline(always)]
     pub(super) fn sbt_buffer_handle(&self) -> vk::Buffer {
         self.sbt.as_ref().unwrap().buffer
     }
 
-    #[inline]
-    pub(super) fn sbt_buffer_offset(&self) -> vk::Buffer {
-        self.sbt.as_ref().unwrap().buffer
+    #[allow(unused)]
+    #[inline(always)]
+    pub(super) fn sbt_buffer_offset(&self) -> u64 {
+        self.sbt.as_ref().unwrap().buffer_offset
     }
 
-    #[inline]
+    #[inline(always)]
     pub(super) fn raygen_sbt_region(&self) -> &vk::StridedDeviceAddressRegionKHR {
         &self.sbt.as_ref().unwrap().raygen_region
     }
 
-    #[inline]
+    #[inline(always)]
     pub(super) fn closest_hit_sbt_region(&self) -> &vk::StridedDeviceAddressRegionKHR {
         &self.sbt.as_ref().unwrap().closest_hit_region
     }
 
-    #[inline]
+    #[inline(always)]
     pub(super) fn miss_sbt_region(&self) -> &vk::StridedDeviceAddressRegionKHR {
         &self.sbt.as_ref().unwrap().miss_region
     }

@@ -25,12 +25,10 @@ pub struct GraphicsContext<B: GPUBackend> {
 }
 
 pub struct ThreadContext<B: GPUBackend> {
-  device: Arc<B::Device>,
   frames: AtomicRefCell<SmallVec<[FrameContext<B>; 5]>>
 }
 
 pub struct FrameContext<B: GPUBackend> {
-  device: Arc<B::Device>,
   command_pool: FrameContextCommandPool<B>,
   secondary_command_pool: FrameContextCommandPool<B>,
   buffer_allocator: Arc<TransientBufferAllocator<B>>,
@@ -83,7 +81,7 @@ impl<B: GPUBackend> GraphicsContext<B> {
     }
   }
 
-  pub fn get_command_buffer(&mut self, queue_type: QueueType) -> CommandBufferRecorder<B> {
+  pub fn get_command_buffer(&mut self, _queue_type: QueueType) -> CommandBufferRecorder<B> {
     let thread_context = self.get_thread_context();
     let mut frame_context = thread_context.get_frame(self.current_frame);
 
@@ -141,6 +139,7 @@ impl<B: GPUBackend> GraphicsContext<B> {
     self.thread_contexts.get_or(|| ThreadContext::new(&self.device, &self.memory_allocator, &self.destroyer, self.prerendered_frames))
   }
 
+  #[inline(always)]
   pub fn prerendered_frames(&self) -> u32 {
     self.prerendered_frames
   }
@@ -166,7 +165,6 @@ impl<B: GPUBackend> ThreadContext<B> {
     }
 
     Self {
-      device: device.clone(),
       frames: AtomicRefCell::new(frames),
     }
   }
@@ -188,7 +186,6 @@ impl<B: GPUBackend> FrameContext<B> {
     let (secondary_sender, secondary_receiver) = crossbeam_channel::unbounded::<Box<CommandBuffer<B>>>();
     let buffer_allocator = TransientBufferAllocator::new(device, memory_allocator, destroyer, memory_allocator.is_uma());
     Self {
-      device: device.clone(),
       command_pool: FrameContextCommandPool {
         command_pool,
         sender,

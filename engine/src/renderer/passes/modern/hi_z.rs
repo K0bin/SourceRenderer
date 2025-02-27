@@ -16,13 +16,13 @@ pub struct HierarchicalZPass<P: Platform> {
     ffx_pipeline: ComputePipelineHandle,
     copy_pipeline: ComputePipelineHandle,
     sampler: Arc<crate::graphics::Sampler<P::GPUBackend>>,
-    device: Arc<crate::graphics::Device<P::GPUBackend>>,
 }
 
 impl<P: Platform> HierarchicalZPass<P> {
     pub const HI_Z_BUFFER_NAME: &'static str = "Hierarchical Z Buffer";
     const FFX_COUNTER_BUFFER_NAME: &'static str = "FFX Downscaling Counter Buffer";
 
+    #[allow(unused)]
     pub fn new(
         device: &Arc<Device<P::GPUBackend>>,
         resources: &mut RendererResources<P::GPUBackend>,
@@ -88,10 +88,10 @@ impl<P: Platform> HierarchicalZPass<P> {
             copy_pipeline,
             ffx_pipeline,
             sampler,
-            device: device.clone(),
         }
     }
 
+    #[inline(always)]
     pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
         assets.get_compute_pipeline(self.copy_pipeline).is_some() && assets.get_compute_pipeline(self.ffx_pipeline).is_some()
     }

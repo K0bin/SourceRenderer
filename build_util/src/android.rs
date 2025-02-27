@@ -31,7 +31,7 @@ DEALINGS IN THE SOFTWARE.
 
  use std::{fs, path::{Path, PathBuf}, ffi::OsString, io, io::ErrorKind, env};
 
-use cargo_metadata::{semver::Version};
+use cargo_metadata::semver::Version;
 
  fn highest_version_ndk_in_path(ndk_dir: &Path) -> Option<PathBuf> {
   if ndk_dir.exists() {

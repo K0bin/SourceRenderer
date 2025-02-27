@@ -39,6 +39,7 @@ pub struct LightBinningPass {
 impl LightBinningPass {
     pub const LIGHT_BINNING_BUFFER_NAME: &'static str = "binned_lights";
 
+    #[allow(unused)]
     pub fn new<P: Platform>(
         barriers: &mut RendererResources<P::GPUBackend>,
         asset_manager: &Arc<AssetManager<P>>,
@@ -61,6 +62,7 @@ impl LightBinningPass {
         }
     }
 
+    #[inline(always)]
     pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
         assets.get_compute_pipeline(self.light_binning_pipeline).is_some()
     }

@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use bevy_app::Plugin;
 use bevy_ecs::system::Resource;
 use sourcerenderer_core::{gpu::GPUBackend, platform::Window, Platform};
 

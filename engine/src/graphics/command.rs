@@ -2,27 +2,11 @@ use std::{marker::PhantomData, sync::Arc};
 
 use crossbeam_channel::Sender;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{*, CommandBuffer as GPUCommandBuffer};
-
-use sourcerenderer_core::gpu;
+use sourcerenderer_core::gpu::{self, CommandBuffer as _, Buffer as _};
 
 use super::*;
 
 use super::{BottomLevelAccelerationStructureInfo, AccelerationStructure};
-
-pub use sourcerenderer_core::gpu::{
-    LoadOpColor,
-    LoadOpDepthStencil,
-    BarrierSync,
-    BarrierAccess,
-    IndexFormat,
-    ShaderType,
-    Viewport,
-    Scissor,
-    BindingFrequency,
-    ClearColor,
-    ClearDepthStencilValue
-};
 
 const DEBUG_FORCE_FAT_BARRIER: bool = false;
 
@@ -846,9 +830,13 @@ impl<B: GPUBackend> CommandBuffer<B> {
         }
     }
 
+    #[inline(always)]
     pub(super) fn handle(&self) -> &B::CommandBuffer {
         &self.cmd_buffer
     }
+
+    #[allow(unused)]
+    #[inline(always)]
     pub(super) fn handle_mut(&mut self) -> &mut B::CommandBuffer {
         &mut self.cmd_buffer
     }

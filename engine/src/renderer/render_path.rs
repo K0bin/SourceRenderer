@@ -1,14 +1,14 @@
 use std::sync::Arc;
 use web_time::Duration;
 
-use sourcerenderer_core::gpu::{self, GPUBackend};
+use sourcerenderer_core::gpu;
 use sourcerenderer_core::Platform;
 
 use super::asset::{RendererAssetsReadOnly, RendererTexture};
 use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
 use crate::asset::AssetManager;
-use crate::graphics::{BufferRef, GraphicsContext, TextureView};
+use crate::graphics::{BufferRef, GraphicsContext, GPUBackend};
 use crate::ui::UIDrawData;
 use crate::graphics::*;
 

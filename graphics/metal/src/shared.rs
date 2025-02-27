@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex, RwLock};
 
-use sourcerenderer_core::gpu::{self, Format};
+use sourcerenderer_core::gpu;
 
 use crate::{MTLBindlessArgumentBuffer, MTLGraphicsPipeline, MTLShader};
 
@@ -54,7 +54,7 @@ impl MTLShared {
                 },
                 primitive_type: gpu::PrimitiveType::Triangles,
                 render_target_formats: &[gpu::Format::BGRA8UNorm],
-                depth_stencil_format: Format::Unknown
+                depth_stencil_format: gpu::Format::Unknown
             }, Some("Blit Pipeline")
         );
 

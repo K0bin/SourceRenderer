@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::{ops::{Deref, DerefMut}, sync::Arc, time::Duration};
 
 use atomic_refcell::{AtomicRef, AtomicRefCell, AtomicRefMut, BorrowMutError};

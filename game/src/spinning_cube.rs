@@ -1,18 +1,15 @@
 use std::f32;
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 use bevy_app::{App, Plugin, SpawnScene};
 use bevy_ecs::component::Component;
-use bevy_ecs::query::{Has, With};
+use bevy_ecs::query::With;
 use bevy_ecs::system::{Commands, Query, Res, ResMut, Resource};
 use bevy_input::keyboard::KeyCode;
 use bevy_input::ButtonInput;
-use bevy_transform::bundles::TransformBundle;
 use bevy_transform::components::Transform;
 use bevy_log::*;
-use sourcerenderer_core::gpu::{Format, SampleCount, TextureDimension, TextureInfo, TextureUsage};
-use sourcerenderer_core::input::Key;
+use sourcerenderer_engine::graphics::*;
 use sourcerenderer_core::{
     Platform, PlatformPhantomData, Quaternion, Vec2, Vec3
 };

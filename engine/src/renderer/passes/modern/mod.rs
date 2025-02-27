@@ -19,6 +19,7 @@ mod shading_pass;
 mod visibility_buffer;
 mod shadow_map;
 
+#[allow(unused)]
 #[cfg(not(target_arch = "wasm32"))]
 pub use modern_renderer::ModernRenderer;
 pub use visibility_buffer::VisibilityBufferPass;

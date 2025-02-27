@@ -617,6 +617,7 @@ impl gpu::Sampler for VkSampler {
     }
 }
 
+#[allow(unused)]
 pub(crate) fn texture_subresource_to_vk(subresource: &gpu::TextureSubresource, texture_format: gpu::Format) -> vk::ImageSubresource {
     vk::ImageSubresource {
         mip_level: subresource.mip_level,

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use metal::{self, MTLRegion};
 use smallvec::{smallvec, SmallVec};
 
-use sourcerenderer_core::{align_up_32, gpu::{self, DedicatedAllocationPreference, Texture as _, TextureLayout}};
+use sourcerenderer_core::{align_up_32, gpu::{self, Texture as _}};
 
 use super::*;
 
@@ -168,9 +168,9 @@ impl gpu::Device<MTLBackend> for MTLDevice {
 
         gpu::ResourceHeapInfo {
             dedicated_allocation_preference: if !is_apple_gpu || info.usage.gpu_writable() {
-                DedicatedAllocationPreference::RequireDedicated
+                gpu::DedicatedAllocationPreference::RequireDedicated
             } else {
-                DedicatedAllocationPreference::DontCare
+                gpu::DedicatedAllocationPreference::DontCare
             },
             memory_type_mask,
             alignment: size_and_align.align,
@@ -232,9 +232,9 @@ impl gpu::Device<MTLBackend> for MTLDevice {
         let is_uma = self.device.has_unified_memory();
         gpu::ResourceHeapInfo {
             dedicated_allocation_preference: if !is_apple_gpu || info.usage.gpu_writable() {
-                DedicatedAllocationPreference::RequireDedicated
+                gpu::DedicatedAllocationPreference::RequireDedicated
             } else {
-                DedicatedAllocationPreference::DontCare
+                gpu::DedicatedAllocationPreference::DontCare
             },
             memory_type_mask: if !is_uma { 1 | 1 << 1 | 1 << 2 } else { 1 | 1 << 1 },
             alignment: size_and_align.align,
@@ -300,7 +300,7 @@ impl gpu::Device<MTLBackend> for MTLDevice {
 
     unsafe fn transition_texture(&self, _dst: &MTLTexture, _transition: &gpu::CPUTextureTransition<'_, MTLBackend>) {}
 
-    unsafe fn copy_to_texture(&self, src: *const std::ffi::c_void, dst: &MTLTexture, _texture_layout: TextureLayout, region: &gpu::MemoryTextureCopyRegion) {
+    unsafe fn copy_to_texture(&self, src: *const std::ffi::c_void, dst: &MTLTexture, _texture_layout: gpu::TextureLayout, region: &gpu::MemoryTextureCopyRegion) {
         let mtl_region = MTLRegion::new_3d(region.texture_offset.x as u64, region.texture_offset.y as u64, region.texture_offset.z as u64,
             region.texture_extent.x as u64, region.texture_extent.y as u64, region.texture_extent.z as u64);
 

@@ -1,12 +1,11 @@
 use std::io::{Read, BufReader, Seek, Error as IOError, Result as IOResult, SeekFrom};
-use package_entry::PackageEntry;
+use crate::package_entry::PackageEntry;
 use std::collections::HashMap;
-use archive_md5_section_entry::ArchiveMD5SectionEntry;
+use crate::archive_md5_section_entry::ArchiveMD5SectionEntry;
 use io_util::{PrimitiveRead, StringRead, StringReadError, RawDataRead};
 use crc::{self, Crc};
-use utilities::AsnKeyParser;
+use crate::utilities::AsnKeyParser;
 use rsa::{BigUint, Pkcs1v15Encrypt};
-use rand::rngs::OsRng;
 use std::sync::Mutex;
 
 #[derive(Debug)]
@@ -441,7 +440,7 @@ impl<R> Package<R>
     }
     let data = data_res.unwrap();
 
-    let mut rng = OsRng;
+    let mut rng = rsa::rand_core::OsRng;
     let enc_data_res = public_key.encrypt(&mut rng, Pkcs1v15Encrypt, &data);
     if enc_data_res.is_err() {
       return false;

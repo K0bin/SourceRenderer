@@ -1,11 +1,11 @@
-use serde::Deserialize;
-use serde::Serialize;
-use smallvec::SmallVec;
+use std::hash::Hasher;
+use std::hash::Hash;
 
 use super::*;
 
-use std::hash::Hasher;
-use std::hash::Hash;
+use serde::Deserialize;
+use serde::Serialize;
+use bitflags::bitflags;
 
 #[derive(Debug, Clone, Copy, PartialEq, Hash, Eq)]
 pub enum InputRate {

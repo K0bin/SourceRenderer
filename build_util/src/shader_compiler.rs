@@ -192,7 +192,7 @@ fn read_metadata(
     let mut resources: [Vec<gpu::Resource>; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
     let mut push_constant_size = 0u32;
     let mut uses_bindless_texture_set = false;
-    let mut stage_input_count = 0u32;
+    let stage_input_count: u32;
     let mut max_stage_input = 0u32;
 
     // Generate metadata

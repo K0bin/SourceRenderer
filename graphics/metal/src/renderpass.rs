@@ -1,6 +1,6 @@
 use metal;
 
-use sourcerenderer_core::gpu::{self, LoadOpColor, LoadOpDepthStencil, StoreOp, TextureView};
+use sourcerenderer_core::gpu::{self, TextureView as _};
 
 use super::*;
 
@@ -37,12 +37,12 @@ pub(crate) fn render_pass_to_descriptors(info: &gpu::RenderPassBeginInfo<MTLBack
         attachment_desc.set_texture(Some(rt.view.handle()));
         attachment_desc.set_level(rt.view.info().base_mip_level as u64);
         attachment_desc.set_slice(rt.view.info().base_array_layer as u64);
-        if let StoreOp::Resolve(resolve_view) = &rt.store_op {
+        if let gpu::StoreOp::Resolve(resolve_view) = &rt.store_op {
             attachment_desc.set_texture(Some(resolve_view.view.handle()));
             attachment_desc.set_level(resolve_view.view.info().base_mip_level as u64);
             attachment_desc.set_slice(resolve_view.view.info().base_array_layer as u64);
         }
-        if let LoadOpColor::Clear(color) = rt.load_op {
+        if let gpu::LoadOpColor::Clear(color) = rt.load_op {
             attachment_desc.set_clear_color(metal::MTLClearColor::new(
                 color.as_f32()[0] as f64,
                 color.as_f32()[1] as f64,
@@ -59,12 +59,12 @@ pub(crate) fn render_pass_to_descriptors(info: &gpu::RenderPassBeginInfo<MTLBack
         attachment_desc.set_texture(Some(dsv.view.handle()));
         attachment_desc.set_level(dsv.view.info().base_mip_level as u64);
         attachment_desc.set_slice(dsv.view.info().base_array_layer as u64);
-        if let StoreOp::Resolve(resolve_view) = &dsv.store_op {
+        if let gpu::StoreOp::Resolve(resolve_view) = &dsv.store_op {
             attachment_desc.set_texture(Some(resolve_view.view.handle()));
             attachment_desc.set_level(resolve_view.view.info().base_mip_level as u64);
             attachment_desc.set_slice(resolve_view.view.info().base_array_layer as u64);
         }
-        if let LoadOpDepthStencil::Clear(value) = dsv.load_op {
+        if let gpu::LoadOpDepthStencil::Clear(value) = dsv.load_op {
             attachment_desc.set_clear_depth(value.depth as f64);
         }
     }

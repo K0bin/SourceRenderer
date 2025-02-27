@@ -2,8 +2,8 @@
 name = "sourcerenderer_vmt"
 version = "0.1.0"
 authors = ["Robin Kertels <robin.kertels@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
-futures-io = "0.3.31"
+futures-io = "0.3"
 io_util = { path = "../../io_util" }

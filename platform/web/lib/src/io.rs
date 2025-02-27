@@ -1,14 +1,10 @@
 use std::future::Future;
-use std::io::{Read, Seek, SeekFrom, Result as IOResult, Error as IOError, ErrorKind};
-use std::pin::{pin, Pin};
-use std::process::Output;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::io::{Result as IOResult, Error as IOError, ErrorKind};
+use std::pin::Pin;
 use std::path::Path;
 use std::task::{Context, Poll};
 
 use futures_lite::io::Cursor;
-use futures_lite::{AsyncRead, AsyncSeek};
-use log::info;
 
 use sourcerenderer_core::platform::{IO, FileWatcher};
 
@@ -79,7 +75,7 @@ impl IO for WebIO {
 
 pub struct NopWatcher {}
 impl FileWatcher for NopWatcher {
-    fn watch<P: AsRef<Path>>(&mut self, path: P) {}
+    fn watch<P: AsRef<Path>>(&mut self, _path: P) {}
 
-    fn unwatch<P: AsRef<Path>>(&mut self, path: P) {}
+    fn unwatch<P: AsRef<Path>>(&mut self, _path: P) {}
 }

@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use bevy_math::Vec4Swizzles;
 use sourcerenderer_core::{Platform, Vec4};
 
 use crate::asset::AssetManager;
@@ -22,6 +21,7 @@ impl DrawPrepPass {
     pub const VISIBLE_DRAWABLES_BITFIELD_BUFFER: &'static str = "VisibleDrawables";
     pub const INDIRECT_DRAW_BUFFER: &'static str = "IndirectDraws";
 
+    #[allow(unused)]
     pub fn new<P: Platform>(
         resources: &mut RendererResources<P::GPUBackend>,
         asset_manager: &Arc<AssetManager<P>>,
@@ -55,6 +55,7 @@ impl DrawPrepPass {
         }
     }
 
+    #[inline(always)]
     pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
         assets.get_compute_pipeline(self.culling_pipeline).is_some() && assets.get_compute_pipeline(self.prep_pipeline).is_some()
     }
@@ -214,8 +215,4 @@ impl DrawPrepPass {
         cmd_buffer.dispatch((part_count + 63) / 64, 1, 1);
         cmd_buffer.end_label();
     }
-}
-
-fn normalize_plane(p: Vec4) -> Vec4 {
-    p / p.xyz().length()
 }

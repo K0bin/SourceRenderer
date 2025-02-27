@@ -1,7 +1,7 @@
 use metal;
 use metal::foreign_types::ForeignType;
 
-use sourcerenderer_core::gpu::{self, Format};
+use sourcerenderer_core::gpu;
 
 use super::*;
 
@@ -57,7 +57,7 @@ fn compare_op_to_mtl(compare_op: gpu::CompareFunc) -> metal::MTLCompareFunction 
     }
 }
 
-pub(crate) fn format_from_metal(format: metal::MTLPixelFormat) -> Format {
+pub(crate) fn format_from_metal(format: metal::MTLPixelFormat) -> gpu::Format {
     match format {
         metal::MTLPixelFormat::RGBA8Unorm => gpu::Format::RGBA8UNorm,
         metal::MTLPixelFormat::RGBA16Float => gpu::Format::RGBA16Float,

@@ -8,7 +8,11 @@ use build_util::{
 };
 
 fn main() {
-    build_util::build_script_logger::init();
+    build_util::build_script_logger::init_with_filter(|record| {
+        let msg = format!("{}", record.args());
+        !msg.contains("Unknown decoration Block") // bullshit warning by Naga
+    });
+
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let _out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 

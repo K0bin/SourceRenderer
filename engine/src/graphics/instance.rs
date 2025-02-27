@@ -1,7 +1,9 @@
 use std::sync::{Arc, Weak};
 
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{GPUBackend, Instance as GPUInstance, AdapterType, Adapter as GPUAdapter};
+use sourcerenderer_core::gpu::{Instance as _, Adapter as _};
+
+use super::*;
 
 pub struct Instance<B: GPUBackend> {
     instance: Arc<B::Instance>,
@@ -28,10 +30,12 @@ impl<B: GPUBackend> Instance<B> {
         result
     }
 
+    #[inline(always)]
     pub fn list_adapters(&self) -> &[Adapter<B>] {
         &self.adapters
     }
 
+    #[inline(always)]
     pub fn handle(&self) -> &B::Instance {
         &self.instance
     }
@@ -43,6 +47,7 @@ pub struct Adapter<B: GPUBackend> {
 }
 
 impl<B: GPUBackend> Adapter<B> {
+    #[inline(always)]
     pub fn adapter_type(&self) -> AdapterType {
         unsafe { (*self.adapter).adapter_type() }
     }

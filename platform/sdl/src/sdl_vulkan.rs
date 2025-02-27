@@ -1,10 +1,9 @@
 use std::error::Error;
 
 use sdl2::video::WindowBuilder;
-use sourcerenderer_core::{platform::Window, Platform};
 use sourcerenderer_vulkan::{VkBackend, VkDevice, VkInstance, VkSurface, VkSwapchain};
 
-use crate::{sdl_platform::{SDLWindow, StdIO, StdThreadHandle}, SDLPlatform};
+use crate::sdl_platform::SDLWindow;
 
 use ash::khr::surface::Instance as SurfaceLoader;
 use ash::vk::{

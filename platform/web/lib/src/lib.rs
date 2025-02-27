@@ -1,4 +1,4 @@
-use js_sys::{Promise, Uint8Array};
+use js_sys::Uint8Array;
 use log::info;
 use platform::WebPlatform;
 use sourcerenderer_engine::Engine as ActualEngine;

@@ -1,7 +1,7 @@
 
 use sourcerenderer_core::{gpu, Matrix4};
 use js_sys::wasm_bindgen::JsValue;
-use web_sys::{gpu_texture_usage, Gpu, GpuCanvasConfiguration, GpuCanvasContext, GpuDevice};
+use web_sys::{gpu_texture_usage, GpuCanvasConfiguration, GpuCanvasContext, GpuDevice};
 
 use crate::{surface::WebGPUSurface, texture::WebGPUTexture, WebGPUBackend, texture::format_from_webgpu, texture::format_to_webgpu};
 

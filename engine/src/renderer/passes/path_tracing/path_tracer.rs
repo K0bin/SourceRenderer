@@ -69,6 +69,7 @@ impl<P: Platform> PathTracerPass<P> {
         }
     }
 
+    #[inline(always)]
     pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
         assets.get_compute_pipeline(self.pipeline).is_some()
     }

@@ -15,7 +15,6 @@ use crate::renderer::renderer_resources::{
     RendererResources,
 };
 use crate::graphics::*;
-use crate::asset::*;
 
 pub(crate) fn scaled_halton_point(width: u32, height: u32, index: u32) -> Vec2 {
     let width_frac = 1.0f32 / (width as f32 * 0.5f32);
@@ -53,6 +52,7 @@ pub struct TAAPass {
 impl TAAPass {
     pub const TAA_TEXTURE_NAME: &'static str = "TAAOuput";
 
+    #[allow(unused)]
     pub fn new<P: Platform>(
         resolution: Vec2UI,
         resources: &mut RendererResources<P::GPUBackend>,
@@ -84,6 +84,7 @@ impl TAAPass {
         Self { pipeline }
     }
 
+    #[inline(always)]
     pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
         assets.get_compute_pipeline(self.pipeline).is_some()
     }

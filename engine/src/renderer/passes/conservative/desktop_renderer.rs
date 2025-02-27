@@ -21,7 +21,6 @@ use super::sharpen::SharpenPass;
 use super::ssao::SsaoPass;
 use super::taa::TAAPass;
 use crate::asset::AssetManager;
-use crate::input::Input;
 use crate::renderer::asset::RendererAssetsReadOnly;
 use crate::renderer::passes::blit::BlitPass;
 use crate::renderer::passes::blue_noise::BlueNoise;
@@ -85,6 +84,7 @@ struct CameraBuffer {
 }
 
 impl<P: Platform> ConservativeRenderer<P> {
+    #[allow(unused)]
     pub fn new(
         device: &Arc<crate::graphics::Device<P::GPUBackend>>,
         swapchain: &crate::graphics::Swapchain<P::GPUBackend>,
@@ -247,13 +247,13 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
         false
     }
 
-    fn write_occlusion_culling_results(&self, frame: u64, bitset: &mut Vec<u32>) {
+    fn write_occlusion_culling_results(&self, _frame: u64, _bitset: &mut Vec<u32>) {
         //self.occlusion.write_occlusion_query_results(frame, bitset);
     }
 
     fn on_swapchain_changed(
         &mut self,
-        swapchain: &Swapchain<P::GPUBackend>,
+        _swapchain: &Swapchain<P::GPUBackend>,
     ) {
         // TODO: resize render targets
     }
@@ -477,7 +477,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
         })
     }
 
-    fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {
+    fn set_ui_data(&mut self, _data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {
     }
 }
 

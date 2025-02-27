@@ -31,7 +31,7 @@ const CHUNK_SIZE: u64 = 256 << 20;
 
 pub(super) struct MemoryAllocation<H: Send + Sync> {
     allocation: Allocation<H>,
-    memory_usage: MemoryUsage
+    _memory_usage: MemoryUsage
 }
 
 impl<T: Send + Sync> AsRef<Allocation<T>> for MemoryAllocation<T> {
@@ -68,7 +68,7 @@ impl<B: GPUBackend> MemoryAllocator<B> {
         if let Some(allocation) = allocation {
             return Ok(MemoryAllocation {
                 allocation,
-                memory_usage: self.memory_usage(memory_type_index)
+                _memory_usage: self.memory_usage(memory_type_index)
             });
         }
 
@@ -82,7 +82,7 @@ impl<B: GPUBackend> MemoryAllocator<B> {
         chunk_list.push(chunk);
         Ok(MemoryAllocation {
             allocation,
-            memory_usage: self.memory_usage(memory_type_index)
+            _memory_usage: self.memory_usage(memory_type_index)
         })
     }
 
@@ -164,6 +164,7 @@ impl<B: GPUBackend> MemoryAllocator<B> {
         return mask;
     }
 
+    #[inline(always)]
     pub(super) fn memory_type_info(&self, memory_type_index: u32) -> &MemoryTypeInfo {
         let memory_types = unsafe { self.device.memory_type_infos() };
         &memory_types[(memory_type_index as usize).min(memory_types.len() - 1)]
@@ -184,6 +185,7 @@ impl<B: GPUBackend> MemoryAllocator<B> {
         }
     }
 
+    #[inline(always)]
     pub(super) fn is_uma(&self) -> bool {
         self.is_uma
     }

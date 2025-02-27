@@ -19,5 +19,6 @@ default-members = [
     "platform/sdl"
 ]
 
-[profile.release]
+[profile.debugopt]
+inherits = "release"
 debug = true

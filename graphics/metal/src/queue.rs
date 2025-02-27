@@ -6,7 +6,7 @@ use metal;
 use block::ConcreteBlock;
 
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, Swapchain};
+use sourcerenderer_core::gpu;
 use swapchain::MTLBackbuffer;
 
 use super::*;

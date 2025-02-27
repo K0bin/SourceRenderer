@@ -2,10 +2,10 @@
 name = "sourcerenderer_vtf"
 version = "0.1.0"
 authors = ["Robin Kertels <robin.kertels@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
-bitflags = "2.6.0"
-lazy_static = "1.4.0"
-futures-io = "0.3.31"
+bitflags = "2.8"
+lazy_static = "1.5"
+futures-io = "0.3"
 io_util = { path = "../../io_util" }

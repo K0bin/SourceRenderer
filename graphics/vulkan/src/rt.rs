@@ -440,10 +440,12 @@ impl VkAccelerationStructure {
         }
     }
 
+    #[inline(always)]
     fn va(&self) -> vk::DeviceAddress {
         self.va
     }
 
+    #[inline(always)]
     pub(crate) fn handle(&self) -> vk::AccelerationStructureKHR {
         self.acceleration_structure
     }
@@ -469,6 +471,8 @@ impl Drop for VkAccelerationStructure {
         unsafe {
             acceleration_structure_funcs
                 .destroy_acceleration_structure(self.acceleration_structure, None);
+
+            self.device.destroy_buffer(self.buffer, None);
         }
     }
 }

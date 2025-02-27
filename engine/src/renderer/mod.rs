@@ -16,10 +16,7 @@ pub mod asset;
 
 pub use self::command::RendererCommand;
 pub use self::drawable::DrawablePart;
-use self::drawable::{
-    RendererStaticDrawable,
-    View,
-};
+use self::drawable::RendererStaticDrawable;
 pub use self::ecs::{
     DirectionalLightComponent,
     Lightmap,

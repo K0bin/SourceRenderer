@@ -1,15 +1,9 @@
 use std::sync::Arc;
 
-use gltf::json::extensions::asset;
-use gltf::texture::{
-    MagFilter,
-    MinFilter,
-};
-use log::{debug, trace};
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::{
-    Matrix4, Platform, Quaternion, Vec2, Vec2I, Vec2UI, Vec3
+    Matrix4, Platform, Vec2, Vec2I, Vec2UI
 };
 
 use crate::asset::AssetManager;
@@ -149,6 +143,7 @@ impl<P: Platform> GeometryPass<P> {
         Self { pipeline, sampler: Arc::new(sampler) }
     }
 
+    #[inline(always)]
     pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
         assets.get_graphics_pipeline(self.pipeline).is_some()
     }

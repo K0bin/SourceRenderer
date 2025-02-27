@@ -25,6 +25,7 @@ impl WebGPUShared {
         }
     }
 
+    #[inline]
     pub(crate) fn get_bind_group_layout(&self, layout_key: &WebGPUBindGroupLayoutKey) -> Arc<WebGPUBindGroupLayout> {
         {
             let cache = self.bind_group_layouts.read().unwrap();

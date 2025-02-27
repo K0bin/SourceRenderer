@@ -31,6 +31,7 @@ impl<P: Platform> SsaoPass<P> {
     const SSAO_INTERNAL_TEXTURE_NAME: &'static str = "SSAO";
     pub const SSAO_TEXTURE_NAME: &'static str = "SSAOBlurred";
 
+    #[allow(unused)]
     pub fn new(
         device: &Arc<Device<P::GPUBackend>>,
         resolution: Vec2UI,
@@ -91,6 +92,7 @@ impl<P: Platform> SsaoPass<P> {
         }
     }
 
+    #[allow(unused)]
     fn create_hemisphere(
         device: &Arc<Device<P::GPUBackend>>,
         samples: u32,
@@ -126,6 +128,7 @@ impl<P: Platform> SsaoPass<P> {
         buffer
     }
 
+    #[inline(always)]
     pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
         assets.get_compute_pipeline(self.pipeline).is_some() && assets.get_compute_pipeline(self.blur_pipeline).is_some()
     }

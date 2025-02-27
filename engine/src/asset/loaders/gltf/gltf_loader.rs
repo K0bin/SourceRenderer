@@ -27,7 +27,6 @@ use gltf::{
 use log::warn;
 use sourcerenderer_core::{
     Platform,
-    Quaternion,
     Vec2,
     Vec3,
     Vec4,
@@ -36,7 +35,7 @@ use sourcerenderer_core::{
 use crate::asset::asset_manager::AssetFile;
 use crate::asset::loaded_level::{LoadedEntityParent, LevelData};
 use crate::asset::{
-    Asset, AssetData, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, AssetType, MeshData, MeshRange, ModelData, Vertex
+    AssetData, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, AssetType, MeshData, MeshRange, ModelData, Vertex
 };
 use crate::math::BoundingBox;
 use crate::renderer::{
@@ -310,7 +309,7 @@ impl GltfLoader {
     }
 
     async fn load_primitive<'a, P: Platform>(
-        model_name: &'a str,
+        _model_name: &'a str,
         primitive: &'a Primitive<'a>,
         asset_mgr: &'a Arc<AssetManager<P>>,
         vertices: &'a mut Vec<Vertex>,

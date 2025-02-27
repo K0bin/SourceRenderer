@@ -1,5 +1,7 @@
 use std::{hash::Hash, ffi::c_void};
 
+use bitflags::bitflags;
+
 bitflags! {
   #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
   pub struct BufferUsage: u16 {

@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+#![allow(unused_import_braces)]
 use std::{sync::Arc, collections::HashMap};
 
 //use imgui::{Context, internal::RawWrapper, FontSource, TextureId};

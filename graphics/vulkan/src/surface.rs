@@ -1,4 +1,4 @@
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::Arc;
 
 use ash::{
     khr::surface::Instance as SurfaceLoader,
@@ -28,12 +28,12 @@ impl VkSurface {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn surface_handle(&self) -> vk::SurfaceKHR {
         self.surface
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn surface_loader(&self) -> &SurfaceLoader {
         &self.surface_loader
     }

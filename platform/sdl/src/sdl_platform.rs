@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::error::Error;
-use std::io::{Read, Result as IOResult};
+use std::io::Result as IOResult;
 use std::path::{
     Path,
     PathBuf,
@@ -61,15 +61,15 @@ lazy_static! {
 
 pub struct SDLPlatform {
     sdl_context: Sdl,
-    video_subsystem: VideoSubsystem,
+    _video_subsystem: VideoSubsystem,
     event_pump: EventPump,
     window: SDLWindow,
-    mouse_pos: Vec2I,
+    _mouse_pos: Vec2I,
 }
 
 pub struct SDLWindow {
     window: sdl2::video::Window,
-    is_active: bool,
+    _is_active: bool,
 }
 
 impl SDLPlatform {
@@ -82,10 +82,10 @@ impl SDLPlatform {
 
         Box::new(SDLPlatform {
             sdl_context,
-            video_subsystem,
+            _video_subsystem: video_subsystem,
             event_pump,
             window,
-            mouse_pos: Vec2I::new(0, 0),
+            _mouse_pos: Vec2I::new(0, 0),
         })
     }
 
@@ -187,7 +187,7 @@ impl SDLWindow {
         let window = window_builder.build().unwrap();
         SDLWindow {
             window,
-            is_active: true,
+            _is_active: true,
         }
     }
 

@@ -24,6 +24,7 @@ use crate::renderer::renderer_resources::{
 
 use crate::graphics::*;
 
+#[allow(unused)]
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 struct FrameData {
@@ -473,7 +474,7 @@ impl<P: Platform> GeometryPass<P> {
                                 0,
                                 WHOLE_BUFFER,
                             );
-                            last_material = Some(material.clone());
+                            last_material = Some(material);
                         }
 
                         command_buffer.finish_binding();

@@ -20,6 +20,8 @@ use sourcerenderer_core::gpu;
 
 use super::*;
 
+use bitflags::bitflags;
+
 // TODO: clean up descriptor management
 // TODO: determine descriptor and set counts
 
@@ -168,18 +170,22 @@ impl VkDescriptorSetLayout {
         }
     }
 
+    #[inline(always)]
     pub(crate) fn handle(&self) -> vk::DescriptorSetLayout {
         self.layout
     }
 
+    #[inline(always)]
     pub(crate) fn is_empty(&self) -> bool {
         self.is_empty
     }
 
+    #[inline(always)]
     pub(crate) fn max_used_binding(&self) -> u32 {
         self.max_used_binding
     }
 
+    #[inline(always)]
     pub(crate) fn binding(&self, slot: u32) -> Option<&VkDescriptorSetEntryInfo> {
         if slot >= self.binding_infos.len() as u32 {
             None
@@ -188,6 +194,7 @@ impl VkDescriptorSetLayout {
         }
     }
 
+    #[inline(always)]
     pub(crate) fn is_dynamic_binding(&self, binding_index: u32) -> bool {
         if binding_index >= self.binding_infos.len() as u32 {
             false
@@ -911,6 +918,7 @@ impl VkDescriptorSet {
         self.descriptor_set
     }
 
+    #[allow(unused)]
     #[inline]
     pub(crate) fn is_transient(&self) -> bool {
         self.is_transient
@@ -978,6 +986,7 @@ impl Default for VkBoundResource {
     }
 }
 
+#[allow(unused)]
 #[derive(Hash, Eq, PartialEq, Clone)]
 pub(crate) enum VkBoundResourceRef<'a> {
     None,
@@ -1316,6 +1325,7 @@ struct VkDescriptorSetCacheEntry {
     last_used_frame: u64,
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone, Copy, PartialEq, Hash, Eq)]
 enum CacheMode {
     None,
@@ -1594,6 +1604,9 @@ impl VkBindingManager {
         self.dirty |= DirtyDescriptorSets::FRAME;
     }
 
+
+    #[allow(unused)]
+    #[inline(always)]
     pub fn dirty_sets(&self) -> DirtyDescriptorSets {
         self.dirty
     }

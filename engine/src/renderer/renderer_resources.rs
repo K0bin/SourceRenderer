@@ -132,10 +132,12 @@ impl<B: GPUBackend> RendererResources<B> {
         };
     }
 
+    #[inline(always)]
     pub fn nearest_sampler(&self) -> &Arc<Sampler<B>> {
         &self.nearest_sampler
     }
 
+    #[inline(always)]
     pub fn linear_sampler(&self) -> &Arc<Sampler<B>> {
         &self.linear_sampler
     }
@@ -168,6 +170,7 @@ impl<B: GPUBackend> RendererResources<B> {
         );
     }
 
+    #[allow(unused)]
     pub fn create_buffer(
         &mut self,
         name: &str,
@@ -198,12 +201,15 @@ impl<B: GPUBackend> RendererResources<B> {
         );
     }
 
+    #[inline]
     pub fn texture_info(&self, name: &str) -> Ref<TextureInfo> {
         let entry = self.textures.get(name);
         let texture_ref = entry.unwrap().a.borrow();
         Ref::map(texture_ref, |texture| texture.texture.info())
     }
 
+    #[allow(unused)]
+    #[inline]
     pub fn buffer_info(&self, name: &str) -> Ref<BufferInfo> {
         let entry = self.buffers.get(name);
         let buffer_ref = entry.unwrap().a.borrow();

@@ -16,8 +16,11 @@ use crate::renderer::renderer_scene::RendererScene;
 pub const DRAWABLE_CAPACITY: u32 = 4096;
 pub const PART_CAPACITY: u32 = 4096;
 pub const DRAW_CAPACITY: u32 = 4096;
+#[allow(unused)]
 pub const MATERIAL_CAPACITY: u32 = 4096;
+#[allow(unused)]
 pub const MESH_CAPACITY: u32 = 4096;
+#[allow(unused)]
 pub const LIGHT_CAPACITY: u32 = 64;
 
 #[repr(C)]
@@ -94,6 +97,7 @@ struct GPUMesh {
     sphere: GPUBoundingSphere,
 }
 
+#[allow(unused)]
 #[repr(u32)]
 #[derive(Debug, Clone)]
 enum GPULightType {
@@ -454,6 +458,7 @@ pub fn upload<P: Platform>(
     }
 }
 
+#[allow(unused)]
 fn align_up_to_cache_line(value: u64) -> u64 {
     const CACHE_LINE: u64 = 64;
     if value == 0 {

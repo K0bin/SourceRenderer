@@ -1,6 +1,6 @@
 use std::{error::Error, fmt::{Debug, Display}};
 
-use sourcerenderer_core::gpu::{AdapterType, Instance};
+use sourcerenderer_core::gpu;
 use web_sys::{GpuAdapter, GpuDevice, Navigator, GpuRequestAdapterOptions, GpuPowerPreference, Gpu};
 use wasm_bindgen_futures::*;
 
@@ -111,25 +111,26 @@ impl WebGPUInstance {
                 WebGPUAdapter::new(
                     async_result.discrete_adapter.clone(),
                     async_result.discrete_device.clone(),
-                    AdapterType::Discrete,
+                    gpu::AdapterType::Discrete,
                     debug
                 ),
                 WebGPUAdapter::new(
                     async_result.integrated_adapter.clone(),
                     async_result.integrated_device.clone(),
-                    AdapterType::Integrated,
+                    gpu::AdapterType::Integrated,
                     debug
                 )
             ]
         }
     }
 
+    #[inline(always)]
     pub fn handle(&self) -> &Gpu {
         &self.instance
     }
 }
 
-impl Instance<WebGPUBackend> for WebGPUInstance {
+impl gpu::Instance<WebGPUBackend> for WebGPUInstance {
     fn list_adapters(&self) -> &[WebGPUAdapter] {
         &self.adapters
     }

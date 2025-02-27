@@ -84,18 +84,22 @@ impl VkMemoryHeap {
         })
     }
 
+    #[inline(always)]
     pub(crate) fn handle(&self) -> vk::DeviceMemory {
         self.memory
     }
 
+    #[inline(always)]
     pub(crate) fn properties(&self) -> vk::MemoryPropertyFlags {
         self.memory_properties
     }
 
+    #[inline(always)]
     pub(crate) fn memory_type_index(&self) -> u32 {
         self.memory_type_index
     }
 
+    #[inline(always)]
     pub(crate) unsafe fn map_ptr(&self, offset: u64) -> Option<*mut c_void> {
         self.map_ptr.map(|map_ptr| map_ptr.add(offset as usize))
     }

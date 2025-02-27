@@ -1,12 +1,12 @@
 use std::io::{ErrorKind, Result as IOResult, Error as IOError};
 
-use bevy_tasks::futures_lite::io::{AsyncRead, AsyncReadExt};
+use bevy_tasks::futures_lite::io::AsyncRead;
 
 use io_util::PrimitiveReadAsync;
 
 pub struct GlbHeader {
-    magic: u32,
-    version: u32,
+    _magic: u32,
+    _version: u32,
     pub length: u32,
 }
 
@@ -26,12 +26,14 @@ impl GlbHeader {
         }
 
         Ok(Self {
-            magic,
-            version,
+            _magic: magic,
+            _version: version,
             length,
         })
     }
 
+    #[allow(unused)]
+    #[inline(always)]
     pub fn size() -> u64 {
         12
     }
@@ -39,7 +41,7 @@ impl GlbHeader {
 
 pub struct GlbChunkHeader {
     pub length: u32,
-    chunk_type: u32,
+    _chunk_type: u32,
 }
 
 impl GlbChunkHeader {
@@ -52,20 +54,10 @@ impl GlbChunkHeader {
             return Err(IOError::new(ErrorKind::Other, "Invalid chunk type"));
         }
 
-        Ok(Self { length, chunk_type })
+        Ok(Self { length, _chunk_type: chunk_type })
     }
 
     pub fn size() -> u64 {
         8
     }
-}
-
-pub async fn read_chunk<R: AsyncRead + Unpin>(reader: &mut R) -> IOResult<Vec<u8>> {
-    let header = GlbChunkHeader::read(reader).await?;
-    let mut data = Vec::with_capacity(header.length as usize);
-    unsafe {
-        data.set_len(header.length as usize);
-    }
-    reader.read_exact(&mut data).await?;
-    Ok(data)
 }

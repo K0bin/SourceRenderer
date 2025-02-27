@@ -288,17 +288,18 @@ impl WebGPUBindGroup {
         Ok(Self {
             bind_group,
             layout: layout.clone(),
-            is_transient: is_transient,
+            is_transient,
             bindings: stored_bindings
         })
     }
 
-    #[inline]
+    #[inline(always)]
     pub(crate) fn handle(&self) -> &GpuBindGroup {
         &self.bind_group
     }
 
-    #[inline]
+    #[allow(unused)]
+    #[inline(always)]
     pub(crate) fn is_transient(&self) -> bool {
         self.is_transient
     }
@@ -747,6 +748,7 @@ struct WebGPUBindGroupCacheEntry {
     last_used_frame: u64,
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone, Copy, PartialEq, Hash, Eq)]
 enum CacheMode {
     None,
@@ -1086,6 +1088,8 @@ impl WebGPUBindingManager {
         self.dirty |= DirtyBindGroups::FRAME;
     }
 
+    #[allow(unused)]
+    #[inline(always)]
     pub fn dirty_sets(&self) -> DirtyBindGroups {
         self.dirty
     }

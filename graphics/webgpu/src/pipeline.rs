@@ -1,7 +1,7 @@
 use js_sys::{wasm_bindgen::JsValue, Array};
 use log::warn;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, SampleCount};
+use sourcerenderer_core::gpu;
 use web_sys::{GpuBlendComponent, GpuBlendFactor, GpuBlendOperation, GpuBlendState, GpuColorTargetState, GpuCompareFunction, GpuComputePipeline, GpuComputePipelineDescriptor, GpuCullMode, GpuDepthStencilState, GpuDevice, GpuFragmentState, GpuFrontFace, GpuMultisampleState, GpuPrimitiveState, GpuPrimitiveTopology, GpuProgrammableStage, GpuRenderPipeline, GpuRenderPipelineDescriptor, GpuShaderModule, GpuShaderModuleDescriptor, GpuStencilFaceState, GpuStencilOperation, GpuVertexAttribute, GpuVertexBufferLayout, GpuVertexFormat, GpuVertexState, GpuVertexStepMode};
 use std::{hash::Hash, sync::Arc};
 
@@ -208,7 +208,7 @@ fn blend_attachment_to_webgpu(blend_attachment: &gpu::AttachmentBlendInfo, color
     blend_component
 }
 
-pub(crate) fn sample_count_to_webgpu(sample_count: SampleCount) -> u32 {
+pub(crate) fn sample_count_to_webgpu(sample_count: gpu::SampleCount) -> u32 {
     match sample_count {
         gpu::SampleCount::Samples1 => 1,
         gpu::SampleCount::Samples2 => 2,
@@ -462,10 +462,12 @@ impl WebGPUGraphicsPipeline {
         })
     }
 
+    #[inline(always)]
     pub fn handle(&self) -> &GpuRenderPipeline {
         &self.pipeline
     }
 
+    #[inline(always)]
     pub fn layout(&self) -> &Arc<WebGPUPipelineLayout> {
         &self.layout
     }
@@ -582,10 +584,12 @@ impl WebGPUComputePipeline {
         })
     }
 
+    #[inline(always)]
     pub fn handle(&self) -> &GpuComputePipeline {
         &self.pipeline
     }
 
+    #[inline(always)]
     pub fn layout(&self) -> &Arc<WebGPUPipelineLayout> {
         &self.layout
     }

@@ -27,22 +27,27 @@ impl<B: GPUBackend> Debug for TransientBufferSlice<B> {
 }
 
 impl<B: GPUBackend> TransientBufferSlice<B> {
+    #[inline(always)]
     pub fn offset(&self) -> u64 {
         self.offset
     }
 
+    #[inline(always)]
     pub fn length(&self) -> u64 {
         self.length
     }
 
+    #[inline(always)]
     pub(super) fn handle(&self) -> &B::Buffer {
         unsafe { &*self.buffer }
     }
 
+    #[inline(always)]
     pub unsafe fn map(&self, invalidate: bool) -> Option<*mut c_void> {
         self.handle().map(self.offset, self.length, invalidate)
     }
 
+    #[inline(always)]
     pub unsafe fn unmap(&self, flush: bool) {
         self.handle().unmap(self.offset, self.length, flush)
     }
@@ -78,6 +83,7 @@ impl<B: GPUBackend> Drop for TransientBuffer<B> {
 }
 
 impl<B: GPUBackend> TransientBuffer<B> {
+    #[inline(always)]
     pub(crate) fn reset(&mut self) {
         self.offset = 0u64;
     }
@@ -261,6 +267,7 @@ impl<B: GPUBackend> TransientBufferAllocator<B> {
         }
     }
 
+    #[allow(unused)]
     pub fn set_retained_size(&mut self, host_size: Option<u64>, gpu_size: Option<u64>) {
         let mut inner: AtomicRefMut<'_, TransientBufferAllocatorInner<B>> = self.inner.borrow_mut();
         inner.retained_size_host_memory = host_size;

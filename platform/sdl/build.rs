@@ -24,7 +24,7 @@ fn main() {
         std::fs::create_dir_all(&shader_dest_dir).expect("Failed to create shader target directory.");
     }
 
-    let mut output_shading_languages = ShadingLanguage::SpirV | ShadingLanguage::Dxil | ShadingLanguage::Air | ShadingLanguage::Wgsl;
+    let mut output_shading_languages = ShadingLanguage::SpirV | ShadingLanguage::Dxil | ShadingLanguage::Air;
     if env::var("DEBUG").map(|envvar| envvar == "true").unwrap_or_default() {
         output_shading_languages |= ShadingLanguage::Msl | ShadingLanguage::Hlsl;
     }
@@ -85,7 +85,7 @@ fn main() {
     compile_shader(
         &accumulate_sharpen_path,
         &shader_dest_dir,
-        ShadingLanguage::SpirV | ShadingLanguage::Dxil | ShadingLanguage::Air | ShadingLanguage::Wgsl,
+        output_shading_languages,
         CompiledShaderFileType::Packed,
         true,
         &map,

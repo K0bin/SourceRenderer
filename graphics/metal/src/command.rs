@@ -4,7 +4,7 @@ use metal::{self, NSRange};
 
 use objc::{msg_send, runtime::Object, sel, sel_impl};
 use smallvec::SmallVec;
-use sourcerenderer_core::{align_up_32, gpu::{self, Texture}};
+use sourcerenderer_core::{align_up_32, gpu::{self, Texture as _}};
 
 use super::*;
 

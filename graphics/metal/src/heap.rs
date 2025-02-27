@@ -4,7 +4,7 @@ use metal;
 use metal::foreign_types::ForeignType;
 use metal::objc::{msg_send, sel, sel_impl};
 
-use sourcerenderer_core::gpu::{self, OutOfMemoryError};
+use sourcerenderer_core::gpu;
 
 use super::*;
 
@@ -48,7 +48,7 @@ impl MTLHeap {
         descriptor.set_cpu_cache_mode(if cached { metal::MTLCPUCacheMode::DefaultCache } else { metal::MTLCPUCacheMode::WriteCombined });
         let heap = device.new_heap(&descriptor);
         if heap.as_ptr() == std::ptr::null_mut() {
-            return Err(OutOfMemoryError {});
+            return Err(gpu::OutOfMemoryError {});
         }
         {
             let mut list = shared.heap_list.write().unwrap();

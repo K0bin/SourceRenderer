@@ -33,6 +33,7 @@ use crate::renderer::PointLight;
 
 use crate::graphics::*;
 
+#[allow(unused)]
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 struct FrameData {
@@ -48,6 +49,7 @@ struct FrameData {
     directional_light_count: u32,
 }
 
+#[allow(unused)]
 pub struct GeometryPass<P: Platform> {
     sampler: Arc<Sampler<P::GPUBackend>>,
     pipeline: GraphicsPipelineHandle,
@@ -59,6 +61,7 @@ impl<P: Platform> GeometryPass<P> {
     pub const NORMALS_TEXTURE_NAME: &'static str = "Normals";
     pub const SPECULAR_TEXTURE_NAME: &'static str = "Specular";
 
+    #[allow(unused)]
     pub fn new(
         device: &Arc<Device<P::GPUBackend>>,
         swapchain: &Swapchain<P::GPUBackend>,
@@ -212,9 +215,13 @@ impl<P: Platform> GeometryPass<P> {
 
         let pipeline = asset_manager.request_graphics_pipeline(&pipeline_info);
 
-        Self { sampler, pipeline }
+        Self {
+            sampler,
+            pipeline
+        }
     }
 
+    #[inline(always)]
     pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
         assets.get_graphics_pipeline(self.pipeline).is_some()
     }

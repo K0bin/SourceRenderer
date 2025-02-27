@@ -1,28 +1,25 @@
-use bevy_app::{App, Update};
-use bevy_ecs::component::{Component, Tick};
-use bevy_ecs::entity::Entity;
+use bevy_app::{App, Update, FixedUpdate};
+use bevy_ecs::component::Component;
 use bevy_ecs::event::EventReader;
-use bevy_ecs::query::{Has, With};
-use bevy_ecs::query::{QueryFilter};
+use bevy_ecs::query::With;
 use bevy_ecs::system::{Query, Res};
-use bevy_input::keyboard::{KeyCode, KeyboardInput};
+use bevy_input::keyboard::KeyCode;
 use bevy_input::mouse::MouseMotion;
 use bevy_input::ButtonInput;
-use bevy_math::{Vec2, Vec3A};
+use bevy_math::Vec2;
 use bevy_time::{Fixed, Time};
 use bevy_transform::components::Transform;
-use sourcerenderer_core::input::Key;
 use sourcerenderer_core::{
     Platform,
     Quaternion,
-    Vec2I,
     Vec3,
 };
 
 use sourcerenderer_engine::Camera;
 
 pub fn install<P: Platform>(app: &mut App) {
-    app.add_systems(Update, (retrieve_fps_camera_rotation::<P>, fps_camera_movement::<P>));
+    app.add_systems(FixedUpdate, (fps_camera_movement::<P>,));
+    app.add_systems(Update, (retrieve_fps_camera_rotation::<P>,));
 }
 
 #[derive(Component, Default)]

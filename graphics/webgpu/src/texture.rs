@@ -1,71 +1,71 @@
 use std::hash::Hash;
-use sourcerenderer_core::gpu::{self, Format, SampleCount, Texture, TextureDimension, TextureInfo, TextureUsage, TextureView, TextureViewInfo};
+use sourcerenderer_core::gpu::{self, Texture as _};
 use web_sys::{js_sys, wasm_bindgen::JsValue, GpuDevice, GpuExtent3dDict, GpuTexture, GpuTextureDescriptor, GpuTextureFormat, GpuTextureView, GpuTextureViewDescriptor, GpuTextureViewDimension};
 
-pub(crate) fn format_to_webgpu(format: Format) -> GpuTextureFormat {
+pub(crate) fn format_to_webgpu(format: gpu::Format) -> GpuTextureFormat {
     match format {
-        Format::Unknown => GpuTextureFormat::__Invalid,
-        Format::R32UNorm => panic!("Unsupported format"),
-        Format::R16UNorm => panic!("Unsupported format"),
-        Format::R8Unorm => GpuTextureFormat::R8unorm,
-        Format::RGBA8UNorm => GpuTextureFormat::Rgba8unorm,
-        Format::RGBA8Srgb => GpuTextureFormat::Rgba8unormSrgb,
-        Format::BGR8UNorm => panic!("Unsupported format"),
-        Format::BGRA8UNorm => GpuTextureFormat::Bgra8unorm,
-        Format::BC1 => GpuTextureFormat::Bc1RgbaUnorm,
-        Format::BC1Alpha => GpuTextureFormat::Bc1RgbaUnorm,
-        Format::BC2 => GpuTextureFormat::Bc2RgbaUnorm,
-        Format::BC3 => GpuTextureFormat::Bc3RgbaUnorm,
-        Format::R16Float => GpuTextureFormat::R16float,
-        Format::R32Float => GpuTextureFormat::R32float,
-        Format::RG32Float => GpuTextureFormat::Rg32float,
-        Format::RG16Float => GpuTextureFormat::Rg16float,
-        Format::RGB32Float => panic!("Unsupported format"),
-        Format::RGBA32Float => GpuTextureFormat::Rgba32float,
-        Format::RG16UNorm => panic!("Unsupported format"),
-        Format::RG8UNorm => GpuTextureFormat::Rg8unorm,
-        Format::R32UInt => GpuTextureFormat::R32uint,
-        Format::RGBA16Float => GpuTextureFormat::Rgba16float,
-        Format::R11G11B10Float => panic!("Unsupported format"),
-        Format::RG16UInt => GpuTextureFormat::Rg16uint,
-        Format::RG16SInt => GpuTextureFormat::Rg16sint,
-        Format::R16UInt => GpuTextureFormat::R16uint,
-        Format::R16SNorm => panic!("Unsupported format"),
-        Format::R16SInt => GpuTextureFormat::R16sint,
-        Format::D16 => GpuTextureFormat::Depth16unorm,
-        Format::D16S8 => GpuTextureFormat::Depth24plusStencil8,
-        Format::D32 => GpuTextureFormat::Depth32float,
-        Format::D32S8 => GpuTextureFormat::Depth32floatStencil8,
-        Format::D24S8 => GpuTextureFormat::Depth24plusStencil8,
+        gpu::Format::Unknown => GpuTextureFormat::__Invalid,
+        gpu::Format::R32UNorm => panic!("Unsupported format"),
+        gpu::Format::R16UNorm => panic!("Unsupported format"),
+        gpu::Format::R8Unorm => GpuTextureFormat::R8unorm,
+        gpu::Format::RGBA8UNorm => GpuTextureFormat::Rgba8unorm,
+        gpu::Format::RGBA8Srgb => GpuTextureFormat::Rgba8unormSrgb,
+        gpu::Format::BGR8UNorm => panic!("Unsupported format"),
+        gpu::Format::BGRA8UNorm => GpuTextureFormat::Bgra8unorm,
+        gpu::Format::BC1 => GpuTextureFormat::Bc1RgbaUnorm,
+        gpu::Format::BC1Alpha => GpuTextureFormat::Bc1RgbaUnorm,
+        gpu::Format::BC2 => GpuTextureFormat::Bc2RgbaUnorm,
+        gpu::Format::BC3 => GpuTextureFormat::Bc3RgbaUnorm,
+        gpu::Format::R16Float => GpuTextureFormat::R16float,
+        gpu::Format::R32Float => GpuTextureFormat::R32float,
+        gpu::Format::RG32Float => GpuTextureFormat::Rg32float,
+        gpu::Format::RG16Float => GpuTextureFormat::Rg16float,
+        gpu::Format::RGB32Float => panic!("Unsupported format"),
+        gpu::Format::RGBA32Float => GpuTextureFormat::Rgba32float,
+        gpu::Format::RG16UNorm => panic!("Unsupported format"),
+        gpu::Format::RG8UNorm => GpuTextureFormat::Rg8unorm,
+        gpu::Format::R32UInt => GpuTextureFormat::R32uint,
+        gpu::Format::RGBA16Float => GpuTextureFormat::Rgba16float,
+        gpu::Format::R11G11B10Float => panic!("Unsupported format"),
+        gpu::Format::RG16UInt => GpuTextureFormat::Rg16uint,
+        gpu::Format::RG16SInt => GpuTextureFormat::Rg16sint,
+        gpu::Format::R16UInt => GpuTextureFormat::R16uint,
+        gpu::Format::R16SNorm => panic!("Unsupported format"),
+        gpu::Format::R16SInt => GpuTextureFormat::R16sint,
+        gpu::Format::D16 => GpuTextureFormat::Depth16unorm,
+        gpu::Format::D16S8 => GpuTextureFormat::Depth24plusStencil8,
+        gpu::Format::D32 => GpuTextureFormat::Depth32float,
+        gpu::Format::D32S8 => GpuTextureFormat::Depth32floatStencil8,
+        gpu::Format::D24S8 => GpuTextureFormat::Depth24plusStencil8,
     }
 }
 
-pub(crate) fn format_from_webgpu(format: GpuTextureFormat) -> Format {
+pub(crate) fn format_from_webgpu(format: GpuTextureFormat) -> gpu::Format {
     match format {
-        GpuTextureFormat::Rgba8unorm => Format::RGBA8UNorm,
-        GpuTextureFormat::Rgba8unormSrgb => Format::RGBA8Srgb,
-        GpuTextureFormat::Bgra8unorm => Format::BGRA8UNorm,
-        GpuTextureFormat::Rgba32float => Format::RGBA32Float,
-        GpuTextureFormat::Rgba16float => Format::RGBA16Float,
+        GpuTextureFormat::Rgba8unorm => gpu::Format::RGBA8UNorm,
+        GpuTextureFormat::Rgba8unormSrgb => gpu::Format::RGBA8Srgb,
+        GpuTextureFormat::Bgra8unorm => gpu::Format::BGRA8UNorm,
+        GpuTextureFormat::Rgba32float => gpu::Format::RGBA32Float,
+        GpuTextureFormat::Rgba16float => gpu::Format::RGBA16Float,
         _ => todo!(),
     }
 }
 
-pub(crate) fn texture_dimension_to_webgpu_view(texture_dimension: TextureDimension) -> GpuTextureViewDimension {
+pub(crate) fn texture_dimension_to_webgpu_view(texture_dimension: gpu::TextureDimension) -> GpuTextureViewDimension {
     match texture_dimension {
-        TextureDimension::Dim1D => GpuTextureViewDimension::N1d,
-        TextureDimension::Dim2D => GpuTextureViewDimension::N2d,
-        TextureDimension::Dim3D => GpuTextureViewDimension::N3d,
-        TextureDimension::Dim1DArray => panic!("1D texture arrays are unsupported by WebGPU"),
-        TextureDimension::Dim2DArray => GpuTextureViewDimension::N2dArray,
-        TextureDimension::Cube => GpuTextureViewDimension::Cube,
-        TextureDimension::CubeArray => GpuTextureViewDimension::CubeArray,
+        gpu::TextureDimension::Dim1D => GpuTextureViewDimension::N1d,
+        gpu::TextureDimension::Dim2D => GpuTextureViewDimension::N2d,
+        gpu::TextureDimension::Dim3D => GpuTextureViewDimension::N3d,
+        gpu::TextureDimension::Dim1DArray => panic!("1D texture arrays are unsupported by WebGPU"),
+        gpu::TextureDimension::Dim2DArray => GpuTextureViewDimension::N2dArray,
+        gpu::TextureDimension::Cube => GpuTextureViewDimension::Cube,
+        gpu::TextureDimension::CubeArray => GpuTextureViewDimension::CubeArray,
     }
 }
 
 pub struct WebGPUTexture {
     texture: GpuTexture,
-    info: TextureInfo
+    info: gpu::TextureInfo
 }
 
 impl PartialEq for WebGPUTexture {
@@ -93,47 +93,47 @@ impl Drop for WebGPUTexture {
 }
 
 impl WebGPUTexture {
-    pub fn new(device: &GpuDevice, info: &TextureInfo, name: Option<&str>) -> Result<Self, ()> {
+    pub fn new(device: &GpuDevice, info: &gpu::TextureInfo, name: Option<&str>) -> Result<Self, ()> {
 
         let size = GpuExtent3dDict::new(info.width);
-        if info.dimension != TextureDimension::Dim1D && info.dimension != TextureDimension::Dim1DArray {
+        if info.dimension != gpu::TextureDimension::Dim1D && info.dimension != gpu::TextureDimension::Dim1DArray {
             size.set_height(info.height);
         }
-        size.set_depth_or_array_layers(if info.dimension == TextureDimension::Dim3D { info.depth } else { info.array_length });
+        size.set_depth_or_array_layers(if info.dimension == gpu::TextureDimension::Dim3D { info.depth } else { info.array_length });
         let mut usage = 0u32;
-        if info.usage.contains(TextureUsage::SAMPLED) {
+        if info.usage.contains(gpu::TextureUsage::SAMPLED) {
             usage |= web_sys::gpu_texture_usage::TEXTURE_BINDING;
         }
-        if info.usage.intersects(TextureUsage::RENDER_TARGET | TextureUsage::DEPTH_STENCIL) {
+        if info.usage.intersects(gpu::TextureUsage::RENDER_TARGET | gpu::TextureUsage::DEPTH_STENCIL) {
             usage |= web_sys::gpu_texture_usage::RENDER_ATTACHMENT;
         }
-        if info.usage.contains(TextureUsage::STORAGE) {
+        if info.usage.contains(gpu::TextureUsage::STORAGE) {
             usage |= web_sys::gpu_texture_usage::STORAGE_BINDING;
         }
-        if info.usage.intersects(TextureUsage::COPY_DST | TextureUsage::INITIAL_COPY | TextureUsage::BLIT_DST) {
+        if info.usage.intersects(gpu::TextureUsage::COPY_DST | gpu::TextureUsage::INITIAL_COPY | gpu::TextureUsage::BLIT_DST) {
             usage |= web_sys::gpu_texture_usage::COPY_DST;
         }
-        if info.usage.intersects(TextureUsage::COPY_SRC | TextureUsage::BLIT_SRC) {
+        if info.usage.intersects(gpu::TextureUsage::COPY_SRC | gpu::TextureUsage::BLIT_SRC) {
             usage |= web_sys::gpu_texture_usage::COPY_SRC;
         }
-        if info.usage.contains(TextureUsage::RESOLVE_SRC) {
+        if info.usage.contains(gpu::TextureUsage::RESOLVE_SRC) {
             usage |= web_sys::gpu_texture_usage::COPY_SRC;
         }
-        if info.usage.contains(TextureUsage::RESOLVE_DST) {
+        if info.usage.contains(gpu::TextureUsage::RESOLVE_DST) {
             usage |= web_sys::gpu_texture_usage::COPY_DST;
         }
         let descriptor = GpuTextureDescriptor::new(format_to_webgpu(info.format), &JsValue::from(&size), usage);
         descriptor.set_mip_level_count(info.mip_levels);
         descriptor.set_sample_count(match info.samples {
-            SampleCount::Samples1 => 1,
-            SampleCount::Samples2 => 2,
-            SampleCount::Samples4 => 4,
-            SampleCount::Samples8 => 8,
+            gpu::SampleCount::Samples1 => 1,
+            gpu::SampleCount::Samples2 => 2,
+            gpu::SampleCount::Samples4 => 4,
+            gpu::SampleCount::Samples8 => 8,
         });
         descriptor.set_dimension(match info.dimension {
-            TextureDimension::Dim1D | TextureDimension::Dim1DArray => web_sys::GpuTextureDimension::N1d,
-            TextureDimension::Dim2D | TextureDimension::Dim2DArray | TextureDimension::Cube | TextureDimension::CubeArray => web_sys::GpuTextureDimension::N2d,
-            TextureDimension::Dim3D => web_sys::GpuTextureDimension::N3d,
+            gpu::TextureDimension::Dim1D | gpu::TextureDimension::Dim1DArray => web_sys::GpuTextureDimension::N1d,
+            gpu::TextureDimension::Dim2D | gpu::TextureDimension::Dim2DArray | gpu::TextureDimension::Cube | gpu::TextureDimension::CubeArray => web_sys::GpuTextureDimension::N2d,
+            gpu::TextureDimension::Dim3D => web_sys::GpuTextureDimension::N3d,
         });
         if let Some(name) = name {
             descriptor.set_label(name);
@@ -160,30 +160,30 @@ impl WebGPUTexture {
 
     pub fn from_texture(_device: &GpuDevice, texture: GpuTexture) -> Self {
         let format = format_from_webgpu(texture.format());
-        let mut usage = TextureUsage::empty();
+        let mut usage = gpu::TextureUsage::empty();
         let web_usage = texture.usage();
         if web_usage & web_sys::gpu_texture_usage::COPY_SRC != 0 {
-            usage |= TextureUsage::COPY_SRC;
+            usage |= gpu::TextureUsage::COPY_SRC;
         }
         if web_usage & web_sys::gpu_texture_usage::COPY_DST != 0 {
-            usage |= TextureUsage::COPY_DST;
+            usage |= gpu::TextureUsage::COPY_DST;
         }
         if web_usage & web_sys::gpu_texture_usage::RENDER_ATTACHMENT != 0 {
             if format.is_depth() || format.is_stencil() {
-                usage |= TextureUsage::DEPTH_STENCIL;
+                usage |= gpu::TextureUsage::DEPTH_STENCIL;
             } else {
-                usage |= TextureUsage::RENDER_TARGET;
+                usage |= gpu::TextureUsage::RENDER_TARGET;
             }
 
         }
         if web_usage & web_sys::gpu_texture_usage::STORAGE_BINDING != 0 {
-            usage |= TextureUsage::STORAGE;
+            usage |= gpu::TextureUsage::STORAGE;
         }
         if web_usage & web_sys::gpu_texture_usage::TEXTURE_BINDING != 0 {
-            usage |= TextureUsage::SAMPLED;
+            usage |= gpu::TextureUsage::SAMPLED;
         }
 
-        let info = TextureInfo {
+        let info = gpu::TextureInfo {
             width: texture.width(),
             height: texture.height(),
             dimension: match texture.dimension() {
@@ -205,10 +205,10 @@ impl WebGPUTexture {
             format: format_from_webgpu(texture.format()),
             mip_levels: texture.mip_level_count() as u32,
             samples: match texture.sample_count() {
-                1 => SampleCount::Samples1,
-                2 => SampleCount::Samples2,
-                4 => SampleCount::Samples4,
-                8 => SampleCount::Samples8,
+                1 => gpu::SampleCount::Samples1,
+                2 => gpu::SampleCount::Samples2,
+                4 => gpu::SampleCount::Samples4,
+                8 => gpu::SampleCount::Samples8,
                 _ => panic!("Unsupported sample count")
             },
             usage,
@@ -221,13 +221,14 @@ impl WebGPUTexture {
         }
     }
 
+    #[inline(always)]
     pub fn handle(&self) -> &GpuTexture {
         &self.texture
     }
 }
 
-impl Texture for WebGPUTexture {
-    fn info(&self) -> &TextureInfo {
+impl gpu::Texture for WebGPUTexture {
+    fn info(&self) -> &gpu::TextureInfo {
         &self.info
     }
 
@@ -238,8 +239,8 @@ impl Texture for WebGPUTexture {
 
 pub struct WebGPUTextureView {
     view: GpuTextureView,
-    texture_info: TextureInfo,
-    info: TextureViewInfo
+    texture_info: gpu::TextureInfo,
+    info: gpu::TextureViewInfo
 }
 
 impl PartialEq for WebGPUTextureView {
@@ -261,7 +262,7 @@ unsafe impl Send for WebGPUTextureView {}
 unsafe impl Sync for WebGPUTextureView {}
 
 impl WebGPUTextureView {
-    pub fn new(_device: &GpuDevice, texture: &WebGPUTexture, info: &TextureViewInfo, name: Option<&str>) -> Result<Self, ()> {
+    pub fn new(_device: &GpuDevice, texture: &WebGPUTexture, info: &gpu::TextureViewInfo, name: Option<&str>) -> Result<Self, ()> {
         let descriptor = GpuTextureViewDescriptor::new();
         descriptor.set_array_layer_count(info.array_layer_length);
         descriptor.set_base_array_layer(info.base_array_layer);
@@ -282,17 +283,18 @@ impl WebGPUTextureView {
         })
     }
 
+    #[inline(always)]
     pub fn handle(&self) -> &GpuTextureView {
         &self.view
     }
 }
 
 impl gpu::TextureView for WebGPUTextureView {
-    fn texture_info(&self) -> &TextureInfo {
+    fn texture_info(&self) -> &gpu::TextureInfo {
         &self.texture_info
     }
 
-    fn info(&self) -> &TextureViewInfo {
+    fn info(&self) -> &gpu::TextureViewInfo {
         &self.info
     }
 }

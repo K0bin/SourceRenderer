@@ -1,11 +1,8 @@
-use std::{ffi::c_void, pin::Pin, sync::{
-    atomic::AtomicU64,
-    Arc,
-}};
+use std::{ffi::c_void, pin::Pin, sync::Arc};
 
 use ash::vk;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, BufferUsage, Device as _, TextureLayout};
+use sourcerenderer_core::gpu::{self, Device as _};
 
 use super::*;
 
@@ -15,7 +12,6 @@ pub struct VkDevice {
     compute_queue: Option<VkQueue>,
     transfer_queue: Option<VkQueue>,
     shared: Arc<VkShared>,
-    query_count: AtomicU64,
     memory_type_infos: Vec<gpu::MemoryTypeInfo>,
 }
 
@@ -66,7 +62,6 @@ impl VkDevice {
             compute_queue,
             transfer_queue,
             shared,
-            query_count: AtomicU64::new(0),
             memory_type_infos
         }
     }
@@ -270,13 +265,13 @@ impl gpu::Device<VkBackend> for VkDevice {
 
         let mut alignment = requirements.memory_requirements.alignment;
         alignment = alignment.max(self.device.properties.limits.min_memory_map_alignment as u64);
-        if info.usage.contains(BufferUsage::COPY_DST | BufferUsage::COPY_SRC) {
+        if info.usage.contains(gpu::BufferUsage::COPY_DST | gpu::BufferUsage::COPY_SRC) {
             alignment = alignment.max(self.device.properties.limits.min_uniform_buffer_offset_alignment);
         }
-        if info.usage.contains(BufferUsage::CONSTANT) {
+        if info.usage.contains(gpu::BufferUsage::CONSTANT) {
             alignment = alignment.max(self.device.properties.limits.min_uniform_buffer_offset_alignment);
         }
-        if info.usage.contains(BufferUsage::STORAGE) {
+        if info.usage.contains(gpu::BufferUsage::STORAGE) {
             alignment = alignment.max(self.device.properties.limits.min_storage_buffer_offset_alignment);
         }
 
@@ -434,7 +429,7 @@ impl gpu::Device<VkBackend> for VkDevice {
         }]).unwrap();
     }
 
-    unsafe fn copy_to_texture(&self, src: *const c_void, dst: &VkTexture, texture_layout: TextureLayout, region: &gpu::MemoryTextureCopyRegion) {
+    unsafe fn copy_to_texture(&self, src: *const c_void, dst: &VkTexture, texture_layout: gpu::TextureLayout, region: &gpu::MemoryTextureCopyRegion) {
         let host_img_copy = self.device.host_image_copy.as_ref().unwrap();
         let format = dst.info().format;
         let texels_width = if region.row_pitch != 0 {
@@ -483,10 +478,4 @@ impl Drop for VkDevice {
             self.wait_for_idle();
         }
     }
-}
-
-#[derive(Debug)]
-pub(crate) struct VulkanMemoryFlags {
-    pub(crate) preferred: vk::MemoryPropertyFlags,
-    pub(crate) required: vk::MemoryPropertyFlags,
 }

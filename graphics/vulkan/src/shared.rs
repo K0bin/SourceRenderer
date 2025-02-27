@@ -7,10 +7,7 @@ use std::{
     },
 };
 
-use ash::{
-    vk,
-    vk::Handle,
-};
+use ash::vk;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu;
 
@@ -71,7 +68,7 @@ impl VkShared {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub(super) fn get_clear_buffer_meta_pipeline(&self) -> &VkPipeline {
         &self.clear_buffer_meta_pipeline
     }

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use js_sys::{wasm_bindgen::JsValue, Array, Uint32Array};
 use log::warn;
-use sourcerenderer_core::{align_up_32, gpu::{self, Buffer, LoadOpDepthStencil, ResolveAttachment, StoreOp, Texture, TextureView}};
+use sourcerenderer_core::{align_up_32, gpu::{self, Buffer as _, Texture as _, TextureView as _}};
 use web_sys::{GpuCommandBuffer, GpuCommandEncoder, GpuComputePassEncoder, GpuDevice, GpuExtent3dDict, GpuIndexFormat, GpuLoadOp, GpuRenderBundle, GpuRenderBundleEncoder, GpuRenderBundleEncoderDescriptor, GpuRenderPassColorAttachment, GpuRenderPassDepthStencilAttachment, GpuRenderPassDescriptor, GpuRenderPassEncoder, GpuStoreOp, GpuTexelCopyBufferInfo, GpuTexelCopyTextureInfo};
 
 use crate::{binding::{self, WebGPUBindingManager, WebGPUBoundResourceRef, WebGPUBufferBindingInfo, WebGPUHashableSampler, WebGPUHashableTextureView, WebGPUPipelineLayout}, buffer::WebGPUBuffer, pipeline::sample_count_to_webgpu, sampler::WebGPUSampler, stubs::WebGPUAccelerationStructure, texture::{format_to_webgpu, WebGPUTexture, WebGPUTextureView}, WebGPUBackend, WebGPUBindGroupBinding, WebGPULimits};
@@ -87,7 +87,7 @@ fn load_op_ds_to_webgpu(load_op: &gpu::LoadOpDepthStencil) -> (GpuLoadOp, &gpu::
         gpu::LoadOpDepthStencil::DontCare => (GpuLoadOp::Clear, &gpu::ClearDepthStencilValue::DEPTH_ZERO), // why is there no DontCare. Let's just pick the one thats faster on tiled GPUs
     }
 }
-fn store_op_to_webgpu<'a>(store_op: &'a gpu::StoreOp<'a, WebGPUBackend>) -> (GpuStoreOp, Option<&ResolveAttachment<'a, WebGPUBackend>>) {
+fn store_op_to_webgpu<'a>(store_op: &'a gpu::StoreOp<'a, WebGPUBackend>) -> (GpuStoreOp, Option<&'a gpu::ResolveAttachment<'a, WebGPUBackend>>) {
     match store_op {
         gpu::StoreOp::Store => (GpuStoreOp::Store, None),
         gpu::StoreOp::DontCare => (GpuStoreOp::Discard, None),
@@ -118,6 +118,7 @@ impl WebGPUCommandBuffer {
         }
     }
 
+    #[inline(always)]
     pub(crate) fn handle(&self) -> &GpuCommandBuffer {
         match &self.handle {
             WebGPUCommandBufferHandle::Finished(command_buffer) => &command_buffer.command_buffer,
@@ -126,6 +127,7 @@ impl WebGPUCommandBuffer {
         }
     }
 
+    #[inline(always)]
     fn get_recording(&self) -> &WebGPURecordingCommandBuffer {
         match &self.handle {
             WebGPUCommandBufferHandle::Recording(cmd_buffer) => cmd_buffer,
@@ -136,6 +138,7 @@ impl WebGPUCommandBuffer {
         }
     }
 
+    #[inline(always)]
     fn get_recording_mut(&mut self) -> &mut WebGPURecordingCommandBuffer {
         match &mut self.handle {
             WebGPUCommandBufferHandle::Recording(cmd_buffer) => cmd_buffer,
@@ -146,6 +149,7 @@ impl WebGPUCommandBuffer {
         }
     }
 
+    #[inline(always)]
     fn get_recording_inner(&self) -> &WebGPURenderBundleCommandBuffer {
         match &self.handle {
             WebGPUCommandBufferHandle::Secondary(cmd_buffer) => cmd_buffer,
@@ -156,6 +160,18 @@ impl WebGPUCommandBuffer {
         }
     }
 
+    #[inline(always)]
+    fn get_recording_inner_mut(&mut self) -> &mut WebGPURenderBundleCommandBuffer {
+        match &mut self.handle {
+            WebGPUCommandBufferHandle::Secondary(cmd_buffer) => cmd_buffer,
+            WebGPUCommandBufferHandle::SecondaryFinished(_cmd_buffer) => panic!("Command buffer is finished"),
+            WebGPUCommandBufferHandle::SecondaryReset(_cmd_buffer) => panic!("Command buffer was not begun."),
+            WebGPUCommandBufferHandle::Uninit => unreachable!(),
+            _ => panic!("Primary command buffers aren't supported here")
+        }
+    }
+
+    #[inline(always)]
     fn get_encoder_inner(&self) -> &GpuRenderBundleEncoder {
         match &self.handle {
             WebGPUCommandBufferHandle::Secondary(cmd_buffer) => &cmd_buffer.bundle,
@@ -340,13 +356,21 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
     }
 
     unsafe fn bind_sampling_view(&mut self, frequency: gpu::BindingFrequency, binding: u32, texture: &WebGPUTextureView) {
-        let cmd_buffer = self.get_recording_mut();
-        cmd_buffer.binding_manager.bind(frequency, binding, WebGPUBoundResourceRef::SampledTexture(WebGPUHashableTextureView::from(texture)));
+        let binding_manager = if !self.is_inner {
+            &mut self.get_recording_mut().binding_manager
+        } else {
+            &mut self.get_recording_inner_mut().binding_manager
+        };
+        binding_manager.bind(frequency, binding, WebGPUBoundResourceRef::SampledTexture(WebGPUHashableTextureView::from(texture)));
     }
 
     unsafe fn bind_sampling_view_and_sampler(&mut self, frequency: gpu::BindingFrequency, binding: u32, texture: &WebGPUTextureView, sampler: &WebGPUSampler) {
-        let cmd_buffer = self.get_recording_mut();
-        cmd_buffer.binding_manager.bind(frequency, binding, WebGPUBoundResourceRef::SampledTextureAndSampler(WebGPUHashableTextureView::from(texture), WebGPUHashableSampler::from(sampler)));
+        let binding_manager = if !self.is_inner {
+            &mut self.get_recording_mut().binding_manager
+        } else {
+            &mut self.get_recording_inner_mut().binding_manager
+        };
+        binding_manager.bind(frequency, binding, WebGPUBoundResourceRef::SampledTextureAndSampler(WebGPUHashableTextureView::from(texture), WebGPUHashableSampler::from(sampler)));
     }
 
     unsafe fn bind_sampling_view_and_sampler_array(&mut self, _frequency: gpu::BindingFrequency, _binding: u32, _textures_and_samplers: &[(&WebGPUTextureView, &WebGPUSampler)]) {
@@ -358,8 +382,12 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
     }
 
     unsafe fn bind_uniform_buffer(&mut self, frequency: gpu::BindingFrequency, binding: u32, buffer: &WebGPUBuffer, offset: u64, length: u64) {
-        let cmd_buffer = self.get_recording_mut();
-        cmd_buffer.binding_manager.bind(frequency, binding, WebGPUBoundResourceRef::UniformBuffer(WebGPUBufferBindingInfo {
+        let binding_manager = if !self.is_inner {
+            &mut self.get_recording_mut().binding_manager
+        } else {
+            &mut self.get_recording_inner_mut().binding_manager
+        };
+        binding_manager.bind(frequency, binding, WebGPUBoundResourceRef::UniformBuffer(WebGPUBufferBindingInfo {
             buffer: buffer.handle().clone(),
             offset,
             length,
@@ -367,8 +395,12 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
     }
 
     unsafe fn bind_storage_buffer(&mut self, frequency: gpu::BindingFrequency, binding: u32, buffer: &WebGPUBuffer, offset: u64, length: u64) {
-        let cmd_buffer = self.get_recording_mut();
-        cmd_buffer.binding_manager.bind(frequency, binding, WebGPUBoundResourceRef::StorageBuffer(WebGPUBufferBindingInfo {
+        let binding_manager = if !self.is_inner {
+            &mut self.get_recording_mut().binding_manager
+        } else {
+            &mut self.get_recording_inner_mut().binding_manager
+        };
+        binding_manager.bind(frequency, binding, WebGPUBoundResourceRef::StorageBuffer(WebGPUBufferBindingInfo {
             buffer: buffer.handle().clone(),
             offset,
             length,
@@ -376,13 +408,21 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
     }
 
     unsafe fn bind_storage_texture(&mut self, frequency: gpu::BindingFrequency, binding: u32, texture: &WebGPUTextureView) {
-        let cmd_buffer = self.get_recording_mut();
-        cmd_buffer.binding_manager.bind(frequency, binding, WebGPUBoundResourceRef::StorageTexture(WebGPUHashableTextureView::from(texture)));
+        let binding_manager = if !self.is_inner {
+            &mut self.get_recording_mut().binding_manager
+        } else {
+            &mut self.get_recording_inner_mut().binding_manager
+        };
+        binding_manager.bind(frequency, binding, WebGPUBoundResourceRef::StorageTexture(WebGPUHashableTextureView::from(texture)));
     }
 
     unsafe fn bind_sampler(&mut self, frequency: gpu::BindingFrequency, binding: u32, sampler: &WebGPUSampler) {
-        let cmd_buffer = self.get_recording_mut();
-        cmd_buffer.binding_manager.bind(frequency, binding, WebGPUBoundResourceRef::Sampler(WebGPUHashableSampler::from(sampler)));
+        let binding_manager = if !self.is_inner {
+            &mut self.get_recording_mut().binding_manager
+        } else {
+            &mut self.get_recording_inner_mut().binding_manager
+        };
+        binding_manager.bind(frequency, binding, WebGPUBoundResourceRef::Sampler(WebGPUHashableSampler::from(sampler)));
     }
 
     unsafe fn bind_acceleration_structure(&mut self, _frequency: gpu::BindingFrequency, _binding: u32, _acceleration_structure: &WebGPUAccelerationStructure) {
@@ -407,8 +447,12 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         let dynamic_offsets_js = Uint32Array::new_with_length(gpu::PER_SET_BINDINGS * gpu::NON_BINDLESS_SET_COUNT);
         let binding_infos: [Option<WebGPUBindGroupBinding>; gpu::NON_BINDLESS_SET_COUNT as usize];
         {
-            let cmd_buffer = self.get_recording_mut();
-            binding_infos = cmd_buffer.binding_manager.finish(frame, pipeline_layout.as_ref().expect("Need to bind pipeline before you can finish binding.").as_ref());
+            let binding_manager = if !self.is_inner {
+                &mut self.get_recording_mut().binding_manager
+            } else {
+                &mut self.get_recording_inner_mut().binding_manager
+            };
+            binding_infos = binding_manager.finish(frame, pipeline_layout.as_ref().expect("Need to bind pipeline before you can finish binding.").as_ref());
 
             for (set_index, binding) in binding_infos.iter().enumerate(){
                 if binding.is_none() {
@@ -729,13 +773,13 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
             descriptor.set_depth_stencil_attachment(&attachment);
             let mut read_only = true;
             match &depth_stencil.store_op {
-                StoreOp::Store => read_only = false,
-                StoreOp::Resolve(_) => read_only = false,
+                gpu::StoreOp::Store => read_only = false,
+                gpu::StoreOp::Resolve(_) => read_only = false,
                 _ => {}
             }
             match &depth_stencil.load_op {
-                LoadOpDepthStencil::Clear(_) => read_only = false,
-                LoadOpDepthStencil::DontCare => read_only = false,
+                gpu::LoadOpDepthStencil::Clear(_) => read_only = false,
+                gpu::LoadOpDepthStencil::DontCare => read_only = false,
                 _ => {}
             }
             if dsv_format.is_stencil() {

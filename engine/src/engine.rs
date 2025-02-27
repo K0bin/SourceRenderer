@@ -1,7 +1,7 @@
-use std::marker::PhantomData;
 use std::sync::Arc;
-use std::thread;
-use web_time::Duration;
+
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Duration;
 
 use bevy_input::keyboard::KeyboardInput;
 use bevy_app::*;
@@ -10,29 +10,20 @@ use bevy_core::{FrameCountPlugin, TaskPoolPlugin};
 use bevy_input::mouse::MouseMotion;
 use bevy_input::InputPlugin;
 use bevy_log::LogPlugin;
-use bevy_tasks::{ComputeTaskPool, IoTaskPool};
 use bevy_time::{Fixed, Time, TimePlugin};
 use bevy_transform::TransformPlugin;
 use bevy_hierarchy::HierarchyPlugin;
 
 use log::{trace, warn};
-use sourcerenderer_core::platform::{
-    Event,
-    Platform,
-    Window, IO,
-};
+use sourcerenderer_core::platform::Platform;
 use sourcerenderer_core::{
-    Console,
-    Vec2I, Vec2UI,
+    console::Console,
+    Vec2UI,
 };
 
-use crate::asset::loaders::{
-    FSContainer, GltfLoader, ImageLoader, ShaderLoader
-};
-use crate::asset::{AssetContainer, AssetLoader, AssetManager, AssetManagerECSResource, AssetManagerPlugin};
+use crate::asset::{AssetManager, AssetManagerECSResource, AssetManagerPlugin};
 use crate::graphics::*;
-use crate::input::Input;
-use crate::renderer::{Renderer, RendererPlugin};
+use crate::renderer::RendererPlugin;
 use crate::transform::InterpolationPlugin;
 
 #[derive(Resource)]

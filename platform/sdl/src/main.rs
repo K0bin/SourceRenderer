@@ -1,10 +1,3 @@
-#![allow(dead_code)]
-extern crate bitset_core;
-extern crate raw_window_handle;
-extern crate sdl2;
-extern crate sdl2_sys;
-extern crate sourcerenderer_core;
-extern crate sourcerenderer_engine;
 #[macro_use]
 extern crate lazy_static;
 

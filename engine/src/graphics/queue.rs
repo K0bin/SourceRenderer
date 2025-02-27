@@ -1,8 +1,7 @@
-use std::{collections::VecDeque, mem::ManuallyDrop, ops::Range, sync::Arc};
+use std::{collections::VecDeque, ops::Range, sync::Arc};
 use crate::{Mutex, MutexGuard, Condvar};
 
 use crossbeam_channel::Sender;
-use log::trace;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{self, Queue as GPUQueue};
 
@@ -10,7 +9,6 @@ use super::*;
 
 type SharedSwapchain<B> = Arc<Mutex<super::Swapchain<B>>>;
 type SharedSwapchainPtr<B> = *const Mutex<super::Swapchain<B>>;
-type GPUSwapchain<B> = <B as GPUBackend>::Swapchain;
 type GPUSwapchainPtr<B> = *const <B as GPUBackend>::Swapchain;
 type Backbuffer<B> = <<B as GPUBackend>::Swapchain as gpu::Swapchain<B>>::Backbuffer;
 
@@ -23,10 +21,6 @@ enum StoredQueueSubmission<B: GPUBackend> {
         signal_fences: SmallVec<[SharedFenceValuePair<B>; 4]>,
         wait_fences: SmallVec<[SharedFenceValuePair<B>; 4]>,
     },
-    TransferCommandBuffer {
-        command_buffer: ManuallyDrop<Box<TransferCommandBuffer<B>>>,
-        return_sender: Sender<Box<TransferCommandBuffer<B>>>
-    },
     Present {
         swapchain: (Arc<Mutex<super::Swapchain<B>>>, Arc<<B::Swapchain as gpu::Swapchain<B>>::Backbuffer>),
     }
@@ -38,11 +32,6 @@ pub struct QueueSubmission<'a, B: GPUBackend> {
     pub signal_fences: &'a [SharedFenceValuePairRef<'a, B>],
     pub acquire_swapchain: Option<(&'a SharedSwapchain<B>, &'a Arc<Backbuffer<B>>)>,
     pub release_swapchain: Option<(&'a SharedSwapchain<B>, &'a Arc<Backbuffer<B>>)>,
-}
-
-enum CommandBufferToRecycle<B: GPUBackend> {
-    CommandBuffer(Box<super::CommandBuffer<B>>),
-    Transfer(Box<super::TransferCommandBuffer<B>>)
 }
 
 struct QueueInner<B: GPUBackend> {
@@ -249,14 +238,6 @@ impl<B: GPUBackend> Queue<B> {
                         push_submission(&mut holder, command_buffer.handle(), wait_fences, signal_fences, wait_swapchain.as_ref().map(|(s, key)| (s, key.as_ref())), signal_swapchain.as_ref().map(|(s, key)| (s, key.as_ref())));
                     }
                 },
-                StoredQueueSubmission::TransferCommandBuffer { command_buffer, return_sender: _ } => {
-                    push_submission(&mut holder,
-                        command_buffer.handle(),
-                        &[],
-                        unsafe { std::slice::from_raw_parts(command_buffer.fence_value() as *const SharedFenceValuePair<B>, 1) },
-                        None, None
-                    );
-                },
                 StoredQueueSubmission::Present { swapchain: (swapchain, key) } => {
                     if !holder.command_buffers.is_empty() {
                         flush_command_buffers(&mut holder);
@@ -287,9 +268,6 @@ impl<B: GPUBackend> Queue<B> {
                 StoredQueueSubmission::CommandBuffer { command_buffer, return_sender, .. } => {
                     return_sender.send(command_buffer).unwrap();
                 },
-                StoredQueueSubmission::TransferCommandBuffer { mut command_buffer, return_sender } => {
-                    return_sender.send(unsafe { ManuallyDrop::take(&mut command_buffer) }).unwrap();
-                },
                 StoredQueueSubmission::Present { swapchain: _ } => {}
             }
         }
@@ -298,6 +276,12 @@ impl<B: GPUBackend> Queue<B> {
         if guard.is_idle {
             self.idle_condvar.notify_all();
         }
+    }
+
+    #[allow(unused)]
+    #[inline(always)]
+    pub fn queue_type(&self) -> QueueType {
+        self.queue_type
     }
 
     pub(super) fn wait_for_idle(&self) {

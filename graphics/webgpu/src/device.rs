@@ -1,7 +1,6 @@
-use js_sys::{wasm_bindgen::{self, prelude::Closure, JsCast, JsValue}, Array};
-use smallvec::{SmallVec, smallvec};
-use sourcerenderer_core::{align_up_32, gpu::{self, Texture as _, TextureLayout}};
-use web_sys::{GpuAdapter, GpuDevice, GpuQueue, GpuTexelCopyTextureInfo, GpuTexelCopyBufferLayout, GpuExtent3dDict};
+use js_sys::{wasm_bindgen::{prelude::Closure, JsCast, JsValue}, Array};
+use sourcerenderer_core::{align_up_32, gpu::{self, Texture as _}};
+use web_sys::{GpuDevice, GpuTexelCopyTextureInfo, GpuTexelCopyBufferLayout, GpuExtent3dDict};
 
 use crate::{WebGPUBackend, WebGPUBuffer, WebGPUComputePipeline, WebGPUFeatures, WebGPUFence, WebGPUGraphicsPipeline, WebGPUHeap, WebGPULimits, WebGPUQueue, WebGPUSampler, WebGPUShader, WebGPUShared, WebGPUTexture, WebGPUTextureView};
 
@@ -10,7 +9,7 @@ pub struct WebGPUDevice {
     shared: WebGPUShared,
     memory_infos: [gpu::MemoryTypeInfo; 1],
     queue: WebGPUQueue,
-    features: WebGPUFeatures,
+    _features: WebGPUFeatures,
     limits: WebGPULimits
 }
 
@@ -44,11 +43,12 @@ impl WebGPUDevice {
             shared,
             memory_infos,
             queue,
-            features: features.clone(),
+            _features: features.clone(),
             limits: limits.clone(),
         }
     }
 
+    #[inline(always)]
     pub fn handle(&self) -> &GpuDevice {
         &self.device
     }
@@ -204,7 +204,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
 
     unsafe fn transition_texture(&self, _dst: &WebGPUTexture, _transition: &gpu::CPUTextureTransition<'_, WebGPUBackend>) {}
 
-    unsafe fn copy_to_texture(&self, src: *const std::ffi::c_void, dst: &WebGPUTexture, _texture_layout: TextureLayout, region: &gpu::MemoryTextureCopyRegion) {
+    unsafe fn copy_to_texture(&self, src: *const std::ffi::c_void, dst: &WebGPUTexture, _texture_layout: gpu::TextureLayout, region: &gpu::MemoryTextureCopyRegion) {
         let src_info = GpuTexelCopyBufferLayout::new();
 
         let format = dst.info().format;

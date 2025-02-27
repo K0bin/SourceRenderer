@@ -1,6 +1,6 @@
 use std::{cell::{Ref, RefCell}, hash::Hash};
 
-use sourcerenderer_core::gpu::{Buffer, BufferInfo, BufferUsage};
+use sourcerenderer_core::gpu;
 
 use web_sys::{js_sys::Uint8Array, GpuBuffer, GpuBufferDescriptor, GpuDevice};
 
@@ -13,7 +13,7 @@ pub struct WebGPUBuffer {
     rust_memory: RefCell<Option<Box<[u8]>>>,
     retained_memory_limit: u64,
     mappable: bool,
-    info: BufferInfo,
+    info: gpu::BufferInfo,
 }
 
 impl PartialEq for WebGPUBuffer {
@@ -36,7 +36,7 @@ unsafe impl Send for WebGPUBuffer {}
 unsafe impl Sync for WebGPUBuffer {}
 
 impl WebGPUBuffer {
-    pub fn new(device: &GpuDevice, info: &BufferInfo, mappable: bool, name: Option<&str>) -> Result<Self, ()> {
+    pub fn new(device: &GpuDevice, info: &gpu::BufferInfo, mappable: bool, name: Option<&str>) -> Result<Self, ()> {
         // If usage contains MAP_WRITE, it must not contain any other usage flags besides COPY_SRC.
         // If usage contains MAP_READ, it must not contain any other usage flags besides COPY_DST.
         // Besides that map() is async and the buffer can not be used by the GPU while it is mapped.
@@ -44,35 +44,35 @@ impl WebGPUBuffer {
 
         let mut usage = 0u32;
         let mut retained_rust_memory_limit = 0u64;
-        if info.usage.contains(BufferUsage::VERTEX) {
+        if info.usage.contains(gpu::BufferUsage::VERTEX) {
             usage |= web_sys::gpu_buffer_usage::VERTEX;
         }
-        if info.usage.contains(BufferUsage::INDEX) {
+        if info.usage.contains(gpu::BufferUsage::INDEX) {
             usage |= web_sys::gpu_buffer_usage::INDEX;
         }
-        if info.usage.contains(BufferUsage::INDIRECT) {
+        if info.usage.contains(gpu::BufferUsage::INDIRECT) {
             usage |= web_sys::gpu_buffer_usage::INDIRECT;
         }
-        if info.usage.contains(BufferUsage::CONSTANT) {
+        if info.usage.contains(gpu::BufferUsage::CONSTANT) {
             usage |= web_sys::gpu_buffer_usage::UNIFORM;
         }
-        if info.usage.contains(BufferUsage::STORAGE) {
+        if info.usage.contains(gpu::BufferUsage::STORAGE) {
             usage |= web_sys::gpu_buffer_usage::STORAGE;
         }
-        if info.usage.contains(BufferUsage::COPY_SRC) {
+        if info.usage.contains(gpu::BufferUsage::COPY_SRC) {
             usage |= web_sys::gpu_buffer_usage::COPY_SRC;
         }
-        if info.usage.intersects(BufferUsage::COPY_DST | BufferUsage::INITIAL_COPY) {
+        if info.usage.intersects(gpu::BufferUsage::COPY_DST | gpu::BufferUsage::INITIAL_COPY) {
             usage |= web_sys::gpu_buffer_usage::COPY_DST;
         }
-        if info.usage == BufferUsage::COPY_DST && mappable {
+        if info.usage == gpu::BufferUsage::COPY_DST && mappable {
             usage = web_sys::gpu_buffer_usage::COPY_DST | web_sys::gpu_buffer_usage::MAP_READ;
         }
-        if info.usage == BufferUsage::CONSTANT && mappable {
+        if info.usage == gpu::BufferUsage::CONSTANT && mappable {
             // Allocating new Rust memory for every single map operation is too slow.
             retained_rust_memory_limit = 256;
         }
-        if !info.usage.gpu_writable() && !mappable && !info.usage.contains(BufferUsage::INITIAL_COPY) {
+        if !info.usage.gpu_writable() && !mappable && !info.usage.contains(gpu::BufferUsage::INITIAL_COPY) {
             panic!("The buffer is useless because it can neither be written on the CPU nor the GPU.");
         }
         if info.usage.gpu_writable() && !info.usage.gpu_readable() && !mappable {
@@ -114,6 +114,7 @@ impl WebGPUBuffer {
         })
     }
 
+    #[inline(always)]
     pub fn handle(&self) -> Ref<GpuBuffer> {
         self.buffer.borrow()
     }
@@ -126,8 +127,8 @@ impl Drop for WebGPUBuffer {
     }
 }
 
-impl Buffer for WebGPUBuffer {
-    fn info(&self) -> &BufferInfo {
+impl gpu::Buffer for WebGPUBuffer {
+    fn info(&self) -> &gpu::BufferInfo {
         &self.info
     }
 

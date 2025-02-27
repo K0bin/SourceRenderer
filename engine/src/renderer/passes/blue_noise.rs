@@ -1,13 +1,9 @@
-use std::io::{
-    Cursor,
-    Read,
-};
-use std::path::Path;
+use std::io::Cursor;
 use std::sync::Arc;
 
+#[allow(deprecated)]
 use image::io::Reader as ImageReader;
 use sourcerenderer_core::gpu::GPUBackend;
-use sourcerenderer_core::platform::IO;
 use sourcerenderer_core::Platform;
 
 use crate::graphics::*;
@@ -47,13 +43,15 @@ impl<B: GPUBackend> BlueNoise<B> {
         }
     }
 
+    #[allow(unused)]
+    #[allow(deprecated)]
     fn load_frame<P: Platform>(device: &Arc<Device<B>>, index: u32) -> Arc<TextureView<B>> {
         /*let path = Path::new("assets")
             .join(Path::new("bn"))
             .join(Path::new(&format!("LDR_RGB1_{}.png", index)));
         let mut file = P::IO::open_asset(&path)
             .unwrap_or_else(|e| panic!("Failed to open {:?}: {:?}", &path, e));*/
-        let mut buffer = Vec::<u8>::new();
+        let buffer = Vec::<u8>::new();
         //file.read_to_end(&mut buffer).unwrap();
 
         let img = ImageReader::with_format(Cursor::new(buffer), image::ImageFormat::Png)

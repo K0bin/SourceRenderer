@@ -1,10 +1,10 @@
 use std::{marker::PhantomData, sync::Arc};
 
-use bevy_app::{App, FixedUpdate, Plugin, Update};
+use bevy_app::{App, Plugin};
 use sourcerenderer_core::Platform;
 use sourcerenderer_engine::{asset::{loaders::GltfContainer, AssetLoadPriority, AssetManager, AssetType}, Engine};
 
-use crate::{fps_camera::{fps_camera_movement, retrieve_fps_camera_rotation}, spinning_cube::SpinningCubePlugin};
+use crate::{fps_camera, spinning_cube::SpinningCubePlugin};
 
 pub struct GamePlugin<P: Platform>(PhantomData<P>);
 
@@ -27,11 +27,10 @@ impl<P: Platform> Plugin for GamePlugin<P> {
                 GltfContainer::<P>::load("bistro_sun.glb", true).await.unwrap()
             });
             asset_manager.request_asset("bistro_sun.glb/scene/Scene", AssetType::Level, AssetLoadPriority::High);
+            //asset_manager.request_asset("FlightHelmet/FlightHelmet.gltf/scene/0", AssetType::Level, AssetLoadPriority::High);
         }
 
-        app
-            .add_systems(FixedUpdate, fps_camera_movement::<P>)
-            .add_systems(Update, retrieve_fps_camera_rotation::<P>)
-            .add_plugins(SpinningCubePlugin::<P>::default());
+        fps_camera::install::<P>(app);
+        app.add_plugins(SpinningCubePlugin::<P>::default());
     }
 }

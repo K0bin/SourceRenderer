@@ -2,9 +2,9 @@
 name = "sourcerenderer_mdl"
 version = "0.1.0"
 authors = ["Robin Kertels <robin.kertels@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
-bitflags = "2.4.2"
-bevy_math = "0.15.1"
+bitflags = "2.8"
+bevy_math = "0.15"
 io_util = { path = "../../io_util" }

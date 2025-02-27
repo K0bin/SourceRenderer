@@ -2,11 +2,12 @@
 name = "sourcerenderer_vpk"
 version = "0.1.0"
 authors = ["Robin Kertels <robin.kertels@gmail.com>"]
+edition = "2021"
 
 [dependencies]
-rsa = "0.9.6"
-crc = "3.0.1"
-md5 = "0.7.0"
-rand = "0.8.5"
-futures-io = "0.3.31"
+rsa = "0.9"
+crc = "3.2"
+md5 = "0.7"
+rand = "0.9"
+futures-io = "0.3"
 io_util = { path = "../../io_util" }

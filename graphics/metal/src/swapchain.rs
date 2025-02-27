@@ -1,7 +1,7 @@
 use metal::{self, MetalDrawable};
 use metal::foreign_types::ForeignTypeRef;
 
-use sourcerenderer_core::gpu::{self, Backbuffer, Format, Texture};
+use sourcerenderer_core::gpu::{self, Texture as _};
 use sourcerenderer_core::Matrix4;
 
 use super::*;
@@ -35,7 +35,7 @@ pub struct MTLBackbuffer {
     drawable: MetalDrawable
 }
 
-impl Backbuffer for MTLBackbuffer {
+impl gpu::Backbuffer for MTLBackbuffer {
     fn key(&self) -> u64 {
         self.drawable.drawable_id()
     }
@@ -46,7 +46,7 @@ pub struct MTLSwapchain {
     device: metal::Device,
     width: u32,
     height: u32,
-    format: Format
+    format: gpu::Format
 }
 
 const IMAGE_COUNT: u32 = 3;

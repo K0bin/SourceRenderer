@@ -1,9 +1,6 @@
-use std::collections::hash_map::Values;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::marker::PhantomData;
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
 use std::sync::Arc;
 use crate::{Mutex, Condvar};
 
@@ -146,11 +143,6 @@ pub struct GraphicsPipelineInfo<'a> {
     pub depth_stencil_format: Format
 }
 
-struct StoredGraphicsPipeline<B: GPUBackend> {
-    info: StoredGraphicsPipelineInfo,
-    pipeline: Arc<B::GraphicsPipeline>,
-}
-
 #[derive(Debug)]
 pub struct GraphicsCompileTask<P: Platform> {
     info: StoredGraphicsPipelineInfo,
@@ -166,11 +158,6 @@ impl<P: Platform> Clone for GraphicsCompileTask<P> {
             _p: PhantomData
         }
     }
-}
-
-struct GraphicsPipeline<P: Platform> {
-    task: GraphicsCompileTask<P>,
-    pipeline: Arc<<P::GPUBackend as GPUBackend>::GraphicsPipeline>,
 }
 
 pub struct GraphicsShaders<B: GPUBackend> {
@@ -286,11 +273,6 @@ impl<P: Platform> PipelineCompileTask<P> for GraphicsCompileTask<P> {
 // COMPUTE
 //
 
-struct ComputePipeline<B: GPUBackend> {
-    path: String,
-    pipeline: Arc<B::ComputePipeline>,
-}
-
 pub struct ComputeCompileTask<P: Platform> {
     path: String,
     is_async: bool,
@@ -390,11 +372,6 @@ impl<P: Platform> PipelineCompileTask<P> for ComputeCompileTask<P> {
 //
 // RAY TRACING
 //
-
-struct RayTracingPipeline<P: Platform> {
-    task: StoredRayTracingPipelineInfo<P>,
-    pipeline: Arc<crate::graphics::RayTracingPipeline<P::GPUBackend>>,
-}
 
 #[derive(Debug, Clone)]
 pub struct RayTracingPipelineInfo<'a> {

@@ -25,32 +25,39 @@ impl<B: GPUBackend> Debug for BufferSlice<B> {
 }
 
 impl<B: GPUBackend> BufferSlice<B> {
+    #[inline(always)]
     pub fn offset(&self) -> u64 {
         self.0.range.offset
     }
 
+    #[inline(always)]
     pub fn length(&self) -> u64 {
         self.0.range.length
     }
 
+    #[inline(always)]
     pub(super) fn handle(&self) -> &B::Buffer {
         &self.0.data().buffer
     }
 
+    #[inline(always)]
     pub unsafe fn map_part(&self, offset: u64, length: u64, invalidate: bool) -> Option<*mut c_void> {
         debug_assert!(self.0.range.length >= offset + length);
         self.handle().map(self.0.range.offset + offset, length, invalidate)
     }
 
+    #[inline(always)]
     pub unsafe fn unmap_part(&self, offset: u64, length: u64, flush: bool) {
         debug_assert!(self.0.range.length >= offset + length);
         self.handle().unmap(self.0.range.offset + offset, length, flush)
     }
 
+    #[inline(always)]
     pub unsafe fn map(&self, invalidate: bool) -> Option<*mut c_void> {
         self.handle().map(self.0.range.offset, self.0.range.length, invalidate)
     }
 
+    #[inline(always)]
     pub unsafe fn unmap(&self, flush: bool) {
         self.handle().unmap(self.0.range.offset, self.0.range.length, flush);
     }
@@ -68,6 +75,7 @@ impl<B: GPUBackend> BufferSlice<B> {
         }
     }
 
+    #[inline(always)]
     pub fn info(&self) -> &BufferInfo {
         self.0.data().buffer.info()
     }

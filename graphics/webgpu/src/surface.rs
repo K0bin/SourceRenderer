@@ -26,10 +26,12 @@ impl WebGPUSurface {
         })
     }
 
+    #[inline(always)]
     pub(crate) fn canvas(&self) -> &OffscreenCanvas {
         &self.canvas
     }
 
+    #[inline(always)]
     pub(crate) fn instance_handle(&self) -> &Gpu {
         &self.instance
     }

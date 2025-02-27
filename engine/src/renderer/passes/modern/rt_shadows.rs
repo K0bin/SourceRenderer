@@ -55,6 +55,7 @@ impl RTShadowPass {
         Self { pipeline }
     }
 
+    #[inline(always)]
     pub(crate) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
         assets.get_ray_tracing_pipeline(self.pipeline).is_some()
     }

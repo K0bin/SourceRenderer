@@ -28,7 +28,7 @@ use sourcerenderer_core::platform::Platform;
 use sourcerenderer_core::Vec4;
 
 use crate::math::BoundingBox;
-use crate::graphics::TextureInfo;
+use crate::graphics::{GraphicsContext, TextureInfo};
 use crate::renderer::asset::{ComputePipelineHandle, GraphicsPipelineHandle, GraphicsPipelineInfo, RayTracingPipelineHandle, RayTracingPipelineInfo, RendererAssets, RendererAssetsReadOnly};
 
 use super::{Asset, AssetData, AssetHandle, AssetType, AssetWithHandle, MaterialData, MeshData, MeshRange, ModelData, TextureData};
@@ -36,7 +36,7 @@ use super::{Asset, AssetData, AssetHandle, AssetType, AssetWithHandle, MaterialD
 pub struct AssetLoadRequest {
     pub path: String,
     pub progress: Arc<AssetLoaderProgress>,
-    pub priority: AssetLoadPriority,
+    pub _priority: AssetLoadPriority,
 }
 
 pub struct AssetFile {
@@ -519,7 +519,7 @@ impl<P: Platform> AssetManager<P> {
         let load_request = AssetLoadRequest {
             path: path.to_owned(),
             progress: progress.clone(),
-            priority,
+            _priority: priority,
         };
 
 
@@ -543,6 +543,7 @@ impl<P: Platform> AssetManager<P> {
         progress
     }
 
+    #[allow(unused)]
     pub(crate) fn take_unintegrated_asset_data(self: &Arc<Self>, path: &str) -> Option<AssetData> {
         let mut unintegrated = self.unintegrated_assets.lock().unwrap();
         unintegrated.remove(path)
@@ -678,5 +679,10 @@ impl<P: Platform> AssetManager<P> {
 
     pub(crate) fn flush_renderer_assets(self: &Arc<Self>) {
         self.renderer.flush(self);
+    }
+
+    #[inline(always)]
+    pub(crate) fn bump_frame(&self, context: &GraphicsContext<P::GPUBackend>) {
+        self.renderer.bump_frame(context);
     }
 }

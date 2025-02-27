@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use bevy_tasks::futures_lite::{AsyncBufReadExt, AsyncRead, AsyncReadExt};
+use bevy_tasks::futures_lite::AsyncReadExt;
 
 use log::trace;
 use sourcerenderer_core::gpu::PackedShader;

@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-use std::sync::atomic::AtomicU64;
 use web_time::Duration;
 
 use atomic_refcell::AtomicRefCell;
@@ -11,10 +9,6 @@ use bevy_app::{
 use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::event::Event;
-use bevy_ecs::query::{
-    Added,
-    With,
-};
 use bevy_ecs::removal_detection::RemovedComponents;
 use bevy_ecs::schedule::{
     IntoSystemConfigs,
@@ -26,9 +20,7 @@ use bevy_ecs::system::{
     ResMut,
     Resource,
 };
-use bevy_ecs::world::{Ref, World};
-use bevy_log::trace;
-use bevy_tasks::ComputeTaskPool;
+use bevy_ecs::world::Ref;
 use bevy_transform::components::GlobalTransform;
 use bevy_utils::synccell::SyncCell;
 use log::{debug, info};
@@ -55,11 +47,13 @@ use crate::{
     Camera,
 };
 
+#[allow(unused)]
 #[derive(Event)]
 struct WindowSizeChangedEvent {
     size: Vec2UI,
 }
 
+#[allow(unused)]
 #[derive(Event)]
 struct WindowMinimized {}
 
@@ -224,7 +218,7 @@ fn start_render_thread<P: Platform>(mut renderer: Renderer<P>) {
     std::thread::Builder::new()
         .name("RenderThread".to_string())
         .spawn(move || {
-            trace!("Started renderer thread");
+            log::trace!("Started renderer thread");
             loop {
                 if !renderer.is_running() {
                     break;
@@ -234,7 +228,7 @@ fn start_render_thread<P: Platform>(mut renderer: Renderer<P>) {
                 });
             }
             renderer.notify_stopped_running();
-            trace!("Stopped renderer thread");
+            log::trace!("Stopped renderer thread");
         })
         .unwrap();
 }
@@ -326,6 +320,7 @@ fn extract_directional_lights<P: Platform>(
     }
 }
 
+#[allow(unused_mut)]
 fn end_frame<P: Platform>(mut renderer: ResMut<RendererResourceWrapper<P>>) {
     if renderer.sender.is_saturated() {
         return;

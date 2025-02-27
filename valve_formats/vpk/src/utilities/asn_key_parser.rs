@@ -30,8 +30,8 @@ Portions of this software are Copyright of Alex Henderson
 
 #[derive(Debug)]
 pub struct BerDecodeError {
-  pub message: String,
-  pub position: u32
+  pub _message: String,
+  pub _position: u32
 }
 
 pub struct RSAParameters {
@@ -73,8 +73,8 @@ impl AsnKeyParser {
     let length = self.parser.next_sequence()?;
     if length != self.parser.remaining_bytes() {
       return Err(BerDecodeError {
-        message: format!("Incorrect Sequence Size. Specified {}, Remaining: {}", length, self.parser.remaining_bytes()),
-        position
+        _message: format!("Incorrect Sequence Size. Specified {}, Remaining: {}", length, self.parser.remaining_bytes()),
+        _position: position
       });
     }
 
@@ -85,8 +85,8 @@ impl AsnKeyParser {
     let length = self.parser.next_sequence()?;
     if length != self.parser.remaining_bytes() {
       return Err(BerDecodeError {
-        message: format!("Incorrect AlgorithmIdentifier Size. Specified {}, Remaining: {}", length, self.parser.remaining_bytes()),
-        position
+        _message: format!("Incorrect AlgorithmIdentifier Size. Specified {}, Remaining: {}", length, self.parser.remaining_bytes()),
+        _position: position
       });
     }
 
@@ -97,8 +97,8 @@ impl AsnKeyParser {
     let oid: [u8; 9] = [ 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01 ];
     if !AsnKeyParser::equal_oid(&value, &oid) {
       return Err(BerDecodeError {
-        message: "Expected OID 1.2.840.113549.1.1.1".to_string(),
-        position
+        _message: "Expected OID 1.2.840.113549.1.1.1".to_string(),
+        _position: position
       });
     }
 
@@ -117,8 +117,8 @@ impl AsnKeyParser {
     let length = self.parser.next_bit_string()?;
     if length != self.parser.remaining_bytes() {
       return Err(BerDecodeError {
-        message: format!("Incorrect PublicKey Size. Specified {}, Remaining: {}", length, self.parser.remaining_bytes()),
-        position
+        _message: format!("Incorrect PublicKey Size. Specified {}, Remaining: {}", length, self.parser.remaining_bytes()),
+        _position: position
       });
     }
 
@@ -129,8 +129,8 @@ impl AsnKeyParser {
     let length = self.parser.next_sequence()?;
     if length != self.parser.remaining_bytes() {
       return Err(BerDecodeError {
-        message: format!("Incorrect RsaPublicKey Size. Specified {}, Remaining: {}", length, self.parser.remaining_bytes()),
-        position
+        _message: format!("Incorrect RsaPublicKey Size. Specified {}, Remaining: {}", length, self.parser.remaining_bytes()),
+        _position: position
       });
     }
 
@@ -177,8 +177,8 @@ impl AsnParser {
     let mut i = b & 0x7f;
     if i > 4 {
       return Err(BerDecodeError {
-        message: format!("Invalid Length Encoding. Length uses {} octets", i),
-        position
+        _message: format!("Invalid Length Encoding. Length uses {} octets", i),
+        _position: position
       });
     }
 
@@ -199,8 +199,8 @@ impl AsnParser {
     let length = self.len()?;
     if length > self.remaining_bytes() {
       return Err(BerDecodeError {
-        message: format!("Incorrect Size. Specified {}, Remaining: {}", length, self.remaining_bytes()),
-        position
+        _message: format!("Incorrect Size. Specified {}, Remaining: {}", length, self.remaining_bytes()),
+        _position: position
       });
     }
     self.get_octets(length)
@@ -211,8 +211,8 @@ impl AsnParser {
 
     if self.remaining_bytes() == 0 {
       return Err(BerDecodeError {
-        message: "Incorrect Size. Specified: 1, Remaining: 0".to_string(),
-        position
+        _message: "Incorrect Size. Specified: 1, Remaining: 0".to_string(),
+        _position: position
       });
     }
 
@@ -224,8 +224,8 @@ impl AsnParser {
 
     if octet_count > self.remaining_bytes() {
       return Err(BerDecodeError {
-        message: format!("Incorrect Size. Specified: {}, Remaining: {}", octet_count, self.remaining_bytes()),
-        position
+        _message: format!("Incorrect Size. Specified: {}, Remaining: {}", octet_count, self.remaining_bytes()),
+        _position: position
       });
     }
 
@@ -243,16 +243,16 @@ impl AsnParser {
     let mut b = self.get_next_octet()?;
     if b != 0x05 {
       return Err(BerDecodeError {
-        message: format!("Expected Null. Specified Identifier: {}", b),
-        position
+        _message: format!("Expected Null. Specified Identifier: {}", b),
+        _position: position
       });
     }
 
     b = self.get_next_octet()?;
     if b != 0x00 {
       return Err(BerDecodeError {
-        message: format!("Null has non-zero size. Size: {}", b),
-        position
+        _message: format!("Null has non-zero size. Size: {}", b),
+        _position: position
       });
     }
 
@@ -264,16 +264,16 @@ impl AsnParser {
     let b = self.get_next_octet()?;
     if b != 0x30 {
       return Err(BerDecodeError {
-        message: format!("Expected Sequence. Specified Identifier: {}", b),
-        position
+        _message: format!("Expected Sequence. Specified Identifier: {}", b),
+        _position: position
       });
     }
 
     let length = self.len()?;
     if length > self.remaining_bytes() {
       return Err(BerDecodeError {
-        message: format!("Incorrect Sequence Size. Specified: {}, Remaining: {}", length, self.remaining_bytes()),
-        position
+        _message: format!("Incorrect Sequence Size. Specified: {}, Remaining: {}", length, self.remaining_bytes()),
+        _position: position
       });
     }
     Ok(length)
@@ -284,8 +284,8 @@ impl AsnParser {
     let mut b = self.get_next_octet()?;
     if b != 0x03 {
       return Err(BerDecodeError {
-        message: format!("Expected Sequence. Specified Identifier: {}", b),
-        position
+        _message: format!("Expected Sequence. Specified Identifier: {}", b),
+        _position: position
       });
     }
 
@@ -298,8 +298,8 @@ impl AsnParser {
 
     if b != 0x00 {
       return Err(BerDecodeError {
-        message: "The first octet of BitString must be 0".to_string(),
-        position
+        _message: "The first octet of BitString must be 0".to_string(),
+        _position: position
       });
     }
 
@@ -311,16 +311,16 @@ impl AsnParser {
     let b = self.get_next_octet()?;
     if b != 0x02 {
       return Err(BerDecodeError {
-        message: format!("Expected Sequence. Specified Identifier: {}", b),
-        position
+        _message: format!("Expected Sequence. Specified Identifier: {}", b),
+        _position: position
       });
     }
 
     let length = self.len()?;
     if length > self.remaining_bytes() {
       return Err(BerDecodeError {
-        message: format!("Incorrect Integer Size. Specified: {}, Remaining: {}", length, self.remaining_bytes()),
-        position
+        _message: format!("Incorrect Integer Size. Specified: {}, Remaining: {}", length, self.remaining_bytes()),
+        _position: position
       });
     }
 
@@ -332,16 +332,16 @@ impl AsnParser {
     let b = self.get_next_octet()?;
     if b != 0x06 {
       return Err(BerDecodeError {
-        message: format!("Expected Sequence. Specified Identifier: {}", b),
-        position
+        _message: format!("Expected Sequence. Specified Identifier: {}", b),
+        _position: position
       });
     }
 
     let length = self.len()?;
     if length > self.remaining_bytes() {
       return Err(BerDecodeError {
-        message: format!("Incorrect Object Identifier Size. Specified: {}, Remaining: {}", length, self.remaining_bytes()),
-        position
+        _message: format!("Incorrect Object Identifier Size. Specified: {}, Remaining: {}", length, self.remaining_bytes()),
+        _position: position
       });
     }
 

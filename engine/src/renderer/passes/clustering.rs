@@ -29,6 +29,7 @@ pub struct ClusteringPass {
 impl ClusteringPass {
     pub const CLUSTERS_BUFFER_NAME: &'static str = "clusters";
 
+    #[allow(unused)]
     pub fn new<P: Platform>(
         barriers: &mut RendererResources<P::GPUBackend>,
         asset_manager: &Arc<AssetManager<P>>,
@@ -49,6 +50,7 @@ impl ClusteringPass {
         Self { pipeline }
     }
 
+    #[inline(always)]
     pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
         assets.get_compute_pipeline(self.pipeline).is_some()
     }

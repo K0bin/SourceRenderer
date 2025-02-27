@@ -21,6 +21,7 @@ use crate::renderer::renderer_resources::{
 };
 use crate::graphics::*;
 
+#[allow(unused)]
 #[derive(Clone, Copy)]
 #[repr(C)]
 struct PrepassCameraCB {
@@ -49,6 +50,7 @@ impl Prepass {
 
     const DRAWABLE_LABELS: bool = false;
 
+    #[allow(unused)]
     pub fn new<P: Platform>(
         resources: &mut RendererResources<P::GPUBackend>,
         asset_manager: &Arc<AssetManager<P>>,
@@ -133,6 +135,7 @@ impl Prepass {
         Self { pipeline }
     }
 
+    #[inline(always)]
     pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
         assets.get_graphics_pipeline(self.pipeline).is_some()
     }

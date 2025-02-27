@@ -129,6 +129,7 @@ impl<B: GPUBackend> AssetBuffer<B> {
         reuse_ranges.retain(|(_r, frames)| *frames <= context.prerendered_frames() + 1);
     }
 
+    #[inline(always)]
     pub fn buffer(&self) -> &Arc<BufferSlice<B>> {
         &self.internal.buffer
     }
@@ -166,14 +167,17 @@ impl<B: GPUBackend> AssetBufferInternal<B> {
 }
 
 impl<B: GPUBackend> AssetBufferSlice<B> {
+    #[inline(always)]
     pub fn buffer(&self) -> &Arc<BufferSlice<B>> {
         &self.buffer.buffer
     }
 
+    #[inline(always)]
     pub fn offset(&self) -> u32 {
         self.range.aligned_offset
     }
 
+    #[inline(always)]
     pub fn size(&self) -> u32 {
         self.range.length
     }

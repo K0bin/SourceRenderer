@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 
-use sourcerenderer_core::{gpu::{PackedShader, TextureInfo}, Vec4};
+use sourcerenderer_core::Vec4;
 
 use crate::math::BoundingBox;
+
+use crate::graphics::{TextureInfo, PackedShader};
 
 use super::{loaded_level::LevelData, AssetType};
 

@@ -6,7 +6,7 @@ use std::{
 use ash::vk;
 use parking_lot::ReentrantMutexGuard;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, Swapchain as _};
+use sourcerenderer_core::gpu;
 
 use super::*;
 
@@ -30,12 +30,6 @@ pub struct VkQueue {
     queue_type: VkQueueType,
 }
 
-struct VkSemaphoreSignalOrWait {
-    semaphore: vk::Semaphore,
-    value: u64,
-    stage: vk::PipelineStageFlags2,
-}
-
 impl VkQueue {
     pub fn new(
         info: VkQueueInfo,
@@ -51,14 +45,17 @@ impl VkQueue {
         }
     }
 
+    #[inline(always)]
     pub fn family_index(&self) -> u32 {
         self.info.queue_family_index as u32
     }
 
+    #[inline(always)]
     pub fn supports_presentation(&self) -> bool {
         self.info.supports_presentation
     }
 
+    #[inline(always)]
     fn lock_queue(&self) -> ReentrantMutexGuard<vk::Queue> {
         match self.queue_type {
             VkQueueType::Graphics => self.device.graphics_queue(),

@@ -2,22 +2,20 @@
 name = "sourcerenderer_core"
 version = "0.1.0"
 authors = ["Robin Kertels <robin.kertels@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
-nalgebra = "0.33.0"
-bitflags = "2.4.2"
-bitset-core = "0.1.1"
-crossbeam-channel = "0.5.12"
-crossbeam-queue = "0.3.11"
-crossbeam-deque = "0.8.5"
-crossbeam-utils = "0.8.19"
-num_cpus = "1.16.0"
-rayon = "1.9.0"
-smallvec = { version = "1.13.1", features = [ "union", "const_generics", "const_new" ] }
+bitflags = "2.8"
+bitset-core = "0.1"
+crossbeam-channel = "0.5"
+crossbeam-queue = "0.3"
+crossbeam-deque = "0.8"
+crossbeam-utils = "0.8"
+num_cpus = "1.16"
+smallvec = { version = "1.13", features = [ "union", "const_generics", "const_new" ] }
 serde = { version = "1.0", features = ["derive"] }
-smartstring = "1.0.1"
-futures-io = "0.3.31"
+smartstring = "1.0"
+futures-io = "0.3"
 
-bevy_math = "0.15.1"
-bevy_log = "0.15.1"
+bevy_math = "0.15"
+bevy_log = "0.15"

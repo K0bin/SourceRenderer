@@ -15,6 +15,7 @@ struct OpTypePointer {
     type_id: u32
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 struct OpVariable {
     result_type_id: u32,
@@ -30,6 +31,7 @@ struct OpDecorate {
     value: Option<u32>
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 struct OpMemberDecorate {
     structure_type: u32,
@@ -44,6 +46,7 @@ struct OpTypeSampledImage {
     image_type_id: u32
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 struct OpTypeImage {
     result_id: u32,
@@ -56,6 +59,7 @@ struct OpTypeImage {
     image_format: u32
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 struct OpLoad {
     result_type_id: u32,
@@ -63,6 +67,7 @@ struct OpLoad {
     pointer_id: u32
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 struct OpTypeFunction {
     result_id: u32,
@@ -75,6 +80,7 @@ struct OpFunctionParameter {
     result_id: u32,
 }
 
+#[allow(unused)]
 struct OpFunctionCall {
     result_type_id: u32,
     result_id: u32,
@@ -82,6 +88,7 @@ struct OpFunctionCall {
     arguments: Vec<u32>
 }
 
+#[allow(unused)]
 struct OpEntryPoint {
     execution_model: u32,
     entry_point_id: u32,
@@ -108,6 +115,7 @@ const OP_CODE_OP_TYPE_IMAGE: u16 = 25;
 const OP_CODE_OP_TYPE_SAMPLER: u16 = 26;
 const OP_CODE_OP_TYPE_SAMPLED_IMAGE: u16 = 27;
 const OP_CODE_OP_TYPE_FUNCTION: u16 = 33;
+#[allow(unused)]
 const OP_CODE_OP_FUNCTION: u16 = 54;
 const OP_CODE_OP_FUNCTION_PARAMETER: u16 = 55;
 const OP_CODE_OP_FUNCTION_CALL: u16 = 57;
@@ -127,11 +135,13 @@ const OP_CODE_OP_LINE: u16 = 8;
 const OP_CODE_OP_NO_LINE: u16 = 317;
 const OP_CODE_OP_MODULE_PROCESSED: u16 = 330;
 
+#[allow(unused)]
 const DECORATION_LOCATION: u32 = 30;
 const DECORATION_BINDING: u32 = 33;
 const DECORATION_DESCRIPTOR_SET: u32 = 34;
 
 const STORAGE_CLASS_UNIFORM_CONSTANT: u32 = 0;
+#[allow(unused)]
 const STORAGE_CLASS_FUNCTION: u32 = 7;
 const STORAGE_CLASS_UNIFORM: u32 = 2;
 const STORAGE_CLASS_PUSH_CONSTANT: u32 = 9;
@@ -476,6 +486,7 @@ pub fn spirv_remap_bindings(spirv: &mut Vec<u8>, callback: impl Fn(&Binding) -> 
     log::info!("Done remapping bindings");
 }
 
+#[allow(unused)]
 pub struct ImageSamplerBindingPair {
     pub image: Binding,
     pub sampler: Binding
@@ -504,7 +515,7 @@ pub fn spirv_separate_combined_image_samplers(spirv: &mut Vec<u8>, decide_bindin
     let mut entry_points = Vec::<(usize, Instruction, OpEntryPoint)>::new();
     let mut decorations = Vec::<(usize, Instruction, OpDecorate)>::new();
     let mut sampler_type = Option::<u32>::None;
-    let mut sampler_ptr_type = Option::<u32>::None;
+    let mut sampler_ptr_type: Option<u32>;
 
     let mut mappings = Vec::<SampledImageTypeMappings>::new();
 
@@ -596,7 +607,7 @@ pub fn spirv_separate_combined_image_samplers(spirv: &mut Vec<u8>, decide_bindin
         return Vec::new();
     }
 
-    let mut type_insertion_point = sampled_img_types.last()
+    let type_insertion_point = sampled_img_types.last()
         .map(|(pos, instruction, _)| *pos + instruction.word_count as usize)
         .unwrap();
 
@@ -982,6 +993,7 @@ pub fn spirv_separate_combined_image_samplers(spirv: &mut Vec<u8>, decide_bindin
     binding_pairs
 }
 
+#[allow(unused)]
 pub fn spirv_validate(spirv: &[u8]) -> Result<(), String> {
     {
         let mut file = File::create("tmp.spv").unwrap();

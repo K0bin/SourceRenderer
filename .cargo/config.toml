@@ -1,2 +1,2 @@
 [build]
-rustflags = ["--cfg=web_sys_unstable_apis"]
+rustflags = ["--cfg", "web_sys_unstable_apis"]

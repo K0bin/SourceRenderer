@@ -19,6 +19,7 @@ pub struct DirectionalLight {
     pub intensity: f32,
 }
 
+#[allow(unused)]
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct CullingPointLight {

@@ -4,9 +4,7 @@ use std::usize;
 use bevy_ecs::entity::Entity;
 use log::warn;
 use sourcerenderer_core::gpu::GPUBackend;
-use sourcerenderer_core::{
-    Matrix4, Vec3, Vec4
-};
+use sourcerenderer_core::Vec3;
 use bevy_math::Affine3A;
 
 use crate::asset::TextureHandle;
@@ -47,34 +45,42 @@ impl<B: GPUBackend> RendererScene<B> {
         }
     }
 
+    #[inline(always)]
     pub fn main_view(&self) -> &View {
         &self.views[0]
     }
 
+    #[inline(always)]
     pub fn main_view_mut(&mut self) -> &mut View {
         &mut self.views[0]
     }
 
+    #[inline(always)]
     pub fn views(&self) -> &[View] {
         &self.views
     }
 
+    #[inline(always)]
     pub fn views_mut(&mut self) -> &mut [View] {
         &mut self.views
     }
 
+    #[inline(always)]
     pub fn static_drawables(&self) -> &[RendererStaticDrawable] {
         &self.static_meshes[..]
     }
 
+    #[inline(always)]
     pub fn point_lights(&self) -> &[RendererPointLight<B>] {
         &self.point_lights
     }
 
+    #[inline(always)]
     pub fn directional_lights(&self) -> &[RendererDirectionalLight<B>] {
         &self.directional_lights
     }
 
+    #[inline(always)]
     pub fn view_update_info(&mut self) -> (&mut [View], &[RendererStaticDrawable], &[RendererPointLight<B>], &[RendererDirectionalLight<B>]) {
         (&mut self.views, &self.static_meshes, &self.point_lights, &self.directional_lights)
     }
@@ -184,10 +190,12 @@ impl<B: GPUBackend> RendererScene<B> {
         debug_assert_eq!(self.directional_light_entity_map.len(), self.directional_lights.len());
     }
 
+    #[inline(always)]
     pub fn set_lightmap(&mut self, lightmap: Option<TextureHandle>) {
         self.lightmap = lightmap;
     }
 
+    #[inline(always)]
     pub fn lightmap(&self) -> Option<TextureHandle> {
         self.lightmap
     }

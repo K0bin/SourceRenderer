@@ -1,6 +1,6 @@
 use bitflags::bitflags;
 
-use sourcerenderer_core::gpu::{Adapter, AdapterType};
+use sourcerenderer_core::gpu;
 use web_sys::{GpuAdapter, GpuDevice};
 
 use crate::{WebGPUBackend, WebGPUDevice, WebGPUSurface};
@@ -11,11 +11,11 @@ pub struct WebGPUAdapter {
     debug: bool,
     features: WebGPUFeatures,
     limits: WebGPULimits,
-    adapter_type: AdapterType
+    adapter_type: gpu::AdapterType
 }
 
 impl WebGPUAdapter {
-    pub fn new(adapter: GpuAdapter, device: GpuDevice, adapter_type: AdapterType, debug: bool) -> Self {
+    pub fn new(adapter: GpuAdapter, device: GpuDevice, adapter_type: gpu::AdapterType, debug: bool) -> Self {
         let mut features = WebGPUFeatures::empty();
         let js_features = adapter.features();
         if js_features.has("bgra8unorm-storage") {
@@ -118,7 +118,7 @@ impl WebGPUAdapter {
 unsafe impl Send for WebGPUAdapter {}
 unsafe impl Sync for WebGPUAdapter {}
 
-impl Adapter<WebGPUBackend> for WebGPUAdapter {
+impl gpu::Adapter<WebGPUBackend> for WebGPUAdapter {
     fn adapter_type(&self) -> sourcerenderer_core::gpu::AdapterType {
         self.adapter_type
     }
@@ -173,6 +173,7 @@ pub(crate) struct WebGPULimits {
     pub(crate) max_buffer_size: u32,
     pub(crate) max_vertex_attributes: u32,
     pub(crate) max_vertex_buffer_array_stride: u32,
+    #[allow(unused)]
     pub(crate) max_inter_stage_shader_components: u32,
     pub(crate) max_inter_stage_shader_variables: u32,
     pub(crate) max_color_attachments: u32,

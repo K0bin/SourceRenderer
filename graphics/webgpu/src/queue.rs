@@ -4,7 +4,7 @@ use js_sys::Array;
 use sourcerenderer_core::gpu;
 use web_sys::{GpuDevice, GpuQueue};
 
-use crate::{command::WebGPUCommandPool, swapchain::WebGPUSwapchain, WebGPUBackbuffer, WebGPUBackend, WebGPULimits};
+use crate::{WebGPUCommandPool, swapchain::WebGPUSwapchain, WebGPUBackbuffer, WebGPUBackend, WebGPULimits};
 
 
 pub struct WebGPUQueue {

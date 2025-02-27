@@ -1,5 +1,4 @@
 use sourcerenderer_core::platform::Window;
-use sourcerenderer_core::gpu::{Instance, Device};
 use sourcerenderer_webgpu::{WebGPUDevice, WebGPUInstance, WebGPUSurface, WebGPUSwapchain};
 use web_sys::OffscreenCanvas;
 

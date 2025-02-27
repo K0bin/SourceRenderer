@@ -1,6 +1,6 @@
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
-use sourcerenderer_core::gpu::{self, ComputePipeline as _};
+use sourcerenderer_core::gpu::ComputePipeline as _;
 use super::*;
 
 pub struct GraphicsPipeline<B: GPUBackend> {
@@ -19,6 +19,7 @@ impl<B: GPUBackend> GraphicsPipeline<B> {
         }
     }
 
+    #[inline(always)]
     pub fn handle(&self) -> &B::GraphicsPipeline {
         &*self.pipeline
     }
@@ -47,10 +48,12 @@ impl<B: GPUBackend> ComputePipeline<B> {
         }
     }
 
+    #[inline(always)]
     pub fn handle(&self) -> &B::ComputePipeline {
         &*self.pipeline
     }
 
+    #[inline(always)]
     pub fn binding_info(&self, set: BindingFrequency, slot: u32) -> Option<BindingInfo> {
         (*self.pipeline).binding_info(set, slot)
     }
@@ -70,11 +73,11 @@ pub struct RayTracingPipeline<B: GPUBackend> {
 }
 
 impl<B: GPUBackend> RayTracingPipeline<B> {
-    pub(super) fn new(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, buffer_allocator: &BufferAllocator<B>, info: &gpu::RayTracingPipelineInfo<B>, name: Option<&str>) -> Result<Self, OutOfMemoryError> {
+    pub(super) fn new(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, buffer_allocator: &BufferAllocator<B>, info: &RayTracingPipelineInfo<B>, name: Option<&str>) -> Result<Self, OutOfMemoryError> {
         let sbt_size = unsafe { device.get_raytracing_pipeline_sbt_buffer_size(info) };
         let sbt = buffer_allocator.get_slice(&BufferInfo {
             size: sbt_size,
-            usage: gpu::BufferUsage::SHADER_BINDING_TABLE,
+            usage: BufferUsage::SHADER_BINDING_TABLE,
             sharing_mode: QueueSharingMode::Exclusive
         }, MemoryUsage::MappableGPUMemory, None)?;
         // TODO: Name SBT
@@ -90,10 +93,12 @@ impl<B: GPUBackend> RayTracingPipeline<B> {
         })
     }
 
+    #[inline(always)]
     pub fn handle(&self) -> &B::RayTracingPipeline {
         &*self.pipeline
     }
 
+    #[inline(always)]
     pub fn sbt(&self) -> &BufferSlice<B> {
         &self.sbt
     }

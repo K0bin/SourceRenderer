@@ -39,7 +39,8 @@ fn main() {
          .flag_if_supported("-Wno-unused-parameter")
          .flag_if_supported("-Wno-unknown-pragmas")
          .flag_if_supported("-Wno-sign-compare")
-         .flag_if_supported("-Wno-missing-field-initializers");
+         .flag_if_supported("-Wno-missing-field-initializers")
+         .flag_if_supported("-Wno-unused-but-set-variable");
 
     build
         .include("FidelityFX-FSR2/src/ffx-fsr2-api/")

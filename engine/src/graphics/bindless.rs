@@ -31,10 +31,12 @@ impl BindlessSlotAllocator {
 }
 
 impl<B: GPUBackend> BindlessSlot<B> {
+    #[inline(always)]
     pub fn slot(&self) -> u32 {
         self.alloc.range.offset as u32
     }
 
+    #[inline(always)]
     pub fn texture_view(&self) -> &Arc<TextureView<B>> {
         &self.texture
     }

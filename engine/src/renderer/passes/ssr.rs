@@ -25,6 +25,7 @@ pub struct SsrPass {
 impl SsrPass {
     pub const SSR_TEXTURE_NAME: &'static str = "SSR";
 
+    #[allow(unused)]
     pub fn new<P: Platform>(
         resolution: Vec2UI,
         resources: &mut RendererResources<P::GPUBackend>,
@@ -53,6 +54,7 @@ impl SsrPass {
         Self { pipeline }
     }
 
+    #[inline(always)]
     pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
         assets.get_compute_pipeline(self.pipeline).is_some()
     }

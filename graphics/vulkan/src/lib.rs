@@ -1,17 +1,3 @@
-#![allow(dead_code)]
-
-extern crate sourcerenderer_core;
-
-extern crate ash;
-
-#[macro_use]
-extern crate bitflags;
-extern crate crossbeam_channel;
-extern crate crossbeam_utils;
-extern crate rayon;
-extern crate smallvec;
-extern crate thread_local;
-
 mod raw;
 
 // pub use self::bindless::*;
@@ -27,7 +13,6 @@ pub use self::{
     format::*,
     instance::*,
     pipeline::*,
-    renderpass::*,
     shared::*,
     surface::*,
     swapchain::*,
@@ -37,6 +22,7 @@ pub use self::{
     bindless::*,
     rt::*,
 };
+pub(crate) use self::renderpass::*;
 pub(crate) use crate::raw::*;
 
 mod adapter;

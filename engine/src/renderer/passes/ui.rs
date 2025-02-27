@@ -1,18 +1,18 @@
-use std::{sync::Arc, io::Read};
+use std::sync::Arc;
 
-use sourcerenderer_core::{gpu::PackedShader, platform::IO, Platform, Vec2};
+use sourcerenderer_core::{Platform, Vec2};
 
 use crate::{asset::AssetManager, renderer::{asset::{GraphicsPipelineHandle, RendererAssetsReadOnly}, render_path::RenderPassParameters, renderer_resources::HistoryResourceEntry}, ui::UIDrawData};
 use crate::graphics::*;
 use crate::renderer::asset::GraphicsPipelineInfo;
 
-pub struct UIPass<P: Platform> {
-    device: Arc<Device<P::GPUBackend>>,
+pub struct UIPass {
     pipeline: GraphicsPipelineHandle,
 }
 
-impl<P: Platform> UIPass<P> {
-    pub fn new(device: &Arc<Device<P::GPUBackend>>, asset_manager: &Arc<AssetManager<P>>) -> Self {
+impl UIPass {
+    #[allow(unused)]
+    pub fn new<P: Platform>(device: &Arc<Device<P::GPUBackend>>, asset_manager: &Arc<AssetManager<P>>) -> Self {
         let pipeline = asset_manager.request_graphics_pipeline(&GraphicsPipelineInfo {
             vs: "shaders/dear_imgui.vert.json",
             fs: Some("shaders/dear_imgui.frag.json"),
@@ -79,16 +79,16 @@ impl<P: Platform> UIPass<P> {
         });
 
         Self {
-            device: device.clone(),
             pipeline,
         }
     }
 
-    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+    #[inline(always)]
+    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
         assets.get_graphics_pipeline(self.pipeline).is_some()
     }
 
-    pub fn execute(
+    pub fn execute<P: Platform>(
         &mut self,
         command_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
         pass_params: &RenderPassParameters<'_, P>,
