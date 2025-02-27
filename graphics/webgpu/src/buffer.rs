@@ -96,13 +96,13 @@ impl WebGPUBuffer {
         if let Some(name) = name {
             descriptor.set_label(name);
         }
+        let mapped_at_creation = mappable && !info.usage.gpu_writable();
+        assert!(!mapped_at_creation || info.size % 4 == 0);
+        descriptor.set_mapped_at_creation(mapped_at_creation);
         let buffer = device.create_buffer(&descriptor).map_err(|e| {
             log::error!("Failed to create buffer: {:?}", e);
             ()
         })?;
-        let mapped_at_creation = mappable && !info.usage.gpu_writable();
-        assert!(!mapped_at_creation || info.size % 4 == 0);
-        descriptor.set_mapped_at_creation(mapped_at_creation);
         Ok(Self {
             device: device.clone(),
             buffer: RefCell::new(buffer),
