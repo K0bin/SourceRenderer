@@ -162,10 +162,17 @@ impl<T, P: Platform> ErasedAssetLoader<P> for T
 
 struct AsyncCounter {
     counter: AtomicU32,
-    wakers: Mutex<Vec<Waker>>
+    wakers: Mutex<Vec<Waker>>,
+    min_value_for_waking: u32
 }
 impl AsyncCounter {
-    fn new() -> Self { Self { counter: AtomicU32::new(0u32), wakers: Mutex::new(Vec::new()) } }
+    fn new(min_value_for_waking: u32) -> Self {
+        Self {
+            counter: AtomicU32::new(0u32),
+            wakers: Mutex::new(Vec::new()),
+            min_value_for_waking
+        }
+    }
 
     fn increment(&self) -> u32 {
         self.counter.fetch_add(1, Ordering::Acquire) + 1
@@ -173,7 +180,7 @@ impl AsyncCounter {
 
     fn decrement(&self) -> u32 {
         let mut count = self.counter.fetch_sub(1, Ordering::Release) - 1;
-        while count == 0 {
+        while count <= self.min_value_for_waking {
             let waker = {
                 let mut guard = self.wakers.lock().unwrap();
                 guard.pop()
@@ -188,15 +195,25 @@ impl AsyncCounter {
         count
     }
 
+    #[allow(unused)]
+    fn load(&self) -> u32 {
+        self.counter.load(Ordering::Relaxed)
+    }
+
     fn wait_for_zero<'a>(&'a self) -> impl Future<Output = ()> + 'a {
-        poll_fn(|ctx| {
+        self.wait_for_value(0)
+    }
+
+    fn wait_for_value<'a>(&'a self, value: u32) -> impl Future<Output = ()> + 'a {
+        assert!(value <= self.min_value_for_waking);
+        poll_fn(move |ctx| {
             let mut pending_count = self.counter.load(Ordering::Acquire);
-            if pending_count == 0 {
+            if pending_count <= value {
                 Poll::Ready(())
             } else {
                 let mut guard = self.wakers.lock().unwrap();
                 pending_count = self.counter.load(Ordering::Relaxed);
-                if pending_count == 0 {
+                if pending_count <= value {
                     return Poll::Ready(());
                 }
                 guard.push(ctx.waker().clone());
@@ -207,11 +224,15 @@ impl AsyncCounter {
     }
 }
 
+const LOAD_PRIORITY_THRESHOLD: u32 = 4;
+
 pub struct AssetManager<P: Platform> {
     device: Arc<crate::graphics::Device<P::GPUBackend>>,
     containers: async_rwlock::RwLock<Vec<Box<dyn ErasedAssetContainer>>>,
     pending_containers: AsyncCounter,
     pending_loaders: AsyncCounter,
+    pending_high_priority_loads: AsyncCounter,
+    pending_normal_priority_loads: AsyncCounter,
     loaders: async_rwlock::RwLock<Vec<Box<dyn ErasedAssetLoader<P>>>>,
     requested_assets: Mutex<HashMap<String, AssetType>>,
     unintegrated_assets: Mutex<HashMap<String, AssetData>>,
@@ -229,8 +250,10 @@ impl<P: Platform> AssetManager<P> {
             unintegrated_assets: Mutex::new(HashMap::new()),
             renderer: RendererAssets::<P>::new(device),
             requested_assets: Mutex::new(HashMap::new()),
-            pending_containers: AsyncCounter::new(),
-            pending_loaders: AsyncCounter::new(),
+            pending_containers: AsyncCounter::new(0),
+            pending_loaders: AsyncCounter::new(0),
+            pending_high_priority_loads: AsyncCounter::new(LOAD_PRIORITY_THRESHOLD),
+            pending_normal_priority_loads: AsyncCounter::new(LOAD_PRIORITY_THRESHOLD),
         });
 
         manager
@@ -342,8 +365,9 @@ impl<P: Platform> AssetManager<P> {
         let c_self = self.clone();
         IoTaskPool::get().spawn(async move {
             {
+                let container_box = Box::new(future.await);
                 let mut containers = c_self.containers.write().await;
-                containers.push(Box::new(future.await));
+                containers.push(container_box);
             }
             if let Some(progress) = c_progress {
                 progress.finished.fetch_add(1, Ordering::SeqCst);
@@ -522,20 +546,43 @@ impl<P: Platform> AssetManager<P> {
             _priority: priority,
         };
 
+        if priority == AssetLoadPriority::High {
+            self.pending_high_priority_loads.increment();
+        } else if priority == AssetLoadPriority::Normal {
+            self.pending_normal_priority_loads.increment();
+        }
 
         let asset_mgr = self.clone();
         let io_task = IoTaskPool::get().spawn(async move {
+            // Avoid keeping the entire IoTaskPool busy with low priority loads while higher priority loads are waiting.
+            if priority == AssetLoadPriority::Normal {
+                asset_mgr.pending_high_priority_loads.wait_for_value(LOAD_PRIORITY_THRESHOLD).await;
+            } else if priority == AssetLoadPriority::Low {
+                asset_mgr.pending_high_priority_loads.wait_for_zero().await;
+                asset_mgr.pending_normal_priority_loads.wait_for_value(LOAD_PRIORITY_THRESHOLD).await;
+            }
+
             trace!("Loading file for {}", &load_request.path);
             let file_opt = asset_mgr.load_file(&load_request.path).await;
             if file_opt.is_none() {
                 error!("Could not find file at path: {}", &load_request.path);
                 load_request.progress.finished.fetch_add(1, Ordering::SeqCst);
+                if priority == AssetLoadPriority::High {
+                    asset_mgr.pending_high_priority_loads.decrement();
+                } else if priority == AssetLoadPriority::Normal {
+                    asset_mgr.pending_normal_priority_loads.decrement();
+                }
                 return;
             }
             let file = file_opt.unwrap();
             let load_task = AsyncComputeTaskPool::get().spawn(async move {
                 trace!("Loading asset at path: {:?} {}", asset_type, &file.path);
                 let _ = asset_mgr.load_asset(file, asset_type, priority, &load_request.progress).await;
+                if priority == AssetLoadPriority::High {
+                    asset_mgr.pending_high_priority_loads.decrement();
+                } else if priority == AssetLoadPriority::Normal {
+                    asset_mgr.pending_normal_priority_loads.decrement();
+                }
             });
             load_task.detach();
         });
