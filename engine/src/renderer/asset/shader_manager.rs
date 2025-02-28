@@ -756,7 +756,11 @@ impl<P: Platform> ShaderManager<P> {
                     let assets_read = c_asset_manager.read_renderer_assets();
                     {
                         let mut remaining_compilations = c_manager.remaining_compilations.lock().unwrap();
-                        task = remaining_compilations.remove(&handle).unwrap();
+                        let task_opt = remaining_compilations.remove(&handle);
+                        if task_opt.is_none() {
+                            continue;
+                        }
+                        task = task_opt.unwrap();
                         shaders = task.collect_shaders_for_compilation(assets_read);
                     };
                     let pipeline: Arc<<T as PipelineCompileTask<P>>::TPipeline> = task.compile(shaders, &c_device);
