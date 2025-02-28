@@ -1,6 +1,3 @@
-use std::borrow::Borrow;
-use std::collections::{HashMap, VecDeque};
-use std::hash::Hash;
 use std::io::SeekFrom;
 use std::sync::Arc;
 use std::{
@@ -9,8 +6,6 @@ use std::{
 };
 
 use bevy_math::{EulerRot, Quat};
-use bevy_tasks::futures_lite::io::Cursor as AsyncCursor;
-use bevy_tasks::futures_lite::{AsyncReadExt, AsyncSeekExt};
 use std::io::{Cursor, Seek as _, Read as _};
 use bevy_transform::components::Transform;
 use gltf::buffer::{
@@ -320,6 +315,8 @@ impl GltfLoader {
         gltf_file_name: &'a str,
         buffer_cache: &'a mut FixedByteSizeCache<String, Box<[u8]>>,
     ) {
+        const LOAD_ENTIRE_GLB_BUFFER: bool = false;
+
         async fn load_buffer<'a, P: Platform>(
             gltf_file_name: &str,
             gltf_path: &str,
@@ -330,12 +327,19 @@ impl GltfLoader {
             let uri: String;
             match view.buffer().source() {
                 Source::Bin => {
-                    uri = format!(
-                        "{}/buffer/{}-{}",
-                        gltf_file_name,
-                        view.offset(),
-                        view.length()
-                    );
+                    uri = if !LOAD_ENTIRE_GLB_BUFFER {
+                        format!(
+                            "{}/buffer/{}-{}",
+                            gltf_file_name,
+                            view.offset(),
+                            view.length()
+                        )
+                    } else {
+                        format!(
+                            "{}/buffer/",
+                            gltf_file_name,
+                        )
+                    };
                 }
                 Source::Uri(gltf_uri) => {
                     uri = if let Some(last_slash_pos) = gltf_path.find('/') {
@@ -363,13 +367,21 @@ impl GltfLoader {
             let offset: usize;
             match view.buffer().source() {
                 Source::Bin => {
-                    offset = 0;
-                    uri = format!(
-                        "{}/buffer/{}-{}",
-                        gltf_file_name,
-                        view.offset(),
-                        view.length()
-                    );
+                    if !LOAD_ENTIRE_GLB_BUFFER {
+                        uri = format!(
+                            "{}/buffer/{}-{}",
+                            gltf_file_name,
+                            view.offset(),
+                            view.length()
+                        );
+                        offset = 0;
+                    } else {
+                        uri = format!(
+                            "{}/buffer/",
+                            gltf_file_name,
+                        );
+                        offset = view.offset();
+                    };
                 }
                 Source::Uri(gltf_uri) => {
                     offset = view.offset();
@@ -510,19 +522,6 @@ impl GltfLoader {
                     tex_coord,
                     color: [255, 255, 255, 255],
                 });
-
-                debug_assert!(
-                    positions_buffer_cursor.seek(SeekFrom::Current(0)).unwrap()
-                        <= (positions_view.offset() + positions_view.length()) as u64
-                );
-                debug_assert!(
-                    normals_buffer_cursor.seek(SeekFrom::Current(0)).unwrap()
-                        <= (normals_view.offset() + normals_view.length()) as u64
-                );
-                debug_assert!(
-                    texcoords_buffer_cursor.seek(SeekFrom::Current(0)).unwrap()
-                        <= (texcoords_view.offset() + texcoords_view.length()) as u64
-                );
             }
         }
 
@@ -649,7 +648,7 @@ impl GltfLoader {
             });
 
         if let Some(albedo_path) = albedo_path {
-            asset_mgr.request_asset(&albedo_path, AssetType::Material, AssetLoadPriority::Low);
+            asset_mgr.request_asset(&albedo_path, AssetType::Texture, AssetLoadPriority::Low);
             asset_mgr.add_material_data(
                 &material_path,
                 &albedo_path,
@@ -726,6 +725,7 @@ impl<P: Platform> AssetLoader<P> for GltfLoader {
 
 // glTF uses a right-handed coordinate system. glTF defines +Y as up, +Z as forward, and -X as right; the front of a glTF asset faces +Z.
 // We use a left-handed coordinate system with +Y as up, +Z as forward and +X as right. => flip X
+#[inline(always)]
 fn fixup_vec(vec: &Vec3) -> Vec3 {
     let mut new_vec = vec.clone();
     new_vec.x = -new_vec.x;

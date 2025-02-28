@@ -15,6 +15,7 @@ use crate::asset::AssetContainer;
 pub struct GltfContainer<R: AsyncRead + AsyncSeek + Unpin> {
     json_offset: u64,
     data_offset: u64,
+    data_length: u64,
     reader: async_mutex::Mutex<R>,
     _base_path: String,
     scene_base_path: String,
@@ -34,7 +35,7 @@ pub async fn load_memory_gltf_container<P: Platform>(path: &str, external: bool)
 }
 
 pub async fn load_file_gltf_container<P: Platform>(path: &str, external: bool) -> IOResult<GltfContainer<BufReader<<P::IO as IO>::File>>> {
-    let mut file = BufReader::new(if external {
+    let file = BufReader::new(if external {
         P::IO::open_external_asset(path).await?
     } else {
         P::IO::open_asset(path).await?
@@ -74,6 +75,7 @@ impl<R: AsyncRead + AsyncSeek + Unpin> GltfContainer<R> {
             reader: async_mutex::Mutex::new(reader),
             json_offset,
             data_offset,
+            data_length: data_chunk_header.length as u64,
             _base_path: base_path,
             scene_base_path,
             texture_base_path,
@@ -116,12 +118,17 @@ impl<R: AsyncRead + AsyncSeek + Unpin + Send + Sync + 'static> AssetContainer fo
                 &self.texture_base_path
             };
             let parts: Vec<&str> = path[base_path.len()..].split('-').collect();
-            let offset: u64 = parts[0].parse().unwrap();
-            let mut end = parts[1];
-            if let Some(pos) = end.find('.') {
-                end = &end[..pos];
-            }
-            let length: u64 = end.parse().unwrap();
+            let offset: u64 = if !parts[0].is_empty() { parts[0].parse().unwrap() } else { 0 };
+            let length: u64;
+            if parts.len() > 1 {
+                let mut end = parts[1];
+                if let Some(pos) = end.find('.') {
+                    end = &end[..pos];
+                }
+                length = end.parse().unwrap();
+            } else {
+                length = self.data_length - offset;
+            };
 
             let mut buffer = Vec::with_capacity(length as usize);
             unsafe {
