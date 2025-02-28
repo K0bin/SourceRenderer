@@ -253,7 +253,16 @@ impl<P: Platform> GeometryPass<P> {
                         &self.sampler,
                     );
                 }
-                _ => {}
+                _ => {
+                    let texture = assets.get_placeholder_texture_white();
+                    let albedo_view = &texture.view;
+                    cmd_buffer.bind_sampling_view_and_sampler(
+                        BindingFrequency::Frequent,
+                        0,
+                        albedo_view,
+                        &self.sampler,
+                    );
+                }
                 //_ => unimplemented!(),
             }
             cmd_buffer.finish_binding();
