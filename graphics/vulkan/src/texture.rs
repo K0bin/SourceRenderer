@@ -266,10 +266,6 @@ impl VkTexture {
             }
         }
 
-        if create_info_collection.create_info.usage.contains(vk::ImageUsageFlags::HOST_TRANSFER_EXT) {
-            log::info!("Texture supports direct copy!");
-        }
-
         Ok(Self {
             image,
             device: device.clone(),
