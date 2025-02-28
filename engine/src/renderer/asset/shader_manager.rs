@@ -33,6 +33,7 @@ pub trait PipelineCompileTask<P: Platform>: Send + Sync + Clone {
         &pipeline.task
     }
 
+    fn name(&self) -> Option<String>;
     fn contains_shader(&self, loaded_shader_path: &str) -> Option<ShaderType>;
     fn request_shaders(&self, asset_manager: &Arc<AssetManager<P>>);
     fn can_compile(
@@ -180,6 +181,10 @@ impl<P: Platform> PipelineCompileTask<P> for GraphicsCompileTask<P> {
         }
     }
 
+    fn name(&self) -> Option<String> {
+        Some(format!("GraphicsPipeline: VS: {:?}, FS: {:?}", &self.info.vs, self.info.fs.as_ref()))
+    }
+
     fn pipeline_into_asset(self, pipeline: Arc<Self::TPipeline>) -> Asset<P> {
         Asset::<P>::GraphicsPipeline(CompiledPipeline { task: self, pipeline })
     }
@@ -265,7 +270,7 @@ impl<P: Platform> PipelineCompileTask<P> for GraphicsCompileTask<P> {
             depth_stencil_format: self.info.depth_stencil_format
         };
 
-        device.create_graphics_pipeline(&info, None)
+        device.create_graphics_pipeline(&info, self.name().as_ref().map(|n| n as &str))
     }
 }
 
@@ -333,6 +338,10 @@ impl<P: Platform> PipelineCompileTask<P> for ComputeCompileTask<P> {
         Asset::<P>::ComputePipeline(CompiledPipeline { task: self, pipeline })
     }
 
+    fn name(&self) -> Option<String> {
+        Some(format!("ComputePipeline: {:?}", &self.path))
+    }
+
     fn contains_shader(&self, loaded_shader_path: &str) -> Option<ShaderType> {
         if self.path == loaded_shader_path {
             Some(ShaderType::ComputeShader)
@@ -365,7 +374,7 @@ impl<P: Platform> PipelineCompileTask<P> for ComputeCompileTask<P> {
         shader: Self::TShaders,
         device: &Arc<Device<P::GPUBackend>>,
     ) -> Arc<Self::TPipeline> {
-        device.create_compute_pipeline(&shader, None)
+        device.create_compute_pipeline(&shader, self.name().as_ref().map(|n| n as &str))
     }
 }
 
@@ -449,6 +458,10 @@ impl<P: Platform> PipelineCompileTask<P> for StoredRayTracingPipelineInfo<P> {
 
     fn pipeline_into_asset(self, pipeline: Arc<Self::TPipeline>) -> Asset<P> {
         Asset::<P>::RayTracingPipeline(CompiledPipeline { task: self, pipeline })
+    }
+
+    fn name(&self) -> Option<String> {
+        None
     }
 
     fn contains_shader(&self, loaded_shader_path: &str) -> Option<ShaderType> {
@@ -537,7 +550,7 @@ impl<P: Platform> PipelineCompileTask<P> for StoredRayTracingPipelineInfo<P> {
             closest_hit_shaders: &closest_hit_shader_refs[..],
             miss_shaders: &miss_shaders_refs[..],
         };
-        device.create_raytracing_pipeline(&info, None).unwrap()
+        device.create_raytracing_pipeline(&info, self.name().as_ref().map(|n| n as &str)).unwrap()
     }
 }
 
