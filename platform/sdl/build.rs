@@ -85,7 +85,7 @@ fn main() {
     compile_shader(
         &accumulate_sharpen_path,
         &shader_dest_dir,
-        output_shading_languages,
+        output_shading_languages & (ShadingLanguage::SpirV | ShadingLanguage::Wgsl | ShadingLanguage::Air | ShadingLanguage::Dxil),
         CompiledShaderFileType::Packed,
         true,
         &map,

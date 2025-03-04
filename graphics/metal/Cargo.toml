@@ -7,16 +7,16 @@ build = "build.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-metal = "0.29.0"
-objc = "0.2.7"
-block = "0.1.6"
+metal = "0.31"
+objc = "0.2"
+block = "0.1"
 sourcerenderer_core = { path = "../../core" }
-bitflags = "2.4.2"
-smallvec = { version = "1.13.1", features = [ "union", "const_generics", "const_new" ] }
+bitflags = "2.4"
+smallvec = { version = "1.13", features = [ "union", "const_generics", "const_new" ] }
 spirv_cross_sys = { path = "../../vendor/spirv-cross-sys" }
 serde_json = "1.0"
-log = "0.4.17"
+log = "0.4"
 
 [build-dependencies]
 build-util = { path = "../../build_util" }
-log = "0.4.17"
+log = "0.4"
