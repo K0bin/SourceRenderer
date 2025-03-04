@@ -1,7 +1,6 @@
 mod asset_manager;
 pub mod loaders;
 mod loaded_level;
-mod handle_map;
 mod asset_types;
 mod asset_data;
 mod asset_manager_plugin;
@@ -24,7 +23,6 @@ pub use asset_manager::{
     AssetContainer,
 };
 pub use self::asset_types::*;
-pub(crate) use self::handle_map::*;
 pub use self::asset_data::*;
 pub use self::asset_manager_plugin::*;
 pub use fixed_byte_size_cache::*;

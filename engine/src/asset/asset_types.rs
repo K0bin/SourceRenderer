@@ -1,92 +1,228 @@
+use std::hash::Hash;
+
 use sourcerenderer_core::Platform;
 
-use crate::renderer::asset::{ComputePipelineHandle, GraphicsPipelineHandle, RayTracingPipelineHandle, RendererComputePipeline, RendererGraphicsPipeline, RendererMaterial, RendererMesh, RendererModel, RendererRayTracingPipeline, RendererShader, RendererTexture};
-
-use super::handle_map::IndexHandle;
+use crate::renderer::asset::{RendererComputePipeline, RendererGraphicsPipeline, RendererMaterial, RendererMesh, RendererModel, RendererRayTracingPipeline, RendererShader, RendererTexture};
 
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
-pub struct TextureHandle(u64);
-#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
-pub struct MaterialHandle(u64);
-#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
-pub struct MeshHandle(u64);
-#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
-pub struct ModelHandle(u64);
-#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
-pub struct SoundHandle(u64);
-#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
-pub struct ShaderHandle(u64);
+pub struct TextureHandle(AssetHandle);
 
-#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
-pub struct LevelHandle(u64);
-
-impl IndexHandle for TextureHandle {
-    fn new(index: u64) -> Self { Self(index) }
-}
-impl IndexHandle for MaterialHandle {
-    fn new(index: u64) -> Self { Self(index) }
-}
-impl IndexHandle for MeshHandle {
-    fn new(index: u64) -> Self { Self(index) }
-}
-impl IndexHandle for ModelHandle {
-    fn new(index: u64) -> Self { Self(index) }
-}
-impl IndexHandle for SoundHandle {
-    fn new(index: u64) -> Self { Self(index) }
-}
-impl IndexHandle for ShaderHandle {
-    fn new(index: u64) -> Self { Self(index) }
-}
-impl IndexHandle for LevelHandle {
-    fn new(index: u64) -> Self { Self(index) }
+impl From<AssetHandle> for TextureHandle {
+    fn from(value: AssetHandle) -> Self {
+        assert_eq!(value.asset_type, Self::asset_type());
+        Self(value)
+    }
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
-pub enum AssetHandle {
-    Texture(TextureHandle),
-    Material(MaterialHandle),
-    Model(ModelHandle),
-    Mesh(MeshHandle),
-    Sound(SoundHandle),
-    Shader(ShaderHandle),
-    GraphicsPipeline(GraphicsPipelineHandle),
-    ComputePipeline(ComputePipelineHandle),
-    RayTracingPipeline(RayTracingPipelineHandle),
-    Level(LevelHandle)
+impl Into<AssetHandle> for TextureHandle {
+    fn into(self) -> AssetHandle {
+        self.0
+    }
+}
+
+impl TextureHandle {
+    #[inline(always)]
+    pub fn asset_type() -> AssetType {
+        AssetType::Texture
+    }
+}
+
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
+pub struct MaterialHandle(AssetHandle);
+
+impl From<AssetHandle> for MaterialHandle {
+    fn from(value: AssetHandle) -> Self {
+        assert_eq!(value.asset_type, Self::asset_type());
+        Self(value)
+    }
+}
+
+impl Into<AssetHandle> for MaterialHandle {
+    fn into(self) -> AssetHandle {
+        self.0
+    }
+}
+
+impl MaterialHandle {
+    #[inline(always)]
+    pub fn asset_type() -> AssetType {
+        AssetType::Material
+    }
+}
+
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
+pub struct MeshHandle(AssetHandle);
+
+impl From<AssetHandle> for MeshHandle {
+    fn from(value: AssetHandle) -> Self {
+        assert_eq!(value.asset_type, Self::asset_type());
+        Self(value)
+    }
+}
+
+impl Into<AssetHandle> for MeshHandle {
+    fn into(self) -> AssetHandle {
+        self.0
+    }
+}
+
+impl MeshHandle {
+    #[inline(always)]
+    pub fn asset_type() -> AssetType {
+        AssetType::Mesh
+    }
+}
+
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
+pub struct ModelHandle(AssetHandle);
+
+impl From<AssetHandle> for ModelHandle {
+    fn from(value: AssetHandle) -> Self {
+        assert_eq!(value.asset_type, Self::asset_type());
+        Self(value)
+    }
+}
+
+impl Into<AssetHandle> for ModelHandle {
+    fn into(self) -> AssetHandle {
+        self.0
+    }
+}
+
+impl ModelHandle {
+    #[inline(always)]
+    pub fn asset_type() -> AssetType {
+        AssetType::Model
+    }
+}
+
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
+pub struct SoundHandle(AssetHandle);
+
+impl From<AssetHandle> for SoundHandle {
+    fn from(value: AssetHandle) -> Self {
+        assert_eq!(value.asset_type, Self::asset_type());
+        Self(value)
+    }
+}
+
+impl Into<AssetHandle> for SoundHandle {
+    fn into(self) -> AssetHandle {
+        self.0
+    }
+}
+
+impl SoundHandle {
+    #[inline(always)]
+    pub fn asset_type() -> AssetType {
+        AssetType::Sound
+    }
+}
+
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
+pub struct ShaderHandle(AssetHandle);
+
+impl From<AssetHandle> for ShaderHandle {
+    fn from(value: AssetHandle) -> Self {
+        assert_eq!(value.asset_type, Self::asset_type());
+        Self(value)
+    }
+}
+
+impl Into<AssetHandle> for ShaderHandle {
+    fn into(self) -> AssetHandle {
+        self.0
+    }
+}
+
+impl ShaderHandle {
+    #[inline(always)]
+    pub fn asset_type() -> AssetType {
+        AssetType::Shader
+    }
+}
+
+
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
+pub struct LevelHandle(AssetHandle);
+
+impl From<AssetHandle> for LevelHandle {
+    fn from(value: AssetHandle) -> Self {
+        assert_eq!(value.asset_type, Self::asset_type());
+        Self(value)
+    }
+}
+
+impl Into<AssetHandle> for LevelHandle {
+    fn into(self) -> AssetHandle {
+        self.0
+    }
+}
+
+impl LevelHandle {
+    #[inline(always)]
+    pub fn asset_type() -> AssetType {
+        AssetType::Level
+    }
+}
+
+#[derive(Eq, Clone, Copy, Debug)]
+pub struct AssetHandle {
+    index: u64,
+    asset_type: AssetType
 }
 
 impl AssetHandle {
     #[inline]
-    pub fn is_renderer_asset(self) -> bool {
-        match self {
-            AssetHandle::Texture(_) => true,
-            AssetHandle::Material(_) => true,
-            AssetHandle::Model(_) => true,
-            AssetHandle::Shader(_) => true,
-            AssetHandle::GraphicsPipeline(_) => true,
-            AssetHandle::ComputePipeline(_) => true,
-            AssetHandle::RayTracingPipeline(_) => true,
-            _ => false
-        }
-    }
-
-    #[inline]
-    pub fn asset_type(self) -> AssetType {
-        match self {
-            AssetHandle::Texture(_) => AssetType::Texture,
-            AssetHandle::Mesh(_) => AssetType::Mesh,
-            AssetHandle::Model(_) => AssetType::Model,
-            AssetHandle::Sound(_) => AssetType::Sound,
-            AssetHandle::Material(_) => AssetType::Material,
-            AssetHandle::Shader(_) => AssetType::Shader,
-            AssetHandle::GraphicsPipeline(_) => AssetType::GraphicsPipeline,
-            AssetHandle::ComputePipeline(_) => AssetType::ComputePipeline,
-            AssetHandle::RayTracingPipeline(_) => AssetType::RayTracingPipeline,
-            AssetHandle::Level(_) => AssetType::Level
+    pub fn new(index: u64, asset_type: AssetType) -> Self {
+        Self {
+            index,
+            asset_type
         }
     }
 }
+
+impl PartialEq<AssetHandle> for AssetHandle {
+    fn eq(&self, other: &AssetHandle) -> bool {
+        if self.index == other.index {
+            debug_assert_eq!(self.asset_type, other.asset_type);
+        }
+
+        self.index == other.index
+    }
+}
+
+impl PartialOrd<AssetHandle> for AssetHandle {
+    fn partial_cmp(&self, other: &AssetHandle) -> Option<std::cmp::Ordering> {
+        if self.index == other.index {
+            debug_assert_eq!(self.asset_type, other.asset_type);
+        }
+        self.index.partial_cmp(&other.index)
+    }
+}
+
+impl Ord for AssetHandle {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        if self.index == other.index {
+            debug_assert_eq!(self.asset_type, other.asset_type);
+        }
+        self.index.cmp(&other.index)
+    }
+}
+
+impl Hash for AssetHandle {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.index.hash(state);
+    }
+}
+
+impl AssetHandle {
+    #[inline(always)]
+    pub fn asset_type(&self) -> AssetType {
+        self.asset_type
+    }
+}
+
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum AssetType {
@@ -120,15 +256,15 @@ impl AssetType {
 }
 
 pub enum AssetWithHandle<P: Platform> {
-    Texture(TextureHandle, RendererTexture<P::GPUBackend>),
-    Material(MaterialHandle, RendererMaterial),
-    Model(ModelHandle, RendererModel),
-    Mesh(MeshHandle, RendererMesh<P::GPUBackend>),
-    Shader(ShaderHandle, RendererShader<P::GPUBackend>),
-    GraphicsPipeline(GraphicsPipelineHandle, RendererGraphicsPipeline<P>),
-    ComputePipeline(ComputePipelineHandle, RendererComputePipeline<P>),
-    RayTracingPipeline(RayTracingPipelineHandle, RendererRayTracingPipeline<P>),
-    Sound(SoundHandle, ())
+    Texture(AssetHandle, RendererTexture<P::GPUBackend>),
+    Material(AssetHandle, RendererMaterial),
+    Model(AssetHandle, RendererModel),
+    Mesh(AssetHandle, RendererMesh<P::GPUBackend>),
+    Shader(AssetHandle, RendererShader<P::GPUBackend>),
+    GraphicsPipeline(AssetHandle, RendererGraphicsPipeline<P>),
+    ComputePipeline(AssetHandle, RendererComputePipeline<P>),
+    RayTracingPipeline(AssetHandle, RendererRayTracingPipeline<P>),
+    Sound(AssetHandle, ())
 }
 
 impl<P: Platform> AssetWithHandle<P> {
@@ -165,30 +301,31 @@ impl<P: Platform> AssetWithHandle<P> {
     #[inline]
     pub fn handle(&self) -> AssetHandle {
         match self {
-            AssetWithHandle::Texture(handle, _) => AssetHandle::Texture(*handle),
-            AssetWithHandle::Material(handle, _) => AssetHandle::Material(*handle),
-            AssetWithHandle::Model(handle, _) => AssetHandle::Model(*handle),
-            AssetWithHandle::Mesh(handle, _) => AssetHandle::Mesh(*handle),
-            AssetWithHandle::Shader(handle, _) => AssetHandle::Shader(*handle),
-            AssetWithHandle::Sound(handle, _) => AssetHandle::Sound(*handle),
-            AssetWithHandle::GraphicsPipeline(handle, _) => AssetHandle::GraphicsPipeline(*handle),
-            AssetWithHandle::ComputePipeline(handle, _) => AssetHandle::ComputePipeline(*handle),
-            AssetWithHandle::RayTracingPipeline(handle, _) => AssetHandle::RayTracingPipeline(*handle),
+            AssetWithHandle::Texture(handle, _) => *handle,
+            AssetWithHandle::Material(handle, _) => *handle,
+            AssetWithHandle::Model(handle, _) => *handle,
+            AssetWithHandle::Mesh(handle, _) => *handle,
+            AssetWithHandle::Shader(handle, _) => *handle,
+            AssetWithHandle::Sound(handle, _) => *handle,
+            AssetWithHandle::GraphicsPipeline(handle, _) => *handle,
+            AssetWithHandle::ComputePipeline(handle, _) => *handle,
+            AssetWithHandle::RayTracingPipeline(handle, _) => *handle,
         }
     }
 
     #[inline]
     pub fn combine(handle: AssetHandle, asset: Asset<P>) -> AssetWithHandle<P> {
+        assert_eq!(handle.asset_type(), asset.asset_type());
         match (handle, asset) {
-            (AssetHandle::Texture(handle), Asset::Texture(texture)) => AssetWithHandle::Texture(handle, texture),
-            (AssetHandle::Material(handle), Asset::Material(asset)) => AssetWithHandle::Material(handle, asset),
-            (AssetHandle::Model(handle), Asset::Model(asset)) => AssetWithHandle::Model(handle, asset),
-            (AssetHandle::Mesh(handle), Asset::Mesh(asset)) => AssetWithHandle::Mesh(handle, asset),
-            (AssetHandle::Shader(handle), Asset::Shader(asset)) => AssetWithHandle::Shader(handle, asset),
-            (AssetHandle::GraphicsPipeline(handle), Asset::GraphicsPipeline(asset)) => AssetWithHandle::GraphicsPipeline(handle, asset),
-            (AssetHandle::ComputePipeline(handle), Asset::ComputePipeline(asset)) => AssetWithHandle::ComputePipeline(handle, asset),
-            (AssetHandle::RayTracingPipeline(handle), Asset::RayTracingPipeline(asset)) => AssetWithHandle::RayTracingPipeline(handle, asset),
-            (handle, asset) => panic!("Invalid combination: Handle type: {:?} + Asset type: {:?}", handle.asset_type(), asset.asset_type())
+            (handle, Asset::Texture(texture)) => AssetWithHandle::Texture(handle, texture),
+            (handle, Asset::Material(asset)) => AssetWithHandle::Material(handle, asset),
+            (handle, Asset::Model(asset)) => AssetWithHandle::Model(handle, asset),
+            (handle, Asset::Mesh(asset)) => AssetWithHandle::Mesh(handle, asset),
+            (handle, Asset::Shader(asset)) => AssetWithHandle::Shader(handle, asset),
+            (handle, Asset::GraphicsPipeline(asset)) => AssetWithHandle::GraphicsPipeline(handle, asset),
+            (handle, Asset::ComputePipeline(asset)) => AssetWithHandle::ComputePipeline(handle, asset),
+            (handle, Asset::RayTracingPipeline(asset)) => AssetWithHandle::RayTracingPipeline(handle, asset),
+            (handle, Asset::Sound(asset)) => AssetWithHandle::Sound(handle, asset)
         }
     }
 }
@@ -247,6 +384,54 @@ pub enum AssetRef<'a, P: Platform> {
     ComputePipeline(&'a RendererComputePipeline<P>),
     RayTracingPipeline(&'a RendererRayTracingPipeline<P>),
     Sound(()),
+}
+
+impl<'a, P: Platform> From<&'a RendererTexture<P::GPUBackend>> for AssetRef<'a, P> {
+    fn from(value: &'a RendererTexture<P::GPUBackend>) -> Self {
+        Self::Texture(value)
+    }
+}
+
+impl<'a, P: Platform> From<&'a RendererMaterial> for AssetRef<'a, P> {
+    fn from(value: &'a RendererMaterial) -> Self {
+        Self::Material(value)
+    }
+}
+
+impl<'a, P: Platform> From<&'a RendererModel> for AssetRef<'a, P> {
+    fn from(value: &'a RendererModel) -> Self {
+        Self::Model(value)
+    }
+}
+
+impl<'a, P: Platform> From<&'a RendererMesh<P::GPUBackend>> for AssetRef<'a, P> {
+    fn from(value: &'a RendererMesh<P::GPUBackend>) -> Self {
+        Self::Mesh(value)
+    }
+}
+
+impl<'a, P: Platform> From<&'a RendererShader<P::GPUBackend>> for AssetRef<'a, P> {
+    fn from(value: &'a RendererShader<P::GPUBackend>) -> Self {
+        Self::Shader(value)
+    }
+}
+
+impl<'a, P: Platform> From<&'a RendererGraphicsPipeline<P>> for AssetRef<'a, P> {
+    fn from(value: &'a RendererGraphicsPipeline<P>) -> Self {
+        Self::GraphicsPipeline(value)
+    }
+}
+
+impl<'a, P: Platform> From<&'a RendererComputePipeline<P>> for AssetRef<'a, P> {
+    fn from(value: &'a RendererComputePipeline<P>) -> Self {
+        Self::ComputePipeline(value)
+    }
+}
+
+impl<'a, P: Platform> From<&'a RendererRayTracingPipeline<P>> for AssetRef<'a, P> {
+    fn from(value: &'a RendererRayTracingPipeline<P>) -> Self {
+        Self::RayTracingPipeline(value)
+    }
 }
 
 impl<P: Platform> AssetRef<'_, P> {

@@ -283,7 +283,6 @@ pub struct NotifyFileWatcher {
 impl NotifyFileWatcher {
     fn new<P: AsRef<Path>>(sender: Sender<String>, base_path: &P) -> Self {
         let base_path = base_path.as_ref().to_str().unwrap().to_string();
-        debug!("Working directory: {:?}", base_path);
         let watcher =
             recommended_watcher(
                 move |event: Result<notify::Event, notify::Error>| match event {

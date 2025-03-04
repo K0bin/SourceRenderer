@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::future::{poll_fn, Future};
 use std::hash::Hash;
 use std::io::{
@@ -9,8 +9,7 @@ use std::io::{
 };
 use std::pin::Pin;
 use std::sync::atomic::{
-    AtomicU32,
-    Ordering,
+    AtomicU32, AtomicU64, Ordering
 };
 use std::sync::Arc;
 use crate::Mutex;
@@ -20,10 +19,6 @@ use bevy_tasks::futures_lite::io::{Cursor, AsyncAsSync};
 use bevy_tasks::futures_lite::AsyncSeekExt;
 use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool};
 use futures_io::{AsyncRead, AsyncSeek};
-use log::{
-    error,
-    trace
-};
 use sourcerenderer_core::platform::Platform;
 use sourcerenderer_core::Vec4;
 
@@ -234,8 +229,10 @@ pub struct AssetManager<P: Platform> {
     pending_high_priority_loads: AsyncCounter,
     pending_normal_priority_loads: AsyncCounter,
     loaders: async_rwlock::RwLock<Vec<Box<dyn ErasedAssetLoader<P>>>>,
-    requested_assets: Mutex<HashMap<String, AssetType>>,
-    unintegrated_assets: Mutex<HashMap<String, AssetData>>,
+    path_map: Mutex<HashMap<String, AssetHandle>>,
+    next_asset_handle: AtomicU64,
+    requested_assets: Mutex<HashSet<AssetHandle>>,
+    unintegrated_assets: Mutex<HashMap<AssetHandle, AssetData>>,
     renderer: RendererAssets<P>,
 }
 
@@ -249,7 +246,9 @@ impl<P: Platform> AssetManager<P> {
             containers: async_rwlock::RwLock::new(Vec::new()),
             unintegrated_assets: Mutex::new(HashMap::new()),
             renderer: RendererAssets::<P>::new(device),
-            requested_assets: Mutex::new(HashMap::new()),
+            path_map: Mutex::new(HashMap::new()),
+            next_asset_handle: AtomicU64::new(1),
+            requested_assets: Mutex::new(HashSet::new()),
             pending_containers: AsyncCounter::new(0),
             pending_loaders: AsyncCounter::new(0),
             pending_high_priority_loads: AsyncCounter::new(LOAD_PRIORITY_THRESHOLD),
@@ -400,12 +399,10 @@ impl<P: Platform> AssetManager<P> {
         progress: Option<&Arc<AssetLoaderProgress>>,
         priority: AssetLoadPriority,
     ) {
-        trace!("Adding asset data for path: {:?} {}", asset_data.asset_type(), path);
-        if let Some(progress) = progress {
-            progress.finished.fetch_add(1, Ordering::SeqCst);
-        }
+        let handle = self.get_or_reserve_handle(path, asset_data.asset_type());
+        log::trace!("Adding asset data for path: {:?} {} to handle: {:?}", asset_data.asset_type(), path, handle);
         let integrated = if asset_data.is_renderer_asset() {
-            self.renderer.integrate(self, path, &asset_data, priority);
+            self.renderer.integrate(self, handle, &asset_data, priority);
             true
         } else if let AssetData::Level(_level) = &asset_data {
             // Remove unintegrated level before loading a new one
@@ -417,50 +414,53 @@ impl<P: Platform> AssetManager<P> {
 
         if !integrated {
             let mut unintegrated_list = self.unintegrated_assets.lock().unwrap();
-            unintegrated_list.insert(path.to_string(), asset_data);
+            unintegrated_list.insert(handle, asset_data);
+        }
+        if let Some(progress) = progress {
+            progress.finished.fetch_add(1, Ordering::SeqCst);
         }
     }
 
-    pub fn reserve_handle(
-        self: &Arc<Self>,
+    fn reserve_handle(
+        &self,
         path: &str,
         asset_type: AssetType
     ) -> AssetHandle {
-        let handle = if asset_type.is_renderer_asset() {
-            self.renderer.reserve_handle(path, asset_type)
-        } else {
-            unimplemented!()
-        };
-        trace!("Reserving handle {:?} for path {}", handle, path);
+        let handle = self.reserve_handle_without_path(asset_type);
+
+        let mut path_map = self.path_map.lock().unwrap();
+        let existing = path_map.insert(path.to_string(), handle);
+        if let Some(existing) = existing {
+            log::error!("Already had a handle for the given path: {:?}: {:?}", path, existing);
+        }
+
+        log::trace!("Reserving handle {:?} for path {}", handle, path);
         handle
     }
 
+    #[inline(always)]
     pub fn reserve_handle_without_path(
-        self: &Arc<Self>,
+        &self,
         asset_type: AssetType
     ) -> AssetHandle {
-        if asset_type.is_renderer_asset() {
-            return self.renderer.reserve_handle_without_path(asset_type);
-        } else {
-            unimplemented!()
-        }
+        AssetHandle::new(self.next_asset_handle.fetch_add(1, Ordering::AcqRel), asset_type)
     }
 
     pub fn add_asset(
-        self: &Arc<Self>,
+        &self,
         path: &str,
         asset: Asset<P>
     ) {
-        trace!("Adding asset of type {:?} with path {}", asset.asset_type(), path);
-        let handle = self.reserve_handle(path, asset.asset_type());
+        log::trace!("Adding asset of type {:?} with path {}", asset.asset_type(), path);
+        let handle = self.get_or_reserve_handle(path, asset.asset_type());
         self.add_asset_with_handle(AssetWithHandle::combine(handle, asset));
     }
 
     pub fn add_asset_with_handle(
-        self: &Arc<Self>,
+        &self,
         asset: AssetWithHandle<P>
     ) {
-        trace!("Adding asset of type {:?} with handle {:?}", asset.asset_type(), asset.handle());
+        log::trace!("Adding asset of type {:?} with handle {:?}", asset.asset_type(), asset.handle());
         if asset.is_renderer_asset() {
             self.renderer.add_asset(asset);
         } else {
@@ -469,9 +469,18 @@ impl<P: Platform> AssetManager<P> {
     }
 
     pub fn request_asset_update(self: &Arc<Self>, path: &str) {
-        log::info!("Reloading: {}", path);
-        if let Some(asset_type) = self.renderer.contains_just_path(path) {
-            self.request_asset_internal(path, asset_type, AssetLoadPriority::Low, None, true);
+        let handle = {
+            let path_map = self.path_map.lock().unwrap();
+            let handle_opt = path_map.get(path).copied();
+            if handle_opt.is_none() {
+                return;
+            }
+            handle_opt.unwrap()
+        };
+
+        if self.is_loaded(handle) {
+            log::info!("Reloading: {}", path);
+            self.request_asset_internal(path, handle.asset_type(), AssetLoadPriority::Low, None, true);
         }
     }
 
@@ -480,8 +489,34 @@ impl<P: Platform> AssetManager<P> {
         path: &str,
         asset_type: AssetType,
         priority: AssetLoadPriority,
-    ) -> Arc<AssetLoaderProgress> {
+    ) -> (AssetHandle, Arc<AssetLoaderProgress>) {
         self.request_asset_internal(path, asset_type, priority, None, false)
+    }
+
+    pub fn request_asset_refresh_by_handle<T: Into<AssetHandle>>(
+        self: &Arc<Self>,
+        handle: T,
+        priority: AssetLoadPriority,
+    ) -> (AssetHandle, Arc<AssetLoaderProgress>) {
+        let handle: AssetHandle = handle.into();
+        let path: String;
+        {
+            let path_map = self.path_map.lock().unwrap();
+            let path_opt = path_map.iter().find_map(|(entry_path, entry_handle)|
+                if handle == *entry_handle {
+                    Some(entry_path.to_string())
+                } else {
+                    None
+                }
+            );
+            if let Some(entry_path) = path_opt {
+                path = entry_path;
+            } else {
+                log::error!("Requesting asset by handle: Could not find a path entry for the handle: {:?}", handle);
+                return (handle, Arc::new(AssetLoaderProgress { expected: AtomicU32::new(1), finished: AtomicU32::new(1) }));
+            }
+        }
+        self.request_asset_internal(&path, handle.asset_type(), priority, None, false)
     }
 
     pub fn request_asset_with_progress(
@@ -490,7 +525,7 @@ impl<P: Platform> AssetManager<P> {
         asset_type: AssetType,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> Arc<AssetLoaderProgress> {
+    ) -> (AssetHandle, Arc<AssetLoaderProgress>) {
         self.request_asset_internal(path, asset_type, priority, Some(progress), false)
     }
 
@@ -501,7 +536,7 @@ impl<P: Platform> AssetManager<P> {
         priority: AssetLoadPriority,
         progress: Option<&Arc<AssetLoaderProgress>>,
         refresh: bool,
-    ) -> Arc<AssetLoaderProgress> {
+    ) -> (AssetHandle, Arc<AssetLoaderProgress>) {
         let progress = progress.map_or_else(
             || {
                 Arc::new(AssetLoaderProgress {
@@ -518,26 +553,36 @@ impl<P: Platform> AssetManager<P> {
             let _ = self.take_any_unintegrated_asset_data_of_type(AssetType::Level);
         }
 
-        let mut skip = false;
+        let handle = self.get_or_reserve_handle(path, asset_type);
+
         {
             // Already requested?
             let requests = self.requested_assets.lock().unwrap();
-            if let Some(requested_asset_type) = requests.get(path) {
-                if *requested_asset_type != asset_type {
-                    error!("Requested an asset with the same path as a previously requested asset but with a different asset type. Path: {}", path);
-                    skip = true;
+            if let Some(requested_asset_handle) = requests.get(&handle) {
+                if requested_asset_handle.asset_type() != asset_type {
+                    log::error!("Requested an asset with the same path as a previously requested asset but with a different asset type. Path: {}, requested asset type: {:?}, previously requested asset type: {:?}.", path, asset_type, requested_asset_handle.asset_type());
+                    progress.finished.fetch_add(1, Ordering::SeqCst);
+                    return (*requested_asset_handle, progress);
                 }
             }
         };
-        if !skip {
-            if !refresh && self.contains(path, asset_type) {
-                trace!("Skipping asset request because it is already loaded and request did not specify that it should be refreshed. Path: {}", path);
-                skip = true;
+
+        let already_loaded = self.is_loaded(handle);
+        if already_loaded {
+            if handle.asset_type() != asset_type {
+                log::error!("Requested an asset with the same path as a previously loaded asset but with a different asset type. Path: {}, requested asset type: {:?}, previously loaded asset type: {:?}.", path, asset_type, handle.asset_type());
+                progress.finished.fetch_add(1, Ordering::SeqCst);
+                return (handle, progress);
             }
-        }
-        if skip {
+            if !refresh {
+                log::trace!("Skipping asset request because it is already loaded and request did not specify that it should be refreshed. Path: {}, asset type: {:?}.", path, asset_type);
+                progress.finished.fetch_add(1, Ordering::SeqCst);
+                return (handle, progress);
+            }
+        } else if refresh {
+            log::trace!("Skipping asset request because it is a refresh request on an asset that isn't loaded. Path: {}, asset type: {:?}.", path, asset_type);
             progress.finished.fetch_add(1, Ordering::SeqCst);
-            return progress;
+            return (handle, progress);
         }
 
         let load_request = AssetLoadRequest {
@@ -562,10 +607,10 @@ impl<P: Platform> AssetManager<P> {
                 asset_mgr.pending_normal_priority_loads.wait_for_value(LOAD_PRIORITY_THRESHOLD).await;
             }
 
-            trace!("Loading file for {}", &load_request.path);
+            log::trace!("Loading file for {}", &load_request.path);
             let file_opt = asset_mgr.load_file(&load_request.path).await;
             if file_opt.is_none() {
-                error!("Could not find file at path: {}", &load_request.path);
+                log::error!("Could not find file at path: {}", &load_request.path);
                 load_request.progress.finished.fetch_add(1, Ordering::SeqCst);
                 if priority == AssetLoadPriority::High {
                     asset_mgr.pending_high_priority_loads.decrement();
@@ -576,8 +621,8 @@ impl<P: Platform> AssetManager<P> {
             }
             let file = file_opt.unwrap();
             let load_task = AsyncComputeTaskPool::get().spawn(async move {
-                trace!("Loading asset at path: {:?} {}", asset_type, &file.path);
-                let _ = asset_mgr.load_asset(file, asset_type, priority, &load_request.progress).await;
+                log::trace!("Loading asset at path: {}", &file.path);
+                let _ = asset_mgr.load_asset(file, handle, priority, &load_request.progress).await;
                 if priority == AssetLoadPriority::High {
                     asset_mgr.pending_high_priority_loads.decrement();
                 } else if priority == AssetLoadPriority::Normal {
@@ -587,13 +632,7 @@ impl<P: Platform> AssetManager<P> {
             load_task.detach();
         });
         io_task.detach();
-        progress
-    }
-
-    #[allow(unused)]
-    pub(crate) fn take_unintegrated_asset_data(self: &Arc<Self>, path: &str) -> Option<AssetData> {
-        let mut unintegrated = self.unintegrated_assets.lock().unwrap();
-        unintegrated.remove(path)
+        (handle, progress)
     }
 
     pub(crate) fn take_any_unintegrated_asset_data_of_type(self: &Arc<Self>, asset_type: AssetType) -> Option<AssetData> {
@@ -651,16 +690,17 @@ impl<P: Platform> AssetManager<P> {
         loader_opt.map(|b| b.as_ref())
     }
 
-    async fn load_asset(
+    async fn load_asset<T : Into<AssetHandle>>(
         self: &Arc<Self>,
         mut file: AssetFile,
-        asset_type: AssetType,
+        handle: T,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<(), ()> {
+        let handle: AssetHandle = handle.into();
         {
             let mut requests = self.requested_assets.lock().unwrap();
-            requests.remove(&file.path);
+            requests.remove(&handle);
         }
 
         let loaders = self.loaders.read().await;
@@ -671,53 +711,76 @@ impl<P: Platform> AssetManager<P> {
         ).await;
         if loader_opt.is_none() {
             progress.finished.fetch_add(1, Ordering::SeqCst);
-            error!("Could not find loader for file: {:?}", &file.path);
+            log::error!("Could not find loader for file: {:?}", &file.path);
             return Err(());
         }
         let loader = loader_opt.unwrap();
 
         let path = file.path.clone();
-        let assets_opt = loader.load(file, self, priority, progress).await;
-        if assets_opt.is_err() {
+        let result = loader.load(file, self, priority, progress).await;
+        if result.is_err() {
             progress.finished.fetch_add(1, Ordering::SeqCst);
-            error!("Could not load file: {:?}", &path);
+            log::error!("Could not load file: {:?}", &path);
             return Err(());
         }
-        if !self.contains(&path, asset_type) {
-            error!("Loader did not load requested asset from file: {:?}", &path);
-            return Err(());
+        if let Some(existing_asset_type) = self.contains(&path) {
+            if existing_asset_type != handle.asset_type() {
+                log::error!("Loader did load the wrong asset type from file: {:?}", &path);
+                return Err(());
+            }
         }
         Ok(())
     }
 
-    pub fn contains(&self, path: &str, asset_type: AssetType) -> bool {
-        if asset_type.is_renderer_asset() {
-            return self.renderer.contains(path, asset_type);
+    pub fn contains(&self, path: &str) -> Option<AssetType> {
+        let handle = {
+            let path_map = self.path_map.lock().unwrap();
+            path_map.get(path).copied()?
+        };
+
+        if handle.asset_type().is_renderer_asset() && self.renderer.contains(handle) {
+            return Some(handle.asset_type());
         }
 
         {
             let unintegrated = self.unintegrated_assets.lock().unwrap();
-            if let Some(asset) = unintegrated.get(path) {
-                return asset_type == asset.asset_type();
+            if let Some(asset) = unintegrated.get(&handle) {
+                return Some(asset.asset_type());
+            }
+        }
+
+        None
+    }
+
+    pub fn is_loaded<T: Into<AssetHandle>>(&self, handle: T) -> bool {
+        let handle: AssetHandle = handle.into();
+        if handle.asset_type().is_renderer_asset() {
+            return self.renderer.contains(handle);
+        }
+
+        {
+            let unintegrated = self.unintegrated_assets.lock().unwrap();
+            if let Some(asset) = unintegrated.get(&handle) {
+                assert_eq!(asset.asset_type(), handle.asset_type());
+                return true;
             }
         }
 
         false
     }
 
-    pub fn contains_just_path(&self, path: &str) -> Option<AssetType> {
-        if let Some(asset_type) = self.renderer.contains_just_path(path) {
-            return Some(asset_type);
-        }
-
+    pub fn get_or_reserve_handle(&self, path: &str, asset_type: AssetType) -> AssetHandle {
         {
-            let unintegrated = self.unintegrated_assets.lock().unwrap();
-            if let Some(asset) = unintegrated.get(path) {
-                return Some(asset.asset_type());
+            let path_map = self.path_map.lock().unwrap();
+            if let Some(handle) = path_map.get(path) {
+                if handle.asset_type() != asset_type {
+                    log::error!("An asset of a different type ({:?}) was previously loaded from the path \"{:?}\". Requested asset type now: {:?}", handle.asset_type(), path, asset_type);
+                }
+                return *handle;
             }
         }
 
-        None
+        self.reserve_handle(path, asset_type)
     }
 
     pub(crate) fn read_renderer_assets(&self) -> RendererAssetsReadOnly<P> {

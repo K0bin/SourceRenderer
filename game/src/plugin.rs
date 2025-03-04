@@ -2,7 +2,7 @@ use std::{marker::PhantomData, sync::Arc};
 
 use bevy_app::{App, Plugin};
 use sourcerenderer_core::Platform;
-use sourcerenderer_engine::{asset::{loaders::GltfContainer, AssetLoadPriority, AssetManager, AssetType}, Engine};
+use sourcerenderer_engine::{asset::{loaders::{load_file_gltf_container, load_memory_gltf_container}, AssetLoadPriority, AssetManager, AssetType}, Engine};
 
 use crate::{fps_camera, spinning_cube::SpinningCubePlugin};
 
@@ -24,10 +24,10 @@ impl<P: Platform> Plugin for GamePlugin<P> {
             let asset_manager: &Arc<AssetManager<P>> = Engine::get_asset_manager(app);
             asset_manager.add_container_async(async move {
                 log::info!("Loading GLTF file as container");
-                GltfContainer::<P>::load("bistro_sun.glb", true).await.unwrap()
+                load_file_gltf_container::<P>("bistro_sun.glb", true).await.unwrap()
             });
             asset_manager.request_asset("bistro_sun.glb/scene/Scene", AssetType::Level, AssetLoadPriority::High);
-            //asset_manager.request_asset("FlightHelmet/FlightHelmet.gltf/scene/0", AssetType::Level, AssetLoadPriority::High);
+            asset_manager.request_asset("FlightHelmet/FlightHelmet.gltf/scene/0", AssetType::Level, AssetLoadPriority::High);
         }
 
         fps_camera::install::<P>(app);

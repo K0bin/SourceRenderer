@@ -29,7 +29,7 @@ use super::renderer_culling::update_visibility;
 use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
 use super::{PointLight, StaticRenderableComponent};
-use crate::asset::{AssetHandle, AssetManager, AssetType};
+use crate::asset::{AssetManager, AssetType};
 use crate::engine::WindowState;
 use crate::renderer::command::RendererCommand;
 use crate::transform::InterpolatedTransform;
@@ -283,19 +283,14 @@ impl<P: Platform> Renderer<P> {
                     cast_shadows,
                     can_move,
                 } => {
-                    let handle = self.asset_manager.reserve_handle(&model_path, AssetType::Model);
-                    let model = if let AssetHandle::Model(handle) = handle {
-                        handle
-                    } else {
-                        unreachable!()
-                    };
+                    let model_handle = self.asset_manager.get_or_reserve_handle(&model_path, AssetType::Model);
                     self.scene.add_static_drawable(
                         entity,
                         RendererStaticDrawable {
                             entity,
                             transform,
                             old_transform: transform,
-                            model,
+                            model: model_handle.into(),
                             receive_shadows,
                             cast_shadows,
                             can_move,
@@ -343,12 +338,8 @@ impl<P: Platform> Renderer<P> {
                     self.scene.remove_directional_light(&entity);
                 }
                 RendererCommand::<P::GPUBackend>::SetLightmap(path) => {
-                    let handle = self.asset_manager.reserve_handle(&path, AssetType::Texture);
-                    if let AssetHandle::Texture(handle) = handle {
-                        self.scene.set_lightmap(Some(handle));
-                    } else {
-                        unreachable!()
-                    }
+                    let handle = self.asset_manager.get_or_reserve_handle(&path, AssetType::Texture);
+                    self.scene.set_lightmap(Some(handle.into()));
                 }
                 RendererCommand::RenderUI(data) => { self.render_path.set_ui_data(data); },
 

@@ -1,4 +1,4 @@
-use std::{collections::{hash_map::Values, HashSet}, sync::Arc};
+use std::{collections::{hash_map::Values, HashMap}, sync::Arc};
 use crate::{graphics::GraphicsContext, RwLock, RwLockReadGuard}; // The parking lot variant is fair (write-preferring) and consistent across platforms.
 
 use smallvec::SmallVec;
@@ -20,15 +20,14 @@ impl<P: Platform> RendererAssets<P> {
     pub(crate) fn new(device: &Arc<crate::graphics::Device<P::GPUBackend>>) -> Self {
         Self {
             assets: RwLock::new(RendererAssetMaps {
-                textures: HandleMap::new(),
-                materials: HandleMap::new(),
-                meshes: HandleMap::new(),
-                models: HandleMap::new(),
-                shaders: HandleMap::new(),
-                graphics_pipelines: SimpleHandleMap::new(),
-                compute_pipelines: SimpleHandleMap::new(),
-                ray_tracing_pipelines: SimpleHandleMap::new(),
-                requested_assets: HashSet::new()
+                textures: HashMap::new(),
+                materials: HashMap::new(),
+                meshes: HashMap::new(),
+                models: HashMap::new(),
+                shaders: HashMap::new(),
+                graphics_pipelines: HashMap::new(),
+                compute_pipelines: HashMap::new(),
+                ray_tracing_pipelines: HashMap::new(),
             }),
             placeholders: AssetPlaceholders::new(device),
             shader_manager: ShaderManager::new(device),
@@ -37,53 +36,38 @@ impl<P: Platform> RendererAssets<P> {
         }
     }
 
-    pub(crate) fn integrate(
+    #[inline(always)]
+    pub(crate) fn integrate<T: Into<AssetHandle>>(
         &self,
         asset_manager: &Arc<AssetManager<P>>,
-        path: &str,
+        handle: T,
         asset_data: &AssetData,
         priority: AssetLoadPriority
     ) {
-        self.integrator.integrate(asset_manager, &self.shader_manager, path, asset_data, priority)
-    }
-
-    #[inline(always)]
-    pub(crate) fn reserve_handle(&self, path: &str, asset_type: AssetType) -> AssetHandle {
-        let mut assets = self.assets.write();
-        assets.reserve_handle(path, asset_type)
-    }
-
-    #[inline(always)]
-    pub(crate) fn reserve_handle_without_path(&self, asset_type: AssetType) -> AssetHandle {
-        let mut assets = self.assets.write();
-        assets.reserve_handle_without_path(asset_type)
-    }
-
-    #[allow(unused)]
-    #[inline(always)]
-    pub(crate) fn remove_by_handle(&self, asset_type: AssetType, path: &str) -> bool {
-        let mut assets = self.assets.write();
-        assets.remove_by_key(asset_type, path)
-    }
-
-    #[allow(unused)]
-    #[inline(always)]
-    pub(crate) fn remove_request_by_path(&self, asset_type: AssetType, path: &str) -> bool {
-        let mut assets = self.assets.write();
-        assets.remove_request_by_path(asset_type, path)
+        self.integrator.integrate(asset_manager, &self.shader_manager, handle, asset_data, priority)
     }
 
     #[inline(always)]
     pub(crate) fn add_asset(&self, asset: AssetWithHandle<P>) -> bool {
         let mut assets = self.assets.write();
-        assets.add_asset(asset)
+        match asset {
+            AssetWithHandle::Texture(handle, asset) => assets.textures.insert(handle.into(), asset).is_some(),
+            AssetWithHandle::Material(handle, asset) => assets.materials.insert(handle.into(), asset).is_some(),
+            AssetWithHandle::Model(handle, asset) => assets.models.insert(handle.into(), asset).is_some(),
+            AssetWithHandle::Mesh(handle, asset) => assets.meshes.insert(handle.into(), asset).is_some(),
+            AssetWithHandle::Shader(handle, asset) => assets.shaders.insert(handle.into(), asset).is_some(),
+            AssetWithHandle::GraphicsPipeline(handle, asset) => assets.graphics_pipelines.insert(handle.into(), asset).is_some(),
+            AssetWithHandle::ComputePipeline(handle, asset) => assets.compute_pipelines.insert(handle.into(), asset).is_some(),
+            AssetWithHandle::RayTracingPipeline(handle, asset) => assets.ray_tracing_pipelines.insert(handle.into(), asset).is_some(),
+            _ => panic!("Unsupported asset type {:?}", asset.asset_type()),
+        }
     }
 
-    #[allow(unused)]
     #[inline(always)]
-    pub(crate) fn insert_request(&self, request: &(String, AssetType), refresh: bool) -> bool {
-        let mut assets = self.assets.write();
-        assets.insert_request(request, refresh)
+    pub(crate) fn contains<T: Into<AssetHandle>>(&self, handle: T) -> bool {
+        let handle: AssetHandle = handle.into();
+        let assets = self.assets.read();
+        assets.get(handle).is_some()
     }
 
     #[inline(always)]
@@ -99,17 +83,6 @@ impl<P: Platform> RendererAssets<P> {
     #[inline(always)]
     pub(crate) fn request_ray_tracing_pipeline(&self, asset_manager: &Arc<AssetManager<P>>, info: &RayTracingPipelineInfo) -> RayTracingPipelineHandle {
         self.shader_manager.request_ray_tracing_pipeline(asset_manager, info)
-    }
-
-    pub(crate) fn contains(&self, path: &str, asset_type: AssetType) -> bool {
-        let assets = self.assets.read();
-        assets.contains(path, asset_type) ||
-            assets.contains_just_path(path).is_some()
-    }
-
-    pub(crate) fn contains_just_path(&self, path: &str) -> Option<AssetType> {
-        let assets = self.assets.read();
-        assets.contains_just_path(path)
     }
 
     pub(crate) fn read<'a>(&'a self) -> RendererAssetsReadOnly<'a, P> {
@@ -133,142 +106,32 @@ impl<P: Platform> RendererAssets<P> {
 }
 
 struct RendererAssetMaps<P: Platform> {
-    textures: HandleMap<String, TextureHandle, RendererTexture<P::GPUBackend>>,
-    materials: HandleMap<String, MaterialHandle, RendererMaterial>,
-    meshes: HandleMap<String, MeshHandle, RendererMesh<P::GPUBackend>>,
-    models: HandleMap<String, ModelHandle, RendererModel>,
-    shaders: HandleMap<String, ShaderHandle, RendererShader<P::GPUBackend>>,
-    graphics_pipelines: SimpleHandleMap<GraphicsPipelineHandle, RendererGraphicsPipeline<P>>,
-    compute_pipelines: SimpleHandleMap<ComputePipelineHandle, RendererComputePipeline<P>>,
-    ray_tracing_pipelines: SimpleHandleMap<RayTracingPipelineHandle, RendererRayTracingPipeline<P>>,
-    requested_assets: HashSet<(String, AssetType)>,
+    textures: HashMap<TextureHandle, RendererTexture<P::GPUBackend>>,
+    materials: HashMap<MaterialHandle, RendererMaterial>,
+    meshes: HashMap<MeshHandle, RendererMesh<P::GPUBackend>>,
+    models: HashMap<ModelHandle, RendererModel>,
+    shaders: HashMap<ShaderHandle, RendererShader<P::GPUBackend>>,
+    graphics_pipelines: HashMap<GraphicsPipelineHandle, RendererGraphicsPipeline<P>>,
+    compute_pipelines: HashMap<ComputePipelineHandle, RendererComputePipeline<P>>,
+    ray_tracing_pipelines: HashMap<RayTracingPipelineHandle, RendererRayTracingPipeline<P>>,
 }
 
 impl<P: Platform> RendererAssetMaps<P> {
-    fn remove_by_key(&mut self, asset_type: AssetType, path: &str) -> bool {
-        let mut found = true;
-        match asset_type {
-            AssetType::Texture => {
-                self.textures.remove_by_key(path);
-            },
-            AssetType::Model => {
-                self.models.remove_by_key(path);
-            },
-            AssetType::Mesh => {
-                self.meshes.remove_by_key(path);
-            },
-            AssetType::Material => {
-                self.materials.remove_by_key(path);
-            },
-            AssetType::Shader => {
-                self.shaders.remove_by_key(path);
-            },
-            _ => {
-                found = false;
-            }
-        }
-        found = self.requested_assets.remove(&(path.to_string(), asset_type)) || found;
-        found
-    }
-
-    #[inline(always)]
-    fn remove_request_by_path(&mut self, asset_type: AssetType, path: &str) -> bool {
-        return self.requested_assets.remove(&(path.to_string(), asset_type));
-    }
-
-    #[inline]
-    fn reserve_handle(&mut self, path: &str, asset_type: AssetType) -> AssetHandle {
-        return match asset_type {
-            AssetType::Texture => AssetHandle::Texture(self.textures.get_or_create_handle(path)),
-            AssetType::Model => AssetHandle::Model(self.models.get_or_create_handle(path)),
-            AssetType::Mesh => AssetHandle::Mesh(self.meshes.get_or_create_handle(path)),
-            AssetType::Material => AssetHandle::Material(self.materials.get_or_create_handle(path)),
-            AssetType::Shader => AssetHandle::Shader(self.shaders.get_or_create_handle(path)),
-            AssetType::GraphicsPipeline | AssetType::ComputePipeline | AssetType::RayTracingPipeline => panic!("Asset type {:?} cannot be reserved WITH a path.", asset_type),
-            _ => panic!("Unsupported asset type {:?}", asset_type)
-        };
-    }
-
-    #[inline]
-    pub(crate) fn reserve_handle_without_path(&mut self, asset_type: AssetType) -> AssetHandle {
-        return match asset_type {
-            AssetType::GraphicsPipeline => AssetHandle::GraphicsPipeline(self.graphics_pipelines.create_handle()),
-            AssetType::ComputePipeline => AssetHandle::ComputePipeline(self.compute_pipelines.create_handle()),
-            AssetType::RayTracingPipeline => AssetHandle::RayTracingPipeline(self.ray_tracing_pipelines.create_handle()),
-            _ => panic!("Asset type cannot reserve handle without a path: {:?}", asset_type)
-        }
-    }
-
-    #[inline]
-    fn add_asset(&mut self, asset: AssetWithHandle<P>) -> bool {
-        match asset {
-            AssetWithHandle::Texture(handle, asset) => self.textures.set(handle, asset),
-            AssetWithHandle::Material(handle, asset) => self.materials.set(handle, asset),
-            AssetWithHandle::Model(handle, asset) => self.models.set(handle, asset),
-            AssetWithHandle::Mesh(handle, asset) => self.meshes.set(handle, asset),
-            AssetWithHandle::Shader(handle, asset) => self.shaders.set(handle, asset),
-            AssetWithHandle::GraphicsPipeline(handle, asset) => self.graphics_pipelines.set(handle, asset),
-            AssetWithHandle::ComputePipeline(handle, asset) => self.compute_pipelines.set(handle, asset),
-            AssetWithHandle::RayTracingPipeline(handle, asset) => self.ray_tracing_pipelines.set(handle, asset),
-            _ => panic!("Unsupported asset type {:?}", asset.asset_type()),
-        }
-    }
-
     #[allow(unused)]
     #[inline]
-    fn get_handle(&self, path: &str, asset_type: AssetType) -> Option<AssetHandle> {
-        match asset_type {
-            AssetType::Texture => self.textures.get_handle(path).map(|handle| AssetHandle::Texture(handle)),
-            AssetType::Material => self.materials.get_handle(path).map(|handle| AssetHandle::Material(handle)),
-            AssetType::Model => self.models.get_handle(path).map(|handle| AssetHandle::Model(handle)),
-            AssetType::Mesh => self.meshes.get_handle(path).map(|handle| AssetHandle::Mesh(handle)),
-            AssetType::Shader => self.shaders.get_handle(path).map(|handle| AssetHandle::Shader(handle)),
-            AssetType::GraphicsPipeline | AssetType::ComputePipeline | AssetType::RayTracingPipeline => panic!("Asset type {:?} does not use paths.", asset_type),
-            _ => panic!("Unsupported asset type {:?}", asset_type),
+    fn get<T: Into<AssetHandle>>(&self, handle: T) -> Option<AssetRef<P>> {
+        let handle: AssetHandle = handle.into();
+        match handle.asset_type() {
+            AssetType::Texture => self.textures.get(&handle.into()).map(|asset| AssetRef::<P>::from(asset)),
+            AssetType::Model => self.models.get(&handle.into()).map(|asset| AssetRef::<P>::from(asset)),
+            AssetType::Mesh => self.meshes.get(&handle.into()).map(|asset| AssetRef::<P>::from(asset)),
+            AssetType::Material => self.materials.get(&handle.into()).map(|asset| AssetRef::<P>::from(asset)),
+            AssetType::Shader => self.shaders.get(&handle.into()).map(|asset| AssetRef::<P>::from(asset)),
+            AssetType::GraphicsPipeline => self.graphics_pipelines.get(&handle.into()).map(|asset| AssetRef::<P>::from(asset)),
+            AssetType::ComputePipeline => self.compute_pipelines.get(&handle.into()).map(|asset| AssetRef::<P>::from(asset)),
+            AssetType::RayTracingPipeline => self.ray_tracing_pipelines.get(&handle.into()).map(|asset| AssetRef::<P>::from(asset)),
+            _ => panic!("Asset type {:?} is not a renderer asset type", handle.asset_type()),
         }
-    }
-
-    #[allow(unused)]
-    #[inline]
-    fn get(&self, handle: AssetHandle) -> Option<AssetRef<P>> {
-        match handle {
-            AssetHandle::Texture(handle) => self.textures.get_value(handle).map(|asset| AssetRef::<P>::Texture(asset)),
-            AssetHandle::Material(handle) => self.materials.get_value(handle).map(|asset| AssetRef::<P>::Material(asset)),
-            AssetHandle::Model(handle) => self.models.get_value(handle).map(|asset| AssetRef::<P>::Model(asset)),
-            AssetHandle::Mesh(handle) => self.meshes.get_value(handle).map(|asset| AssetRef::<P>::Mesh(asset)),
-            AssetHandle::Shader(handle) => self.shaders.get_value(handle).map(|asset| AssetRef::<P>::Shader(asset)),
-            AssetHandle::GraphicsPipeline(handle) => self.graphics_pipelines.get_value(handle).map(|asset| AssetRef::<P>::GraphicsPipeline(asset)),
-            AssetHandle::ComputePipeline(handle) => self.compute_pipelines.get_value(handle).map(|asset| AssetRef::<P>::ComputePipeline(asset)),
-            AssetHandle::RayTracingPipeline(handle) => self.ray_tracing_pipelines.get_value(handle).map(|asset| AssetRef::<P>::RayTracingPipeline(asset)),
-            _ => panic!("Unsupported asset type {:?}", handle.asset_type()),
-        }
-    }
-
-    #[inline]
-    fn contains(&self, path: &str, asset_type: AssetType) -> bool {
-        match asset_type {
-            AssetType::Texture => self.textures.contains_key(path),
-            AssetType::Model => self.models.contains_key(path),
-            AssetType::Mesh => self.meshes.contains_key(path),
-            AssetType::Material => self.materials.contains_key(path),
-            AssetType::Shader => self.shaders.contains_key(path),
-            AssetType::GraphicsPipeline | AssetType::ComputePipeline | AssetType::RayTracingPipeline => panic!("Asset type {:?} does not use paths.", asset_type),
-            _ => panic!("Unsupported asset type {:?}", asset_type),
-        }
-    }
-
-    #[allow(unused)]
-    #[inline(always)]
-    fn contains_request(&self, request: &(String, AssetType)) -> bool {
-        self.requested_assets.contains(request)
-    }
-
-    fn insert_request(&mut self, request: &(String, AssetType), refresh: bool) -> bool {
-        if (self.contains(&request.0, request.1) && !refresh) || self.requested_assets.contains(request) {
-            return false;
-        }
-        self.requested_assets.insert(request.clone());
-        true
     }
 
     #[allow(unused)]
@@ -279,26 +142,6 @@ impl<P: Platform> RendererAssetMaps<P> {
             && self.models.is_empty()
             && self.meshes.is_empty()
             && self.shaders.is_empty()
-    }
-
-    fn contains_just_path(&self, path: &str) -> Option<AssetType> {
-        let mut asset_type = Option::<AssetType>::None;
-        if let Some(_) = self.textures.get_handle(path) {
-            asset_type = Some(AssetType::Texture);
-        }
-        if let Some(_) = self.materials.get_handle(path) {
-            asset_type = Some(AssetType::Material);
-        }
-        if let Some(_) = self.models.get_handle(path) {
-            asset_type = Some(AssetType::Model);
-        }
-        if let Some(_) = self.meshes.get_handle(path) {
-            asset_type = Some(AssetType::Mesh);
-        }
-        if let Some(_) = self.shaders.get_handle(path) {
-            asset_type = Some(AssetType::Shader);
-        }
-        asset_type
     }
 }
 
@@ -312,17 +155,17 @@ pub struct RendererAssetsReadOnly<'a, P: Platform> {
 impl<P: Platform> RendererAssetsReadOnly<'_, P> {
     #[inline(always)]
     pub fn get_model(&self, handle: ModelHandle) -> Option<&RendererModel> {
-        self.maps.models.get_value(handle)
+        self.maps.models.get(&handle)
     }
 
     #[inline(always)]
     pub fn get_mesh(&self, handle: MeshHandle) -> Option<&RendererMesh<P::GPUBackend>> {
-        self.maps.meshes.get_value(handle)
+        self.maps.meshes.get(&handle)
     }
 
     #[inline(always)]
     pub fn get_material(&self, handle: MaterialHandle) -> &RendererMaterial {
-        self.maps.materials.get_value(handle).unwrap_or(self.placeholders.material())
+        self.maps.materials.get(&handle).unwrap_or(self.placeholders.material())
     }
 
     #[inline(always)]
@@ -331,13 +174,13 @@ impl<P: Platform> RendererAssetsReadOnly<'_, P> {
     }
 
     #[inline(always)]
-    pub fn get_texture(&self, handle: TextureHandle, ) -> &RendererTexture<P::GPUBackend> {
-        self.maps.textures.get_value(handle).unwrap_or(self.placeholders.texture_white())
+    pub fn get_texture(&self, handle: TextureHandle) -> &RendererTexture<P::GPUBackend> {
+        self.maps.textures.get(&handle).unwrap_or(self.placeholders.texture_white())
     }
 
     #[inline(always)]
-    pub fn get_texture_opt(&self, handle: TextureHandle, ) -> Option<&RendererTexture<P::GPUBackend>> {
-        self.maps.textures.get_value(handle)
+    pub fn get_texture_opt(&self, handle: TextureHandle) -> Option<&RendererTexture<P::GPUBackend>> {
+        self.maps.textures.get(&handle)
     }
 
     #[inline(always)]
@@ -352,52 +195,22 @@ impl<P: Platform> RendererAssetsReadOnly<'_, P> {
 
     #[inline(always)]
     pub fn get_shader(&self, handle: ShaderHandle) -> Option<&RendererShader<P::GPUBackend>> {
-        self.maps.shaders.get_value(handle)
-    }
-
-    #[inline(always)]
-    pub fn get_shader_by_path(&self, path: &str) -> Option<&RendererShader<P::GPUBackend>> {
-        self.maps.shaders.get_value_by_key(path)
+        self.maps.shaders.get(&handle)
     }
 
     #[inline(always)]
     pub fn get_graphics_pipeline(&self, handle: GraphicsPipelineHandle) -> Option<&Arc<GraphicsPipeline<P::GPUBackend>>> {
-        self.maps.graphics_pipelines.get_value(handle).map(|c| &c.pipeline)
+        self.maps.graphics_pipelines.get(&handle).map(|c| &c.pipeline)
     }
 
     #[inline(always)]
     pub fn get_compute_pipeline(&self, handle: ComputePipelineHandle) -> Option<&Arc<ComputePipeline<P::GPUBackend>>> {
-        self.maps.compute_pipelines.get_value(handle).map(|c| &c.pipeline)
+        self.maps.compute_pipelines.get(&handle).map(|c| &c.pipeline)
     }
 
     #[inline(always)]
     pub fn get_ray_tracing_pipeline(&self, handle: RayTracingPipelineHandle) -> Option<&Arc<RayTracingPipeline<P::GPUBackend>>> {
-        self.maps.ray_tracing_pipelines.get_value(handle).map(|c| &c.pipeline)
-    }
-
-    #[inline(always)]
-    pub fn contains_shader_by_path(&self, path: &str) -> bool {
-        self.maps.shaders.contains_value_for_key(path)
-    }
-
-    #[allow(unused)]
-    pub(crate) fn contains_just_path(&self, path: &str) -> Option<AssetType> {
-        if self.maps.textures.contains_value_for_key(path) {
-            return Some(AssetType::Texture);
-        }
-        if self.maps.materials.contains_value_for_key(path) {
-            return Some(AssetType::Material);
-        }
-        if self.maps.meshes.contains_value_for_key(path) {
-            return Some(AssetType::Mesh);
-        }
-        if self.maps.models.contains_value_for_key(path) {
-            return Some(AssetType::Model);
-        }
-        if self.maps.shaders.contains_value_for_key(path) {
-            return Some(AssetType::Shader);
-        }
-        None
+        self.maps.ray_tracing_pipelines.get(&handle).map(|c| &c.pipeline)
     }
 
     #[inline(always)]
@@ -415,36 +228,26 @@ impl<P: Platform> RendererAssetsReadOnly<'_, P> {
         self.maps.ray_tracing_pipelines.values()
     }
 
-    pub fn get(&self, handle: AssetHandle) -> Option<AssetRef<P>> {
-        match handle {
-            AssetHandle::Texture(texture_handle) => Some(AssetRef::Texture(self.get_texture(texture_handle))),
-            AssetHandle::Material(material_handle) => Some(AssetRef::Material(self.get_material(material_handle))),
-            AssetHandle::Model(model_handle) => self.get_model(model_handle).map(|model| AssetRef::Model(model)),
-            AssetHandle::Mesh(mesh_handle) => self.get_mesh(mesh_handle).map(|mesh| AssetRef::Mesh(mesh)),
-            AssetHandle::Shader(shader_handle) => self.get_shader(shader_handle).map(|shader| AssetRef::Shader(shader)),
-            AssetHandle::GraphicsPipeline(graphics_pipeline_handle) => self.maps.graphics_pipelines.get_value(graphics_pipeline_handle).map(|pipeline| AssetRef::GraphicsPipeline(pipeline)),
-            AssetHandle::ComputePipeline(compute_pipeline_handle) => self.maps.compute_pipelines.get_value(compute_pipeline_handle).map(|pipeline| AssetRef::ComputePipeline(pipeline)),
-            AssetHandle::RayTracingPipeline(ray_tracing_pipeline_handle) => self.maps.ray_tracing_pipelines.get_value(ray_tracing_pipeline_handle).map(|pipeline| AssetRef::RayTracingPipeline(pipeline)),
-            _ => panic!("Asset type is not a renderer asset")
-        }
+    pub fn get<T: Into<AssetHandle>>(&self, handle: T) -> Option<AssetRef<P>> {
+        self.maps.get(handle)
     }
 
     pub fn all_pipeline_handles(&self, asset_type: AssetType) -> SmallVec<[AssetHandle; 16]> {
         let mut handles = SmallVec::<[AssetHandle; 16]>::new();
         match asset_type {
             AssetType::GraphicsPipeline => {
-                for handle in self.maps.graphics_pipelines.handles() {
-                    handles.push(AssetHandle::GraphicsPipeline(*handle));
+                for handle in self.maps.graphics_pipelines.keys() {
+                    handles.push((*handle).into());
                 }
             },
             AssetType::ComputePipeline => {
-                for handle in self.maps.compute_pipelines.handles() {
-                    handles.push(AssetHandle::ComputePipeline(*handle));
+                for handle in self.maps.compute_pipelines.keys() {
+                    handles.push((*handle).into());
                 }
             },
             AssetType::RayTracingPipeline => {
-                for handle in self.maps.ray_tracing_pipelines.handles() {
-                    handles.push(AssetHandle::RayTracingPipeline(*handle));
+                for handle in self.maps.ray_tracing_pipelines.keys() {
+                    handles.push((*handle).into());
                 }
             },
             _ => panic!("Asset type is not a pipeline type")

@@ -9,7 +9,7 @@ use sourcerenderer_core::Platform;
 
 use super::*;
 use crate::asset::{
-    Asset, AssetData, AssetHandle, AssetLoadPriority, AssetManager, AssetType, AssetWithHandle, MaterialData, MaterialHandle, MaterialValue, MeshData, ModelData, ShaderData, TextureData
+    Asset, AssetData, AssetHandle, AssetLoadPriority, AssetManager, AssetType, AssetWithHandle, MaterialData, MaterialHandle, MaterialValue, MeshData, ModelData, ShaderData, ShaderHandle, TextureData, TextureHandle
 };
 use crate::graphics::*;
 
@@ -27,7 +27,6 @@ pub struct AssetIntegrator<P: Platform> {
 
 impl<P: Platform> AssetIntegrator<P> {
     pub(crate) fn new(device: &Arc<crate::graphics::Device<P::GPUBackend>>) -> Self {
-
         let vertex_buffer = AssetBuffer::<P::GPUBackend>::new(
             device,
             if cfg!(not(target_arch = "wasm32")) { AssetBuffer::<P::GPUBackend>::SIZE_BIG } else { 64 },
@@ -49,26 +48,25 @@ impl<P: Platform> AssetIntegrator<P> {
         }
     }
 
-    pub fn integrate(
+    pub fn integrate<T: Into<AssetHandle>>(
         &self,
         asset_manager: &Arc<AssetManager<P>>,
         shader_manager: &ShaderManager<P>,
-        path: &str,
+        handle: T,
         asset_data: &AssetData,
         priority: AssetLoadPriority
     ) {
-        trace!("Integrating asset: {:?} {}", asset_data.asset_type(), path);
-        let handle = asset_manager.reserve_handle(path, asset_data.asset_type());
-
+        let handle: AssetHandle = handle.into();
+        trace!("Integrating asset: {:?} {:?}", asset_data.asset_type(), handle);
         let (asset, fence) = match asset_data {
             AssetData::Texture(texture_data) => {
-                let (renderer_texture, fence) = self.integrate_texture(path, priority, texture_data);
+                let (renderer_texture, fence) = self.integrate_texture(handle.into(), priority, texture_data);
                 (Asset::<P>::Texture(renderer_texture), fence)
             },
             AssetData::Mesh(mesh_data) => (Asset::<P>::Mesh(self.integrate_mesh(mesh_data)), None),
             AssetData::Model(model_data) => (Asset::<P>::Model(self.integrate_model(asset_manager, model_data)), None),
             AssetData::Material(material_data) => (Asset::<P>::Material(self.integrate_material(asset_manager, material_data)), None),
-            AssetData::Shader(shader_data) => (Asset::<P>::Shader(self.integrate_shader(asset_manager, shader_manager, path, shader_data)), None),
+            AssetData::Shader(shader_data) => (Asset::<P>::Shader(self.integrate_shader(asset_manager, shader_manager, handle.into(), shader_data)), None),
             _ => panic!("Asset type is not a renderer asset")
         };
 
@@ -80,11 +78,11 @@ impl<P: Platform> AssetIntegrator<P> {
 
     fn integrate_texture(
         &self,
-        path: &str,
+        handle: TextureHandle,
         priority: AssetLoadPriority,
         texture_data: &TextureData
     ) -> (RendererTexture<P::GPUBackend>, Option<SharedFenceValuePair<P::GPUBackend>>) {
-        let (view, fence) = self.upload_texture(path, texture_data, priority == AssetLoadPriority::Low);
+        let (view, fence) = self.upload_texture(handle, texture_data, priority == AssetLoadPriority::Low);
         let bindless_index = if self.device.supports_bindless() {
             self.device.insert_texture_into_bindless_heap(&view)
         } else {
@@ -175,16 +173,17 @@ impl<P: Platform> AssetIntegrator<P> {
 
     fn upload_texture(
         &self,
-        path: &str,
+        handle: TextureHandle,
         texture: &TextureData,
         do_async: bool,
     ) -> (
         Arc<TextureView<P::GPUBackend>>,
         Option<SharedFenceValuePair<P::GPUBackend>>
     ) {
+        let name = format!("{:?}", handle);
         let gpu_texture = self
             .device
-            .create_texture(&texture.info, Some(path)).unwrap();
+            .create_texture(&texture.info, Some(&name)).unwrap();
         let subresources = texture.info.array_length * texture.info.mip_levels;
         let mut fence = Option::<SharedFenceValuePair<P::GPUBackend>>::None;
         for subresource in 0..subresources {
@@ -211,7 +210,7 @@ impl<P: Platform> AssetIntegrator<P> {
                 array_layer_length: 1,
                 format: None,
             },
-            Some(path),
+            Some(&name),
         );
 
         (view, fence)
@@ -227,12 +226,8 @@ impl<P: Platform> AssetIntegrator<P> {
         for (key, value) in &material.properties {
             match value {
                 MaterialValue::Texture(path) => {
-                    let texture = asset_manager.reserve_handle(path, AssetType::Texture);
-                    if let AssetHandle::Texture(texture) = texture {
-                        properties.insert(key.to_string(), RendererMaterialValue::Texture(texture));
-                    } else {
-                        unreachable!();
-                    }
+                    let texture_handle = asset_manager.get_or_reserve_handle(path, AssetType::Texture);
+                    properties.insert(key.to_string(), RendererMaterialValue::Texture(texture_handle.into()));
                 }
                 MaterialValue::Float(val) => {
                     properties.insert(key.to_string(), RendererMaterialValue::Float(*val));
@@ -254,37 +249,29 @@ impl<P: Platform> AssetIntegrator<P> {
         asset_manager: &Arc<AssetManager<P>>,
         model: &ModelData
     ) -> RendererModel {
-        let handle = asset_manager.reserve_handle(&model.mesh_path, AssetType::Mesh);
-        let mesh = if let AssetHandle::Mesh(mesh) = handle {
-            mesh
-        } else {
-            unreachable!()
-        };
+        let mesh_handle = asset_manager.get_or_reserve_handle(&model.mesh_path, AssetType::Mesh);
 
         let mut renderer_materials =
             SmallVec::<[MaterialHandle; 16]>::with_capacity(model.material_paths.len());
         for material_path in &model.material_paths {
-            let material_handle = asset_manager.reserve_handle(material_path, AssetType::Material);
-            if let AssetHandle::Material(material_handle) = material_handle {
-                renderer_materials.push(material_handle);
-            } else {
-                unreachable!();
-            }
+            let material_handle = asset_manager.get_or_reserve_handle(material_path, AssetType::Material);
+            renderer_materials.push(material_handle.into());
         }
 
-        RendererModel::new(mesh, renderer_materials)
+        RendererModel::new(mesh_handle.into(), renderer_materials)
     }
 
     fn integrate_shader(
         &self,
         asset_manager: &Arc<AssetManager<P>>,
         shader_manager: &ShaderManager<P>,
-        path: &str,
+        handle: ShaderHandle,
         shader: &ShaderData
     ) -> RendererShader<P::GPUBackend> {
-        let shader = Arc::new(self.device.create_shader(shader, Some(path)));
-        asset_manager.add_asset(path, Asset::Shader(shader.clone()));
-        shader_manager.add_shader(asset_manager, path, &shader);
+        let name = format!("{:?}", handle);
+        let shader = Arc::new(self.device.create_shader(shader, Some(&name)));
+        asset_manager.add_asset_with_handle(AssetWithHandle::combine(handle.into(), Asset::Shader(shader.clone())));
+        shader_manager.add_shader(asset_manager, handle, &shader);
         shader
     }
 
