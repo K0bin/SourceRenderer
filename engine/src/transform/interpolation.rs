@@ -15,7 +15,6 @@ pub struct InterpolationPlugin;
 
 impl Plugin for InterpolationPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PreUpdate, add_global_transform);
         app.add_systems(FixedPostUpdate, update_previous_global_transform);
         app.add_systems(PostUpdate, interpolate_transform_matrix);
     }
@@ -46,14 +45,5 @@ fn interpolate_transform_matrix(
                     old_scale.lerp(new_scale, s), old_rotation.lerp(new_rotation,s), old_translation.lerp(new_translation, s))
             )
         );
-    }
-}
-
-fn add_global_transform(
-    query: Query<(Entity, &Transform), Added<Transform>>,
-    mut commands: Commands
-) {
-    for (entity, transform) in query.iter() {
-        commands.entity(entity).insert(GlobalTransform::from(*transform));
     }
 }
