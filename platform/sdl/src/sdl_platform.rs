@@ -7,7 +7,6 @@ use std::path::{
 };
 
 use crossbeam_channel::Sender;
-use log::debug;
 use notify::{
     recommended_watcher,
     RecommendedWatcher,

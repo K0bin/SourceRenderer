@@ -2,7 +2,7 @@ use std::{marker::PhantomData, sync::Arc};
 
 use bevy_app::{App, Plugin};
 use sourcerenderer_core::Platform;
-use sourcerenderer_engine::{asset::{loaders::{load_file_gltf_container, load_memory_gltf_container}, AssetLoadPriority, AssetManager, AssetType}, Engine};
+use sourcerenderer_engine::{asset::{loaders::load_file_gltf_container, AssetLoadPriority, AssetManager, AssetType}, Engine};
 
 use crate::{fps_camera, spinning_cube::SpinningCubePlugin};
 
