@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use smallvec::SmallVec;
@@ -27,7 +28,6 @@ use super::visibility_buffer::VisibilityBufferPass;
 use crate::graphics::{GraphicsContext, CommandBufferRecorder};
 use crate::renderer::passes::blue_noise::BlueNoise;
 use crate::renderer::passes::compositing::CompositingPass;
-use crate::renderer::passes::fsr2::Fsr2Pass;
 use crate::renderer::passes::modern::motion_vectors::MotionVectorPass;
 use crate::renderer::passes::ssr::SsrPass;
 use crate::renderer::passes::ui::UIPass;
@@ -64,9 +64,11 @@ pub struct ModernRenderer<P: Platform> {
 }
 
 enum AntiAliasing<P: Platform> {
-    TAA { taa: TAAPass, sharpen: SharpenPass },
-    FSR2 { fsr: Fsr2Pass<P> },
+    TAA { taa: TAAPass, sharpen: SharpenPass, _p: PhantomData<P> },
 }
+
+unsafe impl<P: Platform> Send for AntiAliasing<P> {}
+unsafe impl<P: Platform> Sync for AntiAliasing<P> {}
 
 pub struct RTPasses<P: Platform> {
     acceleration_structure_update: AccelerationStructureUpdatePass<P>,
@@ -90,8 +92,6 @@ struct CameraBuffer {
 }
 
 impl<P: Platform> ModernRenderer<P> {
-    const USE_FSR2: bool = false;
-
     #[allow(unused)]
     pub fn new(
         device: &Arc<crate::graphics::Device<P::GPUBackend>>,
@@ -100,11 +100,7 @@ impl<P: Platform> ModernRenderer<P> {
         asset_manager: &Arc<AssetManager<P>>
     ) -> Self {
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
-        let resolution = if Self::USE_FSR2 {
-            Vec2UI::new(swapchain.width() / 4 * 3, swapchain.height() / 4 * 3)
-        } else {
-            Vec2UI::new(swapchain.width(), swapchain.height())
-        };
+        let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
 
         let mut barriers = RendererResources::<P::GPUBackend>::new(device);
 
@@ -142,19 +138,10 @@ impl<P: Platform> ModernRenderer<P> {
         let motion_vector_pass =
             MotionVectorPass::new::<P>(&mut barriers, resolution, asset_manager);
 
-        let anti_aliasing = if Self::USE_FSR2 {
-            let fsr_pass = Fsr2Pass::<P>::new(
-                device,
-                &mut barriers,
-                resolution,
-                swapchain,
-                asset_manager
-            );
-            AntiAliasing::FSR2 { fsr: fsr_pass }
-        } else {
+        let anti_aliasing = {
             let taa = TAAPass::new::<P>(resolution, &mut barriers, asset_manager, true);
             let sharpen = SharpenPass::new::<P>(resolution, &mut barriers, asset_manager);
-            AntiAliasing::TAA { taa, sharpen }
+            AntiAliasing::<P>::TAA { taa, sharpen, _p: PhantomData }
         };
 
         let shadow_map = ShadowMapPass::new(device, &mut barriers, &mut init_cmd_buffer, asset_manager);
@@ -367,8 +354,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         && self.compositing_pass.is_ready(&assets)
         && self.motion_vector_pass.is_ready(&assets)
         && match &self.anti_aliasing {
-            AntiAliasing::TAA { taa, sharpen } => taa.is_ready(&assets) && sharpen.is_ready(&assets),
-            AntiAliasing::FSR2 { fsr } => fsr.is_ready(&assets),
+            AntiAliasing::TAA { taa, sharpen, _p: PhantomData::<P> } => taa.is_ready(&assets) && sharpen.is_ready(&assets),
         }
         && self.shadow_map_pass.is_ready(&assets)
         && self.ui_pass.is_ready(&assets)
@@ -516,18 +502,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         );
 
         let output_texture_name = match &mut self.anti_aliasing {
-            AntiAliasing::FSR2 { fsr } => {
-                fsr.execute(
-                    &mut cmd_buf,
-                    &params,
-                    CompositingPass::COMPOSITION_TEXTURE_NAME,
-                    VisibilityBufferPass::DEPTH_TEXTURE_NAME,
-                    MotionVectorPass::MOTION_TEXTURE_NAME,
-                    frame_info,
-                );
-                Fsr2Pass::<P>::UPSCALED_TEXTURE_NAME
-            }
-            AntiAliasing::TAA { taa, sharpen } => {
+            AntiAliasing::TAA { taa, sharpen, _p: PhantomData::<P> } => {
                 taa.execute(
                     &mut cmd_buf,
                     &params,

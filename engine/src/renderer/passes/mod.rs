@@ -7,8 +7,6 @@ pub(crate) mod compositing;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod conservative;
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) mod fsr2;
-#[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod light_binning;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod prepass;

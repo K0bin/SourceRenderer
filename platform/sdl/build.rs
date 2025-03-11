@@ -3,9 +3,7 @@ use std::env;
 use std::path::PathBuf;
 
 use build_util::{
-    compile_shader,
-    compile_shaders,
-    copy_directory_rec, CompiledShaderFileType, ShadingLanguage,
+    compile_shaders, copy_directory_rec, ShadingLanguage,
 };
 
 fn main() {
@@ -46,49 +44,6 @@ fn main() {
         &HashMap::new(),
         output_shading_languages,
         |_| true,
-    );
-
-    let mut fsr_shader_dir = manifest_dir.clone();
-    fsr_shader_dir.pop();
-    fsr_shader_dir.pop();
-    fsr_shader_dir.push("vendor");
-    fsr_shader_dir.push("fsr2");
-    fsr_shader_dir.push("FidelityFX-FSR2");
-    fsr_shader_dir.push("src");
-    fsr_shader_dir.push("ffx-fsr2-api");
-    fsr_shader_dir.push("shaders");
-    let mut map = HashMap::new();
-    map.insert("FFX_GPU".to_string(), "1".to_string());
-    map.insert("FFX_GLSL".to_string(), "1".to_string());
-    map.insert(
-        "FFX_FSR2_OPTION_LOW_RESOLUTION_MOTION_VECTORS".to_string(),
-        "1".to_string(),
-    );
-    map.insert(
-        "FFX_FSR2_OPTION_HDR_COLOR_INPUT".to_string(),
-        "1".to_string(),
-    );
-    compile_shaders(&fsr_shader_dir, &shader_dest_dir, true, false, &map,
-        output_shading_languages,
-        |f| {
-        f.extension()
-            .and_then(|ext| ext.to_str())
-            .map(|ext| ext == "glsl")
-            .unwrap_or_default()
-    });
-    let mut accumulate_sharpen_path = fsr_shader_dir.clone();
-    accumulate_sharpen_path.push("ffx_fsr2_accumulate_pass.glsl");
-    map.insert(
-        "FFX_FSR2_OPTION_APPLY_SHARPENING".to_string(),
-        "1".to_string(),
-    );
-    compile_shader(
-        &accumulate_sharpen_path,
-        &shader_dest_dir,
-        output_shading_languages & (ShadingLanguage::SpirV | ShadingLanguage::Wgsl | ShadingLanguage::Air | ShadingLanguage::Dxil),
-        CompiledShaderFileType::Packed,
-        true,
-        &map,
     );
 
     let mut assets_dest_dir = manifest_dir.clone();

@@ -42,6 +42,7 @@ mod instance;
 mod util;
 mod graphics_plugin;
 
+#[allow(unused)]
 pub(crate) use sourcerenderer_core::gpu::{
     BINDLESS_TEXTURE_COUNT,
     AdapterType,
