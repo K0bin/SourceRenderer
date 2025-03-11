@@ -32,7 +32,6 @@ pub struct FrameContext<B: GPUBackend> {
   command_pool: FrameContextCommandPool<B>,
   secondary_command_pool: FrameContextCommandPool<B>,
   buffer_allocator: Arc<TransientBufferAllocator<B>>,
-  last_used_frame: u64,
 }
 
 struct FrameContextCommandPool<B: GPUBackend> {
@@ -69,6 +68,23 @@ impl<B: GPUBackend> GraphicsContext<B> {
       self.global_buffer_allocator.cleanup_unused();
       self.memory_allocator.cleanup_unused();
     }
+
+    for thread_context in &mut (*self.thread_contexts) {
+      let frame_context = thread_context.get_frame_mut(self.current_frame);
+
+      unsafe { frame_context.command_pool.command_pool.reset(); }
+      unsafe { frame_context.secondary_command_pool.command_pool.reset(); }
+      frame_context.buffer_allocator.reset();
+
+      while let Ok(mut existing_cmd_buffer) = frame_context.command_pool.receiver.try_recv() {
+        existing_cmd_buffer.reset(self.current_frame);
+        frame_context.command_pool.existing_cmd_buffers.push_back(existing_cmd_buffer);
+      }
+      while let Ok(mut existing_cmd_buffer) = frame_context.secondary_command_pool.receiver.try_recv() {
+        existing_cmd_buffer.reset(self.current_frame);
+        frame_context.secondary_command_pool.existing_cmd_buffers.push_back(existing_cmd_buffer);
+      }
+    }
   }
 
   pub fn end_frame(&mut self) -> SharedFenceValuePairRef<B> {
@@ -84,22 +100,6 @@ impl<B: GPUBackend> GraphicsContext<B> {
   pub fn get_command_buffer(&mut self, _queue_type: QueueType) -> CommandBufferRecorder<B> {
     let thread_context = self.get_thread_context();
     let mut frame_context = thread_context.get_frame(self.current_frame);
-
-    if frame_context.last_used_frame != self.current_frame {
-        unsafe { frame_context.command_pool.command_pool.reset(); }
-        unsafe { frame_context.secondary_command_pool.command_pool.reset(); }
-        frame_context.buffer_allocator.reset();
-        frame_context.last_used_frame = self.current_frame;
-
-        while let Ok(mut existing_cmd_buffer) = frame_context.command_pool.receiver.try_recv() {
-            existing_cmd_buffer.reset(self.current_frame);
-            frame_context.command_pool.existing_cmd_buffers.push_back(existing_cmd_buffer);
-        }
-        while let Ok(mut existing_cmd_buffer) = frame_context.secondary_command_pool.receiver.try_recv() {
-            existing_cmd_buffer.reset(self.current_frame);
-            frame_context.secondary_command_pool.existing_cmd_buffers.push_back(existing_cmd_buffer);
-        }
-    }
 
     let existing_cmd_buffer = frame_context.command_pool.existing_cmd_buffers.pop_front();
     let cmd_buffer = existing_cmd_buffer.unwrap_or_else(|| {
@@ -176,6 +176,12 @@ impl<B: GPUBackend> ThreadContext<B> {
         &mut f[(frame_counter as usize) % len]
     })
   }
+
+  pub fn get_frame_mut(&mut self, frame_counter: u64) -> &mut FrameContext<B> {
+    let frames = self.frames.get_mut();
+    let len = frames.len();
+    &mut frames[(frame_counter as usize) % len]
+  }
 }
 
 impl<B: GPUBackend> FrameContext<B> {
@@ -199,7 +205,6 @@ impl<B: GPUBackend> FrameContext<B> {
         existing_cmd_buffers: VecDeque::new()
       },
       buffer_allocator: Arc::new(buffer_allocator),
-      last_used_frame: 0u64
     }
   }
 }
