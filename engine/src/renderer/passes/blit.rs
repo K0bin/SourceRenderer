@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
+use sourcerenderer_core::{Vec2, Vec2I, Vec2UI};
 
 use crate::{asset::AssetManager, graphics::*, renderer::{asset::{GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssetsReadOnly}, renderer_resources::RendererResources}};
 
@@ -10,9 +10,9 @@ pub struct BlitPass {
 
 impl BlitPass {
     #[allow(unused)]
-    pub fn new<P: Platform>(
-        _barriers: &mut RendererResources<P::GPUBackend>,
-        asset_manager: &Arc<AssetManager<P>>,
+    pub fn new(
+        _barriers: &mut RendererResources,
+        asset_manager: &Arc<AssetManager>,
         dst_format: Format
     ) -> Self {
         let pipeline = asset_manager.request_graphics_pipeline(
@@ -48,26 +48,26 @@ impl BlitPass {
     }
 
     #[inline(always)]
-    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_graphics_pipeline(self.pipeline_handle).is_some()
     }
 
     #[profiling::function]
-    pub(super) fn execute<P: Platform>(
+    pub(super) fn execute(
         &mut self,
-        _graphics_context: &GraphicsContext<P::GPUBackend>,
-        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        assets: &RendererAssetsReadOnly<'_, P>,
-        src_view: &TextureView<P::GPUBackend>,
-        dst_view: &TextureView<P::GPUBackend>,
-        sampler: &Sampler<P::GPUBackend>,
+        _graphics_context: &GraphicsContext,
+        cmd_buffer: &mut CommandBufferRecorder,
+        assets: &RendererAssetsReadOnly<'_>,
+        src_view: &TextureView,
+        dst_view: &TextureView,
+        sampler: &Sampler,
         dst_resolution: Vec2UI
     ) {
         cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
             render_targets: &[RenderTarget {
                 view: dst_view,
                 load_op: LoadOpColor::DontCare,
-                store_op: StoreOp::<P::GPUBackend>::Store
+                store_op: StoreOp::Store
             }],
             depth_stencil: None
         }, RenderpassRecordingMode::Commands);

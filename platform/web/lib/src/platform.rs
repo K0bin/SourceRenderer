@@ -1,4 +1,4 @@
-use sourcerenderer_core::{platform::ThreadHandle, Platform};
+use sourcerenderer_core::{platform::{GraphicsPlatform, ThreadHandle, WindowProvider}, Platform};
 use sourcerenderer_webgpu::{WebGPUBackend, WebGPUInstance, WebGPUInstanceAsyncInitResult, WebGPUInstanceInitError};
 use web_sys::{Navigator, OffscreenCanvas};
 
@@ -21,26 +21,30 @@ impl WebPlatform {
 }
 
 impl Platform for WebPlatform {
-    type GPUBackend = WebGPUBackend;
-    type Window = WebWindow;
     type IO = WebIO;
     type ThreadHandle = NoThreadsThreadHandle;
 
-    fn window(&self) -> &WebWindow {
-        &self.window
+    fn thread_memory_management_pool<F, T>(callback: F) -> T
+        where F: FnOnce() -> T {
+        callback()
     }
+}
 
-    fn create_graphics(&self, debug_layers: bool) -> Result<WebGPUInstance, Box<dyn std::error::Error>> {
+impl GraphicsPlatform<WebGPUBackend> for WebPlatform {
+    fn create_instance(&self, debug_layers: bool) -> Result<<WebGPUBackend as sourcerenderer_core::gpu::GPUBackend>::Instance, Box<dyn std::error::Error>> {
         self.instance_init.as_ref()
             .map(|init| {
             WebGPUInstance::new(init, debug_layers)
             })
             .map_err(|e| Box::new(e.clone()) as Box<dyn std::error::Error>)
     }
+}
 
-    fn thread_memory_management_pool<F, T>(callback: F) -> T
-        where F: FnOnce() -> T {
-        callback()
+impl WindowProvider<WebGPUBackend> for WebPlatform {
+    type Window = WebWindow;
+
+    fn window(&self) -> &Self::Window {
+        &self.window
     }
 }
 

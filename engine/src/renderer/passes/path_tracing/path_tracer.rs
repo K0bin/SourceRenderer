@@ -1,9 +1,6 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::{
-    Platform,
-    Vec2UI,
-};
+use sourcerenderer_core::Vec2UI;
 
 use crate::asset::AssetManager;
 use crate::renderer::render_path::RenderPassParameters;
@@ -15,20 +12,20 @@ use crate::renderer::asset::*;
 use crate::renderer::asset::ComputePipelineHandle;
 use crate::graphics::*;
 
-pub struct PathTracerPass<P: Platform> {
+pub struct PathTracerPass {
     pipeline: ComputePipelineHandle,
-    sampler: Sampler<P::GPUBackend>
+    sampler: Sampler
 }
 
-impl<P: Platform> PathTracerPass<P> {
+impl PathTracerPass {
     pub const PATH_TRACING_TARGET: &'static str = "PathTracingTarget";
 
     pub fn new(
-        device: &Device<P::GPUBackend>,
+        device: &Device,
         resolution: Vec2UI,
-        resources: &mut RendererResources<P::GPUBackend>,
-        asset_manager: &Arc<AssetManager<P>>,
-        _init_cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
+        resources: &mut RendererResources,
+        asset_manager: &Arc<AssetManager>,
+        _init_cmd_buffer: &mut CommandBufferRecorder,
     ) -> Self {
         resources.create_texture(
             Self::PATH_TRACING_TARGET,
@@ -70,17 +67,17 @@ impl<P: Platform> PathTracerPass<P> {
     }
 
     #[inline(always)]
-    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_compute_pipeline(self.pipeline).is_some()
     }
 
     pub fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        pass_params: &RenderPassParameters<'_, P>,
-        acceleration_structure: &Arc<AccelerationStructure<P::GPUBackend>>,
-        blue_noise: &Arc<TextureView<P::GPUBackend>>,
-        blue_noise_sampler: &Arc<Sampler<P::GPUBackend>>,
+        cmd_buffer: &mut CommandBufferRecorder,
+        pass_params: &RenderPassParameters<'_>,
+        acceleration_structure: &Arc<AccelerationStructure>,
+        blue_noise: &Arc<TextureView>,
+        blue_noise_sampler: &Arc<Sampler>,
     ) {
         let texture_uav = pass_params.resources.access_view(
             cmd_buffer,

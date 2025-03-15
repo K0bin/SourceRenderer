@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::{
     Matrix4,
     Platform,
@@ -35,36 +34,36 @@ use crate::renderer::renderer_resources::{
 
 use crate::graphics::*;
 
-pub struct ConservativeRenderer<P: Platform> {
-    device: Arc<crate::graphics::Device<P::GPUBackend>>,
-    barriers: RendererResources<P::GPUBackend>,
+pub struct ConservativeRenderer {
+    device: Arc<crate::graphics::Device>,
+    barriers: RendererResources,
     clustering_pass: ClusteringPass,
     light_binning_pass: LightBinningPass,
     prepass: Prepass,
-    geometry: GeometryPass<P>,
+    geometry: GeometryPass,
     taa: TAAPass,
     sharpen: SharpenPass,
-    ssao: SsaoPass<P>,
-    //occlusion: OcclusionPass<P>,
-    rt_passes: Option<RTPasses<P>>,
-    blue_noise: BlueNoise<P::GPUBackend>,
+    ssao: SsaoPass,
+    //occlusion: OcclusionPass,
+    rt_passes: Option<RTPasses>,
+    blue_noise: BlueNoise,
     blit_pass: BlitPass
 }
 
-pub struct RTPasses<P: Platform> {
-    acceleration_structure_update: AccelerationStructureUpdatePass<P>,
+pub struct RTPasses {
+    acceleration_structure_update: AccelerationStructureUpdatePass,
     shadows: RTShadowPass,
 }
 
-pub struct FrameBindings<'a, B: GPUBackend> {
-    gpu_scene_buffer: BufferRef<'a, B>,
-    camera_buffer: BufferRef<'a, B>,
-    camera_history_buffer: BufferRef<'a, B>,
-    vertex_buffer: BufferRef<'a, B>,
-    index_buffer: BufferRef<'a, B>,
-    directional_lights: TransientBufferSlice<B>,
-    point_lights: TransientBufferSlice<B>,
-    setup_buffer: TransientBufferSlice<B>,
+pub struct FrameBindings<'a>{
+    gpu_scene_buffer: BufferRef<'a>,
+    camera_buffer: BufferRef<'a>,
+    camera_history_buffer: BufferRef<'a>,
+    vertex_buffer: BufferRef<'a>,
+    index_buffer: BufferRef<'a>,
+    directional_lights: TransientBufferSlice,
+    point_lights: TransientBufferSlice,
+    setup_buffer: TransientBufferSlice,
 }
 
 #[derive(Clone)]
@@ -83,37 +82,37 @@ struct CameraBuffer {
     fov: f32,
 }
 
-impl<P: Platform> ConservativeRenderer<P> {
+impl ConservativeRenderer {
     #[allow(unused)]
     pub fn new(
-        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
-        swapchain: &crate::graphics::Swapchain<P::GPUBackend>,
-        context: &mut GraphicsContext<P::GPUBackend>,
-        asset_manager: &Arc<AssetManager<P>>,
+        device: &Arc<crate::graphics::Device>,
+        swapchain: &crate::graphics::Swapchain,
+        context: &mut GraphicsContext,
+        asset_manager: &Arc<AssetManager>,
     ) -> Self {
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
         let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
 
-        let mut barriers = RendererResources::<P::GPUBackend>::new(device);
+        let mut barriers = RendererResources::new(device);
 
-        let blue_noise = BlueNoise::new::<P>(device);
+        let blue_noise = BlueNoise::new(device);
 
-        let clustering = ClusteringPass::new::<P>(&mut barriers, asset_manager);
-        let light_binning = LightBinningPass::new::<P>(&mut barriers, asset_manager);
-        let prepass = Prepass::new::<P>(&mut barriers, asset_manager, resolution);
-        let geometry = GeometryPass::<P>::new(device, resolution, &mut barriers, asset_manager);
-        let taa = TAAPass::new::<P>(resolution, &mut barriers, asset_manager, false);
-        let sharpen = SharpenPass::new::<P>(resolution, &mut barriers, asset_manager);
-        let ssao = SsaoPass::<P>::new(device, resolution, &mut barriers, asset_manager, false);
-        //let occlusion = OcclusionPass::<P>::new(device, shader_manager);
+        let clustering = ClusteringPass::new(&mut barriers, asset_manager);
+        let light_binning = LightBinningPass::new(&mut barriers, asset_manager);
+        let prepass = Prepass::new(&mut barriers, asset_manager, resolution);
+        let geometry = GeometryPass::new(device, resolution, &mut barriers, asset_manager);
+        let taa = TAAPass::new(resolution, &mut barriers, asset_manager, false);
+        let sharpen = SharpenPass::new(resolution, &mut barriers, asset_manager);
+        let ssao = SsaoPass::new(device, resolution, &mut barriers, asset_manager, false);
+        //let occlusion = OcclusionPass::new(device, shader_manager);
         let rt_passes = device.supports_ray_tracing().then(|| RTPasses {
-            acceleration_structure_update: AccelerationStructureUpdatePass::<P>::new(
+            acceleration_structure_update: AccelerationStructureUpdatePass::new(
                 device,
                 &mut init_cmd_buffer,
             ),
-            shadows: RTShadowPass::new::<P>(resolution, &mut barriers, asset_manager),
+            shadows: RTShadowPass::new(resolution, &mut barriers, asset_manager),
         });
-        let blit = BlitPass::new::<P>(&mut barriers, asset_manager, swapchain.format());
+        let blit = BlitPass::new(&mut barriers, asset_manager, swapchain.format());
 
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
@@ -148,15 +147,15 @@ impl<P: Platform> ConservativeRenderer<P> {
 
     fn create_frame_bindings<'a, 'b>(
         &'b self,
-        cmd_buf: &'b mut CommandBufferRecorder<P::GPUBackend>,
-        scene: &'a SceneInfo<'a, P::GPUBackend>,
-        swapchain: &'a Swapchain<P::GPUBackend>,
-        gpu_scene_buffers: &'a SceneBuffers<P::GPUBackend>,
-        camera_buffer: BufferRef<'a, P::GPUBackend>,
-        camera_history_buffer: BufferRef<'a, P::GPUBackend>,
+        cmd_buf: &'b mut CommandBufferRecorder,
+        scene: &'a SceneInfo<'a>,
+        swapchain: &'a Swapchain,
+        gpu_scene_buffers: &'a SceneBuffers,
+        camera_buffer: BufferRef<'a>,
+        camera_history_buffer: BufferRef<'a>,
         rendering_resolution: &Vec2UI,
         frame: u64,
-    ) -> FrameBindings<'a, P::GPUBackend>
+    ) -> FrameBindings<'a>
         where 'a: 'b {
         let view = &scene.scene.views()[scene.active_view_index];
 
@@ -242,7 +241,7 @@ impl<P: Platform> ConservativeRenderer<P> {
     }
 }
 
-impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
+impl<P: Platform> RenderPath<P> for ConservativeRenderer {
     fn is_gpu_driven(&self) -> bool {
         false
     }
@@ -253,12 +252,12 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
 
     fn on_swapchain_changed(
         &mut self,
-        _swapchain: &Swapchain<P::GPUBackend>,
+        _swapchain: &Swapchain,
     ) {
         // TODO: resize render targets
     }
 
-    fn is_ready(&self, asset_manager: &Arc<AssetManager<P>>) -> bool {
+    fn is_ready(&self, asset_manager: &Arc<AssetManager>) -> bool {
         let assets = asset_manager.read_renderer_assets();
         self.clustering_pass.is_ready(&assets)
         && self.light_binning_pass.is_ready(&assets)
@@ -274,12 +273,12 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
     #[profiling::function]
     fn render(
         &mut self,
-        context: &mut GraphicsContext<P::GPUBackend>,
-        swapchain: &mut Swapchain<P::GPUBackend>,
-        scene: &SceneInfo<P::GPUBackend>,
+        context: &mut GraphicsContext,
+        swapchain: &mut Swapchain,
+        scene: &SceneInfo,
         frame_info: &FrameInfo,
-        assets: &RendererAssetsReadOnly<'_, P>
-    ) -> Result<RenderPathResult<P::GPUBackend>, SwapchainError> {
+        assets: &RendererAssetsReadOnly<'_>
+    ) -> Result<RenderPathResult, SwapchainError> {
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
         let main_view = &scene.scene.views()[scene.active_view_index];
@@ -329,7 +328,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             &Vec2UI::new(swapchain.width(), swapchain.height()),
             frame_info.frame,
         );
-        setup_frame::<P::GPUBackend>(&mut cmd_buf, &frame_bindings);
+        setup_frame(&mut cmd_buf, &frame_bindings);
 
         let params = RenderPassParameters {
             device: self.device.as_ref(),
@@ -352,7 +351,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
             &camera_buffer,
             Prepass::DEPTH_TEXTURE_NAME,
         );*/
-        self.clustering_pass.execute::<P>(
+        self.clustering_pass.execute(
             &mut cmd_buf,
             &params,
             Vec2UI::new(swapchain.width(), swapchain.height()),
@@ -394,7 +393,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
                 &self.blue_noise.sampler(),
             );
         }
-        self.geometry.execute(
+        self.geometry.execute::<P>(
             context,
             &mut cmd_buf,
             &params,
@@ -404,7 +403,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
         self.taa.execute(
             &mut cmd_buf,
             &params,
-            GeometryPass::<P>::GEOMETRY_PASS_TEXTURE_NAME,
+            GeometryPass::GEOMETRY_PASS_TEXTURE_NAME,
             Prepass::DEPTH_TEXTURE_NAME,
             Some("TODO"),
             false
@@ -457,7 +456,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
         cmd_buf.flush_barriers();
 
         let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
-        self.blit_pass.execute::<P>(context, &mut cmd_buf, &params.assets, &sharpened_view, &backbuffer_view, sampler, resolution);
+        self.blit_pass.execute(context, &mut cmd_buf, &params.assets, &sharpened_view, &backbuffer_view, sampler, resolution);
         std::mem::drop(sharpened_view);
         cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::RENDER_TARGET, // BarrierSync::COPY,
@@ -477,11 +476,11 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer<P> {
         })
     }
 
-    fn set_ui_data(&mut self, _data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {
+    fn set_ui_data(&mut self, _data: crate::ui::UIDrawData) {
     }
 }
 
-pub fn setup_frame<B: GPUBackend>(cmd_buf: &mut CommandBufferRecorder<B>, frame_bindings: &FrameBindings<B>) {
+pub fn setup_frame(cmd_buf: &mut CommandBufferRecorder, frame_bindings: &FrameBindings) {
     for i in 0..7 {
         cmd_buf.bind_storage_buffer(
             BindingFrequency::Frame,

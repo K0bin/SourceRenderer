@@ -4,12 +4,12 @@ use bevy_ecs::system::Resource;
 use sourcerenderer_core::input::Key;
 use sourcerenderer_core::platform::Event;
 use sourcerenderer_core::{
-    Platform,
     Vec2,
     Vec2I,
 };
 
 use bitset_core::BitSet;
+use crate::graphics::ActiveBackend;
 
 #[allow(dead_code)]
 pub struct Input {
@@ -28,7 +28,7 @@ impl Input {
         }
     }
 
-    pub fn process_input_event<P: Platform>(&self, event: Event<P>) {
+    pub fn process_input_event(&self, event: Event<ActiveBackend>) {
         let mut input_guard = self.state.lock().unwrap();
         match event {
             Event::KeyDown(key) => {

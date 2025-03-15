@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::{
-    Matrix4, Platform, Vec2, Vec2I, Vec2UI
+    Matrix4, Vec2, Vec2I, Vec2UI
 };
 
 use crate::asset::AssetManager;
@@ -18,20 +17,20 @@ use crate::renderer::asset::{GraphicsPipelineHandle, GraphicsPipelineInfo};
 
 use crate::graphics::*;
 
-pub struct GeometryPass<P: Platform> {
+pub struct GeometryPass {
     pipeline: GraphicsPipelineHandle,
-    sampler: Arc<crate::graphics::Sampler<P::GPUBackend>>,
+    sampler: Arc<crate::graphics::Sampler>,
 }
 
-impl<P: Platform> GeometryPass<P> {
+impl GeometryPass {
     pub const DEPTH_TEXTURE_NAME: &'static str = "Depth";
 
     pub(super) fn new(
-        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
-        asset_manager: &Arc<AssetManager<P>>,
-        swapchain: &crate::graphics::Swapchain<P::GPUBackend>,
-        _init_cmd_buffer: &mut crate::graphics::CommandBufferRecorder<P::GPUBackend>,
-        resources: &mut RendererResources<P::GPUBackend>,
+        device: &Arc<crate::graphics::Device>,
+        asset_manager: &Arc<AssetManager>,
+        swapchain: &crate::graphics::Swapchain,
+        _init_cmd_buffer: &mut crate::graphics::CommandBufferRecorder,
+        resources: &mut RendererResources,
     ) -> Self {
         let sampler = device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Linear,
@@ -144,22 +143,22 @@ impl<P: Platform> GeometryPass<P> {
     }
 
     #[inline(always)]
-    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_graphics_pipeline(self.pipeline).is_some()
     }
 
     pub(super) fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        scene: &RendererScene<P::GPUBackend>,
+        cmd_buffer: &mut CommandBufferRecorder,
+        scene: &RendererScene,
         view: &View,
-        camera_buffer: &TransientBufferSlice<P::GPUBackend>,
-        resources: &RendererResources<P::GPUBackend>,
-        backbuffer: &Arc<TextureView<P::GPUBackend>>,
-        backbuffer_handle: &<P::GPUBackend as GPUBackend>::Texture,
+        camera_buffer: &TransientBufferSlice,
+        resources: &RendererResources,
+        backbuffer: &Arc<TextureView>,
+        backbuffer_handle: &BackendTexture,
         width: u32,
         height: u32,
-        assets: &RendererAssetsReadOnly<'_, P>
+        assets: &RendererAssetsReadOnly<'_>
     ) {
         cmd_buffer.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::empty(),
@@ -190,18 +189,18 @@ impl<P: Platform> GeometryPass<P> {
                 render_targets: &[RenderTarget {
                     view: &backbuffer,
                     load_op: LoadOpColor::Clear(ClearColor::from_u32([0, 0, 0, 255])),
-                    store_op: StoreOp::<P::GPUBackend>::Store,
+                    store_op: StoreOp::Store,
                 }],
                 depth_stencil: Some(&DepthStencilAttachment {
                     view: &dsv,
                     load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
-                    store_op: StoreOp::<P::GPUBackend>::Store,
+                    store_op: StoreOp::Store,
                 })
             },
             RenderpassRecordingMode::Commands,
         );
 
-        let pipeline: &Arc<GraphicsPipeline<<P as Platform>::GPUBackend>> = assets.get_graphics_pipeline(self.pipeline).expect("Pipeline is not compiled yet");
+        let pipeline: &Arc<GraphicsPipeline> = assets.get_graphics_pipeline(self.pipeline).expect("Pipeline is not compiled yet");
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         cmd_buffer.set_viewports(&[Viewport {
             position: Vec2::new(0.0f32, 0.0f32),

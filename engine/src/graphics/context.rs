@@ -12,42 +12,42 @@ use atomic_refcell::{AtomicRefCell, AtomicRefMut};
 use super::*;
 use super::CommandBuffer;
 
-pub struct GraphicsContext<B: GPUBackend> {
-  device: Arc<B::Device>,
-  memory_allocator: Arc<MemoryAllocator<B>>,
-  fence: Arc<super::Fence<B>>,
+pub struct GraphicsContext {
+  device: Arc<active_gpu_backend::Device>,
+  memory_allocator: Arc<MemoryAllocator>,
+  fence: Arc<super::Fence>,
   current_frame: u64,
   completed_frame: u64,
-  thread_contexts: ManuallyDrop<ThreadLocal<ThreadContext<B>>>,
+  thread_contexts: ManuallyDrop<ThreadLocal<ThreadContext>>,
   prerendered_frames: u32,
-  destroyer: ManuallyDrop<Arc<DeferredDestroyer<B>>>,
-  global_buffer_allocator: Arc<BufferAllocator<B>>,
+  destroyer: ManuallyDrop<Arc<DeferredDestroyer>>,
+  global_buffer_allocator: Arc<BufferAllocator>,
 }
 
-pub struct ThreadContext<B: GPUBackend> {
-  frames: AtomicRefCell<SmallVec<[FrameContext<B>; 5]>>
+pub struct ThreadContext {
+  frames: AtomicRefCell<SmallVec<[FrameContext; 5]>>
 }
 
-pub struct FrameContext<B: GPUBackend> {
-  command_pool: FrameContextCommandPool<B>,
-  secondary_command_pool: FrameContextCommandPool<B>,
-  buffer_allocator: Arc<TransientBufferAllocator<B>>,
+pub struct FrameContext {
+  command_pool: FrameContextCommandPool,
+  secondary_command_pool: FrameContextCommandPool,
+  buffer_allocator: Arc<TransientBufferAllocator>,
 }
 
-struct FrameContextCommandPool<B: GPUBackend> {
-    command_pool: B::CommandPool,
-    sender: Sender<Box<CommandBuffer<B>>>,
-    receiver: Receiver<Box<CommandBuffer<B>>>,
-    existing_cmd_buffers: VecDeque<Box<CommandBuffer<B>>>
+struct FrameContextCommandPool {
+    command_pool: active_gpu_backend::CommandPool,
+    sender: Sender<Box<CommandBuffer>>,
+    receiver: Receiver<Box<CommandBuffer>>,
+    existing_cmd_buffers: VecDeque<Box<CommandBuffer>>
 }
 
-impl<B: GPUBackend> GraphicsContext<B> {
-  pub(super) fn new(device: &Arc<B::Device>, memory_allocator: &Arc<MemoryAllocator<B>>, buffer_allocator: &Arc<BufferAllocator<B>>, destroyer: &Arc<DeferredDestroyer<B>>, prerendered_frames: u32) -> Self {
+impl GraphicsContext {
+  pub(super) fn new(device: &Arc<active_gpu_backend::Device>, memory_allocator: &Arc<MemoryAllocator>, buffer_allocator: &Arc<BufferAllocator>, destroyer: &Arc<DeferredDestroyer>, prerendered_frames: u32) -> Self {
     Self {
       device: device.clone(),
       memory_allocator: memory_allocator.clone(),
       destroyer: ManuallyDrop::new(destroyer.clone()),
-      fence: Arc::new(super::Fence::<B>::new(device, destroyer)),
+      fence: Arc::new(super::Fence::new(device, destroyer)),
       current_frame: 1u64, // Fences (Timeline semaphores) start at value 0, so waiting for 0 would be pointless.
       completed_frame: 1u64,
       thread_contexts: ManuallyDrop::new(ThreadLocal::new()),
@@ -87,7 +87,7 @@ impl<B: GPUBackend> GraphicsContext<B> {
     }
   }
 
-  pub fn end_frame(&mut self) -> SharedFenceValuePairRef<B> {
+  pub fn end_frame(&mut self) -> SharedFenceValuePairRef {
     assert_eq!(self.current_frame, self.completed_frame + 1);
     self.completed_frame += 1;
     SharedFenceValuePairRef {
@@ -97,7 +97,7 @@ impl<B: GPUBackend> GraphicsContext<B> {
     }
   }
 
-  pub fn get_command_buffer(&mut self, _queue_type: QueueType) -> CommandBufferRecorder<B> {
+  pub fn get_command_buffer(&mut self, _queue_type: QueueType) -> CommandBufferRecorder {
     let thread_context = self.get_thread_context();
     let mut frame_context = thread_context.get_frame(self.current_frame);
 
@@ -116,7 +116,7 @@ impl<B: GPUBackend> GraphicsContext<B> {
     recorder
   }
 
-  pub fn get_inner_command_buffer(&self, inheritance: &<B::CommandBuffer as gpu::CommandBuffer<B>>::CommandBufferInheritance) -> CommandBufferRecorder<B> {
+  pub fn get_inner_command_buffer(&self, inheritance: &<active_gpu_backend::CommandBuffer as gpu::CommandBuffer<active_gpu_backend::Backend>>::CommandBufferInheritance) -> CommandBufferRecorder {
     let thread_context = self.get_thread_context();
     let mut frame_context = thread_context.get_frame(self.current_frame);
 
@@ -135,7 +135,7 @@ impl<B: GPUBackend> GraphicsContext<B> {
     recorder
   }
 
-  fn get_thread_context(&self) -> &ThreadContext<B> {
+  fn get_thread_context(&self) -> &ThreadContext {
     self.thread_contexts.get_or(|| ThreadContext::new(&self.device, &self.memory_allocator, &self.destroyer, self.prerendered_frames))
   }
 
@@ -145,7 +145,7 @@ impl<B: GPUBackend> GraphicsContext<B> {
   }
 }
 
-impl<B: GPUBackend> Drop for GraphicsContext<B> {
+impl Drop for GraphicsContext {
     fn drop(&mut self) {
         if self.current_frame > 0 {
             self.fence.await_value(self.completed_frame);
@@ -157,9 +157,9 @@ impl<B: GPUBackend> Drop for GraphicsContext<B> {
     }
 }
 
-impl<B: GPUBackend> ThreadContext<B> {
-  fn new(device: &Arc<B::Device>, memory_allocator: &Arc<MemoryAllocator<B>>, destroyer: &Arc<DeferredDestroyer<B>>, prerendered_frames: u32) -> Self {
-    let mut frames = SmallVec::<[FrameContext<B>; 5]>::with_capacity(prerendered_frames as usize);
+impl ThreadContext {
+  fn new(device: &Arc<active_gpu_backend::Device>, memory_allocator: &Arc<MemoryAllocator>, destroyer: &Arc<DeferredDestroyer>, prerendered_frames: u32) -> Self {
+    let mut frames = SmallVec::<[FrameContext; 5]>::with_capacity(prerendered_frames as usize);
     for _ in 0..prerendered_frames {
       frames.push(FrameContext::new(device, memory_allocator, destroyer));
     }
@@ -169,7 +169,7 @@ impl<B: GPUBackend> ThreadContext<B> {
     }
   }
 
-  pub fn get_frame(&self, frame_counter: u64) -> AtomicRefMut<FrameContext<B>> {
+  pub fn get_frame(&self, frame_counter: u64) -> AtomicRefMut<FrameContext> {
     let frames = self.frames.borrow_mut();
     AtomicRefMut::map(frames, |f| {
         let len = f.len();
@@ -177,19 +177,19 @@ impl<B: GPUBackend> ThreadContext<B> {
     })
   }
 
-  pub fn get_frame_mut(&mut self, frame_counter: u64) -> &mut FrameContext<B> {
+  pub fn get_frame_mut(&mut self, frame_counter: u64) -> &mut FrameContext {
     let frames = self.frames.get_mut();
     let len = frames.len();
     &mut frames[(frame_counter as usize) % len]
   }
 }
 
-impl<B: GPUBackend> FrameContext<B> {
-  fn new(device: &Arc<B::Device>, memory_allocator: &Arc<MemoryAllocator<B>>, destroyer: &Arc<DeferredDestroyer<B>>) -> Self {
+impl FrameContext {
+  fn new(device: &Arc<active_gpu_backend::Device>, memory_allocator: &Arc<MemoryAllocator>, destroyer: &Arc<DeferredDestroyer>) -> Self {
     let command_pool = unsafe { device.graphics_queue().create_command_pool(CommandPoolType::CommandBuffers, CommandPoolFlags::empty()) };
     let secondary_command_pool = unsafe { device.graphics_queue().create_command_pool(CommandPoolType::InnerCommandBuffers, CommandPoolFlags::empty()) };
-    let (sender, receiver) = crossbeam_channel::unbounded::<Box<CommandBuffer<B>>>();
-    let (secondary_sender, secondary_receiver) = crossbeam_channel::unbounded::<Box<CommandBuffer<B>>>();
+    let (sender, receiver) = crossbeam_channel::unbounded::<Box<CommandBuffer>>();
+    let (secondary_sender, secondary_receiver) = crossbeam_channel::unbounded::<Box<CommandBuffer>>();
     let buffer_allocator = TransientBufferAllocator::new(device, memory_allocator, destroyer, memory_allocator.is_uma());
     Self {
       command_pool: FrameContextCommandPool {

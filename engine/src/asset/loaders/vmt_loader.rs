@@ -33,7 +33,7 @@ impl VMTMaterialLoader {
     }
 }
 
-impl<P: Platform> AssetLoader<P> for VMTMaterialLoader {
+impl AssetLoader for VMTMaterialLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
         file.path.starts_with("materials/") && file.path.ends_with(".vmt")
     }
@@ -41,7 +41,7 @@ impl<P: Platform> AssetLoader<P> for VMTMaterialLoader {
     fn load(
         &self,
         mut asset_file: AssetFile,
-        manager: &Arc<AssetManager<P>>,
+        manager: &Arc<AssetManager>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<(), ()> {

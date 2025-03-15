@@ -1,9 +1,6 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::{
-    Platform,
-    Vec2UI,
-};
+use sourcerenderer_core::Vec2UI;
 
 use crate::asset::AssetManager;
 use crate::renderer::passes::modern::VisibilityBufferPass;
@@ -22,10 +19,10 @@ pub struct MotionVectorPass {
 impl MotionVectorPass {
     pub const MOTION_TEXTURE_NAME: &'static str = "Motion";
 
-    pub fn new<P: Platform>(
-        resources: &mut RendererResources<P::GPUBackend>,
+    pub fn new(
+        resources: &mut RendererResources,
         renderer_resolution: Vec2UI,
-        asset_manager: &Arc<AssetManager<P>>
+        asset_manager: &Arc<AssetManager>
     ) -> Self {
         let pipeline =
             asset_manager.request_compute_pipeline("shaders/motion_vectors_vis_buf.comp.json");
@@ -50,14 +47,14 @@ impl MotionVectorPass {
     }
 
     #[inline(always)]
-    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_compute_pipeline(self.pipeline).is_some()
     }
 
-    pub fn execute<P: Platform>(
+    pub fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        pass_params: &RenderPassParameters<'_, P>
+        cmd_buffer: &mut CommandBufferRecorder,
+        pass_params: &RenderPassParameters<'_>
     ) {
         let pipeline = pass_params.assets.get_compute_pipeline(self.pipeline).unwrap();
 

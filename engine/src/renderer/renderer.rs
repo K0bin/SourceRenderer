@@ -45,8 +45,8 @@ struct RendererState {
     cond_var: Condvar,
 }
 
-pub struct RendererSender<B: GPUBackend> {
-    sender: Sender<RendererCommand<B>>,
+pub struct RendererSender {
+    sender: Sender<RendererCommand>,
     state: Arc<RendererState>
 }
 
@@ -58,14 +58,14 @@ enum ReceiveMessagesResult {
 }
 
 pub struct Renderer<P: Platform> {
-    device: Arc<Device<P::GPUBackend>>,
+    device: Arc<Device>,
     state: Arc<RendererState>,
-    receiver: Receiver<RendererCommand<P::GPUBackend>>,
-    asset_manager: Arc<AssetManager<P>>,
-    resources: RendererResources<P::GPUBackend>,
-    scene: RendererScene<P::GPUBackend>,
-    context: GraphicsContext<P::GPUBackend>,
-    swapchain: Arc<Mutex<Swapchain<P::GPUBackend>>>,
+    receiver: Receiver<RendererCommand>,
+    asset_manager: Arc<AssetManager>,
+    resources: RendererResources,
+    scene: RendererScene,
+    context: GraphicsContext,
+    swapchain: Arc<Mutex<Swapchain>>,
     render_path: Box<dyn RenderPath<P>>,
 
     last_frame: Instant,
@@ -74,19 +74,19 @@ pub struct Renderer<P: Platform> {
 
 impl<P: Platform> Renderer<P> {
     pub fn new(
-        device: &Arc<Device<P::GPUBackend>>,
-        swapchain: Swapchain<P::GPUBackend>,
-        asset_manager: &Arc<AssetManager<P>>,
+        device: &Arc<Device>,
+        swapchain: Swapchain,
+        asset_manager: &Arc<AssetManager>,
         _console: &Arc<Console>,
-    ) -> (Renderer<P>, RendererSender<P::GPUBackend>) {
-        info!("Initializing renderer with {} backend", P::GPUBackend::name());
+    ) -> (Self, RendererSender) {
+        info!("Initializing renderer with {} backend", crate::graphics::ActiveBackend::name());
 
-        let (sender, receiver) = unbounded::<RendererCommand<P::GPUBackend>>();
-        let mut context: GraphicsContext<<P as Platform>::GPUBackend> = device.create_context();
+        let (sender, receiver) = unbounded::<RendererCommand>();
+        let mut context: GraphicsContext = device.create_context();
 
         trace!("Initializing render path");
         let render_path = Box::new(WebRenderer::new(device, &swapchain, &mut context, asset_manager));
-        //let render_path: Box<dyn RenderPath<P>> = Box::new(NoOpRenderPath);
+        //let render_path: Box<dyn RenderPath> = Box::new(NoOpRenderPath);
 
         let renderer = Self {
             device: device.clone(),
@@ -115,12 +115,12 @@ impl<P: Platform> Renderer<P> {
 
     #[allow(unused)]
     #[inline(always)]
-    pub(crate) fn instance(&self) -> &Arc<Instance<P::GPUBackend>> {
+    pub(crate) fn instance(&self) -> &Arc<Instance> {
         self.device.instance()
     }
 
     #[inline(always)]
-    pub fn device(&self) -> &Arc<Device<P::GPUBackend>> {
+    pub fn device(&self) -> &Arc<Device> {
         &self.device
     }
 
@@ -225,7 +225,7 @@ impl<P: Platform> Renderer<P> {
 
     fn receive_messages(&mut self) -> ReceiveMessagesResult {
         let message_res = self.receiver.try_recv();
-        let mut message_opt: Option<RendererCommand<<P as Platform>::GPUBackend>>;
+        let mut message_opt: Option<RendererCommand>;
         match message_res {
             Ok(message) => { message_opt = Some(message); },
             Err(err) => {
@@ -240,15 +240,15 @@ impl<P: Platform> Renderer<P> {
         while message_opt.is_some() {
             let message = message_opt.take().unwrap();
             match message {
-                RendererCommand::<P::GPUBackend>::EndFrame => {
+                RendererCommand::EndFrame => {
                     return ReceiveMessagesResult::FrameCompleted;
                 }
 
-                RendererCommand::<P::GPUBackend>::Quit => {
+                RendererCommand::Quit => {
                     return ReceiveMessagesResult::Quit;
                 }
 
-                RendererCommand::<P::GPUBackend>::UpdateCameraTransform {
+                RendererCommand::UpdateCameraTransform {
                     camera_transform,
                     fov,
                 } => {
@@ -268,14 +268,14 @@ impl<P: Platform> Renderer<P> {
                     );
                 }
 
-                RendererCommand::<P::GPUBackend>::UpdateTransform {
+                RendererCommand::UpdateTransform {
                     entity,
                     transform,
                 } => {
                     self.scene.update_transform(&entity, transform);
                 }
 
-                RendererCommand::<P::GPUBackend>::RegisterStatic {
+                RendererCommand::RegisterStatic {
                     model_path,
                     entity,
                     transform,
@@ -297,11 +297,11 @@ impl<P: Platform> Renderer<P> {
                         },
                     );
                 }
-                RendererCommand::<P::GPUBackend>::UnregisterStatic(entity) => {
+                RendererCommand::UnregisterStatic(entity) => {
                     self.scene.remove_static_drawable(&entity);
                 }
 
-                RendererCommand::<P::GPUBackend>::RegisterPointLight {
+                RendererCommand::RegisterPointLight {
                     entity,
                     transform,
                     intensity,
@@ -314,11 +314,11 @@ impl<P: Platform> Renderer<P> {
                         },
                     );
                 }
-                RendererCommand::<P::GPUBackend>::UnregisterPointLight(entity) => {
+                RendererCommand::UnregisterPointLight(entity) => {
                     self.scene.remove_point_light(&entity);
                 }
 
-                RendererCommand::<P::GPUBackend>::RegisterDirectionalLight {
+                RendererCommand::RegisterDirectionalLight {
                     entity,
                     transform,
                     intensity,
@@ -334,10 +334,10 @@ impl<P: Platform> Renderer<P> {
                         },
                     );
                 }
-                RendererCommand::<P::GPUBackend>::UnregisterDirectionalLight(entity) => {
+                RendererCommand::UnregisterDirectionalLight(entity) => {
                     self.scene.remove_directional_light(&entity);
                 }
-                RendererCommand::<P::GPUBackend>::SetLightmap(path) => {
+                RendererCommand::SetLightmap(path) => {
                     let handle = self.asset_manager.get_or_reserve_handle(&path, AssetType::Texture);
                     self.scene.set_lightmap(Some(handle.into()));
                 }
@@ -380,14 +380,14 @@ impl<P: Platform> Renderer<P> {
     }
 }
 
-impl<B: GPUBackend> RendererSender<B> {
+impl RendererSender {
     pub fn register_static_renderable(
         &self,
         entity: Entity,
         transform: &InterpolatedTransform,
         renderable: &StaticRenderableComponent,
     ) {
-        let result = self.sender.send(RendererCommand::<B>::RegisterStatic {
+        let result = self.sender.send(RendererCommand::RegisterStatic {
             entity,
             transform: transform.0,
             model_path: renderable.model_path.to_string(),
@@ -401,7 +401,7 @@ impl<B: GPUBackend> RendererSender<B> {
     }
 
     pub fn unregister_static_renderable(&self, entity: Entity) {
-        let result = self.sender.send(RendererCommand::<B>::UnregisterStatic(entity));
+        let result = self.sender.send(RendererCommand::UnregisterStatic(entity));
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);
         }
@@ -413,7 +413,7 @@ impl<B: GPUBackend> RendererSender<B> {
         transform: &InterpolatedTransform,
         component: &PointLightComponent,
     ) {
-        let result = self.sender.send(RendererCommand::<B>::RegisterPointLight {
+        let result = self.sender.send(RendererCommand::RegisterPointLight {
             entity,
             transform: transform.0,
             intensity: component.intensity,
@@ -426,7 +426,7 @@ impl<B: GPUBackend> RendererSender<B> {
     pub fn unregister_point_light(&self, entity: Entity) {
         let result = self
             .sender
-            .send(RendererCommand::<B>::UnregisterPointLight(entity));
+            .send(RendererCommand::UnregisterPointLight(entity));
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);
         }
@@ -438,7 +438,7 @@ impl<B: GPUBackend> RendererSender<B> {
         transform: &InterpolatedTransform,
         component: &DirectionalLightComponent,
     ) {
-        let result = self.sender.send(RendererCommand::<B>::RegisterDirectionalLight {
+        let result = self.sender.send(RendererCommand::RegisterDirectionalLight {
             entity,
             transform: transform.0,
             intensity: component.intensity,
@@ -451,14 +451,14 @@ impl<B: GPUBackend> RendererSender<B> {
     pub fn unregister_directional_light(&self, entity: Entity) {
         let result = self
             .sender
-            .send(RendererCommand::<B>::UnregisterDirectionalLight(entity));
+            .send(RendererCommand::UnregisterDirectionalLight(entity));
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);
         }
     }
 
     pub fn update_camera_transform(&self, camera_transform: Affine3A, fov: f32) {
-        let result = self.sender.send(RendererCommand::<B>::UpdateCameraTransform {
+        let result = self.sender.send(RendererCommand::UpdateCameraTransform {
             camera_transform,
             fov,
         });
@@ -468,7 +468,7 @@ impl<B: GPUBackend> RendererSender<B> {
     }
 
     pub fn update_transform(&self, entity: Entity, transform: Affine3A) {
-        let result = self.sender.send(RendererCommand::<B>::UpdateTransform {
+        let result = self.sender.send(RendererCommand::UpdateTransform {
             entity,
             transform: transform,
         });
@@ -480,7 +480,7 @@ impl<B: GPUBackend> RendererSender<B> {
     pub fn end_frame(&self) {
         let mut queued_guard = self.state.queued_frames_counter.lock().unwrap();
         *queued_guard += 1;
-        let result = self.sender.send(RendererCommand::<B>::EndFrame);
+        let result = self.sender.send(RendererCommand::EndFrame);
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);
         }
@@ -489,7 +489,7 @@ impl<B: GPUBackend> RendererSender<B> {
     pub fn update_lightmap(&self, path: &str) {
         let result = self
             .sender
-            .send(RendererCommand::<B>::SetLightmap(path.to_string()));
+            .send(RendererCommand::SetLightmap(path.to_string()));
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);
         }
@@ -518,8 +518,8 @@ impl<B: GPUBackend> RendererSender<B> {
         self.state.is_running.load(Ordering::Acquire)
     }
 
-    pub fn update_ui(&self, ui_data: UIDrawData<B>) {
-        let result = self.sender.send(RendererCommand::<B>::RenderUI(ui_data));
+    pub fn update_ui(&self, ui_data: UIDrawData) {
+        let result = self.sender.send(RendererCommand::RenderUI(ui_data));
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);
         }
@@ -537,7 +537,7 @@ impl<B: GPUBackend> RendererSender<B> {
                 return;
             }
 
-            let end_frame_res = self.sender.send(RendererCommand::<B>::Quit);
+            let end_frame_res = self.sender.send(RendererCommand::Quit);
             if end_frame_res.is_err() {
                 log::error!("Render thread crashed.");
             }
@@ -549,7 +549,7 @@ impl<B: GPUBackend> RendererSender<B> {
     pub fn window_changed(&self, window_state: WindowState) {
         let result = self
             .sender
-            .send(RendererCommand::<B>::WindowChanged(window_state));
+            .send(RendererCommand::WindowChanged(window_state));
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);
         }

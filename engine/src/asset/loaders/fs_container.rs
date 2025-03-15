@@ -81,7 +81,7 @@ impl<P: Platform> AssetContainer for FSContainer<P> {
 }
 
 impl<P: Platform> FSContainer<P> {
-    pub fn new(asset_manager: &Arc<AssetManager<P>>) -> Self {
+    pub fn new(asset_manager: &Arc<AssetManager>) -> Self {
         let (sender, receiver) = unbounded();
         let file_watcher = <P::IO as IO>::new_file_watcher(sender);
         let asset_mgr_weak = Arc::downgrade(asset_manager);
@@ -90,7 +90,7 @@ impl<P: Platform> FSContainer<P> {
             let mut thread_builder = thread::Builder::new();
             thread_builder = thread_builder.name("AssetManagerWatchThread".to_string());
             let _ = thread_builder.spawn(move || {
-                fs_container_watch_thread_fn(asset_mgr_weak, receiver)
+                fs_container_watch_thread_fn::<P>(asset_mgr_weak, receiver)
             }).unwrap();
         }
         Self {
@@ -101,7 +101,7 @@ impl<P: Platform> FSContainer<P> {
 }
 
 fn fs_container_watch_thread_fn<P: Platform>(
-    asset_manager: Weak<AssetManager<P>>,
+    asset_manager: Weak<AssetManager>,
     receiver: Receiver<String>,
 ) {
     'watch_loop: loop {

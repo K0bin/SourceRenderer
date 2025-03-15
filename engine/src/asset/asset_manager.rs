@@ -19,7 +19,6 @@ use bevy_tasks::futures_lite::io::{Cursor, AsyncAsSync};
 use bevy_tasks::futures_lite::AsyncSeekExt;
 use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool};
 use futures_io::{AsyncRead, AsyncSeek};
-use sourcerenderer_core::platform::Platform;
 use sourcerenderer_core::Vec4;
 
 use crate::math::BoundingBox;
@@ -116,42 +115,42 @@ pub enum AssetLoadPriority {
     Low,
 }
 
-pub trait AssetLoader<P: Platform>: Send + Sync + 'static {
+pub trait AssetLoader: Send + Sync + 'static {
     fn matches(&self, file: &mut AssetFile) -> bool;
     fn load(
         &self,
         file: AssetFile,
-        manager: &Arc<AssetManager<P>>,
+        manager: &Arc<AssetManager>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> impl Future<Output = Result<(), ()>> + Send;
 }
 
-pub trait ErasedAssetLoader<P: Platform>: Send + Sync {
+pub trait ErasedAssetLoader: Send + Sync {
     fn matches(&self, file: &mut AssetFile) -> bool;
     fn load<'a>(
         &'a self,
         file: AssetFile,
-        manager: &'a Arc<AssetManager<P>>,
+        manager: &'a Arc<AssetManager>,
         priority: AssetLoadPriority,
         progress: &'a Arc<AssetLoaderProgress>,
     ) -> Pin<Box<dyn Future<Output = Result<(), ()>> + Send + 'a>>;
 }
 
-impl<T, P: Platform> ErasedAssetLoader<P> for T
-    where T: AssetLoader<P> {
+impl<T> ErasedAssetLoader for T
+    where T: AssetLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
-        AssetLoader::<P>::matches(self, file)
+        AssetLoader::matches(self, file)
     }
 
     fn load<'a>(
         &'a self,
         file: AssetFile,
-        manager: &'a Arc<AssetManager<P>>,
+        manager: &'a Arc<AssetManager>,
         priority: AssetLoadPriority,
         progress: &'a Arc<AssetLoaderProgress>,
     ) -> Pin<Box<dyn Future<Output = Result<(), ()>> + Send + 'a>> {
-        Box::pin(AssetLoader::<P>::load(self, file, manager, priority, progress))
+        Box::pin(AssetLoader::load(self, file, manager, priority, progress))
     }
 }
 
@@ -221,31 +220,31 @@ impl AsyncCounter {
 
 const LOAD_PRIORITY_THRESHOLD: u32 = 4;
 
-pub struct AssetManager<P: Platform> {
-    device: Arc<crate::graphics::Device<P::GPUBackend>>,
+pub struct AssetManager {
+    device: Arc<crate::graphics::Device>,
     containers: async_rwlock::RwLock<Vec<Box<dyn ErasedAssetContainer>>>,
     pending_containers: AsyncCounter,
     pending_loaders: AsyncCounter,
     pending_high_priority_loads: AsyncCounter,
     pending_normal_priority_loads: AsyncCounter,
-    loaders: async_rwlock::RwLock<Vec<Box<dyn ErasedAssetLoader<P>>>>,
+    loaders: async_rwlock::RwLock<Vec<Box<dyn ErasedAssetLoader>>>,
     path_map: Mutex<HashMap<String, AssetHandle>>,
     next_asset_handle: AtomicU64,
     requested_assets: Mutex<HashSet<AssetHandle>>,
     unintegrated_assets: Mutex<HashMap<AssetHandle, AssetData>>,
-    renderer: RendererAssets<P>,
+    renderer: RendererAssets,
 }
 
-impl<P: Platform> AssetManager<P> {
+impl AssetManager {
     pub fn new(
-        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
+        device: &Arc<crate::graphics::Device>,
     ) -> Arc<Self> {
         let manager = Arc::new(Self {
             device: device.clone(),
             loaders: async_rwlock::RwLock::new(Vec::new()),
             containers: async_rwlock::RwLock::new(Vec::new()),
             unintegrated_assets: Mutex::new(HashMap::new()),
-            renderer: RendererAssets::<P>::new(device),
+            renderer: RendererAssets::new(device),
             path_map: Mutex::new(HashMap::new()),
             next_asset_handle: AtomicU64::new(1),
             requested_assets: Mutex::new(HashSet::new()),
@@ -258,7 +257,7 @@ impl<P: Platform> AssetManager<P> {
         manager
     }
 
-    pub fn graphics_device(&self) -> &Arc<crate::graphics::Device<P::GPUBackend>> {
+    pub fn graphics_device(&self) -> &Arc<crate::graphics::Device> {
         &self.device
     }
 
@@ -376,7 +375,7 @@ impl<P: Platform> AssetManager<P> {
         }).detach();
     }
 
-    pub fn add_loader(self: &Arc<Self>, loader: impl AssetLoader<P>) {
+    pub fn add_loader(self: &Arc<Self>, loader: impl AssetLoader) {
         self.pending_loaders.increment();
 
         let c_self = self.clone();
@@ -449,7 +448,7 @@ impl<P: Platform> AssetManager<P> {
     pub fn add_asset(
         &self,
         path: &str,
-        asset: Asset<P>
+        asset: Asset
     ) {
         log::trace!("Adding asset of type {:?} with path {}", asset.asset_type(), path);
         let handle = self.get_or_reserve_handle(path, asset.asset_type());
@@ -458,7 +457,7 @@ impl<P: Platform> AssetManager<P> {
 
     pub fn add_asset_with_handle(
         &self,
-        asset: AssetWithHandle<P>
+        asset: AssetWithHandle
     ) {
         log::trace!("Adding asset of type {:?} with handle {:?}", asset.asset_type(), asset.handle());
         if asset.is_renderer_asset() {
@@ -669,16 +668,16 @@ impl<P: Platform> AssetManager<P> {
 
     async fn find_loader<'a>(
         file: &mut AssetFile,
-        loaders: &'a [Box<dyn ErasedAssetLoader<P>>],
+        loaders: &'a [Box<dyn ErasedAssetLoader>],
         pending_loaders: &'a AsyncCounter
-    ) -> Option<&'a dyn ErasedAssetLoader<P>> {
+    ) -> Option<&'a dyn ErasedAssetLoader> {
         let start = AsyncSeekExt::seek(file, SeekFrom::Current(0)).await
             .unwrap_or_else(|_| panic!("Failed to read file: {:?}", file.path));
 
         // Make sure there is no add_loader task queued that hasn't been finished yet.
         pending_loaders.wait_for_zero().await;
 
-        let mut loader_opt = Option::<&Box<dyn ErasedAssetLoader<P>>>::None;
+        let mut loader_opt = Option::<&Box<dyn ErasedAssetLoader>>::None;
         for loader in loaders {
             let loader_matches = loader.matches(file);
             AsyncSeekExt::seek(file, SeekFrom::Start(start)).await.unwrap();
@@ -704,7 +703,7 @@ impl<P: Platform> AssetManager<P> {
         }
 
         let loaders = self.loaders.read().await;
-        let loader_opt: Option<&dyn ErasedAssetLoader<P>> = AssetManager::find_loader(
+        let loader_opt: Option<&dyn ErasedAssetLoader> = AssetManager::find_loader(
             &mut file,
             loaders.as_ref(),
             &self.pending_loaders
@@ -783,7 +782,7 @@ impl<P: Platform> AssetManager<P> {
         self.reserve_handle(path, asset_type)
     }
 
-    pub(crate) fn read_renderer_assets(&self) -> RendererAssetsReadOnly<P> {
+    pub(crate) fn read_renderer_assets(&self) -> RendererAssetsReadOnly {
         self.renderer.read()
     }
 
@@ -792,7 +791,7 @@ impl<P: Platform> AssetManager<P> {
     }
 
     #[inline(always)]
-    pub(crate) fn bump_frame(&self, context: &GraphicsContext<P::GPUBackend>) {
+    pub(crate) fn bump_frame(&self, context: &GraphicsContext) {
         self.renderer.bump_frame(context);
     }
 }

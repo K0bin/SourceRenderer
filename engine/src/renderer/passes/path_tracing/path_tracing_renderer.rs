@@ -25,40 +25,40 @@ use crate::ui::UIDrawData;
 
 use super::PathTracerPass;
 
-pub struct PathTracingRenderer<P: Platform> {
-    device: Arc<Device<P::GPUBackend>>,
-    barriers: RendererResources<P::GPUBackend>,
-    ui_data: UIDrawData<P::GPUBackend>,
-    blue_noise: BlueNoise<P::GPUBackend>,
-    acceleration_structure_update: AccelerationStructureUpdatePass<P>,
+pub struct PathTracingRenderer {
+    device: Arc<Device>,
+    barriers: RendererResources,
+    ui_data: UIDrawData,
+    blue_noise: BlueNoise,
+    acceleration_structure_update: AccelerationStructureUpdatePass,
     blit_pass: crate::renderer::passes::blit::BlitPass,
-    path_tracer: PathTracerPass<P>
+    path_tracer: PathTracerPass
 }
 
-impl<P: Platform> PathTracingRenderer<P> {
+impl PathTracingRenderer {
     #[allow(unused)]
     pub fn new(
-        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
-        swapchain: &crate::graphics::Swapchain<P::GPUBackend>,
-        context: &mut GraphicsContext<P::GPUBackend>,
-        asset_manager: &Arc<AssetManager<P>>,
+        device: &Arc<crate::graphics::Device>,
+        swapchain: &crate::graphics::Swapchain,
+        context: &mut GraphicsContext,
+        asset_manager: &Arc<AssetManager>,
     ) -> Self {
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
         let resolution = Vec2UI::new(swapchain.width() * 2, swapchain.height() * 2);
 
-        let mut barriers = RendererResources::<P::GPUBackend>::new(device);
+        let mut barriers = RendererResources::new(device);
 
-        let blue_noise = BlueNoise::new::<P>(device);
+        let blue_noise = BlueNoise::new(device);
 
         if !device.supports_ray_tracing() {
             panic!("Need ray tracing support to run the path tracer");
         }
-        let acceleration_structure_update = AccelerationStructureUpdatePass::<P>::new(
+        let acceleration_structure_update = AccelerationStructureUpdatePass::new(
             device,
             &mut init_cmd_buffer,
         );
         let blit_pass = BlitPass::new(&mut barriers, asset_manager, swapchain.format());
-        let path_tracer_pass = PathTracerPass::<P>::new(device, resolution, &mut barriers, asset_manager, &mut init_cmd_buffer);
+        let path_tracer_pass = PathTracerPass::new(device, resolution, &mut barriers, asset_manager, &mut init_cmd_buffer);
 
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
@@ -76,7 +76,7 @@ impl<P: Platform> PathTracingRenderer<P> {
         Self {
             device: device.clone(),
             barriers,
-            ui_data: UIDrawData::<P::GPUBackend>::default(),
+            ui_data: UIDrawData::default(),
             blue_noise,
             acceleration_structure_update,
             blit_pass,
@@ -86,12 +86,12 @@ impl<P: Platform> PathTracingRenderer<P> {
 
     fn setup_frame(
         &self,
-        cmd_buf: &mut CommandBufferRecorder<P::GPUBackend>,
-        scene: &SceneInfo<P::GPUBackend>,
-        swapchain: &Swapchain<P::GPUBackend>,
-        gpu_scene_buffers: SceneBuffers<P::GPUBackend>,
-        camera_buffer: BufferRef<P::GPUBackend>,
-        camera_history_buffer: BufferRef<P::GPUBackend>,
+        cmd_buf: &mut CommandBufferRecorder,
+        scene: &SceneInfo,
+        swapchain: &Swapchain,
+        gpu_scene_buffers: SceneBuffers,
+        camera_buffer: BufferRef,
+        camera_history_buffer: BufferRef,
         rendering_resolution: &Vec2UI,
         frame: u64,
     ) {
@@ -218,7 +218,7 @@ impl<P: Platform> PathTracingRenderer<P> {
     }
 }
 
-impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
+impl<P: Platform> RenderPath<P> for PathTracingRenderer {
     fn is_gpu_driven(&self) -> bool {
         true
     }
@@ -227,12 +227,12 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
 
     fn on_swapchain_changed(
         &mut self,
-        _swapchain: &Swapchain<P::GPUBackend>,
+        _swapchain: &Swapchain,
     ) {
         // TODO: resize render targets
     }
 
-    fn is_ready(&self, asset_manager: &Arc<AssetManager<P>>) -> bool {
+    fn is_ready(&self, asset_manager: &Arc<AssetManager>) -> bool {
         let assets = asset_manager.read_renderer_assets();
         self.path_tracer.is_ready(&assets)
     }
@@ -240,12 +240,12 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
     #[profiling::function]
     fn render(
         &mut self,
-        context: &mut GraphicsContext<P::GPUBackend>,
-        swapchain: &mut Swapchain<P::GPUBackend>,
-        scene: &SceneInfo<P::GPUBackend>,
+        context: &mut GraphicsContext,
+        swapchain: &mut Swapchain,
+        scene: &SceneInfo,
         frame_info: &FrameInfo,
-        assets: &RendererAssetsReadOnly<'_, P>,
-    ) -> Result<RenderPathResult<P::GPUBackend>, SwapchainError> {
+        assets: &RendererAssetsReadOnly<'_>,
+    ) -> Result<RenderPathResult, SwapchainError> {
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
         let _main_view = &scene.scene.views()[scene.active_view_index];
@@ -296,7 +296,7 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
             queue_ownership: None
         }]);
         cmd_buf.flush_barriers();
-        let rt_view = params.resources.access_view(&mut cmd_buf, PathTracerPass::<P>::PATH_TRACING_TARGET,
+        let rt_view = params.resources.access_view(&mut cmd_buf, PathTracerPass::PATH_TRACING_TARGET,
             BarrierSync::FRAGMENT_SHADER,
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,
@@ -328,7 +328,7 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer<P> {
         });
     }
 
-    fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {
+    fn set_ui_data(&mut self, data: crate::ui::UIDrawData) {
         self.ui_data = data;
     }
 }

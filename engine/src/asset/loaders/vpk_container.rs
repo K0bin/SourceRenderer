@@ -31,8 +31,8 @@ pub struct VPKContainer {
     package: Package<AssetFile>,
 }
 
-pub fn new_vpk_container<P: Platform>(
-    asset_manager: &Arc<AssetManager<P>>,
+pub fn new_vpk_container(
+    asset_manager: &Arc<AssetManager>,
     asset_file: AssetFile,
 ) -> Result<Box<dyn AssetContainer>, PackageError> {
     let path = asset_file.path.clone();
@@ -72,7 +72,7 @@ impl VPKContainerLoader {
     }
 }
 
-impl<P: Platform> AssetLoader<P> for VPKContainerLoader {
+impl AssetLoader for VPKContainerLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
         let file_name = Path::new(&file.path).file_stem();
         file_name
@@ -83,11 +83,11 @@ impl<P: Platform> AssetLoader<P> for VPKContainerLoader {
     fn load(
         &self,
         file: AssetFile,
-        manager: &Arc<AssetManager<P>>,
+        manager: &Arc<AssetManager>,
         _priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<(), ()> {
-        let container = new_vpk_container::<P>(manager, file).unwrap();
+        let container = new_vpk_container(manager, file).unwrap();
         manager.add_container_with_progress(container, Some(progress));
         Ok(())
     }

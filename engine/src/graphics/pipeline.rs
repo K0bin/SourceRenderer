@@ -3,13 +3,13 @@ use std::sync::Arc;
 use sourcerenderer_core::gpu::ComputePipeline as _;
 use super::*;
 
-pub struct GraphicsPipeline<B: GPUBackend> {
-    pipeline: ManuallyDrop<B::GraphicsPipeline>,
-    destroyer: Arc<DeferredDestroyer<B>>
+pub struct GraphicsPipeline {
+    pipeline: ManuallyDrop<active_gpu_backend::GraphicsPipeline>,
+    destroyer: Arc<DeferredDestroyer>
 }
 
-impl<B: GPUBackend> GraphicsPipeline<B> {
-    pub(super) fn new(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, info: &GraphicsPipelineInfo<B>, name: Option<&str>) -> Self {
+impl GraphicsPipeline {
+    pub(super) fn new(device: &Arc<active_gpu_backend::Device>, destroyer: &Arc<DeferredDestroyer>, info: &active_gpu_backend::GraphicsPipelineInfo, name: Option<&str>) -> Self {
         let pipeline = unsafe {
             device.create_graphics_pipeline(info, name)
         };
@@ -20,25 +20,25 @@ impl<B: GPUBackend> GraphicsPipeline<B> {
     }
 
     #[inline(always)]
-    pub fn handle(&self) -> &B::GraphicsPipeline {
+    pub fn handle(&self) -> &active_gpu_backend::GraphicsPipeline {
         &*self.pipeline
     }
 }
 
-impl<B: GPUBackend> Drop for GraphicsPipeline<B> {
+impl Drop for GraphicsPipeline {
     fn drop(&mut self) {
         let pipeline = unsafe { ManuallyDrop::take(&mut self.pipeline) };
         self.destroyer.destroy_graphics_pipeline(pipeline);
     }
 }
 
-pub struct ComputePipeline<B: GPUBackend> {
-    pipeline: ManuallyDrop<B::ComputePipeline>,
-    destroyer: Arc<DeferredDestroyer<B>>
+pub struct ComputePipeline {
+    pipeline: ManuallyDrop<active_gpu_backend::ComputePipeline>,
+    destroyer: Arc<DeferredDestroyer>
 }
 
-impl<B: GPUBackend> ComputePipeline<B> {
-    pub(super) fn new(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, shader: &B::Shader, name: Option<&str>) -> Self {
+impl ComputePipeline {
+    pub(super) fn new(device: &Arc<active_gpu_backend::Device>, destroyer: &Arc<DeferredDestroyer>, shader: &active_gpu_backend::Shader, name: Option<&str>) -> Self {
         let pipeline = unsafe {
             device.create_compute_pipeline(shader, name)
         };
@@ -49,7 +49,7 @@ impl<B: GPUBackend> ComputePipeline<B> {
     }
 
     #[inline(always)]
-    pub fn handle(&self) -> &B::ComputePipeline {
+    pub fn handle(&self) -> &active_gpu_backend::ComputePipeline {
         &*self.pipeline
     }
 
@@ -59,21 +59,21 @@ impl<B: GPUBackend> ComputePipeline<B> {
     }
 }
 
-impl<B: GPUBackend> Drop for ComputePipeline<B> {
+impl Drop for ComputePipeline {
     fn drop(&mut self) {
         let pipeline = unsafe { ManuallyDrop::take(&mut self.pipeline) };
         self.destroyer.destroy_compute_pipeline(pipeline);
     }
 }
 
-pub struct RayTracingPipeline<B: GPUBackend> {
-    pipeline: ManuallyDrop<B::RayTracingPipeline>,
-    destroyer: Arc<DeferredDestroyer<B>>,
-    sbt: Arc<BufferSlice<B>>
+pub struct RayTracingPipeline {
+    pipeline: ManuallyDrop<active_gpu_backend::RayTracingPipeline>,
+    destroyer: Arc<DeferredDestroyer>,
+    sbt: Arc<BufferSlice>
 }
 
-impl<B: GPUBackend> RayTracingPipeline<B> {
-    pub(super) fn new(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, buffer_allocator: &BufferAllocator<B>, info: &RayTracingPipelineInfo<B>, name: Option<&str>) -> Result<Self, OutOfMemoryError> {
+impl RayTracingPipeline {
+    pub(super) fn new(device: &Arc<active_gpu_backend::Device>, destroyer: &Arc<DeferredDestroyer>, buffer_allocator: &BufferAllocator, info: &active_gpu_backend::RayTracingPipelineInfo, name: Option<&str>) -> Result<Self, OutOfMemoryError> {
         let sbt_size = unsafe { device.get_raytracing_pipeline_sbt_buffer_size(info) };
         let sbt = buffer_allocator.get_slice(&BufferInfo {
             size: sbt_size,
@@ -94,17 +94,17 @@ impl<B: GPUBackend> RayTracingPipeline<B> {
     }
 
     #[inline(always)]
-    pub fn handle(&self) -> &B::RayTracingPipeline {
+    pub fn handle(&self) -> &active_gpu_backend::RayTracingPipeline {
         &*self.pipeline
     }
 
     #[inline(always)]
-    pub fn sbt(&self) -> &BufferSlice<B> {
+    pub fn sbt(&self) -> &BufferSlice {
         &self.sbt
     }
 }
 
-impl<B: GPUBackend> Drop for RayTracingPipeline<B> {
+impl Drop for RayTracingPipeline {
     fn drop(&mut self) {
         let pipeline = unsafe { ManuallyDrop::take(&mut self.pipeline) };
         self.destroyer.destroy_raytracing_pipeline(pipeline);

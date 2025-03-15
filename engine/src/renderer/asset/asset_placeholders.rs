@@ -1,17 +1,17 @@
-use sourcerenderer_core::{Platform, Vec4};
+use sourcerenderer_core::Vec4;
 
 use super::*;
 
 use crate::graphics::*;
 
-pub struct AssetPlaceholders<P: Platform> {
-    texture_white: RendererTexture<P::GPUBackend>,
-    texture_black: RendererTexture<P::GPUBackend>,
+pub struct AssetPlaceholders {
+    texture_white: RendererTexture,
+    texture_black: RendererTexture,
     material: RendererMaterial
 }
 
-impl<P: Platform> AssetPlaceholders<P> {
-    pub fn new(device: &crate::graphics::Device<P::GPUBackend>) -> Self {
+impl AssetPlaceholders {
+    pub fn new(device: &crate::graphics::Device) -> Self {
         let mut zero_data = Vec::<u8>::with_capacity(64 * 64 * 4);
         zero_data.resize(zero_data.capacity(), 255u8);
         let zero_texture = device.create_texture(
@@ -87,12 +87,12 @@ impl<P: Platform> AssetPlaceholders<P> {
     }
 
     #[inline(always)]
-    pub fn texture_black(&self) -> &RendererTexture<P::GPUBackend> {
+    pub fn texture_black(&self) -> &RendererTexture {
         &self.texture_black
     }
 
     #[inline(always)]
-    pub fn texture_white(&self) -> &RendererTexture<P::GPUBackend> {
+    pub fn texture_white(&self) -> &RendererTexture {
         &self.texture_white
     }
 

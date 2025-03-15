@@ -8,12 +8,12 @@ const DEBUG: bool = false;
 
 /// We suballocate all mesh buffers from a large buffer
 /// to be able use indirect rendering.
-pub struct AssetBuffer<B: GPUBackend> {
-    internal: Arc<AssetBufferInternal<B>>,
+pub struct AssetBuffer {
+    internal: Arc<AssetBufferInternal>,
 }
 
-struct AssetBufferInternal<B: GPUBackend> {
-    buffer: Arc<BufferSlice<B>>,
+struct AssetBufferInternal {
+    buffer: Arc<BufferSlice>,
     free_ranges: AtomicRefCell<Vec<BufferRange>>,
     reuse_ranges: AtomicRefCell<Vec<(BufferRange, u32)>>,
 
@@ -21,8 +21,8 @@ struct AssetBufferInternal<B: GPUBackend> {
     debug_size: u32
 }
 
-pub struct AssetBufferSlice<B: GPUBackend> {
-    buffer: Arc<AssetBufferInternal<B>>,
+pub struct AssetBufferSlice {
+    buffer: Arc<AssetBufferInternal>,
     range: BufferRange,
 }
 
@@ -33,11 +33,11 @@ struct BufferRange {
     length: u32,
 }
 
-impl<B: GPUBackend> AssetBuffer<B> {
+impl AssetBuffer {
     pub const SIZE_BIG: u32 = 256 << 20;
     pub const SIZE_SMALL: u32 = 64 << 20;
 
-    pub fn new(device: &Arc<Device<B>>, size: u32, usage: BufferUsage) -> Self {
+    pub fn new(device: &Arc<Device>, size: u32, usage: BufferUsage) -> Self {
         let buffer = device.create_buffer(
             &BufferInfo {
                 size: size as u64,
@@ -64,14 +64,14 @@ impl<B: GPUBackend> AssetBuffer<B> {
         }
     }
 
-    pub fn get_slice(&self, length: usize, alignment: usize) -> AssetBufferSlice<B> {
+    pub fn get_slice(&self, length: usize, alignment: usize) -> AssetBufferSlice {
         if DEBUG {
             let offset = self.internal.debug_offset.fetch_add(length as u64 + alignment as u64, std::sync::atomic::Ordering::SeqCst);
             let aligned_offset = align_up_64(offset, alignment as u64);
             if aligned_offset + length as u64 > self.internal.debug_size as u64 {
                 panic!("Ran out of space.");
             }
-            return AssetBufferSlice::<B> {
+            return AssetBufferSlice {
                 buffer: self.internal.clone(),
                 range: BufferRange {
                     offset: offset as u32,
@@ -108,7 +108,7 @@ impl<B: GPUBackend> AssetBuffer<B> {
             free_ranges.remove(index);
         }
 
-        AssetBufferSlice::<B> {
+        AssetBufferSlice {
             buffer: self.internal.clone(),
             range: BufferRange {
                 offset,
@@ -118,7 +118,7 @@ impl<B: GPUBackend> AssetBuffer<B> {
         }
     }
 
-    pub fn bump_frame(&self, context: &GraphicsContext<B>) {
+    pub fn bump_frame(&self, context: &GraphicsContext) {
         let mut reuse_ranges = self.internal.reuse_ranges.borrow_mut();
         for (range, frames) in reuse_ranges.iter_mut() {
             *frames += 1;
@@ -130,12 +130,12 @@ impl<B: GPUBackend> AssetBuffer<B> {
     }
 
     #[inline(always)]
-    pub fn buffer(&self) -> &Arc<BufferSlice<B>> {
+    pub fn buffer(&self) -> &Arc<BufferSlice> {
         &self.internal.buffer
     }
 }
 
-impl<B: GPUBackend> AssetBufferInternal<B> {
+impl AssetBufferInternal {
     pub fn queue_for_reuse(&self, range: &BufferRange) {
         let mut reuse_ranges = self.reuse_ranges.borrow_mut();
         reuse_ranges.push((range.clone(), 0));
@@ -166,9 +166,9 @@ impl<B: GPUBackend> AssetBufferInternal<B> {
     }
 }
 
-impl<B: GPUBackend> AssetBufferSlice<B> {
+impl AssetBufferSlice {
     #[inline(always)]
-    pub fn buffer(&self) -> &Arc<BufferSlice<B>> {
+    pub fn buffer(&self) -> &Arc<BufferSlice> {
         &self.buffer.buffer
     }
 
@@ -183,7 +183,7 @@ impl<B: GPUBackend> AssetBufferSlice<B> {
     }
 }
 
-impl<B: GPUBackend> Drop for AssetBufferSlice<B> {
+impl Drop for AssetBufferSlice {
     fn drop(&mut self) {
         if DEBUG {
             return;

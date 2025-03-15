@@ -1,8 +1,6 @@
 use sourcerenderer_core::platform::Window;
-use sourcerenderer_webgpu::{WebGPUDevice, WebGPUInstance, WebGPUSurface, WebGPUSwapchain};
+use sourcerenderer_webgpu::{WebGPUBackend, WebGPUDevice, WebGPUInstance, WebGPUSurface, WebGPUSwapchain};
 use web_sys::OffscreenCanvas;
-
-use crate::platform::WebPlatform;
 
 pub struct WebWindow {
     canvas: OffscreenCanvas
@@ -16,7 +14,7 @@ impl WebWindow {
     }
 }
 
-impl Window<WebPlatform> for WebWindow {
+impl Window<WebGPUBackend> for WebWindow {
     fn create_surface(&self, graphics_instance: &WebGPUInstance) -> WebGPUSurface {
         WebGPUSurface::new(graphics_instance, self.canvas.clone()).unwrap()
     }

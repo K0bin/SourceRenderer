@@ -1,7 +1,5 @@
 use std::hash::Hash;
 
-use sourcerenderer_core::Platform;
-
 use crate::renderer::asset::{RendererComputePipeline, RendererGraphicsPipeline, RendererMaterial, RendererMesh, RendererModel, RendererRayTracingPipeline, RendererShader, RendererTexture};
 
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
@@ -255,19 +253,19 @@ impl AssetType {
     }
 }
 
-pub enum AssetWithHandle<P: Platform> {
-    Texture(AssetHandle, RendererTexture<P::GPUBackend>),
+pub enum AssetWithHandle {
+    Texture(AssetHandle, RendererTexture),
     Material(AssetHandle, RendererMaterial),
     Model(AssetHandle, RendererModel),
-    Mesh(AssetHandle, RendererMesh<P::GPUBackend>),
-    Shader(AssetHandle, RendererShader<P::GPUBackend>),
-    GraphicsPipeline(AssetHandle, RendererGraphicsPipeline<P>),
-    ComputePipeline(AssetHandle, RendererComputePipeline<P>),
-    RayTracingPipeline(AssetHandle, RendererRayTracingPipeline<P>),
+    Mesh(AssetHandle, RendererMesh),
+    Shader(AssetHandle, RendererShader),
+    GraphicsPipeline(AssetHandle, RendererGraphicsPipeline),
+    ComputePipeline(AssetHandle, RendererComputePipeline),
+    RayTracingPipeline(AssetHandle, RendererRayTracingPipeline),
     Sound(AssetHandle, ())
 }
 
-impl<P: Platform> AssetWithHandle<P> {
+impl AssetWithHandle {
     #[inline]
     pub fn is_renderer_asset(&self) -> bool {
         match self {
@@ -314,7 +312,7 @@ impl<P: Platform> AssetWithHandle<P> {
     }
 
     #[inline]
-    pub fn combine(handle: AssetHandle, asset: Asset<P>) -> AssetWithHandle<P> {
+    pub fn combine(handle: AssetHandle, asset: Asset) -> AssetWithHandle {
         assert_eq!(handle.asset_type(), asset.asset_type());
         match (handle, asset) {
             (handle, Asset::Texture(texture)) => AssetWithHandle::Texture(handle, texture),
@@ -330,19 +328,19 @@ impl<P: Platform> AssetWithHandle<P> {
     }
 }
 
-pub enum Asset<P: Platform> {
-    Texture(RendererTexture<P::GPUBackend>),
+pub enum Asset {
+    Texture(RendererTexture),
     Material(RendererMaterial),
     Model(RendererModel),
-    Mesh(RendererMesh<P::GPUBackend>),
-    Shader(RendererShader<P::GPUBackend>),
+    Mesh(RendererMesh),
+    Shader(RendererShader),
     Sound(()),
-    GraphicsPipeline(RendererGraphicsPipeline<P>),
-    ComputePipeline(RendererComputePipeline<P>),
-    RayTracingPipeline(RendererRayTracingPipeline<P>),
+    GraphicsPipeline(RendererGraphicsPipeline),
+    ComputePipeline(RendererComputePipeline),
+    RayTracingPipeline(RendererRayTracingPipeline),
 }
 
-impl<P: Platform> Asset<P> {
+impl Asset {
     #[inline]
     pub fn is_renderer_asset(&self) -> bool {
         match self {
@@ -374,67 +372,67 @@ impl<P: Platform> Asset<P> {
     }
 }
 
-pub enum AssetRef<'a, P: Platform> {
-    Texture(&'a RendererTexture<P::GPUBackend>),
+pub enum AssetRef<'a> {
+    Texture(&'a RendererTexture),
     Material(&'a RendererMaterial),
     Model(&'a RendererModel),
-    Mesh(&'a RendererMesh<P::GPUBackend>),
-    Shader(&'a RendererShader<P::GPUBackend>),
-    GraphicsPipeline(&'a RendererGraphicsPipeline<P>),
-    ComputePipeline(&'a RendererComputePipeline<P>),
-    RayTracingPipeline(&'a RendererRayTracingPipeline<P>),
+    Mesh(&'a RendererMesh),
+    Shader(&'a RendererShader),
+    GraphicsPipeline(&'a RendererGraphicsPipeline),
+    ComputePipeline(&'a RendererComputePipeline),
+    RayTracingPipeline(&'a RendererRayTracingPipeline),
     Sound(()),
 }
 
-impl<'a, P: Platform> From<&'a RendererTexture<P::GPUBackend>> for AssetRef<'a, P> {
-    fn from(value: &'a RendererTexture<P::GPUBackend>) -> Self {
+impl<'a> From<&'a RendererTexture> for AssetRef<'a> {
+    fn from(value: &'a RendererTexture) -> Self {
         Self::Texture(value)
     }
 }
 
-impl<'a, P: Platform> From<&'a RendererMaterial> for AssetRef<'a, P> {
+impl<'a> From<&'a RendererMaterial> for AssetRef<'a> {
     fn from(value: &'a RendererMaterial) -> Self {
         Self::Material(value)
     }
 }
 
-impl<'a, P: Platform> From<&'a RendererModel> for AssetRef<'a, P> {
+impl<'a> From<&'a RendererModel> for AssetRef<'a> {
     fn from(value: &'a RendererModel) -> Self {
         Self::Model(value)
     }
 }
 
-impl<'a, P: Platform> From<&'a RendererMesh<P::GPUBackend>> for AssetRef<'a, P> {
-    fn from(value: &'a RendererMesh<P::GPUBackend>) -> Self {
+impl<'a> From<&'a RendererMesh> for AssetRef<'a> {
+    fn from(value: &'a RendererMesh) -> Self {
         Self::Mesh(value)
     }
 }
 
-impl<'a, P: Platform> From<&'a RendererShader<P::GPUBackend>> for AssetRef<'a, P> {
-    fn from(value: &'a RendererShader<P::GPUBackend>) -> Self {
+impl<'a> From<&'a RendererShader> for AssetRef<'a> {
+    fn from(value: &'a RendererShader) -> Self {
         Self::Shader(value)
     }
 }
 
-impl<'a, P: Platform> From<&'a RendererGraphicsPipeline<P>> for AssetRef<'a, P> {
-    fn from(value: &'a RendererGraphicsPipeline<P>) -> Self {
+impl<'a> From<&'a RendererGraphicsPipeline> for AssetRef<'a> {
+    fn from(value: &'a RendererGraphicsPipeline) -> Self {
         Self::GraphicsPipeline(value)
     }
 }
 
-impl<'a, P: Platform> From<&'a RendererComputePipeline<P>> for AssetRef<'a, P> {
-    fn from(value: &'a RendererComputePipeline<P>) -> Self {
+impl<'a> From<&'a RendererComputePipeline> for AssetRef<'a> {
+    fn from(value: &'a RendererComputePipeline) -> Self {
         Self::ComputePipeline(value)
     }
 }
 
-impl<'a, P: Platform> From<&'a RendererRayTracingPipeline<P>> for AssetRef<'a, P> {
-    fn from(value: &'a RendererRayTracingPipeline<P>) -> Self {
+impl<'a> From<&'a RendererRayTracingPipeline> for AssetRef<'a> {
+    fn from(value: &'a RendererRayTracingPipeline) -> Self {
         Self::RayTracingPipeline(value)
     }
 }
 
-impl<P: Platform> AssetRef<'_, P> {
+impl AssetRef<'_> {
     #[inline]
     pub fn is_renderer_asset(&self) -> bool {
         match self {

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use sourcerenderer_core::{
-    Platform, Vec2UI, Vec3UI, Vec4
+    Vec2UI, Vec3UI, Vec4
 };
 
 use crate::asset::AssetManager;
@@ -30,9 +30,9 @@ impl ClusteringPass {
     pub const CLUSTERS_BUFFER_NAME: &'static str = "clusters";
 
     #[allow(unused)]
-    pub fn new<P: Platform>(
-        barriers: &mut RendererResources<P::GPUBackend>,
-        asset_manager: &Arc<AssetManager<P>>,
+    pub fn new(
+        barriers: &mut RendererResources,
+        asset_manager: &Arc<AssetManager>,
     ) -> Self {
         let pipeline = asset_manager.request_compute_pipeline("shaders/clustering.comp.json");
 
@@ -51,16 +51,16 @@ impl ClusteringPass {
     }
 
     #[inline(always)]
-    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_compute_pipeline(self.pipeline).is_some()
     }
 
-    pub fn execute<P: Platform>(
+    pub fn execute(
         &mut self,
-        command_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        pass_params: &RenderPassParameters<'_, P>,
+        command_buffer: &mut CommandBufferRecorder,
+        pass_params: &RenderPassParameters<'_>,
         rt_size: Vec2UI,
-        camera_buffer: &TransientBufferSlice<P::GPUBackend>
+        camera_buffer: &TransientBufferSlice
     ) {
         command_buffer.begin_label("Clustering pass");
 

@@ -1,19 +1,19 @@
 use std::{collections::HashMap, sync::Arc};
 
-use sourcerenderer_core::{gpu::{self, Backbuffer as _}, Matrix4};
+use sourcerenderer_core::{gpu::Backbuffer as _, Matrix4};
 
 use super::*;
 
-pub struct Swapchain<B: GPUBackend> {
-    device: Arc<B::Device>,
-    destroyer: Arc<DeferredDestroyer<B>>,
-    swapchain: B::Swapchain,
-    views: HashMap<u64, Arc<super::TextureView<B>>>,
+pub struct Swapchain {
+    device: Arc<active_gpu_backend::Device>,
+    destroyer: Arc<DeferredDestroyer>,
+    swapchain: active_gpu_backend::Swapchain,
+    views: HashMap<u64, Arc<super::TextureView>>,
     recreation_count: u32
 }
 
-impl<B: GPUBackend> Swapchain<B> {
-    pub fn new(swapchain: B::Swapchain, device: &Device<B>) -> Self {
+impl Swapchain {
+    pub fn new(swapchain: active_gpu_backend::Swapchain, device: &Device) -> Self {
         Self {
             swapchain,
             destroyer: device.destroyer().clone(),
@@ -29,7 +29,7 @@ impl<B: GPUBackend> Swapchain<B> {
     }
 
     #[inline(always)]
-    pub fn surface(&self) -> &B::Surface {
+    pub fn surface(&self) -> &active_gpu_backend::Surface {
         self.swapchain.surface()
     }
 
@@ -39,7 +39,7 @@ impl<B: GPUBackend> Swapchain<B> {
         self.recreation_count += 1;
     }
 
-    pub fn backbuffer_view(&self, backbuffer: &<B::Swapchain as gpu::Swapchain<B>>::Backbuffer) -> Arc<super::TextureView<B>>{
+    pub fn backbuffer_view(&self, backbuffer: &active_gpu_backend::Backbuffer) -> Arc<super::TextureView>{
         if self.swapchain.will_reuse_backbuffers() {
             self.views.get(&backbuffer.key()).unwrap().clone()
         } else {
@@ -55,7 +55,7 @@ impl<B: GPUBackend> Swapchain<B> {
         }
     }
 
-    pub fn ensure_backbuffer_view(&mut self, backbuffer: &<B::Swapchain as gpu::Swapchain<B>>::Backbuffer) {
+    pub fn ensure_backbuffer_view(&mut self, backbuffer: &active_gpu_backend::Backbuffer) {
         let key = backbuffer.key();
         self.views.entry(key).or_insert_with(|| {
             unsafe {
@@ -70,11 +70,11 @@ impl<B: GPUBackend> Swapchain<B> {
         });
     }
 
-    pub fn backbuffer_handle<'a>(&'a self, backbuffer: &'a <B::Swapchain as gpu::Swapchain<B>>::Backbuffer) -> &'a B::Texture {
+    pub fn backbuffer_handle<'a>(&'a self, backbuffer: &'a active_gpu_backend::Backbuffer) -> &'a active_gpu_backend::Texture {
         unsafe { self.swapchain.texture_for_backbuffer(backbuffer) }
     }
 
-    pub fn next_backbuffer(&mut self) -> Result<Arc<<B::Swapchain as gpu::Swapchain<B>>::Backbuffer>, SwapchainError> {
+    pub fn next_backbuffer(&mut self) -> Result<Arc<active_gpu_backend::Backbuffer>, SwapchainError> {
         let backbuffer = unsafe { self.swapchain.next_backbuffer()? };
         if self.swapchain.will_reuse_backbuffers() {
             self.ensure_backbuffer_view(&backbuffer);
@@ -98,12 +98,12 @@ impl<B: GPUBackend> Swapchain<B> {
     }
 
     #[inline(always)]
-    pub fn handle(&self) -> &B::Swapchain {
+    pub fn handle(&self) -> &active_gpu_backend::Swapchain {
         &self.swapchain
     }
 
     #[inline(always)]
-    pub fn handle_mut(&mut self) -> &mut B::Swapchain {
+    pub fn handle_mut(&mut self) -> &mut active_gpu_backend::Swapchain {
         &mut self.swapchain
     }
 }

@@ -33,21 +33,21 @@ struct CameraBuffer {
     fov: f32,
 }
 
-pub struct WebRenderer<P: Platform> {
-    geometry: GeometryPass<P>,
-    resources: RendererResources<P::GPUBackend>,
+pub struct WebRenderer {
+    geometry: GeometryPass,
+    resources: RendererResources,
 }
 
-impl<P: Platform> WebRenderer<P> {
+impl WebRenderer {
     pub fn new(
-        device: &Arc<Device<P::GPUBackend>>,
-        swapchain: &Swapchain<P::GPUBackend>,
-        context: &mut GraphicsContext<P::GPUBackend>,
-        asset_manager: &Arc<AssetManager<P>>
+        device: &Arc<Device>,
+        swapchain: &Swapchain,
+        context: &mut GraphicsContext,
+        asset_manager: &Arc<AssetManager>
     ) -> Self {
-        let mut resources = RendererResources::<P::GPUBackend>::new(device);
+        let mut resources = RendererResources::new(device);
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
-        let geometry_pass = GeometryPass::<P>::new(
+        let geometry_pass = GeometryPass::new(
             device,
             asset_manager,
             swapchain,
@@ -76,7 +76,7 @@ impl<P: Platform> WebRenderer<P> {
     }
 }
 
-impl<P: Platform> RenderPath<P> for WebRenderer<P> {
+impl<P: Platform> RenderPath<P> for WebRenderer {
     fn is_gpu_driven(&self) -> bool {
         false
     }
@@ -87,23 +87,23 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
 
     fn on_swapchain_changed(
         &mut self,
-        _swapchain: &Swapchain<P::GPUBackend>,
+        _swapchain: &Swapchain,
     ) {
     }
 
-    fn is_ready(&self, asset_manager: &Arc<AssetManager<P>>) -> bool {
+    fn is_ready(&self, asset_manager: &Arc<AssetManager>) -> bool {
         let assets = asset_manager.read_renderer_assets();
         self.geometry.is_ready(&assets)
     }
 
     fn render(
         &mut self,
-        context: &mut GraphicsContext<P::GPUBackend>,
-        swapchain: &mut Swapchain<P::GPUBackend>,
-        scene: &SceneInfo<P::GPUBackend>,
+        context: &mut GraphicsContext,
+        swapchain: &mut Swapchain,
+        scene: &SceneInfo,
         _frame_info: &FrameInfo,
-        assets: &RendererAssetsReadOnly<'_, P>
-    ) -> Result<RenderPathResult<P::GPUBackend>, sourcerenderer_core::gpu::SwapchainError> {
+        assets: &RendererAssetsReadOnly<'_>
+    ) -> Result<RenderPathResult, sourcerenderer_core::gpu::SwapchainError> {
         let backbuffer = swapchain.next_backbuffer()?;
 
         let mut cmd_buffer = context.get_command_buffer(QueueType::Graphics);
@@ -147,6 +147,6 @@ impl<P: Platform> RenderPath<P> for WebRenderer<P> {
         });
     }
 
-    fn set_ui_data(&mut self, _data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {
+    fn set_ui_data(&mut self, _data: crate::ui::UIDrawData) {
     }
 }

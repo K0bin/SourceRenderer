@@ -8,7 +8,7 @@ use std::{
 use ash::vk;
 use crossbeam_utils::atomic::AtomicCell;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu;
+use sourcerenderer_core::gpu::{self, Buffer as _};
 
 use super::*;
 
@@ -22,7 +22,7 @@ pub struct VkCommandPool {
 }
 
 impl VkCommandPool {
-    pub fn new(device: &Arc<RawVkDevice>, queue_family_index: u32, flags: gpu::CommandPoolFlags, shared: &Arc<VkShared>, command_pool_type: gpu::CommandPoolType) -> Self {
+    pub(crate) fn new(device: &Arc<RawVkDevice>, queue_family_index: u32, flags: gpu::CommandPoolFlags, shared: &Arc<VkShared>, command_pool_type: gpu::CommandPoolType) -> Self {
         let mut vk_flags = vk::CommandPoolCreateFlags::empty();
         if flags.contains(gpu::CommandPoolFlags::INDIVIDUAL_RESET) {
             vk_flags |= vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER;
@@ -76,7 +76,7 @@ impl gpu::CommandPool<VkBackend> for VkCommandPool {
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 #[repr(u32)]
-pub enum VkCommandBufferState {
+pub(crate) enum VkCommandBufferState {
     Ready,
     Recording,
     Finished,
@@ -84,13 +84,13 @@ pub enum VkCommandBufferState {
 }
 
 pub struct VkInnerCommandBufferInfo {
-    pub rt_formats: SmallVec<[vk::Format; 8]>,
-    pub depth_format: vk::Format,
-    pub stencil_format: vk::Format,
-    pub sample_count: vk::SampleCountFlags
+    pub(crate) rt_formats: SmallVec<[vk::Format; 8]>,
+    pub(crate) depth_format: vk::Format,
+    pub(crate) stencil_format: vk::Format,
+    pub(crate) sample_count: vk::SampleCountFlags
 }
 
-pub(super) enum BoundPipeline {
+pub(crate) enum BoundPipeline {
     Graphics {
         pipeline_layout: Arc<VkPipelineLayout>,
         uses_bindless: bool
@@ -160,12 +160,13 @@ impl VkCommandBuffer {
     }
 
     #[inline(always)]
-    pub fn handle(&self) -> vk::CommandBuffer {
+    pub(crate) fn handle(&self) -> vk::CommandBuffer {
         self.cmd_buffer
     }
 
+    #[allow(unused)]
     #[inline(always)]
-    pub fn cmd_buffer_type(&self) -> gpu::CommandBufferType {
+    pub(crate) fn cmd_buffer_type(&self) -> gpu::CommandBufferType {
         self.command_buffer_type
     }
 

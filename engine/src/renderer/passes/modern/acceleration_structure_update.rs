@@ -2,21 +2,21 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use smallvec::SmallVec;
-use sourcerenderer_core::{Matrix4, Platform};
+use sourcerenderer_core::Matrix4;
 
 use crate::renderer::render_path::RenderPassParameters;
 use crate::asset::ModelHandle;
 use crate::graphics::*;
 
-pub struct AccelerationStructureUpdatePass<P: Platform> {
-    blas_map: HashMap<ModelHandle, Arc<AccelerationStructure<P::GPUBackend>>>,
-    acceleration_structure: Arc<AccelerationStructure<P::GPUBackend>>,
+pub struct AccelerationStructureUpdatePass {
+    blas_map: HashMap<ModelHandle, Arc<AccelerationStructure>>,
+    acceleration_structure: Arc<AccelerationStructure>,
 }
 
-impl<P: Platform> AccelerationStructureUpdatePass<P> {
+impl AccelerationStructureUpdatePass {
     pub fn new(
-        _device: &Arc<Device<P::GPUBackend>>,
-        init_cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>
+        _device: &Arc<Device>,
+        init_cmd_buffer: &mut CommandBufferRecorder
     ) -> Self {
         let info = TopLevelAccelerationStructureInfo {
             instances: &[]
@@ -33,8 +33,8 @@ impl<P: Platform> AccelerationStructureUpdatePass<P> {
 
     pub fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        pass_params: &RenderPassParameters<'_, P>
+        cmd_buffer: &mut CommandBufferRecorder,
+        pass_params: &RenderPassParameters<'_>
     ) {
         // We never reuse handles, so this works.
         let mut removed_models = SmallVec::<[ModelHandle; 4]>::new();
@@ -51,7 +51,7 @@ impl<P: Platform> AccelerationStructureUpdatePass<P> {
 
         let mut created_blas = false;
         let mut bl_acceleration_structures =
-            Vec::<Arc<AccelerationStructure<P::GPUBackend>>>::new();
+            Vec::<Arc<AccelerationStructure>>::new();
 
         for drawable in static_drawables {
             let blas = self.blas_map.get(&drawable.model).cloned().or_else(|| {
@@ -118,7 +118,7 @@ impl<P: Platform> AccelerationStructureUpdatePass<P> {
             cmd_buffer.flush_barriers();
         }
 
-        let mut instances = Vec::<AccelerationStructureInstance<P::GPUBackend>>::with_capacity(
+        let mut instances = Vec::<AccelerationStructureInstance>::with_capacity(
             static_drawables.len(),
         );
         for ((index, bl), drawable) in bl_acceleration_structures
@@ -126,7 +126,7 @@ impl<P: Platform> AccelerationStructureUpdatePass<P> {
             .enumerate()
             .zip(static_drawables.iter())
         {
-            instances.push(AccelerationStructureInstance::<P::GPUBackend> {
+            instances.push(AccelerationStructureInstance {
                 acceleration_structure: bl,
                 transform: Matrix4::from(drawable.transform),
                 front_face: FrontFace::Clockwise,
@@ -153,7 +153,7 @@ impl<P: Platform> AccelerationStructureUpdatePass<P> {
     #[inline(always)]
     pub fn acceleration_structure(
         &self,
-    ) -> &Arc<AccelerationStructure<P::GPUBackend>> {
+    ) -> &Arc<AccelerationStructure> {
         &self.acceleration_structure
     }
 }

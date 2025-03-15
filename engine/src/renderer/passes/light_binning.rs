@@ -1,9 +1,6 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::{
-    Platform,
-    Vec3, Vec3UI,
-};
+use sourcerenderer_core::{Vec3, Vec3UI};
 
 use super::clustering::ClusteringPass;
 use crate::asset::AssetManager;
@@ -40,9 +37,9 @@ impl LightBinningPass {
     pub const LIGHT_BINNING_BUFFER_NAME: &'static str = "binned_lights";
 
     #[allow(unused)]
-    pub fn new<P: Platform>(
-        barriers: &mut RendererResources<P::GPUBackend>,
-        asset_manager: &Arc<AssetManager<P>>,
+    pub fn new(
+        barriers: &mut RendererResources,
+        asset_manager: &Arc<AssetManager>,
     ) -> Self {
         let pipeline = asset_manager.request_compute_pipeline("shaders/light_binning.comp.json");
 
@@ -63,15 +60,15 @@ impl LightBinningPass {
     }
 
     #[inline(always)]
-    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_compute_pipeline(self.light_binning_pipeline).is_some()
     }
 
-    pub fn execute<P: Platform>(
+    pub fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        pass_params: &RenderPassParameters<'_, P>,
-        camera_buffer: &TransientBufferSlice<P::GPUBackend>
+        cmd_buffer: &mut CommandBufferRecorder,
+        pass_params: &RenderPassParameters<'_>,
+        camera_buffer: &TransientBufferSlice
     ) {
         cmd_buffer.begin_label("Light binning");
         let cluster_count = Vec3UI::new(16, 9, 24);

@@ -21,7 +21,7 @@ use crate::asset::loaders::vpk_container::{
 
 pub(super) const CSGO_MAP_NAME_PATTERN: &str = r"(de|cs|dm|am|surf|aim)_[a-zA-Z0-9_-]+\.bsp";
 
-pub struct CSGODirectoryContainer<P: Platform> {
+pub struct CSGODirectoryContainer {
     path: String,
     map_name_regex: Regex,
     primary_pak_name_regex: Regex,
@@ -29,15 +29,15 @@ pub struct CSGODirectoryContainer<P: Platform> {
     _p: PhantomData<<P::IO as IO>::File>,
 }
 
-unsafe impl<P: Platform> Send for CSGODirectoryContainer<P> {}
-unsafe impl<P: Platform> Sync for CSGODirectoryContainer<P> {}
+unsafe impl Send for CSGODirectoryContainer {}
+unsafe impl Sync for CSGODirectoryContainer {}
 
 #[derive(Debug)]
 pub enum CSGOMapLoaderError {
     CSGONotFound,
 }
 
-impl<P: Platform> CSGODirectoryContainer<P> {
+impl CSGODirectoryContainer {
     pub fn new(path: &str) -> Result<Self, CSGOMapLoaderError> {
         let mut exe_path = PathBuf::new();
         exe_path.push(path.to_owned());
@@ -60,7 +60,7 @@ impl<P: Platform> CSGODirectoryContainer<P> {
     }
 }
 
-impl<P: Platform> AssetContainer for CSGODirectoryContainer<P> {
+impl AssetContainer for CSGODirectoryContainer {
     fn contains(&self, path: &str) -> bool {
         self.map_name_regex.is_match(path)
             || self.primary_pak_name_regex.is_match(path)

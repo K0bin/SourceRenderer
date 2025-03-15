@@ -1,9 +1,6 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::{
-    Platform,
-    Vec2UI,
-};
+use sourcerenderer_core::Vec2UI;
 
 use super::ssr::SsrPass;
 use crate::asset::AssetManager;
@@ -24,10 +21,10 @@ impl CompositingPass {
     pub const COMPOSITION_TEXTURE_NAME: &'static str = "Composition";
 
     #[allow(unused)]
-    pub fn new<P: Platform>(
+    pub fn new(
         resolution: Vec2UI,
-        resources: &mut RendererResources<P::GPUBackend>,
-        asset_manager: &Arc<AssetManager<P>>,
+        resources: &mut RendererResources,
+        asset_manager: &Arc<AssetManager>,
     ) -> Self {
         let pipeline = asset_manager.request_compute_pipeline("shaders/compositing.comp.json");
 
@@ -52,14 +49,14 @@ impl CompositingPass {
     }
 
     #[inline(always)]
-    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_compute_pipeline(self.pipeline).is_some()
     }
 
-    pub fn execute<P: Platform>(
+    pub fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        params: &RenderPassParameters<'_, P>,
+        cmd_buffer: &mut CommandBufferRecorder,
+        params: &RenderPassParameters<'_>,
         input_name: &str,
     ) {
         let input_image = params.resources.access_view(
@@ -84,7 +81,7 @@ impl CompositingPass {
             HistoryResourceEntry::Current,
         );
 
-        let output: std::cell::Ref<'_, std::sync::Arc<TextureView<<P as Platform>::GPUBackend>>> = params.resources.access_view(
+        let output: std::cell::Ref<'_, std::sync::Arc<TextureView>> = params.resources.access_view(
             cmd_buffer,
             Self::COMPOSITION_TEXTURE_NAME,
             BarrierSync::COMPUTE_SHADER,

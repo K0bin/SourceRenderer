@@ -61,15 +61,6 @@ impl VkTimelineSemaphore {
                 .unwrap();
         }
     }
-
-    #[inline(always)]
-    pub unsafe fn value(&self) -> u64 {
-        unsafe {
-            self.device
-                .get_semaphore_counter_value(self.semaphore)
-                .unwrap()
-        }
-    }
 }
 
 impl Drop for VkTimelineSemaphore {

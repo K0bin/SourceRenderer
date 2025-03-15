@@ -8,13 +8,13 @@ use super::*;
 
 const DEBUG_FORCE_FAT_BARRIER: bool = false;
 
-pub(crate) struct Transfer<B: GPUBackend> {
-  device: Arc<B::Device>,
-  buffer_allocator: Arc<BufferAllocator<B>>,
-  inner: Mutex<TransferInner<B>>,
+pub(crate) struct Transfer {
+  device: Arc<active_gpu_backend::Device>,
+  buffer_allocator: Arc<BufferAllocator>,
+  inner: Mutex<TransferInner>,
 }
 
-pub enum OwnedBarrier<B: GPUBackend> {
+pub enum OwnedBarrier {
   TextureBarrier {
     old_sync: BarrierSync,
     new_sync: BarrierSync,
@@ -22,7 +22,7 @@ pub enum OwnedBarrier<B: GPUBackend> {
     new_layout: TextureLayout,
     old_access: BarrierAccess,
     new_access: BarrierAccess,
-    texture: Arc<Texture<B>>,
+    texture: Arc<Texture>,
     range: BarrierTextureRange,
     queue_ownership: Option<QueueOwnershipTransfer>
   },
@@ -31,59 +31,59 @@ pub enum OwnedBarrier<B: GPUBackend> {
     new_sync: BarrierSync,
     old_access: BarrierAccess,
     new_access: BarrierAccess,
-    buffer: Arc<BufferSlice<B>>,
+    buffer: Arc<BufferSlice>,
     offset: u64,
     length: u64,
     queue_ownership: Option<QueueOwnershipTransfer>
   },
 }
 
-enum TransferCopy<B: GPUBackend> {
+enum TransferCopy {
   BufferToImage {
-      src: Arc<BufferSlice<B>>,
-      dst: Arc<Texture<B>>,
+      src: Arc<BufferSlice>,
+      dst: Arc<Texture>,
       region: BufferTextureCopyRegion
   },
   BufferToBuffer {
-      src: Arc<BufferSlice<B>>,
-      dst: Arc<BufferSlice<B>>,
+      src: Arc<BufferSlice>,
+      dst: Arc<BufferSlice>,
       region: BufferCopyRegion
   },
 }
 
-struct TransferInner<B: GPUBackend> {
-  graphics: TransferCommands<B>,
-  transfer: Option<TransferCommands<B>>,
+struct TransferInner {
+  graphics: TransferCommands,
+  transfer: Option<TransferCommands>,
 }
 
-struct TransferCommands<B: GPUBackend> {
-  pre_barriers: Vec<OwnedBarrier<B>>,
-  copies: Vec<TransferCopy<B>>,
-  post_barriers: Vec<(Option<SharedFenceValuePair<B>>, OwnedBarrier<B>)>,
-  used_cmd_buffers: VecDeque<Box<TransferCommandBuffer<B>>>,
-  pool: B::CommandPool,
-  fence_value: SharedFenceValuePair<B>,
-  used_buffers_slices: Vec<Arc<BufferSlice<B>>>,
-  used_textures: Vec<Arc<super::Texture<B>>>
+struct TransferCommands {
+  pre_barriers: Vec<OwnedBarrier>,
+  copies: Vec<TransferCopy>,
+  post_barriers: Vec<(Option<SharedFenceValuePair>, OwnedBarrier)>,
+  used_cmd_buffers: VecDeque<Box<TransferCommandBuffer>>,
+  pool: active_gpu_backend::CommandPool,
+  fence_value: SharedFenceValuePair,
+  used_buffers_slices: Vec<Arc<BufferSlice>>,
+  used_textures: Vec<Arc<super::Texture>>
 }
 
-pub struct TransferCommandBuffer<B: GPUBackend> {
-  cmd_buffer: B::CommandBuffer,
-  fence_value: SharedFenceValuePair<B>,
+pub struct TransferCommandBuffer {
+  cmd_buffer: active_gpu_backend::CommandBuffer,
+  fence_value: SharedFenceValuePair,
   is_used: bool,
-  used_buffers_slices: Vec<Arc<BufferSlice<B>>>,
-  used_textures: Vec<Arc<super::Texture<B>>>
+  used_buffers_slices: Vec<Arc<BufferSlice>>,
+  used_textures: Vec<Arc<super::Texture>>
 }
 
-impl<B: GPUBackend> Transfer<B> {
-    pub(super) fn new(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, buffer_allocator: &Arc<BufferAllocator<B>>) -> Self {
+impl Transfer {
+    pub(super) fn new(device: &Arc<active_gpu_backend::Device>, destroyer: &Arc<DeferredDestroyer>, buffer_allocator: &Arc<BufferAllocator>) -> Self {
         let graphics_fence = Arc::new(super::Fence::new(device.as_ref(), destroyer));
         let graphics_pool = unsafe { device.graphics_queue().create_command_pool(gpu::CommandPoolType::CommandBuffers, gpu::CommandPoolFlags::INDIVIDUAL_RESET) };
 
         let transfer_commands = device.transfer_queue().map(|transfer_queue| {
             let transfer_fence = Arc::new(super::Fence::new(device.as_ref(), destroyer));
             let transfer_pool = unsafe { transfer_queue.create_command_pool(gpu::CommandPoolType::CommandBuffers, gpu::CommandPoolFlags::INDIVIDUAL_RESET) };
-            TransferCommands::<B> {
+            TransferCommands {
                 pre_barriers: Vec::new(),
                 copies: Vec::new(),
                 post_barriers: Vec::new(),
@@ -99,7 +99,7 @@ impl<B: GPUBackend> Transfer<B> {
             }
         });
 
-        let graphics_commands = TransferCommands::<B> {
+        let graphics_commands = TransferCommands {
             pre_barriers: Vec::new(),
             copies: Vec::new(),
             post_barriers: Vec::new(),
@@ -117,7 +117,7 @@ impl<B: GPUBackend> Transfer<B> {
         Self {
             device: device.clone(),
             buffer_allocator: buffer_allocator.clone(),
-            inner: Mutex::new(TransferInner::<B> {
+            inner: Mutex::new(TransferInner {
                 graphics: graphics_commands,
                 transfer: transfer_commands,
             })
@@ -126,8 +126,8 @@ impl<B: GPUBackend> Transfer<B> {
 
     pub fn init_texture_from_buffer(
       &self,
-      texture: &Arc<Texture<B>>,
-      src_buffer: &Arc<BufferSlice<B>>,
+      texture: &Arc<Texture>,
+      src_buffer: &Arc<BufferSlice>,
       mip_level: u32,
       array_layer: u32,
       buffer_offset: u64
@@ -197,8 +197,8 @@ impl<B: GPUBackend> Transfer<B> {
 
     pub fn init_buffer_from_buffer(
       &self,
-      src_buffer: &Arc<BufferSlice<B>>,
-      dst_buffer: &Arc<BufferSlice<B>>,
+      src_buffer: &Arc<BufferSlice>,
+      dst_buffer: &Arc<BufferSlice>,
       src_offset: u64,
       dst_offset: u64,
       length: u64
@@ -239,7 +239,7 @@ impl<B: GPUBackend> Transfer<B> {
     pub fn init_buffer(
       &self,
       data: &[u8],
-      dst_buffer: &Arc<BufferSlice<B>>,
+      dst_buffer: &Arc<BufferSlice>,
       dst_offset: u64,
     ) -> Result<(), OutOfMemoryError> {
       debug_assert_ne!(data.len(), 0);
@@ -257,7 +257,7 @@ impl<B: GPUBackend> Transfer<B> {
     pub fn init_buffer_box(
       &self,
       data: Box<[u8]>,
-      dst_buffer: &Arc<BufferSlice<B>>,
+      dst_buffer: &Arc<BufferSlice>,
       dst_offset: u64,
     ) -> Result<(), OutOfMemoryError> {
       debug_assert_ne!(data.len(), 0);
@@ -275,11 +275,11 @@ impl<B: GPUBackend> Transfer<B> {
     pub fn init_texture(
       &self,
       data: &[u8],
-      texture: &Arc<Texture<B>>,
+      texture: &Arc<Texture>,
       mip_level: u32,
       array_layer: u32,
       do_async: bool
-    ) -> Result<Option<SharedFenceValuePair<B>>, OutOfMemoryError> {
+    ) -> Result<Option<SharedFenceValuePair>, OutOfMemoryError> {
       unsafe {
         if texture.handle().can_be_written_directly() {
           self.copy_to_host_visible_texture(data, texture, mip_level, array_layer);
@@ -300,11 +300,11 @@ impl<B: GPUBackend> Transfer<B> {
     pub fn init_texture_box(
       &self,
       data: Box<[u8]>,
-      texture: &Arc<Texture<B>>,
+      texture: &Arc<Texture>,
       mip_level: u32,
       array_layer: u32,
       do_async: bool
-    ) -> Result<Option<SharedFenceValuePair<B>>, OutOfMemoryError> {
+    ) -> Result<Option<SharedFenceValuePair>, OutOfMemoryError> {
       unsafe {
         if texture.handle().can_be_written_directly() {
           self.copy_to_host_visible_texture(&data, texture, mip_level, array_layer);
@@ -325,7 +325,7 @@ impl<B: GPUBackend> Transfer<B> {
     pub fn copy_to_host_visible_texture(
       &self,
       data: &[u8],
-      texture: &Arc<Texture<B>>,
+      texture: &Arc<Texture>,
       mip_level: u32,
       array_layer: u32
     ) {
@@ -356,7 +356,7 @@ impl<B: GPUBackend> Transfer<B> {
     fn copy_to_host_visible_buffer(
       &self,
       data: &[u8],
-      dst_buffer: &Arc<BufferSlice<B>>,
+      dst_buffer: &Arc<BufferSlice>,
       dst_offset: u64
     ) -> bool {
       unsafe {
@@ -374,12 +374,12 @@ impl<B: GPUBackend> Transfer<B> {
 
     pub fn init_texture_from_buffer_async(
       &self,
-      texture: &Arc<super::Texture<B>>,
-      src_buffer: &Arc<BufferSlice<B>>,
+      texture: &Arc<super::Texture>,
+      src_buffer: &Arc<BufferSlice>,
       mip_level: u32,
       array_layer: u32,
       buffer_offset: u64
-    ) -> Option<SharedFenceValuePair<B>> {
+    ) -> Option<SharedFenceValuePair> {
       let mut guard = self.inner.lock().unwrap();
       if guard.transfer.is_none() || DEBUG_FORCE_FAT_BARRIER {
         std::mem::drop(guard);
@@ -506,8 +506,8 @@ impl<B: GPUBackend> Transfer<B> {
 
     fn flush_commands(
       &self,
-      commands: &mut TransferCommands<B>
-    ) -> Option<Box<TransferCommandBuffer<B>>> {
+      commands: &mut TransferCommands
+    ) -> Option<Box<TransferCommandBuffer>> {
         if commands.copies.is_empty()
                 && (commands.post_barriers.is_empty()
                     || commands
@@ -529,7 +529,7 @@ impl<B: GPUBackend> Transfer<B> {
             cmd_buffer
         } else {
             Box::new({
-                TransferCommandBuffer::<B>::new(
+                TransferCommandBuffer::new(
                     &self.device,
                     &mut commands.pool,
                     &commands.fence_value
@@ -550,7 +550,7 @@ impl<B: GPUBackend> Transfer<B> {
         }
 
         // commit pre barriers
-        let mut barriers = Vec::<gpu::Barrier<B>>::with_capacity(commands.pre_barriers.len());
+        let mut barriers = Vec::<active_gpu_backend::Barrier>::with_capacity(commands.pre_barriers.len());
         for barrier in commands.pre_barriers.iter() {
             barriers.push(
                 match barrier {
@@ -638,7 +638,7 @@ impl<B: GPUBackend> Transfer<B> {
         }
 
         // commit post barriers
-        let mut barriers = Vec::<gpu::Barrier<B>>::with_capacity(commands.pre_barriers.len());
+        let mut barriers = Vec::<active_gpu_backend::Barrier>::with_capacity(commands.pre_barriers.len());
         let mut retained_barrier_indices = HashSet::<u32>::new();
         for (index, (fence_opt, barrier)) in commands.post_barriers.iter().enumerate() {
             if let Some(fence) = fence_opt {
@@ -715,7 +715,7 @@ impl<B: GPUBackend> Transfer<B> {
         Some(cmd_buffer)
     }
 
-    fn upload_data<T>(&self, data: &[T], length: u64, memory_usage: MemoryUsage, usage: BufferUsage) -> Result<Arc<BufferSlice<B>>, OutOfMemoryError> {
+    fn upload_data<T>(&self, data: &[T], length: u64, memory_usage: MemoryUsage, usage: BufferUsage) -> Result<Arc<BufferSlice>, OutOfMemoryError> {
       let required_size = std::mem::size_of_val(data) as u64;
       assert_ne!(required_size, 0u64);
       let size = align_up_64(
@@ -750,7 +750,7 @@ impl<B: GPUBackend> Transfer<B> {
 
         let mut guard = self.inner.lock().unwrap();
         if let Some(transfer) = guard.transfer.as_mut() {
-            let cmd_buffer_opt: Option<Box<TransferCommandBuffer<B>>> = self.flush_commands(transfer);
+            let cmd_buffer_opt: Option<Box<TransferCommandBuffer>> = self.flush_commands(transfer);
             if let Some(mut cmd_buffer) = cmd_buffer_opt {
                 unsafe {
                     self.device.transfer_queue()
@@ -783,7 +783,7 @@ impl<B: GPUBackend> Transfer<B> {
         }
     }
 
-    fn fat_barrier(cmd_buffer: &mut B::CommandBuffer) {
+    fn fat_barrier(cmd_buffer: &mut active_gpu_backend::CommandBuffer) {
         let fat_core_barrier = [
             gpu::Barrier::GlobalBarrier { old_sync: BarrierSync::all(), new_sync: BarrierSync::all(), old_access: BarrierAccess::MEMORY_WRITE, new_access: BarrierAccess::MEMORY_READ | BarrierAccess::MEMORY_WRITE }
         ];
@@ -794,11 +794,11 @@ impl<B: GPUBackend> Transfer<B> {
     }
 }
 
-impl<B: GPUBackend> TransferCommandBuffer<B> {
+impl TransferCommandBuffer {
     pub(super) fn new(
-        _device: &Arc<B::Device>,
-        pool: &mut B::CommandPool,
-        fence_value: &SharedFenceValuePair<B>
+        _device: &Arc<active_gpu_backend::Device>,
+        pool: &mut active_gpu_backend::CommandPool,
+        fence_value: &SharedFenceValuePair
     ) -> Self {
         let cmd_buffer = unsafe { pool.create_command_buffer() };
 
@@ -837,18 +837,18 @@ impl<B: GPUBackend> TransferCommandBuffer<B> {
 
     #[allow(unused)]
     #[inline(always)]
-    pub(super) fn handle(&self) -> &B::CommandBuffer {
+    pub(super) fn handle(&self) -> &active_gpu_backend::CommandBuffer {
         &self.cmd_buffer
     }
 
     #[allow(unused)]
     #[inline(always)]
-    pub(super) fn fence_value(&self) -> &SharedFenceValuePair<B> {
+    pub(super) fn fence_value(&self) -> &SharedFenceValuePair {
         &self.fence_value
     }
 }
 
-impl<B: GPUBackend> Drop for TransferCommandBuffer<B> {
+impl Drop for TransferCommandBuffer {
     fn drop(&mut self) {
         if self.is_used {
             unsafe {

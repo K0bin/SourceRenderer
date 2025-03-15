@@ -1,23 +1,22 @@
 use std::sync::Arc;
 use web_time::Duration;
 
-use sourcerenderer_core::gpu;
 use sourcerenderer_core::Platform;
 
 use super::asset::{RendererAssetsReadOnly, RendererTexture};
 use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
 use crate::asset::AssetManager;
-use crate::graphics::{BufferRef, GraphicsContext, GPUBackend};
+use crate::graphics::{BufferRef, GraphicsContext, Backbuffer};
 use crate::ui::UIDrawData;
 use crate::graphics::*;
 
-pub struct SceneInfo<'a, B: GPUBackend> {
-    pub scene: &'a RendererScene<B>,
+pub struct SceneInfo<'a>{
+    pub scene: &'a RendererScene,
     pub active_view_index: usize,
-    pub vertex_buffer: BufferRef<'a, B>,
-    pub index_buffer: BufferRef<'a, B>,
-    pub lightmap: Option<&'a RendererTexture<B>>,
+    pub vertex_buffer: BufferRef<'a>,
+    pub index_buffer: BufferRef<'a>,
+    pub lightmap: Option<&'a RendererTexture>,
 }
 
 pub struct FrameInfo {
@@ -25,32 +24,32 @@ pub struct FrameInfo {
     pub delta: Duration,
 }
 
-pub struct RenderPassParameters<'a, P: Platform> {
-    pub device: &'a Device<P::GPUBackend>,
-    pub scene: &'a SceneInfo<'a, P::GPUBackend>,
-    pub resources: &'a mut RendererResources<P::GPUBackend>,
-    pub assets: &'a RendererAssetsReadOnly<'a, P>
+pub struct RenderPassParameters<'a> {
+    pub device: &'a Device,
+    pub scene: &'a SceneInfo<'a>,
+    pub resources: &'a mut RendererResources,
+    pub assets: &'a RendererAssetsReadOnly<'a>
 }
 
-pub struct RenderPathResult<B: GPUBackend> {
-    pub cmd_buffer: FinishedCommandBuffer<B>,
-    pub backbuffer: Option<Arc<<B::Swapchain as gpu::Swapchain<B>>::Backbuffer>>
+pub struct RenderPathResult {
+    pub cmd_buffer: FinishedCommandBuffer,
+    pub backbuffer: Option<Arc<Backbuffer>>
 }
 
 pub trait RenderPath<P: Platform> : Send {
     fn is_gpu_driven(&self) -> bool;
     fn write_occlusion_culling_results(&self, frame: u64, bitset: &mut Vec<u32>);
-    fn on_swapchain_changed(&mut self, swapchain: &Swapchain<P::GPUBackend>);
-    fn set_ui_data(&mut self, data: UIDrawData<P::GPUBackend>);
-    fn is_ready(&self, asset_manager: &Arc<AssetManager<P>>) -> bool;
+    fn on_swapchain_changed(&mut self, swapchain: &Swapchain);
+    fn set_ui_data(&mut self, data: UIDrawData);
+    fn is_ready(&self, asset_manager: &Arc<AssetManager>) -> bool;
     fn render(
         &mut self,
-        context: &mut GraphicsContext<P::GPUBackend>,
-        swapchain: &mut Swapchain<P::GPUBackend>,
-        scene: &SceneInfo<P::GPUBackend>,
+        context: &mut GraphicsContext,
+        swapchain: &mut Swapchain,
+        scene: &SceneInfo,
         frame_info: &FrameInfo,
-        assets: &RendererAssetsReadOnly<'_, P>,
-    ) -> Result<RenderPathResult<P::GPUBackend>, SwapchainError>;
+        assets: &RendererAssetsReadOnly<'_>,
+    ) -> Result<RenderPathResult, SwapchainError>;
 }
 
 pub struct NoOpRenderPath;
@@ -60,17 +59,17 @@ impl<P: Platform> RenderPath<P> for NoOpRenderPath {
         false
     }
     fn write_occlusion_culling_results(&self, _frame: u64, _bitset: &mut Vec<u32>) {}
-    fn on_swapchain_changed(&mut self, _swapchain: &Swapchain<<P as Platform>::GPUBackend>) {}
-    fn set_ui_data(&mut self, _data: UIDrawData<<P as Platform>::GPUBackend>) {}
-    fn is_ready(&self, _asset_manager: &Arc<AssetManager<P>>) -> bool { true }
+    fn on_swapchain_changed(&mut self, _swapchain: &Swapchain) {}
+    fn set_ui_data(&mut self, _data: UIDrawData) {}
+    fn is_ready(&self, _asset_manager: &Arc<AssetManager>) -> bool { true }
     fn render(
         &mut self,
-        context: &mut GraphicsContext<<P as Platform>::GPUBackend>,
-        swapchain: &mut Swapchain<<P as Platform>::GPUBackend>,
-        _scene: &SceneInfo<<P as Platform>::GPUBackend>,
+        context: &mut GraphicsContext,
+        swapchain: &mut Swapchain,
+        _scene: &SceneInfo,
         _frame_info: &FrameInfo,
-        _assets: &RendererAssetsReadOnly<'_, P>,
-    ) -> Result<RenderPathResult<<P as Platform>::GPUBackend>, SwapchainError> {
+        _assets: &RendererAssetsReadOnly<'_>,
+    ) -> Result<RenderPathResult, SwapchainError> {
         let backbuffer = swapchain.next_backbuffer()?;
         let mut cmd_buffer = context.get_command_buffer(QueueType::Graphics);
         cmd_buffer.barrier(&[Barrier::RawTextureBarrier {

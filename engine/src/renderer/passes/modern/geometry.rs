@@ -4,7 +4,6 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 use sourcerenderer_core::{
     Matrix4,
-    Platform,
     Vec2,
     Vec2I,
     Vec2UI, Vec3UI,
@@ -50,12 +49,12 @@ struct FrameData {
 }
 
 #[allow(unused)]
-pub struct GeometryPass<P: Platform> {
-    sampler: Arc<Sampler<P::GPUBackend>>,
+pub struct GeometryPass {
+    sampler: Arc<Sampler>,
     pipeline: GraphicsPipelineHandle,
 }
 
-impl<P: Platform> GeometryPass<P> {
+impl GeometryPass {
     pub const GEOMETRY_PASS_TEXTURE_NAME: &'static str = "geometry";
     pub const MOTION_TEXTURE_NAME: &'static str = "Motion";
     pub const NORMALS_TEXTURE_NAME: &'static str = "Normals";
@@ -63,10 +62,10 @@ impl<P: Platform> GeometryPass<P> {
 
     #[allow(unused)]
     pub fn new(
-        device: &Arc<Device<P::GPUBackend>>,
-        swapchain: &Swapchain<P::GPUBackend>,
-        resources: &mut RendererResources<P::GPUBackend>,
-        asset_manager: &Arc<AssetManager<P>>,
+        device: &Arc<Device>,
+        swapchain: &Swapchain,
+        resources: &mut RendererResources,
+        asset_manager: &Arc<AssetManager>,
     ) -> Self {
         let texture_info = TextureInfo {
             dimension: TextureDimension::Dim2D,
@@ -222,29 +221,29 @@ impl<P: Platform> GeometryPass<P> {
     }
 
     #[inline(always)]
-    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_graphics_pipeline(self.pipeline).is_some()
     }
 
     #[profiling::function]
     pub(super) fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        barriers: &RendererResources<P::GPUBackend>,
-        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
+        cmd_buffer: &mut CommandBufferRecorder,
+        barriers: &RendererResources,
+        device: &Arc<crate::graphics::Device>,
         depth_name: &str,
-        scene: &RendererScene<P::GPUBackend>,
+        scene: &RendererScene,
         view: &View,
-        gpu_scene: &TransientBufferSlice<P::GPUBackend>,
-        zero_texture_view: &Arc<TextureView<P::GPUBackend>>,
-        _zero_texture_view_black: &Arc<TextureView<P::GPUBackend>>,
-        lightmap: &Arc<RendererTexture<P::GPUBackend>>,
+        gpu_scene: &TransientBufferSlice,
+        zero_texture_view: &Arc<TextureView>,
+        _zero_texture_view_black: &Arc<TextureView>,
+        lightmap: &Arc<RendererTexture>,
         swapchain_transform: Matrix4,
         frame: u64,
-        camera_buffer: &Arc<BufferSlice<P::GPUBackend>>,
-        vertex_buffer: &Arc<BufferSlice<P::GPUBackend>>,
-        index_buffer: &Arc<BufferSlice<P::GPUBackend>>,
-        assets: &RendererAssetsReadOnly<'_, P>,
+        camera_buffer: &Arc<BufferSlice>,
+        vertex_buffer: &Arc<BufferSlice>,
+        index_buffer: &Arc<BufferSlice>,
+        assets: &RendererAssetsReadOnly<'_>,
     ) {
         cmd_buffer.begin_label("Geometry pass");
         let draw_buffer = barriers.access_buffer(
@@ -303,7 +302,7 @@ impl<P: Platform> GeometryPass<P> {
 
         let ssao_ref = barriers.access_view(
             cmd_buffer,
-            SsaoPass::<P>::SSAO_TEXTURE_NAME,
+            SsaoPass::SSAO_TEXTURE_NAME,
             BarrierSync::FRAGMENT_SHADER | BarrierSync::COMPUTE_SHADER,
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,
@@ -322,7 +321,7 @@ impl<P: Platform> GeometryPass<P> {
         );
         let light_bitmask_buffer = &*light_bitmask_buffer_ref;
 
-        let rt_shadows: Ref<Arc<TextureView<P::GPUBackend>>>;
+        let rt_shadows: Ref<Arc<TextureView>>;
         let shadows = if device.supports_ray_tracing() {
             rt_shadows = barriers.access_view(
                 cmd_buffer,
@@ -345,23 +344,23 @@ impl<P: Platform> GeometryPass<P> {
                     RenderTarget {
                         view: &rtv,
                         load_op: LoadOpColor::Clear(ClearColor::BLACK),
-                        store_op: StoreOp::<P::GPUBackend>::Store,
+                        store_op: StoreOp::Store,
                     },
                     RenderTarget {
                         view: &*motion,
                         load_op: LoadOpColor::Clear(ClearColor::BLACK),
-                        store_op: StoreOp::<P::GPUBackend>::Store,
+                        store_op: StoreOp::Store,
                     },
                     RenderTarget {
                         view: &*normals,
                         load_op: LoadOpColor::Clear(ClearColor::BLACK),
-                        store_op: StoreOp::<P::GPUBackend>::Store,
+                        store_op: StoreOp::Store,
                     }
                 ],
                 depth_stencil: Some(&DepthStencilAttachment {
                     view: &prepass_depth,
                     load_op: LoadOpDepthStencil::Load,
-                    store_op: StoreOp::<P::GPUBackend>::Store,
+                    store_op: StoreOp::Store,
                 })
             },
             RenderpassRecordingMode::Commands,

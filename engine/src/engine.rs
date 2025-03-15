@@ -15,7 +15,7 @@ use bevy_transform::TransformPlugin;
 use bevy_hierarchy::HierarchyPlugin;
 
 use log::{trace, warn};
-use sourcerenderer_core::platform::Platform;
+use sourcerenderer_core::platform::{GraphicsPlatform, Platform, WindowProvider};
 use sourcerenderer_core::{
     console::Console,
     Vec2UI,
@@ -47,7 +47,7 @@ pub struct Engine{
 }
 
 impl Engine {
-    pub fn run<P: Platform, M>(platform: &P, game_plugins: impl Plugins<M>) -> Self {
+    pub fn run<P: Platform + GraphicsPlatform<ActiveBackend> + WindowProvider<ActiveBackend>, M>(platform: &P, game_plugins: impl Plugins<M>) -> Self {
         let console = Arc::new(Console::new());
         let console_resource = ConsoleResource(console);
 
@@ -151,7 +151,7 @@ impl Engine {
         }
     }
 
-    pub fn get_asset_manager<P: Platform>(app: &App) -> &Arc<AssetManager<P>> {
+    pub fn get_asset_manager<P: Platform>(app: &App) -> &Arc<AssetManager> {
         &app.world().resource::<AssetManagerECSResource<P>>().0
     }
 }

@@ -36,20 +36,20 @@ const QUERY_COUNT: usize = 16384;
 const OCCLUDED_FRAME_COUNT: u32 = 5;
 const QUERY_PING_PONG_FRAMES: u32 = 5;
 
-pub struct OcclusionPass<P: Platform> {
-    query_buffers: Vec<Arc<BufferSlice<P::GPUBackend>>>,
-    occluder_vb: Arc<BufferSlice<P::GPUBackend>>,
-    occluder_ib: Arc<BufferSlice<P::GPUBackend>>,
+pub struct OcclusionPass {
+    query_buffers: Vec<Arc<BufferSlice>>,
+    occluder_vb: Arc<BufferSlice>,
+    occluder_ib: Arc<BufferSlice>,
     pipeline: GraphicsPipelineHandle,
     drawable_occluded_frames: AtomicRefCell<HashMap<u32, u32>>,
     occlusion_query_maps: Vec<HashMap<u32, u32>>,
     visible_drawable_indices: Vec<u32>,
 }
 
-impl<P: Platform> OcclusionPass<P> {
+impl OcclusionPass {
     pub fn new(
-        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
-        asset_manager: &Arc<AssetManager<P>>,
+        device: &Arc<crate::graphics::Device>,
+        asset_manager: &Arc<AssetManager>,
     ) -> Self {
         let buffer_info = BufferInfo {
             size: (std::mem::size_of::<u32>() * QUERY_COUNT) as u64,
@@ -181,17 +181,17 @@ impl<P: Platform> OcclusionPass<P> {
         }
     }
 
-    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_compute_pipeline(self.pipeline).is_some()
     }
 
     pub fn execute(
         &mut self,
-        context: &GraphicsContext<P::GPUBackend>,
-        command_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        pass_params: &RenderPassParameters<'_, P>,
+        context: &GraphicsContext,
+        command_buffer: &mut CommandBufferRecorder,
+        pass_params: &RenderPassParameters<'_>,
         frame: u64,
-        camera_history_buffer: &Arc<BufferSlice<P::GPUBackend>>,
+        camera_history_buffer: &Arc<BufferSlice>,
         depth_name: &str
     ) {
         let history_depth_buffer_ref = pass_params.resources.access_view(
@@ -264,7 +264,7 @@ impl<P: Platform> OcclusionPass<P> {
         const CHUNK_SIZE: usize = 256;
         let chunks = self.visible_drawable_indices.par_chunks(CHUNK_SIZE);
         let inheritance = command_buffer.inheritance();
-        let inner_cmd_buffers: Vec<FinishedCommandBuffer<P::GPUBackend>> =
+        let inner_cmd_buffers: Vec<FinishedCommandBuffer> =
             chunks
                 .map(|chunk| {
                     let mut pairs: SmallVec<[(u32, u32); CHUNK_SIZE]> = SmallVec::new();

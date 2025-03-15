@@ -55,7 +55,7 @@ const SCALING_FACTOR: f32 = 0.0236f32;
 
 pub struct MDLModelLoader {}
 
-impl<P: Platform> AssetLoader<P> for MDLModelLoader {
+impl AssetLoader for MDLModelLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
         file.path.starts_with("models/") && file.path.ends_with(".mdl")
     }
@@ -64,7 +64,7 @@ impl<P: Platform> AssetLoader<P> for MDLModelLoader {
     fn load(
         &self,
         mut file: AssetFile,
-        manager: &Arc<AssetManager<P>>,
+        manager: &Arc<AssetManager>,
         _priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<(), ()> {

@@ -6,19 +6,19 @@ use std::{sync::Arc, collections::HashMap};
 use sourcerenderer_core::{Platform, Vec2, Vec2I, Vec2UI};
 use crate::graphics::*;
 
-/*pub struct UI<P: Platform> {
+/*pub struct UI {
     imgui: Context,
-    texture_map: HashMap<imgui::TextureId, Arc<TextureView<P::GPUBackend>>>,
+    texture_map: HashMap<imgui::TextureId, Arc<TextureView>>,
     window_size: Vec2UI
 }
 
-impl<P: Platform> UI<P> {
-    pub fn new(device: &Arc<Device<P::GPUBackend>>, window_size: Vec2UI) -> Self {
+impl UI {
+    pub fn new(device: &Arc<Device>, window_size: Vec2UI) -> Self {
         let mut imgui = imgui::Context::create();
         imgui.set_platform_name(Some("Dreieck".to_string()));
         imgui.style_mut().use_dark_colors();
 
-        let mut texture_map: HashMap<imgui::TextureId, Arc<TextureView<P::GPUBackend>>> = HashMap::new();
+        let mut texture_map: HashMap<imgui::TextureId, Arc<TextureView>> = HashMap::new();
 
         const FONT_TEXTURE_ID: usize = 1;
 
@@ -64,9 +64,9 @@ impl<P: Platform> UI<P> {
         frame.show_demo_window(&mut opened);
     }
 
-    pub fn draw_data(&mut self, device: &Arc<crate::graphics::Device<P::GPUBackend>>) -> UIDrawData<P::GPUBackend> {
+    pub fn draw_data(&mut self, device: &Arc<crate::graphics::Device>) -> UIDrawData {
         let draw = self.imgui.render();
-        let mut draw_lists = Vec::<UICmdList<P::GPUBackend>>::with_capacity(draw.draw_lists_count());
+        let mut draw_lists = Vec::<UICmdList>::with_capacity(draw.draw_lists_count());
 
         let fb_size = Vec2::new(draw.display_size[0] * draw.framebuffer_scale[0], draw.display_size[1] * draw.framebuffer_scale[1]);
         let scale = Vec2::new(
@@ -91,7 +91,7 @@ impl<P: Platform> UI<P> {
         for list in draw.draw_lists() {
             let vertex_buffer = device.upload_data(list.vtx_buffer(), MemoryUsage::MappableGPUMemory, BufferUsage::VERTEX).unwrap();
             let index_buffer = device.upload_data(list.idx_buffer(), MemoryUsage::MappableGPUMemory, BufferUsage::INDEX).unwrap();
-            let mut draws = Vec::<UIDraw<P::GPUBackend>>::new();
+            let mut draws = Vec::<UIDraw>::new();
 
             for cmd in list.commands() {
                 match cmd {
@@ -136,28 +136,28 @@ impl<P: Platform> UI<P> {
     }
 }*/
 
-pub struct UIDrawData<B: GPUBackend> {
-    pub draw_lists: Vec<UICmdList<B>>,
+pub struct UIDrawData {
+    pub draw_lists: Vec<UICmdList>,
     pub viewport: Viewport,
     pub scale: Vec2,
     pub translate: Vec2
 }
 
-pub struct UICmdList<B: GPUBackend> {
-    pub vertex_buffer: Arc<BufferSlice<B>>,
-    pub index_buffer: Arc<BufferSlice<B>>,
-    pub draws: Vec<UIDraw<B>>
+pub struct UICmdList {
+    pub vertex_buffer: Arc<BufferSlice>,
+    pub index_buffer: Arc<BufferSlice>,
+    pub draws: Vec<UIDraw>
 }
 
-pub struct UIDraw<B: GPUBackend> {
-    pub texture: Option<Arc<TextureView<B>>>,
+pub struct UIDraw {
+    pub texture: Option<Arc<TextureView>>,
     pub vertex_offset: u32,
     pub first_index: u32,
     pub index_count: u32,
     pub scissor: Scissor
 }
 
-impl<B: GPUBackend> Default for UIDrawData<B> {
+impl Default for UIDrawData {
     fn default() -> Self {
         Self {
             draw_lists: Vec::new(),

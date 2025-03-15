@@ -29,16 +29,16 @@ impl Default for TrackedTextureSubresource {
     }
 }
 
-struct TrackedTexture<B: GPUBackend> {
+struct TrackedTexture {
     subresources: Vec<TrackedTextureSubresource>,
-    texture: Arc<Texture<B>>,
-    views: HashMap<TextureViewInfo, Arc<TextureView<B>>>,
+    texture: Arc<Texture>,
+    views: HashMap<TextureViewInfo, Arc<TextureView>>,
 }
 
-struct TrackedBuffer<B: GPUBackend> {
+struct TrackedBuffer {
     stages: BarrierSync,
     access: BarrierAccess,
-    buffer: Arc<BufferSlice<B>>,
+    buffer: Arc<BufferSlice>,
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -72,18 +72,18 @@ fn calculate_subresource(mip_level: u32, mip_length: u32, array_layer: u32) -> u
     array_layer * mip_length + mip_level
 }
 
-pub struct RendererResources<B: GPUBackend> {
-    device: Arc<Device<B>>,
-    textures: HashMap<String, AB<RefCell<TrackedTexture<B>>>>,
-    buffers: HashMap<String, AB<RefCell<TrackedBuffer<B>>>>,
-    nearest_sampler: Arc<Sampler<B>>,
-    linear_sampler: Arc<Sampler<B>>,
+pub struct RendererResources {
+    device: Arc<Device>,
+    textures: HashMap<String, AB<RefCell<TrackedTexture>>>,
+    buffers: HashMap<String, AB<RefCell<TrackedBuffer>>>,
+    nearest_sampler: Arc<Sampler>,
+    linear_sampler: Arc<Sampler>,
     current_pass: ABEntry,
     global: RefCell<GlobalMemoryBarrier>,
 }
 
-impl<B: GPUBackend> RendererResources<B> {
-    pub fn new(device: &Arc<Device<B>>) -> Self {
+impl RendererResources {
+    pub fn new(device: &Arc<Device>) -> Self {
         let nearest_sampler = Arc::new(device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Nearest,
             min_filter: Filter::Nearest,
@@ -133,12 +133,12 @@ impl<B: GPUBackend> RendererResources<B> {
     }
 
     #[inline(always)]
-    pub fn nearest_sampler(&self) -> &Arc<Sampler<B>> {
+    pub fn nearest_sampler(&self) -> &Arc<Sampler> {
         &self.nearest_sampler
     }
 
     #[inline(always)]
-    pub fn linear_sampler(&self) -> &Arc<Sampler<B>> {
+    pub fn linear_sampler(&self) -> &Arc<Sampler> {
         &self.linear_sampler
     }
 
@@ -218,7 +218,7 @@ impl<B: GPUBackend> RendererResources<B> {
 
     fn access_texture_internal(
         &self,
-        cmd_buffer: &mut CommandBufferRecorder<B>,
+        cmd_buffer: &mut CommandBufferRecorder,
         name: &str,
         mut stages: BarrierSync,
         range: &BarrierTextureRange,
@@ -327,7 +327,7 @@ impl<B: GPUBackend> RendererResources<B> {
 
     pub fn access_texture(
         &self,
-        cmd_buffer: &mut CommandBufferRecorder<B>,
+        cmd_buffer: &mut CommandBufferRecorder,
         name: &str,
         range: &BarrierTextureRange,
         stages: BarrierSync,
@@ -335,7 +335,7 @@ impl<B: GPUBackend> RendererResources<B> {
         layout: TextureLayout,
         discard: bool,
         history: HistoryResourceEntry,
-    ) -> Ref<Arc<Texture<B>>> {
+    ) -> Ref<Arc<Texture>> {
         self.access_texture_internal(
             cmd_buffer, name, stages, range, access, layout, discard, history,
         );
@@ -357,7 +357,7 @@ impl<B: GPUBackend> RendererResources<B> {
 
     pub fn access_view(
         &self,
-        cmd_buffer: &mut CommandBufferRecorder<B>,
+        cmd_buffer: &mut CommandBufferRecorder,
         name: &str,
         stages: BarrierSync,
         access: BarrierAccess,
@@ -365,7 +365,7 @@ impl<B: GPUBackend> RendererResources<B> {
         discard: bool,
         info: &TextureViewInfo,
         history: HistoryResourceEntry,
-    ) -> Ref<Arc<TextureView<B>>> {
+    ) -> Ref<Arc<TextureView>> {
         self.access_texture_internal(
             cmd_buffer,
             name,
@@ -384,7 +384,7 @@ impl<B: GPUBackend> RendererResources<B> {
         name: &str,
         info: &TextureViewInfo,
         history: HistoryResourceEntry,
-    ) -> Ref<Arc<TextureView<B>>> {
+    ) -> Ref<Arc<TextureView>> {
         let texture_ab = self
             .textures
             .get(name)
@@ -430,12 +430,12 @@ impl<B: GPUBackend> RendererResources<B> {
 
     pub fn access_buffer(
         &self,
-        cmd_buffer: &mut CommandBufferRecorder<B>,
+        cmd_buffer: &mut CommandBufferRecorder,
         name: &str,
         mut stages: BarrierSync,
         mut access: BarrierAccess,
         history: HistoryResourceEntry,
-    ) -> Ref<Arc<BufferSlice<B>>> {
+    ) -> Ref<Arc<BufferSlice>> {
         debug_assert_eq!(
             access
                 & !(BarrierAccess::VERTEX_INPUT_READ

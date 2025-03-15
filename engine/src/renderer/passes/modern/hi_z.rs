@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use smallvec::SmallVec;
-use sourcerenderer_core::{Platform, Vec2};
+use sourcerenderer_core::Vec2;
 
 use crate::asset::AssetManager;
 use crate::renderer::render_path::RenderPassParameters;
@@ -12,22 +12,22 @@ use crate::renderer::renderer_resources::{
 use crate::renderer::asset::{ComputePipelineHandle, RendererAssetsReadOnly};
 use crate::graphics::*;
 
-pub struct HierarchicalZPass<P: Platform> {
+pub struct HierarchicalZPass {
     ffx_pipeline: ComputePipelineHandle,
     copy_pipeline: ComputePipelineHandle,
-    sampler: Arc<crate::graphics::Sampler<P::GPUBackend>>,
+    sampler: Arc<crate::graphics::Sampler>,
 }
 
-impl<P: Platform> HierarchicalZPass<P> {
+impl HierarchicalZPass {
     pub const HI_Z_BUFFER_NAME: &'static str = "Hierarchical Z Buffer";
     const FFX_COUNTER_BUFFER_NAME: &'static str = "FFX Downscaling Counter Buffer";
 
     #[allow(unused)]
     pub fn new(
-        device: &Arc<Device<P::GPUBackend>>,
-        resources: &mut RendererResources<P::GPUBackend>,
-        asset_manager: &Arc<AssetManager<P>>,
-        init_cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
+        device: &Arc<Device>,
+        resources: &mut RendererResources,
+        asset_manager: &Arc<AssetManager>,
+        init_cmd_buffer: &mut CommandBufferRecorder,
         depth_name: &str,
     ) -> Self {
         let mut texture_info = resources.texture_info(depth_name).clone();
@@ -92,14 +92,14 @@ impl<P: Platform> HierarchicalZPass<P> {
     }
 
     #[inline(always)]
-    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_compute_pipeline(self.copy_pipeline).is_some() && assets.get_compute_pipeline(self.ffx_pipeline).is_some()
     }
 
     pub fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        pass_params: &RenderPassParameters<'_, P>,
+        cmd_buffer: &mut CommandBufferRecorder,
+        pass_params: &RenderPassParameters<'_>,
         depth_name: &str,
     ) {
         let (width, height, mips) = {
@@ -153,7 +153,7 @@ impl<P: Platform> HierarchicalZPass<P> {
             HistoryResourceEntry::Current,
         );
         let mut dst_texture_views =
-            SmallVec::<[Arc<TextureView<P::GPUBackend>>; 12]>::new();
+            SmallVec::<[Arc<TextureView>; 12]>::new();
         for i in 1..mips {
             dst_texture_views.push(
                 pass_params.resources
@@ -177,7 +177,7 @@ impl<P: Platform> HierarchicalZPass<P> {
             );
         }
         let mut texture_refs =
-            SmallVec::<[&TextureView<P::GPUBackend>; 12]>::new();
+            SmallVec::<[&TextureView; 12]>::new();
         for i in 0..(mips - 1) as usize {
             texture_refs.push(&dst_texture_views[i]);
         }
