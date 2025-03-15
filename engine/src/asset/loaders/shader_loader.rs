@@ -4,7 +4,6 @@ use bevy_tasks::futures_lite::AsyncReadExt;
 
 use log::trace;
 use sourcerenderer_core::gpu::PackedShader;
-use sourcerenderer_core::Platform;
 
 use crate::asset::asset_manager::AssetFile;
 use crate::asset::{
@@ -19,7 +18,7 @@ impl ShaderLoader {
     }
 }
 
-impl<P: Platform> AssetLoader<P> for ShaderLoader {
+impl AssetLoader for ShaderLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
         file.path.ends_with(".json")
     }
@@ -27,7 +26,7 @@ impl<P: Platform> AssetLoader<P> for ShaderLoader {
     async fn load(
         &self,
         mut file: AssetFile,
-        manager: &Arc<AssetManager<P>>,
+        manager: &Arc<AssetManager>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<(), ()> {

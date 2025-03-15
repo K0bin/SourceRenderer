@@ -392,7 +392,7 @@ impl BspLevelLoader {
     }
 }
 
-impl<P: Platform> AssetLoader<P> for BspLevelLoader {
+impl AssetLoader for BspLevelLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
         let file_name = Path::new(&file.path).file_name();
         file_name
@@ -403,7 +403,7 @@ impl<P: Platform> AssetLoader<P> for BspLevelLoader {
     fn load(
         &self,
         asset_file: AssetFile,
-        manager: &Arc<AssetManager<P>>,
+        manager: &Arc<AssetManager>,
         _priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<(), ()> {

@@ -47,7 +47,7 @@ impl<P: Platform> Plugin for SpinningCubePlugin<P> {
         app.add_systems(SpawnScene, (place_lights, spin::<P>,));
 
         {
-            let asset_manager: &Arc<AssetManager<P>> = Engine::get_asset_manager(app);
+            let asset_manager: &Arc<AssetManager> = Engine::get_asset_manager::<P>(app);
 
             let indices: [u32; 36] = [
                 2, 1, 0, 0, 3, 2, // front

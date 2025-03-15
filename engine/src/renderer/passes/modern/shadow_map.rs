@@ -2,7 +2,7 @@ use std::{path::Path, sync::Arc};
 
 use bevy_math::Vec4Swizzles as _;
 use smallvec::SmallVec;
-use sourcerenderer_core::{Matrix4, Platform, PlatformPhantomData, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
+use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
 
 use crate::asset::AssetManager;
 use crate::renderer::light::RendererDirectionalLight;
@@ -28,12 +28,11 @@ TODO:
 - multiple lights
 */
 
-pub struct ShadowMapPass<P: Platform> {
+pub struct ShadowMapPass {
     pipeline: GraphicsPipelineHandle,
     draw_prep_pipeline: ComputePipelineHandle,
     shadow_map_res: u32,
     cascades: SmallVec<[ShadowMapCascade; 5]>,
-    _marker: PlatformPhantomData<P>,
 }
 
 #[derive(Debug, Default)]
@@ -44,15 +43,15 @@ pub struct ShadowMapCascade {
     pub view_proj: Matrix4
 }
 
-impl<P: Platform> ShadowMapPass<P> {
+impl ShadowMapPass {
     pub const SHADOW_MAP_NAME: &'static str = "ShadowMap";
     pub const DRAW_BUFFER_NAME: &'static str = "ShadowMapDraws";
     pub const VISIBLE_BITFIELD: &'static str = "ShadowMapVisibility";
     pub fn new(
-        _device: &Arc<Device<P::GPUBackend>>,
-        resources: &mut RendererResources<P::GPUBackend>,
-        _init_cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        asset_manager: &Arc<AssetManager<P>>,
+        _device: &Arc<Device>,
+        resources: &mut RendererResources,
+        _init_cmd_buffer: &mut CommandBufferRecorder,
+        asset_manager: &Arc<AssetManager>,
     ) -> Self {
         let shadow_map_res = 4096;
         let cascades_count = 5;
@@ -155,11 +154,10 @@ impl<P: Platform> ShadowMapPass<P> {
             draw_prep_pipeline: prep_pipeline,
             shadow_map_res,
             cascades,
-            _marker: Default::default(),
         }
     }
 
-    pub fn calculate_cascades(&mut self, scene: &SceneInfo<'_, P::GPUBackend>) {
+    pub fn calculate_cascades(&mut self, scene: &SceneInfo<'_>) {
         for cascade in &mut self.cascades {
             *cascade = Default::default();
         }
@@ -167,7 +165,7 @@ impl<P: Platform> ShadowMapPass<P> {
         if light.is_none() {
             return;
         }
-        let light: &RendererDirectionalLight<<P as Platform>::GPUBackend> = light.unwrap();
+        let light: &RendererDirectionalLight = light.unwrap();
 
         let view = &scene.scene.views()[scene.active_view_index];
         let z_min = view.near_plane;
@@ -192,8 +190,8 @@ impl<P: Platform> ShadowMapPass<P> {
 
     pub fn prepare(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        pass_params: &RenderPassParameters<'_, P>
+        cmd_buffer: &mut CommandBufferRecorder,
+        pass_params: &RenderPassParameters<'_>
     ) {
         cmd_buffer.begin_label("Shadow map culling");
 
@@ -254,14 +252,14 @@ impl<P: Platform> ShadowMapPass<P> {
     }
 
     #[inline(always)]
-    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_graphics_pipeline(self.pipeline).is_some() && assets.get_compute_pipeline(self.draw_prep_pipeline).is_some()
     }
 
     pub fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        pass_params: &RenderPassParameters<'_, P>
+        cmd_buffer: &mut CommandBufferRecorder,
+        pass_params: &RenderPassParameters<'_>
     ) {
         cmd_buffer.begin_label("Shadow map");
 
@@ -305,7 +303,7 @@ impl<P: Platform> ShadowMapPass<P> {
                     depth_stencil: Some(&DepthStencilAttachment {
                         view: &shadow_map,
                         load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
-                        store_op: StoreOp::<P::GPUBackend>::Store,
+                        store_op: StoreOp::Store,
                     })
                 },
                 RenderpassRecordingMode::Commands,
@@ -340,7 +338,7 @@ impl<P: Platform> ShadowMapPass<P> {
         cmd_buffer.end_label();
     }
 
-    pub fn build_cascade(light: &RendererDirectionalLight<P::GPUBackend>, inv_camera_view_proj: Matrix4, cascade_z_start: f32, cascade_z_end: f32, z_min: f32, z_max: f32, shadow_map_res: u32) -> ShadowMapCascade {
+    pub fn build_cascade(light: &RendererDirectionalLight, inv_camera_view_proj: Matrix4, cascade_z_start: f32, cascade_z_end: f32, z_min: f32, z_max: f32, shadow_map_res: u32) -> ShadowMapCascade {
         // https://www.junkship.net/News/2020/11/22/shadow-of-a-doubt-part-2
         // https://github.com/BabylonJS/Babylon.js/blob/master/packages/dev/core/src/Lights/Shadows/cascadedShadowGenerator.ts
         // https://alextardif.com/shadowmapping.html

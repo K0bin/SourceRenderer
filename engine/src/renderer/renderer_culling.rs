@@ -1,14 +1,14 @@
 use bevy_tasks::ParallelSlice;
 use bitset_core::BitSet;
 use smallvec::SmallVec;
-use sourcerenderer_core::{Matrix4, Platform, Vec3};
+use sourcerenderer_core::{Matrix4, Vec3};
 
 use crate::{asset::AssetManager, math::{BoundingBox, Frustum}, renderer::DrawablePart};
 
 use super::renderer_scene::RendererScene;
 
 #[profiling::function]
-pub(crate) fn update_visibility<P: Platform>(scene: &mut RendererScene<P::GPUBackend>, asset_manager: &AssetManager<P>) {
+pub(crate) fn update_visibility(scene: &mut RendererScene, asset_manager: &AssetManager) {
     let (views, static_meshes, _, _) = scene.view_update_info();
 
     for (_index, view_mut) in views.iter_mut().enumerate() {

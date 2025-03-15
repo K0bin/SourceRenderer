@@ -43,7 +43,7 @@ impl gpu::Backbuffer for MTLBackbuffer {
 
 pub struct MTLSwapchain {
     surface: MTLSurface,
-    device: metal::Device,
+    _device: metal::Device,
     width: u32,
     height: u32,
     format: gpu::Format
@@ -70,7 +70,7 @@ impl MTLSwapchain {
 
         Self {
             surface,
-            device: device.to_owned(),
+            _device: device.to_owned(),
             width,
             height,
             format

@@ -24,7 +24,6 @@ use gltf::{
 };
 use log::warn;
 use sourcerenderer_core::{
-    Platform,
     Vec2,
     Vec3,
     Vec4,
@@ -49,10 +48,10 @@ impl GltfLoader {
         Self {}
     }
 
-    async fn visit_node<P: Platform>(
+    async fn visit_node(
         node: &Node<'_>,
         world: &mut LevelData,
-        asset_mgr: &Arc<AssetManager<P>>,
+        asset_mgr: &Arc<AssetManager>,
         parent_entity: Option<usize>,
         gltf_file_name: &str,
         buffer_cache: &mut FixedByteSizeCache<String, Box<[u8]>>,
@@ -285,9 +284,9 @@ impl GltfLoader {
         }
     }
 
-    async fn load_scene<P: Platform>(
+    async fn load_scene(
         scene: &Scene<'_>,
-        asset_mgr: &Arc<AssetManager<P>>,
+        asset_mgr: &Arc<AssetManager>,
         gltf_file_name: &str,
     ) -> LevelData {
         let mut world: LevelData = LevelData::new(4096, 64);
@@ -306,10 +305,10 @@ impl GltfLoader {
         world
     }
 
-    async fn load_primitive<'a, P: Platform>(
+    async fn load_primitive<'a>(
         _model_name: &'a str,
         primitive: &'a Primitive<'a>,
-        asset_mgr: &'a Arc<AssetManager<P>>,
+        asset_mgr: &'a Arc<AssetManager>,
         vertices: &'a mut Vec<Vertex>,
         indices: &'a mut Vec<u32>,
         gltf_file_name: &'a str,
@@ -317,10 +316,10 @@ impl GltfLoader {
     ) {
         const LOAD_ENTIRE_GLB_BUFFER: bool = false;
 
-        async fn load_buffer<'a, P: Platform>(
+        async fn load_buffer<'a>(
             gltf_file_name: &str,
             gltf_path: &str,
-            asset_mgr: &Arc<AssetManager<P>>,
+            asset_mgr: &Arc<AssetManager>,
             buffer_cache: &'a mut FixedByteSizeCache<String, Box<[u8]>>,
             view: &View<'_>,
         ) {
@@ -575,9 +574,9 @@ impl GltfLoader {
         }
     }
 
-    fn load_material<P: Platform>(
+    fn load_material(
         material: &Material,
-        asset_mgr: &Arc<AssetManager<P>>,
+        asset_mgr: &Arc<AssetManager>,
         gltf_file_name: &str,
     ) -> String {
         let gltf_path = if let Some(last_slash) = gltf_file_name.rfind('/') {
@@ -668,7 +667,7 @@ impl GltfLoader {
     }
 }
 
-impl<P: Platform> AssetLoader<P> for GltfLoader {
+impl AssetLoader for GltfLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
         (file.path.contains("gltf") || file.path.contains("glb"))
             && file.path.contains("/scene/")
@@ -678,7 +677,7 @@ impl<P: Platform> AssetLoader<P> for GltfLoader {
     async fn load(
         &self,
         file: AssetFile,
-        manager: &Arc<AssetManager<P>>,
+        manager: &Arc<AssetManager>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<(), ()> {

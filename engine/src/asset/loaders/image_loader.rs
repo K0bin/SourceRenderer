@@ -7,8 +7,6 @@ use image::{
     ImageFormat,
 };
 
-use sourcerenderer_core::Platform;
-
 use crate::graphics::*;
 
 use crate::asset::asset_manager::{AssetFile, AssetLoader};
@@ -24,7 +22,7 @@ impl ImageLoader {
     }
 }
 
-impl<P: Platform> AssetLoader<P> for ImageLoader {
+impl AssetLoader for ImageLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
         file.path.ends_with(".png") || file.path.ends_with(".jpg") || file.path.ends_with(".jpeg")
     }
@@ -32,7 +30,7 @@ impl<P: Platform> AssetLoader<P> for ImageLoader {
     async fn load(
         &self,
         file: AssetFile,
-        manager: &Arc<AssetManager<P>>,
+        manager: &Arc<AssetManager>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<(), ()> {

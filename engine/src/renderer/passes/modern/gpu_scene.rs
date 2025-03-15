@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use smallvec::SmallVec;
 use sourcerenderer_core::{
     Matrix4,
-    Platform,
     Vec3,
     Vec4,
 };
@@ -128,8 +127,8 @@ pub struct BufferBinding {
     pub length: u64
 }
 
-pub struct SceneBuffers<B: GPUBackend> {
-    pub buffer: TransientBufferSlice<B>,
+pub struct SceneBuffers {
+    pub buffer: TransientBufferSlice,
     pub scene_buffer: BufferBinding,
     pub draws_buffer: BufferBinding,
     pub meshes_buffer: BufferBinding,
@@ -140,12 +139,12 @@ pub struct SceneBuffers<B: GPUBackend> {
 }
 
 #[profiling::function]
-pub fn upload<P: Platform>(
-    cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-    scene: &RendererScene<P::GPUBackend>,
+pub fn upload(
+    cmd_buffer: &mut CommandBufferRecorder,
+    scene: &RendererScene,
     zero_view_index: u32,
-    assets: &RendererAssetsReadOnly<'_, P>,
-) -> SceneBuffers<P::GPUBackend> {
+    assets: &RendererAssetsReadOnly<'_>,
+) -> SceneBuffers {
     let mut local = GPUScene {
         drawable_count: 0,
         draw_count: 0,

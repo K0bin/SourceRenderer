@@ -1,10 +1,7 @@
 use std::cell::Ref;
 use std::sync::Arc;
 
-use sourcerenderer_core::{
-    Platform,
-    Vec2UI,
-};
+use sourcerenderer_core::Vec2UI;
 
 use crate::asset::AssetManager;
 use crate::renderer::passes::modern::VisibilityBufferPass;
@@ -26,10 +23,10 @@ impl SsrPass {
     pub const SSR_TEXTURE_NAME: &'static str = "SSR";
 
     #[allow(unused)]
-    pub fn new<P: Platform>(
+    pub fn new(
         resolution: Vec2UI,
-        resources: &mut RendererResources<P::GPUBackend>,
-        asset_manager: &Arc<AssetManager<P>>,
+        resources: &mut RendererResources,
+        asset_manager: &Arc<AssetManager>,
         _visibility_buffer: bool,
     ) -> Self {
         resources.create_texture(
@@ -55,14 +52,14 @@ impl SsrPass {
     }
 
     #[inline(always)]
-    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_compute_pipeline(self.pipeline).is_some()
     }
 
-    pub fn execute<P: Platform>(
+    pub fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        params: &RenderPassParameters<'_, P>,
+        cmd_buffer: &mut CommandBufferRecorder,
+        params: &RenderPassParameters<'_>,
         input_name: &str,
         depth_name: &str,
         visibility_buffer: bool,
@@ -104,9 +101,9 @@ impl SsrPass {
         );
 
         let mut ids =
-            Option::<Ref<Arc<TextureView<P::GPUBackend>>>>::None;
+            Option::<Ref<Arc<TextureView>>>::None;
         let mut barycentrics =
-            Option::<Ref<Arc<TextureView<P::GPUBackend>>>>::None;
+            Option::<Ref<Arc<TextureView>>>::None;
 
         if visibility_buffer {
             ids = Some(params.resources.access_view(

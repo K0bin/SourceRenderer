@@ -225,11 +225,6 @@ impl VkBuffer {
         self.va
             .map(|va| va + offset as vk::DeviceSize)
     }
-
-    #[inline(always)]
-    pub(crate) fn info(&self) -> &gpu::BufferInfo {
-        &self.info
-    }
 }
 
 impl Drop for VkBuffer {

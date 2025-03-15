@@ -45,3 +45,14 @@ mod swapchain;
 mod sync;
 mod texture;
 mod heap;
+
+/*pub trait GraphicsPlatform : sourcerenderer_core::platform::GraphicsPlatform<VkBackend> {
+    fn create_instance(&self, debug_layers: bool) -> Result<VkInstance, Box<dyn std::error::Error>>;
+}
+
+impl<T> GraphicsPlatform for T
+    where T : sourcerenderer_core::platform::GraphicsPlatform<VkBackend> {
+    fn create_instance(&self, debug_layers: bool) -> Result<VkInstance, Box<dyn std::error::Error>> {
+        sourcerenderer_core::platform::GraphicsPlatform::<VkBackend>::create_instance(self, debug_layers)
+    }
+}*/

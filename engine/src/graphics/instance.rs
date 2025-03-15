@@ -5,22 +5,22 @@ use sourcerenderer_core::gpu::{Instance as _, Adapter as _};
 
 use super::*;
 
-pub struct Instance<B: GPUBackend> {
-    instance: Arc<B::Instance>,
-    adapters: SmallVec<[Adapter<B>; 2]>
+pub struct Instance {
+    instance: Arc<active_gpu_backend::Instance>,
+    adapters: SmallVec<[Adapter; 2]>
 }
 
-impl<B: GPUBackend> Instance<B> {
-    pub fn new(instance: B::Instance) -> Arc<Self> {
+impl Instance {
+    pub fn new(instance: active_gpu_backend::Instance) -> Arc<Self> {
         let instance_arc = Arc::new(instance);
 
-        let result = Arc::new_cyclic(|result_weak| {
+        let result: Arc<Self> = Arc::new_cyclic(|result_weak| {
             Self {
                 instance: instance_arc.clone(),
                 adapters: instance_arc.list_adapters()
                 .iter()
                 .map(|a| Adapter {
-                    adapter: a as *const B::Adapter,
+                    adapter: a as *const active_gpu_backend::Adapter,
                     instance: result_weak.clone()
                 })
                 .collect()
@@ -31,33 +31,33 @@ impl<B: GPUBackend> Instance<B> {
     }
 
     #[inline(always)]
-    pub fn list_adapters(&self) -> &[Adapter<B>] {
+    pub fn list_adapters(&self) -> &[Adapter] {
         &self.adapters
     }
 
     #[inline(always)]
-    pub fn handle(&self) -> &B::Instance {
+    pub fn handle(&self) -> &active_gpu_backend::Instance {
         &self.instance
     }
 }
 
-pub struct Adapter<B: GPUBackend> {
-    adapter: *const B::Adapter,
-    instance: Weak<Instance<B>>
+pub struct Adapter {
+    adapter: *const active_gpu_backend::Adapter,
+    instance: Weak<Instance>
 }
 
-impl<B: GPUBackend> Adapter<B> {
+impl Adapter {
     #[inline(always)]
     pub fn adapter_type(&self) -> AdapterType {
         unsafe { (*self.adapter).adapter_type() }
     }
 
-    pub fn create_device(&self, surface: &B::Surface) -> Arc<super::Device<B>> {
+    pub fn create_device(&self, surface: &active_gpu_backend::Surface) -> Arc<super::Device> {
         let device = unsafe { (*self.adapter).create_device(surface) };
         let instance = self.instance.upgrade().unwrap();
         Arc::new(super::Device::new(device, instance))
     }
 }
 
-unsafe impl<B: GPUBackend> Sync for Adapter<B> {}
-unsafe impl<B: GPUBackend> Send for Adapter<B> {}
+unsafe impl Sync for Adapter {}
+unsafe impl Send for Adapter {}

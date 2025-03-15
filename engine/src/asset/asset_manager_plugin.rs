@@ -12,7 +12,7 @@ use crate::asset::loaders::*;
 use super::AssetManager;
 
 #[derive(Resource)]
-pub struct AssetManagerECSResource<P: Platform>(pub Arc<AssetManager<P>>);
+pub struct AssetManagerECSResource<P: Platform>(pub Arc<AssetManager>, PlatformPhantomData<P>);
 
 pub struct AssetManagerPlugin<P: Platform>(PlatformPhantomData<P>);
 
@@ -20,15 +20,15 @@ impl<P: Platform> Default for AssetManagerPlugin<P>{ fn default() -> Self { Self
 
 impl<P: Platform> Plugin for AssetManagerPlugin<P> {
     fn build(&self, app: &mut bevy_app::App) {
-        let gpu_device = &app.world().get_resource::<GPUDeviceResource<P::GPUBackend>>().expect("AssetManager needs GraphicsDevice atm").0;
+        let gpu_device = &app.world().get_resource::<GPUDeviceResource>().expect("AssetManager needs GraphicsDevice atm").0;
 
-        let asset_manager: Arc<AssetManager<P>> = AssetManager::<P>::new(gpu_device);
-        asset_manager.add_container(FSContainer::new(&asset_manager));
+        let asset_manager: Arc<AssetManager> = AssetManager::new(gpu_device);
+        asset_manager.add_container(FSContainer::<P>::new(&asset_manager));
         asset_manager.add_loader(ShaderLoader::new());
 
         asset_manager.add_loader(GltfLoader::new());
         asset_manager.add_loader(ImageLoader::new());
-        app.insert_resource(AssetManagerECSResource(asset_manager));
+        app.insert_resource(AssetManagerECSResource(asset_manager, PlatformPhantomData::<P>::default()));
         app.add_systems(PreUpdate, load_level_system::<P>);
     }
 }

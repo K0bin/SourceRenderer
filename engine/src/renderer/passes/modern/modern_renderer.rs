@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 use smallvec::SmallVec;
@@ -41,37 +40,37 @@ use crate::renderer::renderer_resources::{
 use crate::renderer::passes::modern::gpu_scene::SceneBuffers;
 use crate::ui::UIDrawData;
 
-pub struct ModernRenderer<P: Platform> {
-    device: Arc<Device<P::GPUBackend>>,
-    barriers: RendererResources<P::GPUBackend>,
-    ui_data: UIDrawData<P::GPUBackend>,
+pub struct ModernRenderer {
+    device: Arc<Device>,
+    barriers: RendererResources,
+    ui_data: UIDrawData,
 
     clustering_pass: ClusteringPass,
     light_binning_pass: LightBinningPass,
     geometry_draw_prep: DrawPrepPass,
-    ssao: SsaoPass<P>,
-    rt_passes: Option<RTPasses<P>>,
-    blue_noise: BlueNoise<P::GPUBackend>,
-    hi_z_pass: HierarchicalZPass<P>,
+    ssao: SsaoPass,
+    rt_passes: Option<RTPasses>,
+    blue_noise: BlueNoise,
+    hi_z_pass: HierarchicalZPass,
     ssr_pass: SsrPass,
     visibility_buffer: VisibilityBufferPass,
-    shading_pass: ShadingPass<P>,
+    shading_pass: ShadingPass,
     compositing_pass: CompositingPass,
     motion_vector_pass: MotionVectorPass,
-    anti_aliasing: AntiAliasing<P>,
-    shadow_map_pass: ShadowMapPass<P>,
+    anti_aliasing: AntiAliasing,
+    shadow_map_pass: ShadowMapPass,
     ui_pass: UIPass
 }
 
-enum AntiAliasing<P: Platform> {
-    TAA { taa: TAAPass, sharpen: SharpenPass, _p: PhantomData<P> },
+enum AntiAliasing {
+    TAA { taa: TAAPass, sharpen: SharpenPass },
 }
 
-unsafe impl<P: Platform> Send for AntiAliasing<P> {}
-unsafe impl<P: Platform> Sync for AntiAliasing<P> {}
+unsafe impl Send for AntiAliasing {}
+unsafe impl Sync for AntiAliasing {}
 
-pub struct RTPasses<P: Platform> {
-    acceleration_structure_update: AccelerationStructureUpdatePass<P>,
+pub struct RTPasses {
+    acceleration_structure_update: AccelerationStructureUpdatePass,
     shadows: RTShadowPass,
 }
 
@@ -91,57 +90,57 @@ struct CameraBuffer {
     fov: f32,
 }
 
-impl<P: Platform> ModernRenderer<P> {
+impl ModernRenderer {
     #[allow(unused)]
     pub fn new(
-        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
-        swapchain: &crate::graphics::Swapchain<P::GPUBackend>,
-        context: &mut GraphicsContext<P::GPUBackend>,
-        asset_manager: &Arc<AssetManager<P>>
+        device: &Arc<crate::graphics::Device>,
+        swapchain: &crate::graphics::Swapchain,
+        context: &mut GraphicsContext,
+        asset_manager: &Arc<AssetManager>
     ) -> Self {
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
         let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
 
-        let mut barriers = RendererResources::<P::GPUBackend>::new(device);
+        let mut barriers = RendererResources::new(device);
 
-        let blue_noise = BlueNoise::new::<P>(device);
+        let blue_noise = BlueNoise::new(device);
 
-        let clustering = ClusteringPass::new::<P>(&mut barriers, asset_manager);
-        let light_binning = LightBinningPass::new::<P>(&mut barriers, asset_manager);
-        let ssao = SsaoPass::<P>::new(device, resolution, &mut barriers, asset_manager, true);
+        let clustering = ClusteringPass::new(&mut barriers, asset_manager);
+        let light_binning = LightBinningPass::new(&mut barriers, asset_manager);
+        let ssao = SsaoPass::new(device, resolution, &mut barriers, asset_manager, true);
         let rt_passes = (device.supports_ray_tracing() && false).then(|| RTPasses {
-            acceleration_structure_update: AccelerationStructureUpdatePass::<P>::new(
+            acceleration_structure_update: AccelerationStructureUpdatePass::new(
                 device,
                 &mut init_cmd_buffer,
             ),
-            shadows: RTShadowPass::new::<P>(resolution, &mut barriers, asset_manager),
+            shadows: RTShadowPass::new(resolution, &mut barriers, asset_manager),
         });
         let visibility_buffer =
-            VisibilityBufferPass::new::<P>(resolution, &mut barriers, asset_manager);
-        let draw_prep = DrawPrepPass::new::<P>(&mut barriers, asset_manager);
-        let hi_z_pass = HierarchicalZPass::<P>::new(
+            VisibilityBufferPass::new(resolution, &mut barriers, asset_manager);
+        let draw_prep = DrawPrepPass::new(&mut barriers, asset_manager);
+        let hi_z_pass = HierarchicalZPass::new(
             device,
             &mut barriers,
             asset_manager,
             &mut init_cmd_buffer,
             VisibilityBufferPass::DEPTH_TEXTURE_NAME,
         );
-        let ssr_pass = SsrPass::new::<P>(resolution, &mut barriers, asset_manager, true);
-        let shading_pass = ShadingPass::<P>::new(
+        let ssr_pass = SsrPass::new(resolution, &mut barriers, asset_manager, true);
+        let shading_pass = ShadingPass::new(
             device,
             resolution,
             &mut barriers,
             asset_manager,
             &mut init_cmd_buffer,
         );
-        let compositing_pass = CompositingPass::new::<P>(resolution, &mut barriers, asset_manager);
+        let compositing_pass = CompositingPass::new(resolution, &mut barriers, asset_manager);
         let motion_vector_pass =
-            MotionVectorPass::new::<P>(&mut barriers, resolution, asset_manager);
+            MotionVectorPass::new(&mut barriers, resolution, asset_manager);
 
         let anti_aliasing = {
-            let taa = TAAPass::new::<P>(resolution, &mut barriers, asset_manager, true);
-            let sharpen = SharpenPass::new::<P>(resolution, &mut barriers, asset_manager);
-            AntiAliasing::<P>::TAA { taa, sharpen, _p: PhantomData }
+            let taa = TAAPass::new(resolution, &mut barriers, asset_manager, true);
+            let sharpen = SharpenPass::new(resolution, &mut barriers, asset_manager);
+            AntiAliasing::TAA { taa, sharpen }
         };
 
         let shadow_map = ShadowMapPass::new(device, &mut barriers, &mut init_cmd_buffer, asset_manager);
@@ -165,7 +164,7 @@ impl<P: Platform> ModernRenderer<P> {
         Self {
             device: device.clone(),
             barriers,
-            ui_data: UIDrawData::<P::GPUBackend>::default(),
+            ui_data: UIDrawData::default(),
             clustering_pass: clustering,
             light_binning_pass: light_binning,
             geometry_draw_prep: draw_prep,
@@ -186,12 +185,12 @@ impl<P: Platform> ModernRenderer<P> {
 
     fn setup_frame(
         &self,
-        cmd_buf: &mut CommandBufferRecorder<P::GPUBackend>,
-        scene: &SceneInfo<P::GPUBackend>,
-        swapchain: &Swapchain<P::GPUBackend>,
-        gpu_scene_buffers: SceneBuffers<P::GPUBackend>,
-        camera_buffer: BufferRef<P::GPUBackend>,
-        camera_history_buffer: BufferRef<P::GPUBackend>,
+        cmd_buf: &mut CommandBufferRecorder,
+        scene: &SceneInfo,
+        swapchain: &Swapchain,
+        gpu_scene_buffers: SceneBuffers,
+        camera_buffer: BufferRef,
+        camera_history_buffer: BufferRef,
         rendering_resolution: &Vec2UI,
         frame: u64,
     ) {
@@ -326,7 +325,7 @@ impl<P: Platform> ModernRenderer<P> {
     }
 }
 
-impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
+impl<P: Platform> RenderPath<P> for ModernRenderer {
     fn is_gpu_driven(&self) -> bool {
         true
     }
@@ -335,12 +334,12 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
 
     fn on_swapchain_changed(
         &mut self,
-        _swapchain: &Swapchain<P::GPUBackend>,
+        _swapchain: &Swapchain,
     ) {
         // TODO: resize render targets
     }
 
-    fn is_ready(&self, asset_manager: &Arc<AssetManager<P>>) -> bool {
+    fn is_ready(&self, asset_manager: &Arc<AssetManager>) -> bool {
         let assets = asset_manager.read_renderer_assets();
         self.clustering_pass.is_ready(&assets)
         && self.light_binning_pass.is_ready(&assets)
@@ -354,7 +353,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         && self.compositing_pass.is_ready(&assets)
         && self.motion_vector_pass.is_ready(&assets)
         && match &self.anti_aliasing {
-            AntiAliasing::TAA { taa, sharpen, _p: PhantomData::<P> } => taa.is_ready(&assets) && sharpen.is_ready(&assets),
+            AntiAliasing::TAA { taa, sharpen } => taa.is_ready(&assets) && sharpen.is_ready(&assets),
         }
         && self.shadow_map_pass.is_ready(&assets)
         && self.ui_pass.is_ready(&assets)
@@ -363,12 +362,12 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
     #[profiling::function]
     fn render(
         &mut self,
-        context: &mut GraphicsContext<P::GPUBackend>,
-        swapchain: &mut Swapchain<P::GPUBackend>,
-        scene: &SceneInfo<P::GPUBackend>,
+        context: &mut GraphicsContext,
+        swapchain: &mut Swapchain,
+        scene: &SceneInfo,
         frame_info: &FrameInfo,
-        assets: &RendererAssetsReadOnly<'_, P>,
-    ) -> Result<RenderPathResult<P::GPUBackend>, SwapchainError> {
+        assets: &RendererAssetsReadOnly<'_>,
+    ) -> Result<RenderPathResult, SwapchainError> {
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
         let main_view = &scene.scene.views()[scene.active_view_index];
@@ -491,18 +490,18 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         self.ssr_pass.execute(
             &mut cmd_buf,
             &params,
-            ShadingPass::<P>::SHADING_TEXTURE_NAME,
+            ShadingPass::SHADING_TEXTURE_NAME,
             VisibilityBufferPass::DEPTH_TEXTURE_NAME,
             true,
         );
         self.compositing_pass.execute(
             &mut cmd_buf,
             &params,
-            ShadingPass::<P>::SHADING_TEXTURE_NAME,
+            ShadingPass::SHADING_TEXTURE_NAME,
         );
 
         let output_texture_name = match &mut self.anti_aliasing {
-            AntiAliasing::TAA { taa, sharpen, _p: PhantomData::<P> } => {
+            AntiAliasing::TAA { taa, sharpen } => {
                 taa.execute(
                     &mut cmd_buf,
                     &params,
@@ -564,7 +563,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer<P> {
         });
     }
 
-    fn set_ui_data(&mut self, data: crate::ui::UIDrawData<<P as Platform>::GPUBackend>) {
+    fn set_ui_data(&mut self, data: crate::ui::UIDrawData) {
         self.ui_data = data;
     }
 }

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::{Platform, Vec2};
+use sourcerenderer_core::Vec2;
 
 use crate::{asset::AssetManager, renderer::{asset::{GraphicsPipelineHandle, RendererAssetsReadOnly}, render_path::RenderPassParameters, renderer_resources::HistoryResourceEntry}, ui::UIDrawData};
 use crate::graphics::*;
@@ -12,7 +12,7 @@ pub struct UIPass {
 
 impl UIPass {
     #[allow(unused)]
-    pub fn new<P: Platform>(device: &Arc<Device<P::GPUBackend>>, asset_manager: &Arc<AssetManager<P>>) -> Self {
+    pub fn new(device: &Arc<Device>, asset_manager: &Arc<AssetManager>) -> Self {
         let pipeline = asset_manager.request_graphics_pipeline(&GraphicsPipelineInfo {
             vs: "shaders/dear_imgui.vert.json",
             fs: Some("shaders/dear_imgui.frag.json"),
@@ -84,16 +84,16 @@ impl UIPass {
     }
 
     #[inline(always)]
-    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_graphics_pipeline(self.pipeline).is_some()
     }
 
-    pub fn execute<P: Platform>(
+    pub fn execute(
         &mut self,
-        command_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        pass_params: &RenderPassParameters<'_, P>,
+        command_buffer: &mut CommandBufferRecorder,
+        pass_params: &RenderPassParameters<'_>,
         output_texture_name: &str,
-        draw: &UIDrawData<P::GPUBackend>
+        draw: &UIDrawData
     ) {
         let rtv = pass_params.resources.access_view(
             command_buffer,
@@ -133,7 +133,7 @@ impl UIPass {
                 RenderTarget {
                     view: &rtv,
                     load_op: LoadOpColor::Load,
-                    store_op: StoreOp::<P::GPUBackend>::Store
+                    store_op: StoreOp::Store
                 }
             ],
             depth_stencil: None

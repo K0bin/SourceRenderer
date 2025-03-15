@@ -1,9 +1,8 @@
-use std::error::Error;
-
 use sdl2::video::WindowBuilder;
+use sourcerenderer_core::platform::GraphicsPlatform;
 use sourcerenderer_vulkan::{VkBackend, VkDevice, VkInstance, VkSurface, VkSwapchain};
 
-use crate::sdl_platform::SDLWindow;
+use crate::SDLPlatform;
 
 use ash::khr::surface::Instance as SurfaceLoader;
 use ash::vk::{
@@ -13,9 +12,11 @@ use ash::vk::{
 
 pub(crate) type SDLGPUBackend = VkBackend;
 
-pub(crate) fn create_instance(debug_layers: bool, window: &SDLWindow) -> Result<VkInstance, Box<dyn Error>> {
-    let instance_extensions = window.sdl_window_handle().vulkan_instance_extensions()?;
-    Ok(VkInstance::new(&instance_extensions, debug_layers))
+impl GraphicsPlatform<VkBackend> for SDLPlatform {
+    fn create_instance(&self, debug_layers: bool) -> Result<VkInstance, Box<dyn std::error::Error>> {
+        let instance_extensions = self.window.sdl_window_handle().vulkan_instance_extensions()?;
+        Ok(VkInstance::new(&instance_extensions, debug_layers))
+    }
 }
 
 pub(crate) fn create_surface(sdl_window_handle: &sdl2::video::Window, graphics_instance: &VkInstance) -> VkSurface {

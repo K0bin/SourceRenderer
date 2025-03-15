@@ -2,26 +2,25 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::asset::*;
-use crate::graphics::{BindlessSlot, TextureView};
+use crate::graphics::{BindlessSlot, TextureView, Shader};
 use crate::math::BoundingBox;
 
 use super::*;
 
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::Vec4;
 
-pub struct RendererTexture<B: GPUBackend> {
-    pub(crate) view: Arc<TextureView<B>>,
-    pub(crate) bindless_index: Option<BindlessSlot<B>>,
+pub struct RendererTexture< > {
+    pub(crate) view: Arc<TextureView>,
+    pub(crate) bindless_index: Option<BindlessSlot>,
 }
 
-impl<B: GPUBackend> PartialEq for RendererTexture<B> {
+impl< > PartialEq for RendererTexture {
     fn eq(&self, other: &Self) -> bool {
         self.view == other.view
     }
 }
-impl<B: GPUBackend> Eq for RendererTexture<B> {}
+impl< > Eq for RendererTexture {}
 
 pub struct RendererMaterial {
     pub(super) properties: HashMap<String, RendererMaterialValue>,
@@ -212,14 +211,14 @@ impl RendererModel {
     }
 }
 
-pub type RendererShader<B> = Arc<<B as GPUBackend>::Shader>;
-pub type RendererGraphicsPipeline<P> = CompiledPipeline<P, GraphicsCompileTask<P>>;
-pub type RendererComputePipeline<P> = CompiledPipeline<P, ComputeCompileTask<P>>;
-pub type RendererRayTracingPipeline<P> = CompiledPipeline<P, StoredRayTracingPipelineInfo<P>>;
+pub type RendererShader = Arc<Shader>;
+pub type RendererGraphicsPipeline = CompiledPipeline<GraphicsCompileTask>;
+pub type RendererComputePipeline = CompiledPipeline<ComputeCompileTask>;
+pub type RendererRayTracingPipeline = CompiledPipeline<StoredRayTracingPipelineInfo>;
 
-pub struct RendererMesh<B: GPUBackend> {
-    pub vertices: AssetBufferSlice<B>,
-    pub indices: Option<AssetBufferSlice<B>>,
+pub struct RendererMesh< > {
+    pub vertices: AssetBufferSlice,
+    pub indices: Option<AssetBufferSlice>,
     pub parts: Box<[MeshRange]>,
     pub bounding_box: Option<BoundingBox>,
     pub vertex_count: u32,

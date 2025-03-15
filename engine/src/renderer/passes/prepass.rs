@@ -4,7 +4,6 @@ use bevy_math::Affine3A;
 use bevy_tasks::ParallelSlice;
 use sourcerenderer_core::{
     Matrix4,
-    Platform,
     Vec2,
     Vec2I,
     Vec2UI,
@@ -51,9 +50,9 @@ impl Prepass {
     const DRAWABLE_LABELS: bool = false;
 
     #[allow(unused)]
-    pub fn new<P: Platform>(
-        resources: &mut RendererResources<P::GPUBackend>,
-        asset_manager: &Arc<AssetManager<P>>,
+    pub fn new(
+        resources: &mut RendererResources,
+        asset_manager: &Arc<AssetManager>,
         resolution: Vec2UI,
     ) -> Self {
         let depth_info = TextureInfo {
@@ -136,20 +135,20 @@ impl Prepass {
     }
 
     #[inline(always)]
-    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_graphics_pipeline(self.pipeline).is_some()
     }
 
     #[profiling::function]
-    pub(super) fn execute<P: Platform>(
+    pub(super) fn execute(
         &mut self,
-        graphics_context: &GraphicsContext<P::GPUBackend>,
-        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        pass_params: &RenderPassParameters<'_, P>,
+        graphics_context: &GraphicsContext,
+        cmd_buffer: &mut CommandBufferRecorder,
+        pass_params: &RenderPassParameters<'_>,
         swapchain_transform: Matrix4,
         frame: u64,
-        camera_buffer: &TransientBufferSlice<P::GPUBackend>,
-        camera_history_buffer: &TransientBufferSlice<P::GPUBackend>
+        camera_buffer: &TransientBufferSlice,
+        camera_history_buffer: &TransientBufferSlice
     ) {
         let view = &pass_params.scene.scene.views()[pass_params.scene.active_view_index];
 
@@ -173,7 +172,7 @@ impl Prepass {
                 depth_stencil: Some(&DepthStencilAttachment {
                     view: &*depth_buffer,
                     load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
-                    store_op: StoreOp::<P::GPUBackend>::Store
+                    store_op: StoreOp::Store
                 })
             },
             RenderpassRecordingMode::CommandBuffers,
@@ -193,7 +192,7 @@ impl Prepass {
         let pipeline = pass_params.assets.get_graphics_pipeline(self.pipeline).unwrap();
         let task_pool = bevy_tasks::ComputeTaskPool::get();
         let assets = pass_params.assets;
-        let inner_cmd_buffers: Vec<FinishedCommandBuffer<P::GPUBackend>> = view.drawable_parts.par_chunk_map(task_pool, chunk_size, |_index, chunk| {
+        let inner_cmd_buffers: Vec<FinishedCommandBuffer> = view.drawable_parts.par_chunk_map(task_pool, chunk_size, |_index, chunk| {
                 let mut command_buffer = graphics_context.get_inner_command_buffer(inheritance);
 
                 command_buffer.set_pipeline(crate::graphics::PipelineBinding::Graphics(&pipeline));

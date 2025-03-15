@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::error::Error;
 use std::io::Result as IOResult;
 use std::path::{
     Path,
@@ -23,18 +22,15 @@ use sdl2::{
     VideoSubsystem,
 };
 use sourcerenderer_core::platform::{
-    FileWatcher,
-    Platform,
-    ThreadHandle,
-    Window,
-    IO
+    FileWatcher, Platform, ThreadHandle, Window, WindowProvider, IO
 };
 use sourcerenderer_core::{
     Vec2I,
     Vec2UI,
-    Vec2
+    Vec2,
+    gpu
 };
-use crate::sdl_gpu;
+use crate::sdl_gpu::{self, SDLGPUBackend};
 use sourcerenderer_engine::{Engine, WindowState};
 use bevy_input::keyboard::{KeyboardInput, KeyCode, Key};
 use bevy_input::ButtonState;
@@ -62,7 +58,7 @@ pub struct SDLPlatform {
     sdl_context: Sdl,
     _video_subsystem: VideoSubsystem,
     event_pump: EventPump,
-    window: SDLWindow,
+    pub(crate) window: SDLWindow,
     _mouse_pos: Vec2I,
 }
 
@@ -196,18 +192,8 @@ impl SDLWindow {
 }
 
 impl Platform for SDLPlatform {
-    type Window = SDLWindow;
-    type GPUBackend = sdl_gpu::SDLGPUBackend;
     type IO = StdIO;
     type ThreadHandle = StdThreadHandle;
-
-    fn window(&self) -> &SDLWindow {
-        &self.window
-    }
-
-    fn create_graphics(&self, debug_layers: bool) -> Result<<Self::GPUBackend as sourcerenderer_core::gpu::GPUBackend>::Instance, Box<dyn Error>> {
-        sdl_gpu::create_instance(debug_layers, &self.window)
-    }
 
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     fn thread_memory_management_pool<F, T>(callback: F) -> T
@@ -223,17 +209,25 @@ impl Platform for SDLPlatform {
     }
 }
 
-impl Window<SDLPlatform> for SDLWindow {
-    fn create_surface(&self, graphics_instance: &<<SDLPlatform as sourcerenderer_core::Platform>::GPUBackend as sourcerenderer_core::gpu::GPUBackend>::Instance) -> <<SDLPlatform as sourcerenderer_core::Platform>::GPUBackend as sourcerenderer_core::gpu::GPUBackend>::Surface {
+impl WindowProvider<SDLGPUBackend> for SDLPlatform {
+    type Window = SDLWindow;
+
+    fn window(&self) -> &SDLWindow {
+        &self.window
+    }
+}
+
+impl Window<SDLGPUBackend> for SDLWindow {
+    fn create_surface(&self, graphics_instance: &<SDLGPUBackend as gpu::GPUBackend>::Instance) -> <SDLGPUBackend as gpu::GPUBackend>::Surface {
         sdl_gpu::create_surface(&self.window, graphics_instance)
     }
 
     fn create_swapchain(
         &self,
         vsync: bool,
-        device: &<<SDLPlatform as sourcerenderer_core::Platform>::GPUBackend as sourcerenderer_core::gpu::GPUBackend>::Device,
-        surface: <<SDLPlatform as sourcerenderer_core::Platform>::GPUBackend as sourcerenderer_core::gpu::GPUBackend>::Surface
-     ) -> <<SDLPlatform as sourcerenderer_core::Platform>::GPUBackend as sourcerenderer_core::gpu::GPUBackend>::Swapchain {
+        device: &<SDLGPUBackend as gpu::GPUBackend>::Device,
+        surface: <SDLGPUBackend as gpu::GPUBackend>::Surface
+     ) -> <SDLGPUBackend as gpu::GPUBackend>::Swapchain {
         let (width, height) = self.window.drawable_size();
         sdl_gpu::create_swapchain(vsync, width, height, device, surface)
     }

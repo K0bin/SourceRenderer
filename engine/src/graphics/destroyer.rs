@@ -1,32 +1,30 @@
 use std::sync::Arc;
 use crate::Mutex;
 
-use sourcerenderer_core::gpu::*;
-
 use super::*;
 
-pub(super) struct DeferredDestroyer<B: GPUBackend> {
-    inner: Mutex<DeferredDestroyerInner<B>>
+pub(super) struct DeferredDestroyer {
+    inner: Mutex<DeferredDestroyerInner>
 }
 
-struct DeferredDestroyerInner<B: GPUBackend> {
+struct DeferredDestroyerInner {
     current_counter: u64,
-    allocations: Vec<(u64, MemoryAllocation<B::Heap>)>,
-    textures: Vec<(u64, B::Texture)>,
-    texture_views: Vec<(u64, B::TextureView)>,
-    buffers: Vec<(u64, B::Buffer)>,
-    samplers: Vec<(u64, B::Sampler)>,
-    fences: Vec<(u64, B::Fence)>,
-    acceleration_structures: Vec<(u64, B::AccelerationStructure)>,
-    buffer_slice_refs: Vec<(u64, Arc<BufferSlice<B>>)>,
-    graphics_pipelines: Vec<(u64, B::GraphicsPipeline)>,
-    compute_pipelines: Vec<(u64, B::ComputePipeline)>,
-    raytracing_pipelines: Vec<(u64, B::RayTracingPipeline)>,
+    allocations: Vec<(u64, MemoryAllocation<active_gpu_backend::Heap>)>,
+    textures: Vec<(u64, active_gpu_backend::Texture)>,
+    texture_views: Vec<(u64, active_gpu_backend::TextureView)>,
+    buffers: Vec<(u64, active_gpu_backend::Buffer)>,
+    samplers: Vec<(u64, active_gpu_backend::Sampler)>,
+    fences: Vec<(u64, active_gpu_backend::Fence)>,
+    acceleration_structures: Vec<(u64, active_gpu_backend::AccelerationStructure)>,
+    buffer_slice_refs: Vec<(u64, Arc<BufferSlice>)>,
+    graphics_pipelines: Vec<(u64, active_gpu_backend::GraphicsPipeline)>,
+    compute_pipelines: Vec<(u64, active_gpu_backend::ComputePipeline)>,
+    raytracing_pipelines: Vec<(u64, active_gpu_backend::RayTracingPipeline)>,
 }
 
 // TODO: Turn into a union to save memory
 
-impl<B: GPUBackend> DeferredDestroyer<B> {
+impl DeferredDestroyer {
     pub(crate) fn new() -> Self {
         Self {
             inner: Mutex::new(
@@ -48,67 +46,67 @@ impl<B: GPUBackend> DeferredDestroyer<B> {
         }
     }
 
-    pub fn destroy_allocation(&self, allocation: MemoryAllocation<B::Heap>) {
+    pub fn destroy_allocation(&self, allocation: MemoryAllocation<active_gpu_backend::Heap>) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.allocations.push((frame, allocation));
     }
 
-    pub fn destroy_texture(&self, texture: B::Texture) {
+    pub fn destroy_texture(&self, texture: active_gpu_backend::Texture) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.textures.push((frame, texture));
     }
 
-    pub fn destroy_texture_view(&self, texture_view: B::TextureView) {
+    pub fn destroy_texture_view(&self, texture_view: active_gpu_backend::TextureView) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.texture_views.push((frame, texture_view));
     }
 
-    pub fn destroy_buffer(&self, buffer: B::Buffer) {
-        let mut guard: crate::MutexGuard<'_, DeferredDestroyerInner<B>> = self.inner.lock().unwrap();
+    pub fn destroy_buffer(&self, buffer: active_gpu_backend::Buffer) {
+        let mut guard: crate::MutexGuard<'_, DeferredDestroyerInner> = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.buffers.push((frame, buffer));
     }
 
-    pub fn destroy_sampler(&self, sampler: B::Sampler) {
+    pub fn destroy_sampler(&self, sampler: active_gpu_backend::Sampler) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.samplers.push((frame, sampler));
     }
 
-    pub fn destroy_fence(&self, fence: B::Fence) {
+    pub fn destroy_fence(&self, fence: active_gpu_backend::Fence) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.fences.push((frame, fence));
     }
 
-    pub fn destroy_acceleration_structure(&self, acceleration_structure: B::AccelerationStructure) {
+    pub fn destroy_acceleration_structure(&self, acceleration_structure: active_gpu_backend::AccelerationStructure) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.acceleration_structures.push((frame, acceleration_structure));
     }
 
-    pub fn destroy_buffer_slice_ref(&self, buffer_slice_ref: Arc<BufferSlice<B>>) {
+    pub fn destroy_buffer_slice_ref(&self, buffer_slice_ref: Arc<BufferSlice>) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.buffer_slice_refs.push((frame, buffer_slice_ref));
     }
 
-    pub fn destroy_graphics_pipeline(&self, pipeline: B::GraphicsPipeline) {
+    pub fn destroy_graphics_pipeline(&self, pipeline: active_gpu_backend::GraphicsPipeline) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.graphics_pipelines.push((frame, pipeline));
     }
 
-    pub fn destroy_compute_pipeline(&self, pipeline: B::ComputePipeline) {
+    pub fn destroy_compute_pipeline(&self, pipeline: active_gpu_backend::ComputePipeline) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.compute_pipelines.push((frame, pipeline));
     }
 
-    pub fn destroy_raytracing_pipeline(&self, pipeline: B::RayTracingPipeline) {
+    pub fn destroy_raytracing_pipeline(&self, pipeline: active_gpu_backend::RayTracingPipeline) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.raytracing_pipelines.push((frame, pipeline));
@@ -135,7 +133,7 @@ impl<B: GPUBackend> DeferredDestroyer<B> {
     }
 }
 
-impl<B: GPUBackend> Drop for DeferredDestroyer<B> {
+impl Drop for DeferredDestroyer {
     fn drop(&mut self) {
         let guard = self.inner.lock().unwrap();
         assert!(guard.acceleration_structures.is_empty());

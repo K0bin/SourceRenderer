@@ -57,22 +57,22 @@ struct WindowSizeChangedEvent {
 #[derive(Event)]
 struct WindowMinimized {}
 
-pub struct RendererPlugin<P: Platform> {
-    _a: PlatformPhantomData<P>,
-}
+pub struct RendererPlugin<P: Platform>(PlatformPhantomData<P>);
+unsafe impl<P: Platform> Send for RendererPlugin<P> {}
+unsafe impl<P: Platform> Sync for RendererPlugin<P> {}
 
 impl<P: Platform> Plugin for RendererPlugin<P> {
     fn build(&self, app: &mut App) {
-        let swapchain: crate::graphics::Swapchain<<P as Platform>::GPUBackend> = app
+        let swapchain: crate::graphics::Swapchain = app
             .world_mut()
-            .remove_resource::<GPUSwapchainResource<P::GPUBackend>>()
+            .remove_resource::<GPUSwapchainResource>()
             .unwrap()
             .0;
-        let gpu_resources = app.world().resource::<GPUDeviceResource<P::GPUBackend>>();
+        let gpu_resources = app.world().resource::<GPUDeviceResource>();
         let console_resource = app.world().resource::<ConsoleResource>();
         let asset_manager_resource = app.world().resource::<AssetManagerECSResource<P>>();
 
-        let (renderer, sender) = Renderer::new(
+        let (renderer, sender) = Renderer::<P>::new(
             &gpu_resources.0,
             swapchain,
             &asset_manager_resource.0,
@@ -103,14 +103,14 @@ impl<P: Platform> Plugin for RendererPlugin<P> {
 
         let PreInitRendererResourceWrapper { renderer: renderer_cell, sender } = pre_init_wrapper;
         let renderer = SyncCell::to_inner(AtomicRefCell::into_inner(renderer_cell));
-        insert_renderer_resource(app, renderer, sender);
+        insert_renderer_resource::<P>(app, renderer, sender);
         install_renderer_systems::<P>(app);
     }
 }
 
 impl<P: Platform> RendererPlugin<P> {
     pub fn new() -> Self {
-        Self { _a: Default::default() }
+        Self(PlatformPhantomData::default())
     }
 
     pub fn stop(app: &mut App) {
@@ -132,12 +132,13 @@ impl<P: Platform> RendererPlugin<P> {
 #[derive(Resource)]
 struct PreInitRendererResourceWrapper<P: Platform> {
     renderer: AtomicRefCell<SyncCell<Renderer<P>>>,
-    sender: RendererSender<P::GPUBackend>,
+    sender: RendererSender,
 }
 
 #[derive(Resource)]
 struct RendererResourceWrapper<P: Platform> {
-    sender: RendererSender<P::GPUBackend>,
+    sender: RendererSender,
+    _p: PlatformPhantomData<P>,
 
     #[cfg(not(feature = "threading"))]
     renderer: SyncCell<Renderer<P>>,
@@ -164,10 +165,11 @@ fn install_renderer_systems<P: Platform>(
 fn insert_renderer_resource<P: Platform>(
     app: &mut App,
     renderer: Renderer<P>,
-    sender: RendererSender<P::GPUBackend>
+    sender: RendererSender
 ) {
-    let wrapper = RendererResourceWrapper::<P> {
+    let wrapper = RendererResourceWrapper {
         renderer: SyncCell::new(renderer),
+        _p: PlatformPhantomData::default(),
         sender
     };
     app.insert_resource(wrapper);
@@ -185,7 +187,7 @@ fn install_renderer_systems<P: Platform>(
 ) {
     app.add_systems(
         Last,
-        (begin_frame::<P>,).in_set(SyncSet)
+        (begin_frame::<P>).in_set(SyncSet)
     );
     app.add_systems(
         Last,
@@ -205,9 +207,9 @@ fn install_renderer_systems<P: Platform>(
 fn insert_renderer_resource<P: Platform>(
     app: &mut App,
     renderer: Renderer<P>,
-    sender: RendererSender<P::GPUBackend>
+    sender: RendererSender
 ) {
-    let wrapper = RendererResourceWrapper::<P> { sender };
+    let wrapper = RendererResourceWrapper::<P> { sender, _p: PlatformPhantomData::default() };
     app.insert_resource(wrapper);
 
     start_render_thread(renderer);

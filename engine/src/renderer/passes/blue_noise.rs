@@ -3,29 +3,27 @@ use std::sync::Arc;
 
 #[allow(deprecated)]
 use image::io::Reader as ImageReader;
-use sourcerenderer_core::gpu::GPUBackend;
-use sourcerenderer_core::Platform;
 
 use crate::graphics::*;
 use crate::graphics::{Device, SamplerInfo, TextureInfo};
 
-pub struct BlueNoise<B: GPUBackend> {
-    frames: [Arc<TextureView<B>>; 8],
-    sampler: Arc<Sampler<B>>,
+pub struct BlueNoise {
+    frames: [Arc<TextureView>; 8],
+    sampler: Arc<Sampler>,
 }
 
-impl<B: GPUBackend> BlueNoise<B> {
-    pub fn new<P: Platform>(device: &Arc<Device<B>>) -> Self {
+impl BlueNoise {
+    pub fn new(device: &Arc<Device>) -> Self {
         Self {
             frames: [
-                Self::load_frame::<P>(device, 0),
-                Self::load_frame::<P>(device, 1),
-                Self::load_frame::<P>(device, 2),
-                Self::load_frame::<P>(device, 3),
-                Self::load_frame::<P>(device, 4),
-                Self::load_frame::<P>(device, 5),
-                Self::load_frame::<P>(device, 6),
-                Self::load_frame::<P>(device, 7),
+                Self::load_frame(device, 0),
+                Self::load_frame(device, 1),
+                Self::load_frame(device, 2),
+                Self::load_frame(device, 3),
+                Self::load_frame(device, 4),
+                Self::load_frame(device, 5),
+                Self::load_frame(device, 6),
+                Self::load_frame(device, 7),
             ],
             sampler: Arc::new(device.create_sampler(&SamplerInfo {
                 mag_filter: Filter::Nearest,
@@ -45,7 +43,7 @@ impl<B: GPUBackend> BlueNoise<B> {
 
     #[allow(unused)]
     #[allow(deprecated)]
-    fn load_frame<P: Platform>(device: &Arc<Device<B>>, index: u32) -> Arc<TextureView<B>> {
+    fn load_frame(device: &Arc<Device>, index: u32) -> Arc<TextureView> {
         /*let path = Path::new("assets")
             .join(Path::new("bn"))
             .join(Path::new(&format!("LDR_RGB1_{}.png", index)));
@@ -59,7 +57,7 @@ impl<B: GPUBackend> BlueNoise<B> {
             .unwrap();
         let rgba_data = img.into_rgba8().to_vec();
 
-        let dev = device.as_ref() as &crate::graphics::Device<B>;
+        let dev = device.as_ref() as &crate::graphics::Device;
 
         let texture = dev.create_texture(
             &TextureInfo {
@@ -86,11 +84,11 @@ impl<B: GPUBackend> BlueNoise<B> {
         )
     }
 
-    pub fn frame(&self, index: u64) -> &Arc<crate::graphics::TextureView<B>> {
+    pub fn frame(&self, index: u64) -> &Arc<crate::graphics::TextureView> {
         &self.frames[(index % (self.frames.len() as u64)) as usize]
     }
 
-    pub fn sampler(&self) -> &Arc<crate::graphics::Sampler<B>> {
+    pub fn sampler(&self) -> &Arc<crate::graphics::Sampler> {
         &self.sampler
     }
 }

@@ -27,16 +27,20 @@ pub trait ThreadHandle : Send + Sync {
 }
 
 pub trait Platform: 'static + Sized {
-  type GPUBackend: GPUBackend;
-  type Window: Window<Self>;
   type IO: io::IO;
   type ThreadHandle: ThreadHandle;
 
-  fn window(&self) -> &Self::Window;
-  fn create_graphics(&self, debug_layers: bool) -> Result<<Self::GPUBackend as GPUBackend>::Instance, Box<dyn Error>>;
-
   fn thread_memory_management_pool<F, T>(callback: F) -> T
     where F: FnOnce() -> T;
+}
+
+pub trait GraphicsPlatform<B: GPUBackend> {
+  fn create_instance(&self, debug_layers: bool) -> Result<B::Instance, Box<dyn Error>>;
+}
+
+pub trait WindowProvider<B: GPUBackend> {
+  type Window: Window<B>;
+  fn window(&self) -> &Self::Window;
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
@@ -46,12 +50,12 @@ unsafe impl<P: Platform> Sync for PlatformPhantomData<P> {}
 impl<P: Platform> Default for PlatformPhantomData<P> { fn default() -> Self { Self(PhantomData) } }
 
 #[derive(PartialEq)]
-pub enum Event<P: Platform> {
+pub enum Event<B: GPUBackend> {
   KeyDown(Key),
   KeyUp(Key),
   Quit,
   WindowMinimized,
-  SurfaceChanged(<P::GPUBackend as GPUBackend>::Surface),
+  SurfaceChanged(B::Surface),
   WindowRestored(Vec2UI),
   WindowSizeChanged(Vec2UI),
   MouseMoved(Vec2I),
@@ -63,7 +67,7 @@ pub enum Event<P: Platform> {
   }
 }
 
-impl<P: Platform> Clone for Event<P> {
+impl<B: GPUBackend> Clone for Event<B> {
     fn clone(&self) -> Self {
         match self {
             Self::KeyDown(key) => Self::KeyDown(*key),
@@ -81,9 +85,9 @@ impl<P: Platform> Clone for Event<P> {
     }
 }
 
-pub trait Window<P: Platform> {
-  fn create_surface(&self, graphics_instance: &<P::GPUBackend as GPUBackend>::Instance) -> <P::GPUBackend as GPUBackend>::Surface;
-  fn create_swapchain(&self, vsync: bool, device: &<P::GPUBackend as GPUBackend>::Device, surface: <P::GPUBackend as GPUBackend>::Surface) -> <P::GPUBackend as GPUBackend>::Swapchain;
+pub trait Window<B: GPUBackend> {
   fn width(&self) -> u32;
   fn height(&self) -> u32;
+  fn create_surface(&self, graphics_instance: &B::Instance) -> B::Surface;
+  fn create_swapchain(&self, vsync: bool, device: &B::Device, surface: B::Surface) -> B::Swapchain;
 }

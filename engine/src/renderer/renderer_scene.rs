@@ -3,7 +3,6 @@ use std::usize;
 
 use bevy_ecs::entity::Entity;
 use log::warn;
-use sourcerenderer_core::gpu::GPUBackend;
 use sourcerenderer_core::Vec3;
 use bevy_math::Affine3A;
 
@@ -20,18 +19,18 @@ use super::{
     RendererStaticDrawable,
 };
 
-pub struct RendererScene<B: GPUBackend> {
+pub struct RendererScene {
     views: Vec<View>,
     static_meshes: Vec<RendererStaticDrawable>,
-    point_lights: Vec<RendererPointLight<B>>,
-    directional_lights: Vec<RendererDirectionalLight<B>>,
+    point_lights: Vec<RendererPointLight>,
+    directional_lights: Vec<RendererDirectionalLight>,
     drawable_entity_map: HashMap<Entity, usize>,
     point_light_entity_map: HashMap<Entity, usize>,
     directional_light_entity_map: HashMap<Entity, usize>,
     lightmap: Option<TextureHandle>,
 }
 
-impl<B: GPUBackend> RendererScene<B> {
+impl RendererScene {
     pub fn new() -> Self {
         Self {
             views: vec![View::default()],
@@ -71,17 +70,17 @@ impl<B: GPUBackend> RendererScene<B> {
     }
 
     #[inline(always)]
-    pub fn point_lights(&self) -> &[RendererPointLight<B>] {
+    pub fn point_lights(&self) -> &[RendererPointLight] {
         &self.point_lights
     }
 
     #[inline(always)]
-    pub fn directional_lights(&self) -> &[RendererDirectionalLight<B>] {
+    pub fn directional_lights(&self) -> &[RendererDirectionalLight] {
         &self.directional_lights
     }
 
     #[inline(always)]
-    pub fn view_update_info(&mut self) -> (&mut [View], &[RendererStaticDrawable], &[RendererPointLight<B>], &[RendererDirectionalLight<B>]) {
+    pub fn view_update_info(&mut self) -> (&mut [View], &[RendererStaticDrawable], &[RendererPointLight], &[RendererDirectionalLight]) {
         (&mut self.views, &self.static_meshes, &self.point_lights, &self.directional_lights)
     }
 

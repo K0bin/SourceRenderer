@@ -2,22 +2,20 @@ use std::{collections::{hash_map::Values, HashMap}, sync::Arc};
 use crate::{graphics::GraphicsContext, RwLock, RwLockReadGuard}; // The parking lot variant is fair (write-preferring) and consistent across platforms.
 
 use smallvec::SmallVec;
-use sourcerenderer_core::{Platform, PlatformPhantomData};
 
 use crate::{asset::*, graphics::{BufferSlice, ComputePipeline, GraphicsPipeline, RayTracingPipeline}};
 
 use super::*;
 
-pub struct RendererAssets<P: Platform> {
-    assets: RwLock<RendererAssetMaps<P>>,
-    placeholders: AssetPlaceholders<P>,
-    shader_manager: ShaderManager<P>,
-    integrator: AssetIntegrator<P>,
-    _platform: PlatformPhantomData<P>
+pub struct RendererAssets {
+    assets: RwLock<RendererAssetMaps>,
+    placeholders: AssetPlaceholders,
+    shader_manager: ShaderManager,
+    integrator: AssetIntegrator,
 }
 
-impl<P: Platform> RendererAssets<P> {
-    pub(crate) fn new(device: &Arc<crate::graphics::Device<P::GPUBackend>>) -> Self {
+impl RendererAssets {
+    pub(crate) fn new(device: &Arc<crate::graphics::Device>) -> Self {
         Self {
             assets: RwLock::new(RendererAssetMaps {
                 textures: HashMap::new(),
@@ -32,14 +30,13 @@ impl<P: Platform> RendererAssets<P> {
             placeholders: AssetPlaceholders::new(device),
             shader_manager: ShaderManager::new(device),
             integrator: AssetIntegrator::new(device),
-            _platform: Default::default()
         }
     }
 
     #[inline(always)]
     pub(crate) fn integrate<T: Into<AssetHandle>>(
         &self,
-        asset_manager: &Arc<AssetManager<P>>,
+        asset_manager: &Arc<AssetManager>,
         handle: T,
         asset_data: &AssetData,
         priority: AssetLoadPriority
@@ -48,7 +45,7 @@ impl<P: Platform> RendererAssets<P> {
     }
 
     #[inline(always)]
-    pub(crate) fn add_asset(&self, asset: AssetWithHandle<P>) -> bool {
+    pub(crate) fn add_asset(&self, asset: AssetWithHandle) -> bool {
         let mut assets = self.assets.write();
         match asset {
             AssetWithHandle::Texture(handle, asset) => assets.textures.insert(handle.into(), asset).is_some(),
@@ -71,21 +68,21 @@ impl<P: Platform> RendererAssets<P> {
     }
 
     #[inline(always)]
-    pub(crate) fn request_graphics_pipeline(&self, asset_manager: &Arc<AssetManager<P>>, info: &GraphicsPipelineInfo) -> GraphicsPipelineHandle {
+    pub(crate) fn request_graphics_pipeline(&self, asset_manager: &Arc<AssetManager>, info: &GraphicsPipelineInfo) -> GraphicsPipelineHandle {
         self.shader_manager.request_graphics_pipeline(asset_manager, info)
     }
 
     #[inline(always)]
-    pub(crate) fn request_compute_pipeline(&self, asset_manager: &Arc<AssetManager<P>>, shader_path: &str) -> ComputePipelineHandle {
+    pub(crate) fn request_compute_pipeline(&self, asset_manager: &Arc<AssetManager>, shader_path: &str) -> ComputePipelineHandle {
         self.shader_manager.request_compute_pipeline(asset_manager, shader_path)
     }
 
     #[inline(always)]
-    pub(crate) fn request_ray_tracing_pipeline(&self, asset_manager: &Arc<AssetManager<P>>, info: &RayTracingPipelineInfo) -> RayTracingPipelineHandle {
+    pub(crate) fn request_ray_tracing_pipeline(&self, asset_manager: &Arc<AssetManager>, info: &RayTracingPipelineInfo) -> RayTracingPipelineHandle {
         self.shader_manager.request_ray_tracing_pipeline(asset_manager, info)
     }
 
-    pub(crate) fn read<'a>(&'a self) -> RendererAssetsReadOnly<'a, P> {
+    pub(crate) fn read<'a>(&'a self) -> RendererAssetsReadOnly<'a> {
         RendererAssetsReadOnly {
             maps: self.assets.read(),
             placeholders: &self.placeholders,
@@ -95,41 +92,41 @@ impl<P: Platform> RendererAssets<P> {
     }
 
     #[inline(always)]
-    pub(crate) fn flush(&self, asset_manager: &Arc<AssetManager<P>>) {
+    pub(crate) fn flush(&self, asset_manager: &Arc<AssetManager>) {
         self.integrator.flush(asset_manager, &self.shader_manager);
     }
 
     #[inline(always)]
-    pub(crate) fn bump_frame(&self, context: &GraphicsContext<P::GPUBackend>) {
+    pub(crate) fn bump_frame(&self, context: &GraphicsContext) {
         self.integrator.bump_frame(context);
     }
 }
 
-struct RendererAssetMaps<P: Platform> {
-    textures: HashMap<TextureHandle, RendererTexture<P::GPUBackend>>,
+struct RendererAssetMaps {
+    textures: HashMap<TextureHandle, RendererTexture>,
     materials: HashMap<MaterialHandle, RendererMaterial>,
-    meshes: HashMap<MeshHandle, RendererMesh<P::GPUBackend>>,
+    meshes: HashMap<MeshHandle, RendererMesh>,
     models: HashMap<ModelHandle, RendererModel>,
-    shaders: HashMap<ShaderHandle, RendererShader<P::GPUBackend>>,
-    graphics_pipelines: HashMap<GraphicsPipelineHandle, RendererGraphicsPipeline<P>>,
-    compute_pipelines: HashMap<ComputePipelineHandle, RendererComputePipeline<P>>,
-    ray_tracing_pipelines: HashMap<RayTracingPipelineHandle, RendererRayTracingPipeline<P>>,
+    shaders: HashMap<ShaderHandle, RendererShader>,
+    graphics_pipelines: HashMap<GraphicsPipelineHandle, RendererGraphicsPipeline>,
+    compute_pipelines: HashMap<ComputePipelineHandle, RendererComputePipeline>,
+    ray_tracing_pipelines: HashMap<RayTracingPipelineHandle, RendererRayTracingPipeline>,
 }
 
-impl<P: Platform> RendererAssetMaps<P> {
+impl RendererAssetMaps {
     #[allow(unused)]
     #[inline]
-    fn get<T: Into<AssetHandle>>(&self, handle: T) -> Option<AssetRef<P>> {
+    fn get<T: Into<AssetHandle>>(&self, handle: T) -> Option<AssetRef> {
         let handle: AssetHandle = handle.into();
         match handle.asset_type() {
-            AssetType::Texture => self.textures.get(&handle.into()).map(|asset| AssetRef::<P>::from(asset)),
-            AssetType::Model => self.models.get(&handle.into()).map(|asset| AssetRef::<P>::from(asset)),
-            AssetType::Mesh => self.meshes.get(&handle.into()).map(|asset| AssetRef::<P>::from(asset)),
-            AssetType::Material => self.materials.get(&handle.into()).map(|asset| AssetRef::<P>::from(asset)),
-            AssetType::Shader => self.shaders.get(&handle.into()).map(|asset| AssetRef::<P>::from(asset)),
-            AssetType::GraphicsPipeline => self.graphics_pipelines.get(&handle.into()).map(|asset| AssetRef::<P>::from(asset)),
-            AssetType::ComputePipeline => self.compute_pipelines.get(&handle.into()).map(|asset| AssetRef::<P>::from(asset)),
-            AssetType::RayTracingPipeline => self.ray_tracing_pipelines.get(&handle.into()).map(|asset| AssetRef::<P>::from(asset)),
+            AssetType::Texture => self.textures.get(&handle.into()).map(|asset| AssetRef::from(asset)),
+            AssetType::Model => self.models.get(&handle.into()).map(|asset| AssetRef::from(asset)),
+            AssetType::Mesh => self.meshes.get(&handle.into()).map(|asset| AssetRef::from(asset)),
+            AssetType::Material => self.materials.get(&handle.into()).map(|asset| AssetRef::from(asset)),
+            AssetType::Shader => self.shaders.get(&handle.into()).map(|asset| AssetRef::from(asset)),
+            AssetType::GraphicsPipeline => self.graphics_pipelines.get(&handle.into()).map(|asset| AssetRef::from(asset)),
+            AssetType::ComputePipeline => self.compute_pipelines.get(&handle.into()).map(|asset| AssetRef::from(asset)),
+            AssetType::RayTracingPipeline => self.ray_tracing_pipelines.get(&handle.into()).map(|asset| AssetRef::from(asset)),
             _ => panic!("Asset type {:?} is not a renderer asset type", handle.asset_type()),
         }
     }
@@ -145,21 +142,21 @@ impl<P: Platform> RendererAssetMaps<P> {
     }
 }
 
-pub struct RendererAssetsReadOnly<'a, P: Platform> {
-    maps: RwLockReadGuard<'a, RendererAssetMaps<P>>,
-    placeholders: &'a AssetPlaceholders<P>,
-    vertex_buffer: &'a Arc<BufferSlice<P::GPUBackend>>,
-    index_buffer: &'a Arc<BufferSlice<P::GPUBackend>>,
+pub struct RendererAssetsReadOnly<'a> {
+    maps: RwLockReadGuard<'a, RendererAssetMaps>,
+    placeholders: &'a AssetPlaceholders,
+    vertex_buffer: &'a Arc<BufferSlice>,
+    index_buffer: &'a Arc<BufferSlice>,
 }
 
-impl<P: Platform> RendererAssetsReadOnly<'_, P> {
+impl RendererAssetsReadOnly<'_> {
     #[inline(always)]
     pub fn get_model(&self, handle: ModelHandle) -> Option<&RendererModel> {
         self.maps.models.get(&handle)
     }
 
     #[inline(always)]
-    pub fn get_mesh(&self, handle: MeshHandle) -> Option<&RendererMesh<P::GPUBackend>> {
+    pub fn get_mesh(&self, handle: MeshHandle) -> Option<&RendererMesh> {
         self.maps.meshes.get(&handle)
     }
 
@@ -174,61 +171,61 @@ impl<P: Platform> RendererAssetsReadOnly<'_, P> {
     }
 
     #[inline(always)]
-    pub fn get_texture(&self, handle: TextureHandle) -> &RendererTexture<P::GPUBackend> {
+    pub fn get_texture(&self, handle: TextureHandle) -> &RendererTexture {
         self.maps.textures.get(&handle).unwrap_or(self.placeholders.texture_white())
     }
 
     #[inline(always)]
-    pub fn get_texture_opt(&self, handle: TextureHandle) -> Option<&RendererTexture<P::GPUBackend>> {
+    pub fn get_texture_opt(&self, handle: TextureHandle) -> Option<&RendererTexture> {
         self.maps.textures.get(&handle)
     }
 
     #[inline(always)]
-    pub fn get_placeholder_texture_black(&self) -> &RendererTexture<P::GPUBackend> {
+    pub fn get_placeholder_texture_black(&self) -> &RendererTexture {
         self.placeholders.texture_black()
     }
 
     #[inline(always)]
-    pub fn get_placeholder_texture_white(&self) -> &RendererTexture<P::GPUBackend> {
+    pub fn get_placeholder_texture_white(&self) -> &RendererTexture {
         self.placeholders.texture_white()
     }
 
     #[inline(always)]
-    pub fn get_shader(&self, handle: ShaderHandle) -> Option<&RendererShader<P::GPUBackend>> {
+    pub fn get_shader(&self, handle: ShaderHandle) -> Option<&RendererShader> {
         self.maps.shaders.get(&handle)
     }
 
     #[inline(always)]
-    pub fn get_graphics_pipeline(&self, handle: GraphicsPipelineHandle) -> Option<&Arc<GraphicsPipeline<P::GPUBackend>>> {
+    pub fn get_graphics_pipeline(&self, handle: GraphicsPipelineHandle) -> Option<&Arc<GraphicsPipeline>> {
         self.maps.graphics_pipelines.get(&handle).map(|c| &c.pipeline)
     }
 
     #[inline(always)]
-    pub fn get_compute_pipeline(&self, handle: ComputePipelineHandle) -> Option<&Arc<ComputePipeline<P::GPUBackend>>> {
+    pub fn get_compute_pipeline(&self, handle: ComputePipelineHandle) -> Option<&Arc<ComputePipeline>> {
         self.maps.compute_pipelines.get(&handle).map(|c| &c.pipeline)
     }
 
     #[inline(always)]
-    pub fn get_ray_tracing_pipeline(&self, handle: RayTracingPipelineHandle) -> Option<&Arc<RayTracingPipeline<P::GPUBackend>>> {
+    pub fn get_ray_tracing_pipeline(&self, handle: RayTracingPipelineHandle) -> Option<&Arc<RayTracingPipeline>> {
         self.maps.ray_tracing_pipelines.get(&handle).map(|c| &c.pipeline)
     }
 
     #[inline(always)]
-    pub fn all_graphics_pipelines(&self) -> Values<'_, GraphicsPipelineHandle, RendererGraphicsPipeline<P>> {
+    pub fn all_graphics_pipelines(&self) -> Values<'_, GraphicsPipelineHandle, RendererGraphicsPipeline> {
         self.maps.graphics_pipelines.values()
     }
 
     #[inline(always)]
-    pub fn all_compute_pipelines(&self) -> Values<'_, ComputePipelineHandle, RendererComputePipeline<P>> {
+    pub fn all_compute_pipelines(&self) -> Values<'_, ComputePipelineHandle, RendererComputePipeline> {
         self.maps.compute_pipelines.values()
     }
 
     #[inline(always)]
-    pub fn all_ray_tracing_pipelines(&self) -> Values<'_, RayTracingPipelineHandle, RendererRayTracingPipeline<P>> {
+    pub fn all_ray_tracing_pipelines(&self) -> Values<'_, RayTracingPipelineHandle, RendererRayTracingPipeline> {
         self.maps.ray_tracing_pipelines.values()
     }
 
-    pub fn get<T: Into<AssetHandle>>(&self, handle: T) -> Option<AssetRef<P>> {
+    pub fn get<T: Into<AssetHandle>>(&self, handle: T) -> Option<AssetRef> {
         self.maps.get(handle)
     }
 
@@ -256,12 +253,12 @@ impl<P: Platform> RendererAssetsReadOnly<'_, P> {
     }
 
     #[inline(always)]
-    pub fn vertex_buffer(&self) -> &Arc<BufferSlice<P::GPUBackend>> {
+    pub fn vertex_buffer(&self) -> &Arc<BufferSlice> {
         self.vertex_buffer
     }
 
     #[inline(always)]
-    pub fn index_buffer(&self) -> &Arc<BufferSlice<P::GPUBackend>> {
+    pub fn index_buffer(&self) -> &Arc<BufferSlice> {
         self.index_buffer
     }
 }

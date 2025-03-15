@@ -28,13 +28,13 @@ pub struct CullingPointLight {
 }
 
 #[derive(Clone)]
-pub struct RendererDirectionalLight<B: GPUBackend> {
+pub struct RendererDirectionalLight {
     pub direction: Vec3,
     pub intensity: f32,
-    pub shadow_map: AtomicRefCell<Option<Arc<Texture<B>>>>,
+    pub shadow_map: AtomicRefCell<Option<Arc<Texture>>>,
 }
 
-impl<B: GPUBackend> RendererDirectionalLight<B> {
+impl RendererDirectionalLight {
     pub fn new(direction: Vec3, intensity: f32) -> Self {
         Self {
             direction,
@@ -45,13 +45,13 @@ impl<B: GPUBackend> RendererDirectionalLight<B> {
 }
 
 #[derive(Clone)]
-pub struct RendererPointLight<B: GPUBackend> {
+pub struct RendererPointLight {
     pub position: Vec3,
     pub intensity: f32,
-    pub shadow_map: AtomicRefCell<Option<Arc<Texture<B>>>>,
+    pub shadow_map: AtomicRefCell<Option<Arc<Texture>>>,
 }
 
-impl<B: GPUBackend> RendererPointLight<B> {
+impl RendererPointLight {
     pub fn new(position: Vec3, intensity: f32) -> Self {
         Self {
             position,

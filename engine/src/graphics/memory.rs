@@ -17,14 +17,14 @@ pub enum MemoryUsage {
 pub type MemoryTypeIndex = u32;
 pub type MemoryTypeMask = u32;
 
-pub(super) struct MemoryAllocator<B: GPUBackend> {
-    device: Arc<B::Device>,
+pub(super) struct MemoryAllocator {
+    device: Arc<active_gpu_backend::Device>,
     is_uma: bool,
-    inner: Mutex<MemoryAllocatorInner<B>>
+    inner: Mutex<MemoryAllocatorInner>
 }
 
-pub(super) struct MemoryAllocatorInner<B: GPUBackend> {
-    chunks: HashMap<MemoryTypeIndex, Vec<Chunk<B::Heap>>>
+pub(super) struct MemoryAllocatorInner {
+    chunks: HashMap<MemoryTypeIndex, Vec<Chunk<active_gpu_backend::Heap>>>
 }
 
 const CHUNK_SIZE: u64 = 256 << 20;
@@ -47,8 +47,8 @@ pub(super) enum MemoryTypeMatchingStrictness {
     Fallback
 }
 
-impl<B: GPUBackend> MemoryAllocator<B> {
-    pub(super) fn new(device: &Arc<B::Device>) -> Self {
+impl MemoryAllocator {
+    pub(super) fn new(device: &Arc<active_gpu_backend::Device>) -> Self {
         let memory_types = unsafe { device.memory_type_infos() };
         let is_uma = memory_types.iter().all(|memory_type| memory_type.memory_kind == MemoryKind::VRAM);
 
@@ -61,7 +61,7 @@ impl<B: GPUBackend> MemoryAllocator<B> {
         }
     }
 
-    fn allocate_by_memory_type(&self, memory_type_index: MemoryTypeIndex, size: u64, alignment: u64) -> Result<MemoryAllocation<B::Heap>, OutOfMemoryError> {
+    fn allocate_by_memory_type(&self, memory_type_index: MemoryTypeIndex, size: u64, alignment: u64) -> Result<MemoryAllocation<active_gpu_backend::Heap>, OutOfMemoryError> {
         let mut inner = self.inner.lock().unwrap();
         let chunk_list = inner.chunks.entry(memory_type_index).or_insert(Vec::new());
         let allocation = chunk_list.iter().find_map(|chunk| chunk.allocate(size, alignment));
@@ -86,7 +86,7 @@ impl<B: GPUBackend> MemoryAllocator<B> {
         })
     }
 
-    pub(super) fn allocate(&self, usage: MemoryUsage, requirements: &ResourceHeapInfo) -> Result<MemoryAllocation<B::Heap>, OutOfMemoryError> {
+    pub(super) fn allocate(&self, usage: MemoryUsage, requirements: &ResourceHeapInfo) -> Result<MemoryAllocation<active_gpu_backend::Heap>, OutOfMemoryError> {
         let mut mask: u32;
 
         if usage != MemoryUsage::GPUMemory {
@@ -109,7 +109,7 @@ impl<B: GPUBackend> MemoryAllocator<B> {
         Err(OutOfMemoryError {})
     }
 
-    fn try_allocate(&self, memory_type_mask: MemoryTypeMask, size: u64, alignment: u64) -> Result<MemoryAllocation<B::Heap>, OutOfMemoryError> {
+    fn try_allocate(&self, memory_type_mask: MemoryTypeMask, size: u64, alignment: u64) -> Result<MemoryAllocation<active_gpu_backend::Heap>, OutOfMemoryError> {
         let memory_types = unsafe { self.device.memory_type_infos() };
         if memory_type_mask == 0 {
             return Err(OutOfMemoryError {});

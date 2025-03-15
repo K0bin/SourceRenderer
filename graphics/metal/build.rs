@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use build_util::{compile_shaders, ShadingLanguage};
 
-use log::{error, logger};
+use log::logger;
 
 fn main() {
     build_util::build_script_logger::init();

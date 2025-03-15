@@ -2,7 +2,6 @@ use std::cell::Ref;
 use std::sync::Arc;
 
 use sourcerenderer_core::{
-    Platform,
     Vec2,
     Vec2UI,
 };
@@ -53,10 +52,10 @@ impl TAAPass {
     pub const TAA_TEXTURE_NAME: &'static str = "TAAOuput";
 
     #[allow(unused)]
-    pub fn new<P: Platform>(
+    pub fn new(
         resolution: Vec2UI,
-        resources: &mut RendererResources<P::GPUBackend>,
-        asset_manager: &Arc<AssetManager<P>>,
+        resources: &mut RendererResources,
+        asset_manager: &Arc<AssetManager>,
         visibility_buffer: bool,
     ) -> Self {
         let pipeline = asset_manager.request_compute_pipeline(if !visibility_buffer {
@@ -85,14 +84,14 @@ impl TAAPass {
     }
 
     #[inline(always)]
-    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_compute_pipeline(self.pipeline).is_some()
     }
 
-    pub fn execute<P: Platform>(
+    pub fn execute(
         &mut self,
-        cmd_buf: &mut CommandBufferRecorder<P::GPUBackend>,
-        pass_params: &RenderPassParameters<'_, P>,
+        cmd_buf: &mut CommandBufferRecorder,
+        pass_params: &RenderPassParameters<'_>,
         input_name: &str,
         depth_name: &str,
         motion_name: Option<&str>,
@@ -134,11 +133,11 @@ impl TAAPass {
         );
 
         let mut motion_srv =
-            Option::<Ref<Arc<TextureView<P::GPUBackend>>>>::None;
+            Option::<Ref<Arc<TextureView>>>::None;
         let mut id_view =
-            Option::<Ref<Arc<TextureView<P::GPUBackend>>>>::None;
+            Option::<Ref<Arc<TextureView>>>::None;
         let mut barycentrics_view =
-            Option::<Ref<Arc<TextureView<P::GPUBackend>>>>::None;
+            Option::<Ref<Arc<TextureView>>>::None;
         if !visibility_buffer {
             motion_srv = Some(pass_params.resources.access_view(
                 cmd_buf,

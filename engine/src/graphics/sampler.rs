@@ -4,13 +4,13 @@ use sourcerenderer_core::gpu::*;
 
 use super::*;
 
-pub struct Sampler<B: GPUBackend> {
-    sampler: ManuallyDrop<B::Sampler>,
-    destroyer: Arc<DeferredDestroyer<B>>
+pub struct Sampler {
+    sampler: ManuallyDrop<active_gpu_backend::Sampler>,
+    destroyer: Arc<DeferredDestroyer>
 }
 
-impl<B: GPUBackend> Sampler<B> {
-    pub(super) fn new(device: &Arc<B::Device>, destroyer: &Arc<DeferredDestroyer<B>>, info: &SamplerInfo) -> Self {
+impl Sampler {
+    pub(super) fn new(device: &Arc<active_gpu_backend::Device>, destroyer: &Arc<DeferredDestroyer>, info: &SamplerInfo) -> Self {
         let sampler = unsafe { device.create_sampler(info) };
         Self {
             sampler: ManuallyDrop::new(sampler),
@@ -19,12 +19,12 @@ impl<B: GPUBackend> Sampler<B> {
     }
 
     #[inline(always)]
-    pub(super) fn handle(&self) -> &B::Sampler {
+    pub(super) fn handle(&self) -> &active_gpu_backend::Sampler {
         &self.sampler
     }
 }
 
-impl<B: GPUBackend> Drop for Sampler<B> {
+impl Drop for Sampler {
     fn drop(&mut self) {
         let sampler = unsafe { ManuallyDrop::take(&mut self.sampler) };
         self.destroyer.destroy_sampler(sampler);

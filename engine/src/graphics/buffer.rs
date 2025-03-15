@@ -1,18 +1,19 @@
 use std::{sync::{Arc, Mutex}, collections::HashMap, fmt::{Debug, Formatter}, hash::Hash, ffi::c_void};
 
 use log::trace;
-use sourcerenderer_core::gpu::*;
+use sourcerenderer_core::gpu::Buffer as _;
+use sourcerenderer_core::gpu::Heap as _;
 
 use super::*;
 
-pub struct BufferAndAllocation<B: GPUBackend> {
-    pub(super) buffer: B::Buffer,
-    pub(super) allocation: Option<MemoryAllocation<B::Heap>>
+pub struct BufferAndAllocation {
+    pub(super) buffer: active_gpu_backend::Buffer,
+    pub(super) allocation: Option<MemoryAllocation<active_gpu_backend::Heap>>
 }
 
-pub struct BufferSlice<B: GPUBackend>(Allocation<BufferAndAllocation<B>>);
+pub struct BufferSlice(Allocation<BufferAndAllocation>);
 
-impl<B: GPUBackend> Debug for BufferSlice<B> {
+impl Debug for BufferSlice {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -24,7 +25,7 @@ impl<B: GPUBackend> Debug for BufferSlice<B> {
     }
 }
 
-impl<B: GPUBackend> BufferSlice<B> {
+impl BufferSlice {
     #[inline(always)]
     pub fn offset(&self) -> u64 {
         self.0.range.offset
@@ -36,7 +37,7 @@ impl<B: GPUBackend> BufferSlice<B> {
     }
 
     #[inline(always)]
-    pub(super) fn handle(&self) -> &B::Buffer {
+    pub(super) fn handle(&self) -> &active_gpu_backend::Buffer {
         &self.0.data().buffer
     }
 
@@ -91,14 +92,14 @@ struct BufferKey {
     sharing_mode: QueueSharingMode
 }
 
-pub struct BufferAllocator<B: GPUBackend> {
-    device: Arc<B::Device>,
-    allocator: Arc<MemoryAllocator<B>>,
-    buffers: Mutex<HashMap<BufferKey, Vec<Chunk<BufferAndAllocation<B>>>>>,
+pub struct BufferAllocator {
+    device: Arc<active_gpu_backend::Device>,
+    allocator: Arc<MemoryAllocator>,
+    buffers: Mutex<HashMap<BufferKey, Vec<Chunk<BufferAndAllocation>>>>,
 }
 
-impl<B: GPUBackend> BufferAllocator<B> {
-    pub(super) fn new(device: &Arc<B::Device>, memory_allocator: &Arc<MemoryAllocator<B>>) -> Self {
+impl BufferAllocator {
+    pub(super) fn new(device: &Arc<active_gpu_backend::Device>, memory_allocator: &Arc<MemoryAllocator>) -> Self {
         Self {
             device: device.clone(),
             allocator: memory_allocator.clone(),
@@ -111,7 +112,7 @@ impl<B: GPUBackend> BufferAllocator<B> {
       info: &BufferInfo,
       memory_usage: MemoryUsage,
       name: Option<&str>,
-    ) -> Result<Arc<BufferSlice<B>>, OutOfMemoryError> {
+    ) -> Result<Arc<BufferSlice>, OutOfMemoryError> {
         let heap_info = unsafe { self.device.get_buffer_heap_info(info) };
         let alignment: u64 = heap_info.alignment;
 
@@ -147,11 +148,11 @@ impl<B: GPUBackend> BufferAllocator<B> {
         return Ok(Arc::new(BufferSlice(allocation)));
     }
 
-    pub(super) fn create_buffer(device: &Arc<B::Device>, allocator: &MemoryAllocator<B>, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) -> Result<BufferAndAllocation<B>, OutOfMemoryError> {
+    pub(super) fn create_buffer(device: &Arc<active_gpu_backend::Device>, allocator: &MemoryAllocator, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) -> Result<BufferAndAllocation, OutOfMemoryError> {
         let heap_info = unsafe { device.get_buffer_heap_info(info) };
         if heap_info.dedicated_allocation_preference == DedicatedAllocationPreference::RequireDedicated || heap_info.dedicated_allocation_preference == DedicatedAllocationPreference::PreferDedicated {
             let memory_types = unsafe { device.memory_type_infos() };
-            let mut buffer: Result<B::Buffer, OutOfMemoryError> = Err(OutOfMemoryError {});
+            let mut buffer: Result<active_gpu_backend::Buffer, OutOfMemoryError> = Err(OutOfMemoryError {});
 
             let mask = allocator.find_memory_type_mask(memory_usage, MemoryTypeMatchingStrictness::Strict) & heap_info.memory_type_mask;
             for i in 0..memory_types.len() as u32 {

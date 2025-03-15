@@ -1,21 +1,21 @@
 use std::sync::Arc;
 
 use bevy_ecs::system::Resource;
-use sourcerenderer_core::{gpu::GPUBackend, platform::Window, Platform};
+use sourcerenderer_core::{platform::{GraphicsPlatform, Window, WindowProvider}, Platform};
 
-use super::{Device, Instance, Swapchain};
-
-#[derive(Resource)]
-pub struct GPUDeviceResource<B: GPUBackend>(pub Arc<Device<B>>);
+use super::{active_gpu_backend, Device, Instance, Swapchain};
 
 #[derive(Resource)]
-pub struct GPUSwapchainResource<B: GPUBackend>(pub Swapchain<B>);
+pub struct GPUDeviceResource(pub Arc<Device>);
 
-pub(crate) fn initialize_graphics<P: Platform>(platform: &P, app: &mut bevy_app::App) {
+#[derive(Resource)]
+pub struct GPUSwapchainResource(pub Swapchain);
+
+pub(crate) fn initialize_graphics<P: Platform + GraphicsPlatform<active_gpu_backend::Backend> + WindowProvider<active_gpu_backend::Backend>>(platform: &P, app: &mut bevy_app::App) {
     let api_instance = platform
-        .create_graphics(true)
+        .create_instance(true)
         .expect("Failed to initialize graphics");
-    let gpu_instance = Instance::<P::GPUBackend>::new(api_instance);
+    let gpu_instance = Instance::new(api_instance);
 
     let surface = platform.window().create_surface(gpu_instance.handle());
 
@@ -25,8 +25,8 @@ pub(crate) fn initialize_graphics<P: Platform>(platform: &P, app: &mut bevy_app:
     let core_swapchain = platform.window().create_swapchain(true, gpu_device.handle(), surface);
     let gpu_swapchain = Swapchain::new(core_swapchain, &gpu_device);
 
-    let gpu_resource = GPUDeviceResource::<P::GPUBackend>(gpu_device);
-    let gpu_swapchain_resource = GPUSwapchainResource::<P::GPUBackend>(gpu_swapchain);
+    let gpu_resource = GPUDeviceResource(gpu_device);
+    let gpu_swapchain_resource = GPUSwapchainResource(gpu_swapchain);
     app.insert_resource(gpu_resource);
     app.insert_resource(gpu_swapchain_resource);
 }

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::{Platform, Vec4};
+use sourcerenderer_core::Vec4;
 
 use crate::asset::AssetManager;
 use crate::math::Frustum;
@@ -22,9 +22,9 @@ impl DrawPrepPass {
     pub const INDIRECT_DRAW_BUFFER: &'static str = "IndirectDraws";
 
     #[allow(unused)]
-    pub fn new<P: Platform>(
-        resources: &mut RendererResources<P::GPUBackend>,
-        asset_manager: &Arc<AssetManager<P>>,
+    pub fn new(
+        resources: &mut RendererResources,
+        asset_manager: &Arc<AssetManager>,
     ) -> Self {
         let culling_pipeline = asset_manager.request_compute_pipeline("shaders/culling.comp.json");
         let prep_pipeline = asset_manager.request_compute_pipeline("shaders/draw_prep.comp.json");
@@ -56,14 +56,14 @@ impl DrawPrepPass {
     }
 
     #[inline(always)]
-    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_compute_pipeline(self.culling_pipeline).is_some() && assets.get_compute_pipeline(self.prep_pipeline).is_some()
     }
 
-    pub fn execute<P: Platform>(
+    pub fn execute(
         &self,
-        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        pass_params: &RenderPassParameters<'_, P>
+        cmd_buffer: &mut CommandBufferRecorder,
+        pass_params: &RenderPassParameters<'_>
     ) {
         {
             let view = &pass_params.scene.scene.views()[pass_params.scene.active_view_index];
@@ -78,12 +78,12 @@ impl DrawPrepPass {
             );
 
             let hi_z_mips = {
-                let hi_z_info = pass_params.resources.texture_info(HierarchicalZPass::<P>::HI_Z_BUFFER_NAME);
+                let hi_z_info = pass_params.resources.texture_info(HierarchicalZPass::HI_Z_BUFFER_NAME);
                 hi_z_info.mip_levels
             };
             let hi_z = pass_params.resources.access_view(
                 cmd_buffer,
-                HierarchicalZPass::<P>::HI_Z_BUFFER_NAME,
+                HierarchicalZPass::HI_Z_BUFFER_NAME,
                 BarrierSync::COMPUTE_SHADER,
                 BarrierAccess::SAMPLING_READ,
                 TextureLayout::Sampled,

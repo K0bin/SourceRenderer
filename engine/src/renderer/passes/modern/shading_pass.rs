@@ -1,9 +1,7 @@
 use std::cell::Ref;
 use std::sync::Arc;
 
-use sourcerenderer_core::{
-    Platform, Vec2UI
-};
+use sourcerenderer_core::Vec2UI;
 
 use super::rt_shadows::RTShadowPass;
 use super::shadow_map::ShadowMapPass;
@@ -18,21 +16,21 @@ use crate::renderer::renderer_resources::{
 use crate::renderer::asset::{ComputePipelineHandle, RendererAssetsReadOnly};
 use crate::graphics::*;
 
-pub struct ShadingPass<P: Platform> {
-    sampler: Arc<crate::graphics::Sampler<P::GPUBackend>>,
-    shadow_sampler: Arc<crate::graphics::Sampler<P::GPUBackend>>,
+pub struct ShadingPass {
+    sampler: Arc<crate::graphics::Sampler>,
+    shadow_sampler: Arc<crate::graphics::Sampler>,
     pipeline: ComputePipelineHandle,
 }
 
-impl<P: Platform> ShadingPass<P> {
+impl ShadingPass {
     pub const SHADING_TEXTURE_NAME: &'static str = "Shading";
 
     pub fn new(
-        device: &Arc<crate::graphics::Device<P::GPUBackend>>,
+        device: &Arc<crate::graphics::Device>,
         resolution: Vec2UI,
-        resources: &mut RendererResources<P::GPUBackend>,
-        asset_manager: &Arc<AssetManager<P>>,
-        _init_cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
+        resources: &mut RendererResources,
+        asset_manager: &Arc<AssetManager>,
+        _init_cmd_buffer: &mut CommandBufferRecorder,
     ) -> Self {
         let pipeline = asset_manager.request_compute_pipeline("shaders/shading.comp.json");
 
@@ -85,15 +83,15 @@ impl<P: Platform> ShadingPass<P> {
     }
 
     #[inline(always)]
-    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_compute_pipeline(self.pipeline).is_some()
     }
 
     #[profiling::function]
     pub(super) fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        pass_params: &RenderPassParameters<'_, P>
+        cmd_buffer: &mut CommandBufferRecorder,
+        pass_params: &RenderPassParameters<'_>
     ) {
         let (width, height) = {
             let info = pass_params.resources.texture_info(Self::SHADING_TEXTURE_NAME);
@@ -145,7 +143,7 @@ impl<P: Platform> ShadingPass<P> {
 
         let ssao = pass_params.resources.access_view(
             cmd_buffer,
-            SsaoPass::<P>::SSAO_TEXTURE_NAME,
+            SsaoPass::SSAO_TEXTURE_NAME,
             BarrierSync::FRAGMENT_SHADER | BarrierSync::COMPUTE_SHADER,
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,
@@ -154,7 +152,7 @@ impl<P: Platform> ShadingPass<P> {
             HistoryResourceEntry::Current,
         );
 
-        let rt_shadows: Ref<Arc<TextureView<P::GPUBackend>>>;
+        let rt_shadows: Ref<Arc<TextureView>>;
         let shadows = if pass_params.device.supports_ray_tracing() {
             rt_shadows = pass_params.resources.access_view(
                 cmd_buffer,
@@ -172,13 +170,13 @@ impl<P: Platform> ShadingPass<P> {
         };
 
         let cascade_count = {
-            let shadow_map_info = pass_params.resources.texture_info(ShadowMapPass::<P>::SHADOW_MAP_NAME);
+            let shadow_map_info = pass_params.resources.texture_info(ShadowMapPass::SHADOW_MAP_NAME);
             shadow_map_info.array_length
         };
 
         let shadow_map = pass_params.resources.access_view(
             cmd_buffer,
-            ShadowMapPass::<P>::SHADOW_MAP_NAME,
+            ShadowMapPass::SHADOW_MAP_NAME,
             BarrierSync::COMPUTE_SHADER,
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,

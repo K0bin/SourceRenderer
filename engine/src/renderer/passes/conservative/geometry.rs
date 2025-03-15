@@ -40,21 +40,21 @@ struct FrameData {
     directional_light_count: u32,
 }
 
-pub struct GeometryPass<P: Platform> {
-    sampler: Sampler<P::GPUBackend>,
+pub struct GeometryPass {
+    sampler: Sampler,
     pipeline: GraphicsPipelineHandle,
 }
 
-impl<P: Platform> GeometryPass<P> {
+impl GeometryPass {
     pub const GEOMETRY_PASS_TEXTURE_NAME: &'static str = "geometry";
 
     const DRAWABLE_LABELS: bool = false;
 
     pub fn new(
-        device: &Arc<Device<P::GPUBackend>>,
+        device: &Arc<Device>,
         resolution: Vec2UI,
-        barriers: &mut RendererResources<P::GPUBackend>,
-        asset_manager: &Arc<AssetManager<P>>
+        barriers: &mut RendererResources,
+        asset_manager: &Arc<AssetManager>
     ) -> Self {
         let texture_info = TextureInfo {
             dimension: TextureDimension::Dim2D,
@@ -171,18 +171,18 @@ impl<P: Platform> GeometryPass<P> {
         Self { sampler, pipeline }
     }
 
-    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_graphics_pipeline(self.pipeline).is_some()
     }
 
     #[profiling::function]
-    pub(super) fn execute(
+    pub(super) fn execute<P: Platform>(
         &mut self,
-        context: &mut GraphicsContext<P::GPUBackend>,
-        cmd_buffer: &mut crate::graphics::CommandBufferRecorder<P::GPUBackend>,
-        pass_params: &RenderPassParameters<'_, P>,
+        context: &mut GraphicsContext,
+        cmd_buffer: &mut crate::graphics::CommandBufferRecorder,
+        pass_params: &RenderPassParameters<'_>,
         depth_name: &str,
-        bindings: &FrameBindings<P::GPUBackend>,
+        bindings: &FrameBindings,
     ) {
         cmd_buffer.begin_label("Geometry pass");
         let static_drawables = pass_params.scene.scene.static_drawables();
@@ -218,7 +218,7 @@ impl<P: Platform> GeometryPass<P> {
 
         let ssao_ref = pass_params.resources.access_view(
             cmd_buffer,
-            SsaoPass::<P>::SSAO_TEXTURE_NAME,
+            SsaoPass::SSAO_TEXTURE_NAME,
             BarrierSync::FRAGMENT_SHADER | BarrierSync::COMPUTE_SHADER,
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,
@@ -237,7 +237,7 @@ impl<P: Platform> GeometryPass<P> {
         );
         let light_bitmask_buffer = &*light_bitmask_buffer_ref;
 
-        let rt_shadows: Ref<Arc<TextureView<P::GPUBackend>>>;
+        let rt_shadows: Ref<Arc<TextureView>>;
         let shadows = if pass_params.device.supports_ray_tracing() {
             rt_shadows = pass_params.resources.access_view(
                 cmd_buffer,
@@ -268,13 +268,13 @@ impl<P: Platform> GeometryPass<P> {
                     RenderTarget {
                         view: &rtv,
                         load_op: LoadOpColor::Clear(ClearColor::BLACK),
-                        store_op: StoreOp::<P::GPUBackend>::Store
+                        store_op: StoreOp::Store
                     }
                 ],
                 depth_stencil: Some(&DepthStencilAttachment {
                     view: prepass_depth,
                     load_op: LoadOpDepthStencil::Load,
-                    store_op: StoreOp::<P::GPUBackend>::Store
+                    store_op: StoreOp::Store
                 })
             },
             RenderpassRecordingMode::CommandBuffers,
@@ -289,7 +289,7 @@ impl<P: Platform> GeometryPass<P> {
         let chunk_size = (view.drawable_parts.len() / 15).max(CHUNK_SIZE);
         let pipeline = pass_params.assets.get_graphics_pipeline(self.pipeline).unwrap();
         let task_pool = bevy_tasks::ComputeTaskPool::get();
-        let inner_cmd_buffers: Vec<FinishedCommandBuffer<P::GPUBackend>> = view.drawable_parts.par_chunk_map(task_pool, chunk_size, |_index, chunk| {
+        let inner_cmd_buffers: Vec<FinishedCommandBuffer> = view.drawable_parts.par_chunk_map(task_pool, chunk_size, |_index, chunk| {
                 P::thread_memory_management_pool(|| {
                     let mut command_buffer = context.get_inner_command_buffer(inheritance);
 
@@ -343,7 +343,7 @@ impl<P: Platform> GeometryPass<P> {
                             command_buffer.begin_label(&format!("Drawable {}", part.drawable_index));
                         }
 
-                        setup_frame::<P::GPUBackend>(&mut command_buffer, bindings);
+                        setup_frame(&mut command_buffer, bindings);
 
                         command_buffer.set_push_constant_data(
                             &[drawable.transform],

@@ -1,10 +1,9 @@
 use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;
-use sourcerenderer_core::gpu::GPUBackend;
 
 use crate::{engine::WindowState, ui::UIDrawData};
 
-pub enum RendererCommand<B: GPUBackend> {
+pub enum RendererCommand {
     RegisterStatic {
         entity: Entity,
         transform: Affine3A,
@@ -35,7 +34,7 @@ pub enum RendererCommand<B: GPUBackend> {
         fov: f32,
     },
     SetLightmap(String),
-    RenderUI(UIDrawData<B>),
+    RenderUI(UIDrawData),
     EndFrame,
     Quit,
     WindowChanged(WindowState)

@@ -5,7 +5,6 @@ use rand::random;
 use crate::asset::AssetManager;
 use crate::graphics::*;
 use sourcerenderer_core::{
-    Platform,
     Vec2UI,
     Vec4,
 };
@@ -17,9 +16,9 @@ use crate::renderer::renderer_resources::{
 };
 use crate::renderer::asset::*;
 
-pub struct SsaoPass<P: Platform> {
+pub struct SsaoPass {
     pipeline: ComputePipelineHandle,
-    kernel: Arc<BufferSlice<P::GPUBackend>>,
+    kernel: Arc<BufferSlice>,
     blur_pipeline: ComputePipelineHandle,
 }
 
@@ -27,16 +26,16 @@ fn lerp(a: f32, b: f32, f: f32) -> f32 {
     a + f * (b - a)
 }
 
-impl<P: Platform> SsaoPass<P> {
+impl SsaoPass {
     const SSAO_INTERNAL_TEXTURE_NAME: &'static str = "SSAO";
     pub const SSAO_TEXTURE_NAME: &'static str = "SSAOBlurred";
 
     #[allow(unused)]
     pub fn new(
-        device: &Arc<Device<P::GPUBackend>>,
+        device: &Arc<Device>,
         resolution: Vec2UI,
-        resources: &mut RendererResources<P::GPUBackend>,
-        asset_manager: &Arc<AssetManager<P>>,
+        resources: &mut RendererResources,
+        asset_manager: &Arc<AssetManager>,
         visibility_buffer: bool,
     ) -> Self {
         resources.create_texture(
@@ -94,9 +93,9 @@ impl<P: Platform> SsaoPass<P> {
 
     #[allow(unused)]
     fn create_hemisphere(
-        device: &Arc<Device<P::GPUBackend>>,
+        device: &Arc<Device>,
         samples: u32,
-    ) -> Arc<BufferSlice<P::GPUBackend>> {
+    ) -> Arc<BufferSlice> {
         let mut ssao_kernel = Vec::<Vec4>::with_capacity(samples as usize);
         const BIAS: f32 = 0.15f32;
         for i in 0..samples {
@@ -129,19 +128,19 @@ impl<P: Platform> SsaoPass<P> {
     }
 
     #[inline(always)]
-    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_compute_pipeline(self.pipeline).is_some() && assets.get_compute_pipeline(self.blur_pipeline).is_some()
     }
 
     pub fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        pass_params: &RenderPassParameters<'_, P>,
+        cmd_buffer: &mut CommandBufferRecorder,
+        pass_params: &RenderPassParameters<'_>,
         depth_name: &str,
         motion_name: Option<&str>,
-        camera: &TransientBufferSlice<P::GPUBackend>,
-        blue_noise_view: &Arc<TextureView<P::GPUBackend>>,
-        blue_noise_sampler: &Arc<Sampler<P::GPUBackend>>,
+        camera: &TransientBufferSlice,
+        blue_noise_view: &Arc<TextureView>,
+        blue_noise_sampler: &Arc<Sampler>,
         visibility_buffer: bool,
     ) {
         let ssao_uav = pass_params.resources.access_view(
@@ -167,11 +166,11 @@ impl<P: Platform> SsaoPass<P> {
         );
 
         let mut motion_srv =
-            Option::<Ref<Arc<TextureView<P::GPUBackend>>>>::None;
+            Option::<Ref<Arc<TextureView>>>::None;
         let mut id_view =
-            Option::<Ref<Arc<TextureView<P::GPUBackend>>>>::None;
+            Option::<Ref<Arc<TextureView>>>::None;
         let mut barycentrics_view =
-            Option::<Ref<Arc<TextureView<P::GPUBackend>>>>::None;
+            Option::<Ref<Arc<TextureView>>>::None;
         if !visibility_buffer {
             motion_srv = Some(pass_params.resources.access_view(
                 cmd_buffer,

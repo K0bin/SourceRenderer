@@ -1,9 +1,6 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::{
-    Platform,
-    Vec2UI,
-};
+use sourcerenderer_core::Vec2UI;
 
 use crate::asset::AssetManager;
 use crate::renderer::render_path::RenderPassParameters;
@@ -24,10 +21,10 @@ pub struct RTShadowPass {
 impl RTShadowPass {
     pub const SHADOWS_TEXTURE_NAME: &'static str = "RTShadow";
 
-    pub fn new<P: Platform>(
+    pub fn new(
         resolution: Vec2UI,
-        resources: &mut RendererResources<P::GPUBackend>,
-        asset_manager: &Arc<AssetManager<P>>
+        resources: &mut RendererResources,
+        asset_manager: &Arc<AssetManager>
     ) -> Self {
         resources.create_texture(
             Self::SHADOWS_TEXTURE_NAME,
@@ -56,18 +53,18 @@ impl RTShadowPass {
     }
 
     #[inline(always)]
-    pub(crate) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+    pub(crate) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_ray_tracing_pipeline(self.pipeline).is_some()
     }
 
-    pub fn execute<P: Platform>(
+    pub fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        pass_params: &RenderPassParameters<'_, P>,
+        cmd_buffer: &mut CommandBufferRecorder,
+        pass_params: &RenderPassParameters<'_>,
         depth_name: &str,
-        acceleration_structure: &Arc<AccelerationStructure<P::GPUBackend>>,
-        blue_noise: &Arc<TextureView<P::GPUBackend>>,
-        blue_noise_sampler: &Arc<Sampler<P::GPUBackend>>,
+        acceleration_structure: &Arc<AccelerationStructure>,
+        blue_noise: &Arc<TextureView>,
+        blue_noise_sampler: &Arc<Sampler>,
     ) {
         let texture_uav = pass_params.resources.access_view(
             cmd_buffer,

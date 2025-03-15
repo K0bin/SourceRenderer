@@ -2,16 +2,19 @@ use std::error::Error;
 
 use metal::foreign_types::ForeignTypeRef;
 use sdl2::video::WindowBuilder;
+use sourcerenderer_core::platform::GraphicsPlatform;
 use sourcerenderer_metal::{MTLBackend, MTLDevice, MTLInstance, MTLSurface, MTLSwapchain};
 
 use raw_window_handle::HasWindowHandle;
 
-use crate::sdl_platform::SDLWindow;
+use crate::SDLPlatform;
 
 pub(crate) type SDLGPUBackend = MTLBackend;
 
-pub(crate) fn create_instance(debug_layers: bool, _window: &SDLWindow) -> Result<MTLInstance, Box<dyn Error>> {
-    Ok(MTLInstance::new(debug_layers))
+impl GraphicsPlatform<MTLBackend> for SDLPlatform {
+    fn create_instance(&self, debug_layers: bool) -> Result<MTLInstance, Box<dyn Error>> {
+        Ok(MTLInstance::new(debug_layers))
+    }
 }
 
 pub(crate) fn create_surface(sdl_window_handle: &sdl2::video::Window, graphics_instance: &MTLInstance) -> MTLSurface {

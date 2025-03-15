@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use sourcerenderer_core::{
-    Platform,
     Vec2,
     Vec2I,
     Vec2UI,
@@ -31,10 +30,10 @@ impl VisibilityBufferPass {
     pub const PRIMITIVE_ID_TEXTURE_NAME: &'static str = "primitive";
     pub const DEPTH_TEXTURE_NAME: &'static str = "depth";
 
-    pub fn new<P: Platform>(
+    pub fn new(
         resolution: Vec2UI,
-        resources: &mut RendererResources<P::GPUBackend>,
-        asset_manager: &Arc<AssetManager<P>>,
+        resources: &mut RendererResources,
+        asset_manager: &Arc<AssetManager>,
     ) -> Self {
         let barycentrics_texture_info = TextureInfo {
             dimension: TextureDimension::Dim2D,
@@ -145,15 +144,15 @@ impl VisibilityBufferPass {
         Self { pipeline }
     }
 
-    pub(super) fn is_ready<P: Platform>(&self, assets: &RendererAssetsReadOnly<'_, P>) -> bool {
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_graphics_pipeline(self.pipeline).is_some()
     }
 
     #[profiling::function]
-    pub(super) fn execute<P: Platform>(
+    pub(super) fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder<P::GPUBackend>,
-        params: &RenderPassParameters<'_, P>
+        cmd_buffer: &mut CommandBufferRecorder,
+        params: &RenderPassParameters<'_>
     ) {
         cmd_buffer.begin_label("Visibility Buffer pass");
         let draw_buffer = params.resources.access_buffer(
@@ -203,18 +202,18 @@ impl VisibilityBufferPass {
                     RenderTarget {
                         view: &primitive_id_rtv,
                         load_op: LoadOpColor::Clear(ClearColor::BLACK),
-                        store_op: StoreOp::<P::GPUBackend>::Store,
+                        store_op: StoreOp::Store,
                     },
                     RenderTarget {
                         view: &barycentrics_rtv,
                         load_op: LoadOpColor::Clear(ClearColor::BLACK),
-                        store_op: StoreOp::<P::GPUBackend>::Store,
+                        store_op: StoreOp::Store,
                     }
                 ],
                 depth_stencil: Some(&DepthStencilAttachment {
                     view: &dsv,
                     load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
-                    store_op: StoreOp::<P::GPUBackend>::Store,
+                    store_op: StoreOp::Store,
                 })
             },
             RenderpassRecordingMode::Commands,
