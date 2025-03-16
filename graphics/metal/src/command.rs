@@ -1,23 +1,27 @@
-use std::{ffi::{c_void, CStr}, sync::{Arc, Mutex}};
+use std::{ffi::{c_void, CStr}, ptr::NonNull, sync::{Arc, Mutex}};
 
-use metal::{self, NSRange};
+use objc2::{rc::Retained, runtime::ProtocolObject};
+use objc2_foundation::{NSInteger, NSRange, NSString, NSUInteger};
+use objc2_metal::{self, MTLAccelerationStructureCommandEncoder as _, MTLBlitCommandEncoder, MTLBuffer as _, MTLCommandBuffer as _, MTLCommandEncoder as _, MTLCommandQueue as _, MTLComputeCommandEncoder as _, MTLDevice as _, MTLIndirectCommandBuffer as _, MTLParallelRenderCommandEncoder as _, MTLRenderCommandEncoder as _, MTLTexture as _};
 
-use objc::{msg_send, runtime::Object, sel, sel_impl};
 use smallvec::SmallVec;
 use sourcerenderer_core::{align_up_32, gpu::{self, Texture as _}};
 
 use super::*;
 
 pub struct MTLCommandPool {
-    queue: metal::CommandQueue,
+    queue: Retained<ProtocolObject<dyn objc2_metal::MTLCommandQueue>>,
     command_pool_type: gpu::CommandPoolType,
     shared: Arc<MTLShared>
 }
 
+unsafe impl Send for MTLCommandPool {}
+unsafe impl Sync for MTLCommandPool {}
+
 impl MTLCommandPool {
-    pub(crate) fn new(queue: &metal::CommandQueueRef, command_pool_type: gpu::CommandPoolType, shared: &Arc<MTLShared>) -> Self {
+    pub(crate) fn new(queue: &ProtocolObject<dyn objc2_metal::MTLCommandQueue>, command_pool_type: gpu::CommandPoolType, shared: &Arc<MTLShared>) -> Self {
         Self {
-            queue: queue.to_owned(),
+            queue: Retained::from(queue),
             command_pool_type,
             shared: shared.clone()
         }
@@ -30,8 +34,7 @@ impl gpu::CommandPool<MTLBackend> for MTLCommandPool {
             return MTLCommandBuffer::new_without_cmd_buffer(&self.queue, &self.shared);
         }
 
-        let cmd_buffer_handle_ref = self.queue.new_command_buffer_with_unretained_references();
-        let cmd_buffer_handle: metal::CommandBuffer = cmd_buffer_handle_ref.to_owned();
+        let cmd_buffer_handle = self.queue.commandBufferWithUnretainedReferences().unwrap();
         MTLCommandBuffer::enable_error_tracking(&cmd_buffer_handle);
         MTLCommandBuffer::new(&self.queue, cmd_buffer_handle, &self.shared)
     }
@@ -40,15 +43,15 @@ impl gpu::CommandPool<MTLBackend> for MTLCommandPool {
 }
 
 struct IndexBufferBinding {
-    buffer: metal::Buffer,
+    buffer: Retained<ProtocolObject<dyn objc2_metal::MTLBuffer>>,
     offset: u64,
     format: gpu::IndexFormat
 }
 
-pub(crate) fn index_format_to_mtl(index_format: gpu::IndexFormat) -> metal::MTLIndexType {
+pub(crate) fn index_format_to_mtl(index_format: gpu::IndexFormat) -> objc2_metal::MTLIndexType {
     match index_format {
-        gpu::IndexFormat::U32 => metal::MTLIndexType::UInt32,
-        gpu::IndexFormat::U16 => metal::MTLIndexType::UInt16
+        gpu::IndexFormat::U32 => objc2_metal::MTLIndexType::UInt32,
+        gpu::IndexFormat::U16 => objc2_metal::MTLIndexType::UInt16
     }
 }
 
@@ -59,43 +62,46 @@ pub(crate) fn index_format_size(index_format: gpu::IndexFormat) -> usize {
     }
 }
 
-pub(crate) fn format_to_mtl_attribute_format(format: gpu::Format) -> metal::MTLAttributeFormat {
+pub(crate) fn format_to_mtl_attribute_format(format: gpu::Format) -> objc2_metal::MTLAttributeFormat {
     match format {
-        gpu::Format::R32Float => metal::MTLAttributeFormat::Float,
-        gpu::Format::RG32Float => metal::MTLAttributeFormat::Float2,
-        gpu::Format::RGB32Float => metal::MTLAttributeFormat::Float3,
-        gpu::Format::RGBA32Float => metal::MTLAttributeFormat::Float4,
-        gpu::Format::R32UInt => metal::MTLAttributeFormat::UInt,
-        gpu::Format::R8Unorm => metal::MTLAttributeFormat::UCharNormalized,
+        gpu::Format::R32Float => objc2_metal::MTLAttributeFormat::Float,
+        gpu::Format::RG32Float => objc2_metal::MTLAttributeFormat::Float2,
+        gpu::Format::RGB32Float => objc2_metal::MTLAttributeFormat::Float3,
+        gpu::Format::RGBA32Float => objc2_metal::MTLAttributeFormat::Float4,
+        gpu::Format::R32UInt => objc2_metal::MTLAttributeFormat::UInt,
+        gpu::Format::R8Unorm => objc2_metal::MTLAttributeFormat::UCharNormalized,
         _ => todo!("Unsupported format")
     }
 }
 
 #[allow(dead_code)] // Read by the GPU
 struct MTLMDIParams {
-    indirect_cmd_buffer: metal::MTLResourceID,
+    indirect_cmd_buffer: objc2_metal::MTLResourceID,
     draw_buffer: u64,
     count_buffer: u64,
     stride: usize,
-    primitive_type: metal::MTLPrimitiveType
+    primitive_type: objc2_metal::MTLPrimitiveType
 }
 
 enum MTLRenderPassState {
     Commands {
-        render_encoder: metal::RenderCommandEncoder,
-        render_pass: metal::RenderPassDescriptor,
+        render_encoder: Retained<ProtocolObject<dyn objc2_metal::MTLRenderCommandEncoder>>,
+        render_pass: Retained<objc2_metal::MTLRenderPassDescriptor>,
     },
     Parallel {
         parallel_passes: Arc<Mutex<MTLInnerCommandBufferInheritance>>,
-        parallel_encoder: metal::ParallelRenderCommandEncoder,
+        parallel_encoder: Retained<ProtocolObject<dyn objc2_metal::MTLParallelRenderCommandEncoder>>,
     },
     None
 }
 
 pub struct MTLInnerCommandBufferInheritance {
-    encoders: Vec<metal::RenderCommandEncoder>,
-    descriptor: metal::RenderPassDescriptor
+    encoders: Vec<Retained<ProtocolObject<dyn objc2_metal::MTLRenderCommandEncoder>>>,
+    descriptor: Retained<objc2_metal::MTLRenderPassDescriptor>
 }
+
+unsafe impl Send for MTLInnerCommandBufferInheritance {}
+unsafe impl Sync for MTLInnerCommandBufferInheritance {}
 
 impl MTLRenderPassState {
     fn is_none(&self) -> bool {
@@ -109,124 +115,123 @@ impl MTLRenderPassState {
 const MAX_INNER_ENCODERS: usize = 20;
 
 pub struct MTLCommandBuffer {
-    queue: metal::CommandQueue,
-    command_buffer: Option<metal::CommandBuffer>,
-    blit_encoder: Option<metal::BlitCommandEncoder>,
+    queue: Retained<ProtocolObject<dyn objc2_metal::MTLCommandQueue>>,
+    command_buffer: Option<Retained<ProtocolObject<dyn objc2_metal::MTLCommandBuffer>>>,
+    blit_encoder: Option<Retained<ProtocolObject<dyn objc2_metal::MTLBlitCommandEncoder>>>,
     render_pass: MTLRenderPassState,
-    compute_encoder: Option<metal::ComputeCommandEncoder>,
-    as_encoder: Option<metal::AccelerationStructureCommandEncoder>,
-    pre_event: metal::Event,
-    post_event: metal::Event,
+    compute_encoder: Option<Retained<ProtocolObject<dyn objc2_metal::MTLComputeCommandEncoder>>>,
+    as_encoder: Option<Retained<ProtocolObject<dyn objc2_metal::MTLAccelerationStructureCommandEncoder>>>,
+    pre_event: Retained<ProtocolObject<dyn objc2_metal::MTLEvent>>,
+    post_event: Retained<ProtocolObject<dyn objc2_metal::MTLEvent>>,
     index_buffer: Option<IndexBufferBinding>,
-    primitive_type: metal::MTLPrimitiveType,
+    primitive_type: objc2_metal::MTLPrimitiveType,
     resource_map: Option<Arc<PipelineResourceMap>>,
     binding: MTLBindingManager,
     shared: Arc<MTLShared>
 }
 
+unsafe impl Send for MTLCommandBuffer {}
+unsafe impl Sync for MTLCommandBuffer {}
+
 impl MTLCommandBuffer {
-    pub(crate) fn new(queue: &metal::CommandQueueRef, command_buffer: metal::CommandBuffer, shared: &Arc<MTLShared>) -> Self {
+    pub(crate) fn new(queue: &ProtocolObject<dyn objc2_metal::MTLCommandQueue>, command_buffer: Retained<ProtocolObject<dyn objc2_metal::MTLCommandBuffer>>, shared: &Arc<MTLShared>) -> Self {
         Self {
-            queue: queue.to_owned(),
+            queue: Retained::from(queue),
             command_buffer: Some(command_buffer.clone()),
             render_pass: MTLRenderPassState::None,
             blit_encoder: None,
             compute_encoder: None,
             as_encoder: None,
-            pre_event: queue.device().new_event(),
-            post_event: queue.device().new_event(),
+            pre_event: queue.device().newEvent().unwrap(),
+            post_event: queue.device().newEvent().unwrap(),
             index_buffer: None,
-            primitive_type: metal::MTLPrimitiveType::Triangle,
+            primitive_type: objc2_metal::MTLPrimitiveType::Triangle,
             resource_map: None,
             binding: MTLBindingManager::new(),
             shared: shared.clone()
         }
     }
 
-    pub(crate) fn new_without_cmd_buffer(queue: &metal::CommandQueueRef, shared: &Arc<MTLShared>) -> Self {
+    pub(crate) fn new_without_cmd_buffer(queue: &ProtocolObject<dyn objc2_metal::MTLCommandQueue>, shared: &Arc<MTLShared>) -> Self {
         Self {
-            queue: queue.to_owned(),
+            queue: Retained::from(queue),
             command_buffer: None,
             render_pass: MTLRenderPassState::None,
             blit_encoder: None,
             compute_encoder: None,
             as_encoder: None,
-            pre_event: queue.device().new_event(),
-            post_event: queue.device().new_event(),
+            pre_event: queue.device().newEvent().unwrap(),
+            post_event: queue.device().newEvent().unwrap(),
             index_buffer: None,
-            primitive_type: metal::MTLPrimitiveType::Triangle,
+            primitive_type: objc2_metal::MTLPrimitiveType::Triangle,
             resource_map: None,
             binding: MTLBindingManager::new(),
             shared: shared.clone()
         }
     }
 
-    pub(crate) fn handle(&self) -> &metal::CommandBufferRef {
+    pub(crate) fn handle(&self) -> &ProtocolObject<dyn objc2_metal::MTLCommandBuffer> {
         self.command_buffer.as_ref().expect("Secondary command buffer doesnt have a Metal command buffer")
     }
 
-    pub(crate) fn pre_event_handle(&self) -> &metal::EventRef {
+    pub(crate) fn pre_event_handle(&self) -> &ProtocolObject<dyn objc2_metal::MTLEvent> {
         &self.pre_event
     }
 
-    pub(crate) fn post_event_handle(&self) -> &metal::EventRef {
+    pub(crate) fn post_event_handle(&self) -> &ProtocolObject<dyn objc2_metal::MTLEvent> {
         &self.post_event
     }
 
-    fn get_blit_encoder(&mut self) -> &metal::BlitCommandEncoder {
+    fn get_blit_encoder(&mut self) -> &ProtocolObject<dyn objc2_metal::MTLBlitCommandEncoder> {
         assert!(self.render_pass.is_none());
         if self.blit_encoder.is_none() {
             self.end_non_rendering_encoders();
-            let encoder = self.handle().new_blit_command_encoder().to_owned();
+            let encoder = self.handle().blitCommandEncoder().unwrap();
             self.blit_encoder = Some(encoder);
         }
         self.blit_encoder.as_ref().unwrap()
     }
 
-    fn get_compute_encoder(&mut self) -> &metal::ComputeCommandEncoder {
+    fn get_compute_encoder(&mut self) -> &ProtocolObject<dyn objc2_metal::MTLComputeCommandEncoder> {
         assert!(self.render_pass.is_none());
         if self.compute_encoder.is_none() {
             self.end_non_rendering_encoders();
-            let encoder = self.handle().compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent).to_owned();
+            let encoder = self.handle().computeCommandEncoderWithDispatchType(objc2_metal::MTLDispatchType::Concurrent).unwrap();
             let heap_list = self.shared.heap_list.read().unwrap();
             for heap in heap_list.iter() {
-                encoder.use_heap(&heap);
+                encoder.useHeap(&heap);
             }
             self.compute_encoder = Some(encoder);
         }
         self.compute_encoder.as_ref().unwrap()
     }
 
-    fn get_acceleration_structure_encoder(&mut self) -> &metal::AccelerationStructureCommandEncoder {
+    unsafe fn get_acceleration_structure_encoder(&mut self) -> &ProtocolObject<dyn objc2_metal::MTLAccelerationStructureCommandEncoder> {
         assert!(self.render_pass.is_none());
         if self.as_encoder.is_none() {
             self.end_non_rendering_encoders();
-            let encoder = self.handle().new_acceleration_structure_command_encoder().to_owned();
+            let encoder = self.handle().accelerationStructureCommandEncoder().unwrap();
             let heap_list = self.shared.heap_list.read().unwrap();
             for heap in heap_list.iter() {
-                unsafe {
-                    let _: () = msg_send![&encoder as &metal::AccelerationStructureCommandEncoderRef, useHeap: &heap as &metal::HeapRef];
-                }
+                encoder.useHeap(&heap);
             }
             self.as_encoder = Some(encoder);
         }
         self.as_encoder.as_ref().unwrap()
     }
 
-    fn render_encoder_use_all_heaps<'a>(encoder: &metal::RenderCommandEncoderRef, shared: &Arc<MTLShared>) {
+    fn render_encoder_use_all_heaps<'a>(encoder: &ProtocolObject<dyn objc2_metal::MTLRenderCommandEncoder>, shared: &Arc<MTLShared>) {
         let heap_list = shared.heap_list.read().unwrap();
         for heap in heap_list.iter() {
-            unsafe {
-                let _: () = msg_send![encoder, useHeap: &heap as &metal::HeapRef];
-            }
+            encoder.useHeap_stages(&heap, objc2_metal::MTLRenderStages::Vertex | objc2_metal::MTLRenderStages::Fragment);
         }
     }
 
-    fn get_render_pass_encoder(&self) -> &metal::RenderCommandEncoder {
+    fn get_render_pass_encoder(&self) -> &ProtocolObject<dyn objc2_metal::MTLRenderCommandEncoder> {
         self.get_render_pass_encoder_opt().unwrap()
     }
 
-    fn get_render_pass_encoder_opt(&self) -> Option<&metal::RenderCommandEncoder> {
+    fn get_render_pass_encoder_opt(&self) -> Option<&ProtocolObject<dyn objc2_metal::MTLRenderCommandEncoder>> {
         match &self.render_pass {
             MTLRenderPassState::Commands { render_encoder, .. } => Some(render_encoder),
             _ => None
@@ -235,13 +240,13 @@ impl MTLCommandBuffer {
 
     fn end_non_rendering_encoders(&mut self) {
         if let Some(encoder) = &self.blit_encoder {
-            encoder.end_encoding();
+            encoder.endEncoding();
         }
         if let Some(encoder) = &self.compute_encoder {
-            encoder.end_encoding();
+            encoder.endEncoding();
         }
         if let Some(encoder) = &self.as_encoder {
-            encoder.end_encoding();
+            encoder.endEncoding();
         }
 
         self.blit_encoder = None;
@@ -250,65 +255,64 @@ impl MTLCommandBuffer {
         self.binding.mark_all_dirty();
     }
 
-    pub(crate) fn blit_rp(command_buffer: &metal::CommandBufferRef, shared: &Arc<MTLShared>, src_texture: &MTLTexture, src_array_layer: u32, src_mip_level: u32, dst_texture: &MTLTexture, dst_array_layer: u32, dst_mip_level: u32) {
-        let new_view: Option<metal::Texture>;
+    pub(crate) unsafe fn blit_rp(command_buffer: &ProtocolObject<dyn objc2_metal::MTLCommandBuffer>, shared: &Arc<MTLShared>, src_texture: &MTLTexture, src_array_layer: u32, src_mip_level: u32, dst_texture: &MTLTexture, dst_array_layer: u32, dst_mip_level: u32) {
+        let new_view: Option<Retained<ProtocolObject<dyn objc2_metal::MTLTexture>>>;
 
-        let descriptor = metal::RenderPassDescriptor::new();
-        let attachment = descriptor.color_attachments().object_at(0).unwrap();
-        attachment.set_load_action(metal::MTLLoadAction::DontCare);
-        attachment.set_store_action(metal::MTLStoreAction::Store);
-        attachment.set_level(dst_mip_level as u64);
-        attachment.set_slice(dst_array_layer as u64);
-        attachment.set_texture(Some(dst_texture.handle()));
-        let encoder = command_buffer.new_render_command_encoder(&descriptor);
-        encoder.set_render_pipeline_state(shared.blit_pipeline.handle());
+        let descriptor = objc2_metal::MTLRenderPassDescriptor::new();
+        let attachment = descriptor.colorAttachments().objectAtIndexedSubscript(0);
+        attachment.setLoadAction(objc2_metal::MTLLoadAction::DontCare);
+        attachment.setStoreAction(objc2_metal::MTLStoreAction::Store);
+        attachment.setLevel(dst_mip_level as NSUInteger);
+        attachment.setSlice(dst_array_layer as NSUInteger);
+        attachment.setTexture(Some(dst_texture.handle()));
+        let encoder = command_buffer.renderCommandEncoderWithDescriptor(&descriptor).unwrap();
+        encoder.setRenderPipelineState(shared.blit_pipeline.handle());
         if src_array_layer == 0 && src_mip_level == 0 {
-            encoder.set_fragment_texture(0, Some(src_texture.handle()));
+            encoder.setFragmentTexture_atIndex(Some(src_texture.handle()), 0);
         } else {
-            new_view = Some(src_texture.handle().new_texture_view_from_slice(
-                src_texture.handle().pixel_format(), src_texture.handle().texture_type(),
-                metal::NSRange::new(src_mip_level as u64, 1), NSRange::new(src_array_layer as u64, 1)));
-            encoder.set_fragment_texture(0, new_view.as_ref().map(|v| v as &metal::TextureRef));
+            new_view = src_texture.handle().newTextureViewWithPixelFormat_textureType_levels_slices(
+                src_texture.handle().pixelFormat(), src_texture.handle().textureType(),
+                NSRange::new(src_mip_level as NSUInteger, 1), NSRange::new(src_array_layer as NSUInteger, 1));
+            assert!(new_view.is_some());
+            encoder.setFragmentTexture_atIndex(new_view.as_ref().map(|v| v.as_ref()), 0);
         }
-        encoder.set_fragment_texture(0, Some(src_texture.handle()));
-        encoder.set_fragment_sampler_state(0, Some(&shared.linear_sampler));
-        encoder.draw_primitives(metal::MTLPrimitiveType::Triangle, 0, 3);
-        encoder.end_encoding();
+        encoder.setFragmentTexture_atIndex(Some(src_texture.handle()), 0);
+        encoder.setFragmentSamplerState_atIndex(Some(&shared.linear_sampler), 0);
+        encoder.drawPrimitives_vertexStart_vertexCount(objc2_metal::MTLPrimitiveType::Triangle, 0, 3);
+        encoder.endEncoding();
     }
 
-    fn multi_draw_indirect(&mut self, indexed: bool, draw_buffer: &MTLBuffer, draw_buffer_offset: u32, count_buffer: &MTLBuffer, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
+    unsafe fn multi_draw_indirect(&mut self, indexed: bool, draw_buffer: &MTLBuffer, draw_buffer_offset: u32, count_buffer: &MTLBuffer, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
         {
             let render_encoder = self.get_render_pass_encoder();
-            render_encoder.end_encoding();
+            render_encoder.endEncoding();
         }
-        let descriptor = metal::IndirectCommandBufferDescriptor::new();
-        descriptor.set_inherit_buffers(true);
-        descriptor.set_inherit_pipeline_state(true);
-        descriptor.set_command_types(if indexed { metal::MTLIndirectCommandType::DrawIndexed } else { metal::MTLIndirectCommandType::Draw });
-        let icb = self.shared.device.new_indirect_command_buffer_with_descriptor(&descriptor, max_draw_count as u64, metal::MTLResourceOptions::StorageModeShared);
+        let descriptor = objc2_metal::MTLIndirectCommandBufferDescriptor::new();
+        descriptor.setInheritBuffers(true);
+        descriptor.setInheritPipelineState(true);
+        descriptor.setCommandTypes(if indexed { objc2_metal::MTLIndirectCommandType::DrawIndexed } else { objc2_metal::MTLIndirectCommandType::Draw });
+        let icb = self.shared.device.newIndirectCommandBufferWithDescriptor_maxCommandCount_options(&descriptor, max_draw_count as NSUInteger, objc2_metal::MTLResourceOptions::StorageModeShared).unwrap();
         {
             let compute_encoder = self.command_buffer.as_ref().expect("Draw indirect is not supported in secondary command buffers.")
-                .new_compute_command_encoder();
-            compute_encoder.set_compute_pipeline_state(&self.shared.mdi_pipeline);
-            let resource_id: metal::MTLResourceID = unsafe {
-                msg_send![icb, gpuResourceId]
-            };
+                .computeCommandEncoder().unwrap();
+            compute_encoder.setComputePipelineState(&self.shared.mdi_pipeline);
+            let resource_id = icb.gpuResourceID();
             let params = MTLMDIParams {
                 indirect_cmd_buffer: resource_id,
-                draw_buffer: draw_buffer.handle().gpu_address() + draw_buffer_offset as u64,
-                count_buffer: count_buffer.handle().gpu_address() + count_buffer_offset as u64,
+                draw_buffer: draw_buffer.handle().gpuAddress() + draw_buffer_offset as u64,
+                count_buffer: count_buffer.handle().gpuAddress() + count_buffer_offset as u64,
                 stride: stride as usize,
                 primitive_type: self.primitive_type
             };
-            compute_encoder.set_bytes(0, std::mem::size_of_val(&params) as u64, &params as *const MTLMDIParams as *const c_void);
-            compute_encoder.dispatch_threads(metal::MTLSize { width: max_draw_count as u64, height: 1, depth: 1 }, metal::MTLSize { width: 32, height: 1, depth: 1 });
+            compute_encoder.setBytes_length_atIndex(NonNull::new_unchecked(std::mem::transmute::<*const MTLMDIParams, *mut c_void>(&params as *const MTLMDIParams)), std::mem::size_of_val(&params) as NSUInteger, 0);
+            compute_encoder.dispatchThreads_threadsPerThreadgroup(objc2_metal::MTLSize { width: max_draw_count as NSUInteger, height: 1, depth: 1 }, objc2_metal::MTLSize { width: 32, height: 1, depth: 1 });
         }
         {
             match &mut self.render_pass {
                 MTLRenderPassState::Commands { render_encoder, render_pass } => {
-                    *render_encoder = self.command_buffer.as_ref().unwrap().new_render_command_encoder(render_pass).to_owned();
+                    *render_encoder = self.command_buffer.as_ref().unwrap().renderCommandEncoderWithDescriptor(render_pass).unwrap();
                     Self::render_encoder_use_all_heaps(render_encoder, &self.shared);
-                    render_encoder.execute_commands_in_buffer(&icb, metal::NSRange { location: 0u64, length: max_draw_count as u64});
+                    render_encoder.executeCommandsInBuffer_withRange(&icb, NSRange { location: 0, length: max_draw_count as NSUInteger});
                 },
                 MTLRenderPassState::Parallel { .. } => panic!("Cannot use draw indirect inside of a parallel render pass"),
                 MTLRenderPassState::None => panic!("Cannot use draw indirect outside of a render pass"),
@@ -316,16 +320,19 @@ impl MTLCommandBuffer {
         }
     }
 
-    fn enable_error_tracking(_command_buffer: &metal::CommandBufferRef) {
+    fn enable_error_tracking(_command_buffer: &ProtocolObject<dyn objc2_metal::MTLCommandBuffer>) {
         //let _: ()  = unsafe { msg_send![command_buffer, setErrorOptions: 1] };
     }
 
-    fn print_error(command_buffer: &metal::CommandBufferRef) {
+    fn print_error(command_buffer: &ProtocolObject<dyn objc2_metal::MTLCommandBuffer>) {
         unsafe {
-            let error: *mut Object  = msg_send![command_buffer, error];
-            let desc: *mut Object = msg_send![error, localizedDescription];
-            let compile_error: *const std::os::raw::c_char = msg_send![desc, UTF8String];
-            let message = CStr::from_ptr(compile_error).to_string_lossy().into_owned();
+            let error_opt = command_buffer.error();
+            if error_opt.is_none() {
+                return;
+            }
+            let error = error_opt.unwrap();
+            let desc = error.localizedDescription();
+            let message = CStr::from_ptr(desc.UTF8String()).to_string_lossy().into_owned();
             println!("error {}", message);
         }
     }
@@ -338,16 +345,16 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
             gpu::PipelineBinding::Graphics(pipeline) => {
                 self.primitive_type = pipeline.primitive_type();
                 let encoder = self.get_render_pass_encoder();
-                encoder.set_render_pipeline_state(pipeline.handle());
-                encoder.set_cull_mode(pipeline.rasterizer_state().cull_mode);
-                encoder.set_front_facing_winding(pipeline.rasterizer_state().front_face);
-                encoder.set_triangle_fill_mode(pipeline.rasterizer_state().fill_mode);
-                encoder.set_depth_stencil_state(pipeline.depth_stencil_state());
+                encoder.setRenderPipelineState(pipeline.handle());
+                encoder.setCullMode(pipeline.rasterizer_state().cull_mode);
+                encoder.setFrontFacingWinding(pipeline.rasterizer_state().front_face);
+                encoder.setTriangleFillMode(pipeline.rasterizer_state().fill_mode);
+                encoder.setDepthStencilState(Some(pipeline.depth_stencil_state()));
                 self.resource_map = Some(pipeline.resource_map().clone());
             },
             gpu::PipelineBinding::Compute(pipeline) => {
                 let encoder = self.get_compute_encoder();
-                encoder.set_compute_pipeline_state(pipeline.handle());
+                encoder.setComputePipelineState(pipeline.handle());
                 self.resource_map = Some(pipeline.resource_map().clone());
             },
             _ => unimplemented!()
@@ -356,12 +363,12 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
 
     unsafe fn set_vertex_buffer(&mut self, index: u32, vertex_buffer: &MTLBuffer, offset: u64) {
         let encoder = self.get_render_pass_encoder();
-        encoder.set_vertex_buffer(index as u64, Some(vertex_buffer.handle()), offset);
+        encoder.setVertexBuffer_offset_atIndex(Some(vertex_buffer.handle()), offset as NSUInteger, index as NSUInteger);
     }
 
     unsafe fn set_index_buffer(&mut self, index_buffer: &MTLBuffer, offset: u64, format: gpu::IndexFormat) {
         self.index_buffer = Some(IndexBufferBinding {
-            buffer: index_buffer.handle().to_owned(),
+            buffer: Retained::from(index_buffer.handle()),
             offset,
             format
         });
@@ -372,7 +379,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         let viewport = &viewports[0];
         let encoder = self.get_render_pass_encoder();
         encoder
-            .set_viewport(metal::MTLViewport {
+            .setViewport(objc2_metal::MTLViewport {
                 originX: viewport.position.x as f64,
                 originY: viewport.position.y as f64,
                 width: viewport.extent.x as f64,
@@ -387,11 +394,11 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         let scissor = &scissors[0];
         let encoder = self.get_render_pass_encoder();
         encoder
-            .set_scissor_rect(metal::MTLScissorRect {
-                x: scissor.position.x as u64,
-                y: scissor.position.y as u64,
-                width: scissor.extent.x as u64,
-                height: scissor.extent.y as u64
+            .setScissorRect(objc2_metal::MTLScissorRect {
+                x: scissor.position.x as NSUInteger,
+                y: scissor.position.y as NSUInteger,
+                width: scissor.extent.x as NSUInteger,
+                height: scissor.extent.y as NSUInteger
             });
     }
 
@@ -403,9 +410,9 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
             let data_size = std::mem::size_of_val(data);
             assert!(data_size <= push_constant_info.size as usize);
             if visible_for_shader_stage == gpu::ShaderType::VertexShader {
-                encoder.set_vertex_bytes(push_constant_info.binding as u64, data_size as u64, data.as_ptr() as *const c_void);
+                encoder.setVertexBytes_length_atIndex(NonNull::new_unchecked(std::mem::transmute::<*const T, *mut c_void>(data.as_ptr())), data_size as NSUInteger, push_constant_info.binding as NSUInteger);
             } else if visible_for_shader_stage == gpu::ShaderType::FragmentShader {
-                encoder.set_fragment_bytes(push_constant_info.binding as u64, data_size as u64, data.as_ptr() as *const c_void);
+                encoder.setFragmentBytes_length_atIndex(NonNull::new_unchecked(std::mem::transmute::<*const T, *mut c_void>(data.as_ptr())), data_size as NSUInteger, push_constant_info.binding as NSUInteger);
             } else {
                 panic!("Can only set vertex or fragment push constant data while in a render pass");
             }
@@ -415,7 +422,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
             let encoder = self.get_compute_encoder();
             let data_size = std::mem::size_of_val(data);
             assert!(data_size <= push_constant_info.size as usize);
-            encoder.set_bytes(push_constant_info.binding as u64, data_size as u64, data.as_ptr() as *const c_void);
+            encoder.setBytes_length_atIndex(NonNull::new_unchecked(std::mem::transmute::<*const T, *mut c_void>(data.as_ptr())), data_size as NSUInteger, push_constant_info.binding as NSUInteger);
         } else {
             unimplemented!()
         }
@@ -423,7 +430,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
 
     unsafe fn draw(&mut self, vertices: u32, offset: u32) {
         self.get_render_pass_encoder()
-            .draw_primitives(self.primitive_type, offset as u64, vertices as u64);
+            .drawPrimitives_vertexStart_vertexCount(self.primitive_type, offset as NSUInteger, vertices as NSUInteger);
     }
 
     unsafe fn draw_indexed(&mut self, instances: u32, first_instance: u32, indices: u32, first_index: u32, vertex_offset: i32) {
@@ -432,22 +439,23 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
 
         if instances != 1 || first_instance != 0 || vertex_offset != 0 {
             self.get_render_pass_encoder()
-                .draw_indexed_primitives_instanced_base_instance(
+                .drawIndexedPrimitives_indexCount_indexType_indexBuffer_indexBufferOffset_instanceCount_baseVertex_baseInstance(
                     self.primitive_type,
-                    indices as u64,
+                    indices as NSUInteger,
                     index_format_to_mtl(index_buffer.format),
                     &index_buffer.buffer,
-                    index_buffer.offset as u64 + first_index as u64 * index_format_size(index_buffer.format) as u64,
-                    instances as u64,
-                    vertex_offset as i64, first_instance as u64);
+                    index_buffer.offset as NSUInteger + first_index as NSUInteger * index_format_size(index_buffer.format) as NSUInteger,
+                    instances as NSUInteger,
+                    vertex_offset as NSInteger,
+                    first_instance as NSUInteger);
         } else {
             self.get_render_pass_encoder()
-                .draw_indexed_primitives(
+                .drawIndexedPrimitives_indexCount_indexType_indexBuffer_indexBufferOffset(
                     self.primitive_type,
-                    indices as u64,
+                    indices as NSUInteger,
                     index_format_to_mtl(index_buffer.format),
                     &index_buffer.buffer,
-                    index_buffer.offset as u64 + first_index as u64 * index_format_size(index_buffer.format) as u64
+                    index_buffer.offset as NSUInteger + first_index as NSUInteger * index_format_size(index_buffer.format) as NSUInteger
                 );
         }
     }
@@ -469,7 +477,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn bind_sampling_view_and_sampler_array(&mut self, frequency: gpu::BindingFrequency, binding: u32, textures_and_samplers: &[(&MTLTextureView, &MTLSampler)]) {
-        let handles: SmallVec<[(&metal::TextureRef, &metal::SamplerStateRef); 8]> = textures_and_samplers
+        let handles: SmallVec<[(&ProtocolObject<dyn objc2_metal::MTLTexture>, &ProtocolObject<dyn objc2_metal::MTLSamplerState>); 8]> = textures_and_samplers
             .iter()
             .map(|(tv, s)| (tv.handle(), s.handle()))
             .collect();
@@ -477,7 +485,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn bind_storage_view_array(&mut self, frequency: gpu::BindingFrequency, binding: u32, textures: &[&MTLTextureView]) {
-        let handles: SmallVec<[&metal::TextureRef; 8]> = textures
+        let handles: SmallVec<[&ProtocolObject<dyn objc2_metal::MTLTexture>; 8]> = textures
             .iter()
             .map(|tv| tv.handle())
             .collect();
@@ -513,7 +521,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
             self.binding.finish(MTLEncoderRef::Compute(encoder), self.resource_map.as_ref().expect("Need to bind a shader before finishing binding."));
             let bindless_map = &self.resource_map.as_ref().unwrap().bindless_argument_buffer_binding;
             if let Some(bindless_binding) = bindless_map.get(&gpu::ShaderType::ComputeShader) {
-                encoder.set_buffer(*bindless_binding as u64, Some(self.shared.bindless.handle()), 0);
+                encoder.setBuffer_offset_atIndex(Some(self.shared.bindless.handle()), 0, *bindless_binding as NSUInteger);
             }
         }
 
@@ -522,10 +530,10 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
                 self.binding.finish(MTLEncoderRef::Graphics(rp), self.resource_map.as_ref().expect("Need to bind a shader before finishing binding."));
                 let bindless_map = &self.resource_map.as_ref().unwrap().bindless_argument_buffer_binding;
                 if let Some(bindless_binding) = bindless_map.get(&gpu::ShaderType::VertexShader) {
-                    rp.set_vertex_buffer(*bindless_binding as u64, Some(self.shared.bindless.handle()), 0);
+                    rp.setVertexBuffer_offset_atIndex(Some(self.shared.bindless.handle()), *bindless_binding as NSUInteger, 0);
                 }
                 if let Some(bindless_binding) = bindless_map.get(&gpu::ShaderType::FragmentShader) {
-                    rp.set_fragment_buffer(*bindless_binding as u64, Some(self.shared.bindless.handle()), 0);
+                    rp.setVertexBuffer_offset_atIndex(Some(self.shared.bindless.handle()), *bindless_binding as NSUInteger, 0);
                 }
             }
             _ => {}
@@ -533,31 +541,33 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn begin_label(&mut self, label: &str) {
-        self.handle().push_debug_group(label);
+        self.handle().pushDebugGroup(&NSString::from_str(label));
     }
 
     unsafe fn end_label(&mut self) {
-        self.handle().pop_debug_group();
+        self.handle().popDebugGroup();
     }
 
     unsafe fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
         let compute_encoder = self.get_compute_encoder();
-        compute_encoder.dispatch_thread_groups(metal::MTLSize::new(group_count_x as u64, group_count_y as u64, group_count_z as u64), metal::MTLSize::new(8, 8, 1));
+        compute_encoder.dispatchThreadgroups_threadsPerThreadgroup(objc2_metal::MTLSize {
+            width: group_count_x as NSUInteger, height: group_count_y as NSUInteger, depth: group_count_z as NSUInteger
+        }, objc2_metal::MTLSize { width: 8, height: 8, depth: 1 });
     }
 
     unsafe fn blit(&mut self, src_texture: &MTLTexture, src_array_layer: u32, src_mip_level: u32, dst_texture: &MTLTexture, dst_array_layer: u32, dst_mip_level: u32) {
         if dst_texture.info().usage.contains(gpu::TextureUsage::COPY_DST) {
             let encoder = self.get_blit_encoder();
-            encoder.copy_from_texture(
+            encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
                 src_texture.handle(),
-                src_array_layer as u64,
-                src_mip_level as u64,
-                metal::MTLOrigin { x: 0u64, y: 0u64, z: 0u64 },
-                metal::MTLSize { width: (src_texture.info().width >> src_mip_level) as u64, height: (src_texture.info().height >> src_mip_level) as u64, depth: (src_texture.info().depth >> src_mip_level) as u64 },
+                src_array_layer as NSUInteger,
+                src_mip_level as NSUInteger,
+                objc2_metal::MTLOrigin { x: 0, y: 0, z: 0 },
+                objc2_metal::MTLSize { width: (src_texture.info().width >> src_mip_level) as NSUInteger, height: (src_texture.info().height >> src_mip_level) as NSUInteger, depth: (src_texture.info().depth >> src_mip_level) as NSUInteger },
                 dst_texture.handle(),
-                dst_array_layer as u64,
-                dst_mip_level as u64,
-                metal::MTLOrigin { x: 0u64, y: 0u64, z: 0u64 }
+                dst_array_layer as NSUInteger,
+                dst_mip_level as NSUInteger,
+                objc2_metal::MTLOrigin { x: 0, y: 0, z: 0 }
             );
         } else if dst_texture.info().usage.contains(gpu::TextureUsage::RENDER_TARGET) {
             Self::blit_rp(self.command_buffer.as_ref().unwrap(), &self.shared, src_texture, src_array_layer, src_mip_level, dst_texture, dst_array_layer, dst_mip_level);
@@ -567,7 +577,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     unsafe fn begin(&mut self, _frame: u64, inheritance: Option<&Self::CommandBufferInheritance>) {
         self.binding.mark_all_dirty();
         if let Some(handle) = self.command_buffer.as_ref() {
-            handle.encode_wait_for_event(&self.pre_event, 1);
+            handle.encodeWaitForEvent_value(&self.pre_event, 1);
         }
         if let Some(inheritance) = inheritance {
             let mut guard = inheritance.lock().unwrap();
@@ -588,41 +598,40 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         let blit_encoder = self.get_blit_encoder();
         let format = dst.info().format;
         let row_pitch = if region.buffer_row_pitch != 0 {
-            region.buffer_row_pitch
+            region.buffer_row_pitch as NSUInteger
         } else {
-            (align_up_32(region.texture_extent.x, format.block_size().x) / format.block_size().x * format.element_size()) as u64
+            (align_up_32(region.texture_extent.x, format.block_size().x) / format.block_size().x * format.element_size()) as NSUInteger
         };
         let slice_pitch = if region.buffer_slice_pitch != 0 {
-            region.buffer_slice_pitch
+            region.buffer_slice_pitch as NSUInteger
         } else {
-            (align_up_32(region.texture_extent.y, format.block_size().y) / format.block_size().y) as u64 * row_pitch
+            (align_up_32(region.texture_extent.y, format.block_size().y) / format.block_size().y) as NSUInteger * row_pitch
         };
 
-        blit_encoder.copy_from_buffer_to_texture(
+        blit_encoder.copyFromBuffer_sourceOffset_sourceBytesPerRow_sourceBytesPerImage_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
             src.handle(),
-            region.buffer_offset,
+            region.buffer_offset as NSUInteger,
             row_pitch,
             slice_pitch,
-            metal::MTLSize {
-                width: region.texture_extent.x as u64,
-                height: region.texture_extent.y as u64,
-                depth: region.texture_extent.z as u64
+            objc2_metal::MTLSize {
+                width: region.texture_extent.x as NSUInteger,
+                height: region.texture_extent.y as NSUInteger,
+                depth: region.texture_extent.z as NSUInteger
             },
             dst.handle(),
-            region.texture_subresource.array_layer as u64,
-            region.texture_subresource.mip_level as u64,
-            metal::MTLOrigin {
-                x: region.texture_offset.x as u64,
-                y: region.texture_offset.y as u64,
-                z: region.texture_offset.z as u64
-            },
-            metal::MTLBlitOption::empty()
+            region.texture_subresource.array_layer as NSUInteger,
+            region.texture_subresource.mip_level as NSUInteger,
+            objc2_metal::MTLOrigin {
+                x: region.texture_offset.x as NSUInteger,
+                y: region.texture_offset.y as NSUInteger,
+                z: region.texture_offset.z as NSUInteger
+            }
         );
     }
 
     unsafe fn copy_buffer(&mut self, src: &MTLBuffer, dst: &MTLBuffer, region: &gpu::BufferCopyRegion) {
         let blit_encoder = self.get_blit_encoder();
-        blit_encoder.copy_from_buffer(src.handle(), region.src_offset, dst.handle(), region.dst_offset, region.size);
+        blit_encoder.copyFromBuffer_sourceOffset_toBuffer_destinationOffset_size(src.handle(), region.src_offset as NSUInteger, dst.handle(), region.dst_offset as NSUInteger, region.size as NSUInteger);
     }
 
     unsafe fn clear_storage_texture(&mut self, _view: &MTLTexture, _array_layer: u32, _mip_level: u32, _values: [u32; 4]) {
@@ -635,9 +644,9 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         assert_eq!(value & 0xFF, value & 0x000000FF); // Write compute shader fallback
 
         let blit_encoder = self.get_blit_encoder();
-        blit_encoder.fill_buffer(
+        blit_encoder.fillBuffer_range_value(
             buffer.handle(),
-            metal::NSRange::new(offset, length_in_u32s / 4u64),
+            NSRange::new(offset as NSUInteger, (length_in_u32s / 4) as NSUInteger),
             value as u8
         );
     }
@@ -647,17 +656,17 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         self.end_non_rendering_encoders();
         let descriptor = render_pass_to_descriptors(renderpass_info);
         if recording_mode == gpu::RenderpassRecordingMode::Commands {
-            let encoder = self.handle().new_render_command_encoder(&descriptor).to_owned();
+            let encoder = self.handle().renderCommandEncoderWithDescriptor(&descriptor).unwrap();
             Self::render_encoder_use_all_heaps(&encoder, &self.shared);
             self.render_pass = MTLRenderPassState::Commands {
                 render_encoder: encoder,
                 render_pass: descriptor,
             };
         } else {
-            let parallel_encoder = self.handle().new_parallel_render_command_encoder(&descriptor).to_owned();
+            let parallel_encoder = self.handle().parallelRenderCommandEncoderWithDescriptor(&descriptor).unwrap();
             let mut encoders = Vec::new();
             for _ in 0..MAX_INNER_ENCODERS {
-                let encoder = parallel_encoder.render_command_encoder().to_owned();
+                let encoder = parallel_encoder.renderCommandEncoder().unwrap();
                 Self::render_encoder_use_all_heaps(&encoder, &self.shared);
                 encoders.push(encoder);
             }
@@ -675,17 +684,17 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     unsafe fn end_render_pass(&mut self) {
         match &self.render_pass {
             MTLRenderPassState::Commands { render_encoder, .. } => {
-                render_encoder.end_encoding();
+                render_encoder.endEncoding();
             },
             MTLRenderPassState::Parallel { parallel_passes, parallel_encoder, .. } => {
                 {
                     let mut inheritance_guard = parallel_passes.lock().unwrap();
                     for encoder in inheritance_guard.encoders.iter() {
-                        encoder.end_encoding();
+                        encoder.endEncoding();
                     }
                     inheritance_guard.encoders.clear();
                 }
-                parallel_encoder.end_encoding();
+                parallel_encoder.endEncoding();
                 assert_eq!(Arc::strong_count(parallel_passes), 1);
             },
             MTLRenderPassState::None => {},
@@ -719,17 +728,17 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         assert!(self.blit_encoder.is_none());
         assert!(self.as_encoder.is_none());
         if let Some(command_buffer) = self.command_buffer.as_mut() {
-            assert!(command_buffer.status() == metal::MTLCommandBufferStatus::Completed || command_buffer.status() == metal::MTLCommandBufferStatus::NotEnqueued || command_buffer.status() == metal::MTLCommandBufferStatus::Error);
-            if command_buffer.status() == metal::MTLCommandBufferStatus::Error {
-                println!("COMMAND BUFFER ERROR");
+            assert!(command_buffer.status() == objc2_metal::MTLCommandBufferStatus::Completed || command_buffer.status() == objc2_metal::MTLCommandBufferStatus::NotEnqueued || command_buffer.status() == objc2_metal::MTLCommandBufferStatus::Error);
+            if command_buffer.status() == objc2_metal::MTLCommandBufferStatus::Error {
+                log::error!("COMMAND BUFFER ERROR");
                 Self::print_error(command_buffer);
             }
-            *command_buffer = self.queue.new_command_buffer_with_unretained_references().to_owned();
+            *command_buffer = self.queue.commandBufferWithUnretainedReferences().unwrap();
             Self::enable_error_tracking(command_buffer);
         }
 
-        self.pre_event = self.queue.device().new_event();
-        self.post_event = self.queue.device().new_event();
+        self.pre_event = self.queue.device().newEvent().unwrap();
+        self.post_event = self.queue.device().newEvent().unwrap();
     }
 
     unsafe fn create_bottom_level_acceleration_structure(
@@ -741,7 +750,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         scratch_buffer: &MTLBuffer,
         scratch_buffer_offset: u64
       ) -> MTLAccelerationStructure {
-        let encoder = { self.get_acceleration_structure_encoder().clone() };
+        let encoder = Retained::from(self.get_acceleration_structure_encoder());
         MTLAccelerationStructure::new_bottom_level(
             &encoder,
             &self.shared,
@@ -773,7 +782,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         scratch_buffer: &MTLBuffer,
         scratch_buffer_offset: u64
       ) -> MTLAccelerationStructure {
-        let encoder = { self.get_acceleration_structure_encoder().clone() };
+        let encoder = Retained::from(self.get_acceleration_structure_encoder());
         MTLAccelerationStructure::new_top_level(&encoder, &self.shared, size, target_buffer, target_buffer_offset, scratch_buffer, scratch_buffer_offset, info, self.command_buffer.as_ref().unwrap())
     }
 
@@ -786,24 +795,24 @@ impl Drop for MTLCommandBuffer {
     fn drop(&mut self) {
         match &self.render_pass {
             MTLRenderPassState::Commands { render_encoder, .. } => {
-                render_encoder.end_encoding();
+                render_encoder.endEncoding();
             }
             MTLRenderPassState::Parallel { parallel_encoder, parallel_passes, .. } => {
                 {
                     let mut inheritance_guard = parallel_passes.lock().unwrap();
                     for encoder in inheritance_guard.encoders.iter() {
-                        encoder.end_encoding();
+                        encoder.endEncoding();
                     }
                     inheritance_guard.encoders.clear();
                 }
-                parallel_encoder.end_encoding();
+                parallel_encoder.endEncoding();
             },
             _ => {}
         }
 
         if let Some(command_buffer) = self.command_buffer.as_ref() {
-            assert!(command_buffer.status() == metal::MTLCommandBufferStatus::Completed || command_buffer.status() == metal::MTLCommandBufferStatus::NotEnqueued || command_buffer.status() == metal::MTLCommandBufferStatus::Error);
-            if command_buffer.status() == metal::MTLCommandBufferStatus::Error {
+            assert!(command_buffer.status() == objc2_metal::MTLCommandBufferStatus::Completed || command_buffer.status() == objc2_metal::MTLCommandBufferStatus::NotEnqueued || command_buffer.status() == objc2_metal::MTLCommandBufferStatus::Error);
+            if command_buffer.status() == objc2_metal::MTLCommandBufferStatus::Error {
                 println!("COMMAND BUFFER ERROR");
                 Self::print_error(command_buffer);
             }

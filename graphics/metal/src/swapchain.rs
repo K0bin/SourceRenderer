@@ -1,5 +1,8 @@
-use metal::{self, MetalDrawable};
-use metal::foreign_types::ForeignTypeRef;
+use objc2::rc::Retained;
+use objc2::runtime::ProtocolObject;
+use objc2_foundation::NSUInteger;
+use objc2_metal::{self, MTLCommandBuffer as _, MTLDrawable as _};
+use objc2_quartz_core::{self, CAMetalDrawable as _};
 
 use sourcerenderer_core::gpu::{self, Texture as _};
 use sourcerenderer_core::Matrix4;
@@ -7,24 +10,27 @@ use sourcerenderer_core::Matrix4;
 use super::*;
 
 pub struct MTLSurface {
-    layer: metal::MetalLayer
+    layer: Retained<objc2_quartz_core::CAMetalLayer>
 }
 
+unsafe impl Send for MTLSurface {}
+unsafe impl Sync for MTLSurface {}
+
 impl MTLSurface {
-    pub fn new(_instance: &MTLInstance, layer: &metal::MetalLayerRef) -> Self {
+    pub fn new(_instance: &MTLInstance, layer: Retained<objc2_quartz_core::CAMetalLayer>) -> Self {
         Self {
-            layer: layer.to_owned()
+            layer
         }
     }
 
-    pub(crate) fn handle(&self) -> &metal::MetalLayerRef {
+    pub(crate) fn handle(&self) -> &objc2_quartz_core::CAMetalLayer {
         &self.layer
     }
 }
 
 impl PartialEq<MTLSurface> for MTLSurface {
     fn eq(&self, other: &MTLSurface) -> bool {
-        self.layer.as_ptr() == other.layer.as_ptr()
+        self.layer == other.layer
     }
 }
 
@@ -32,30 +38,35 @@ impl Eq for MTLSurface {}
 
 pub struct MTLBackbuffer {
     texture: MTLTexture,
-    drawable: MetalDrawable
+    drawable: Retained<ProtocolObject<dyn objc2_quartz_core::CAMetalDrawable>>
 }
+
+unsafe impl Send for MTLBackbuffer {}
+unsafe impl Sync for MTLBackbuffer {}
 
 impl gpu::Backbuffer for MTLBackbuffer {
     fn key(&self) -> u64 {
-        self.drawable.drawable_id()
+        self.drawable.drawableID() as u64
     }
 }
 
 pub struct MTLSwapchain {
     surface: MTLSurface,
-    _device: metal::Device,
+    _device: Retained<ProtocolObject<dyn objc2_metal::MTLDevice>>,
     width: u32,
     height: u32,
     format: gpu::Format
 }
+unsafe impl Send for MTLSwapchain {}
+unsafe impl Sync for MTLSwapchain {}
 
 const IMAGE_COUNT: u32 = 3;
 
 impl MTLSwapchain {
-    pub fn new(surface: MTLSurface, device: &metal::DeviceRef, extents: Option<(u32, u32)>) -> Self {
-        surface.layer.set_device(device);
+    pub unsafe fn new(surface: MTLSurface, device: &ProtocolObject<dyn objc2_metal::MTLDevice>, extents: Option<(u32, u32)>) -> Self {
+        surface.layer.setDevice(Some(device));
         assert!(IMAGE_COUNT == 2 || IMAGE_COUNT == 3);
-        surface.layer.set_maximum_drawable_count(IMAGE_COUNT as u64);
+        surface.layer.setMaximumDrawableCount(IMAGE_COUNT as NSUInteger);
 
         let width: u32;
         let height: u32;
@@ -63,22 +74,22 @@ impl MTLSwapchain {
             width = param_width;
             height = param_height;
         } else {
-            width = surface.handle().drawable_size().width as u32;
-            height = surface.handle().drawable_size().height as u32;
+            width = surface.handle().drawableSize().width as u32;
+            height = surface.handle().drawableSize().height as u32;
         }
-        let format = format_from_metal(surface.layer.pixel_format());
+        let format = format_from_metal(surface.layer.pixelFormat());
 
         Self {
             surface,
-            _device: device.to_owned(),
+            _device: Retained::from(device),
             width,
             height,
             format
         }
     }
 
-    pub(crate) fn present(&self, cmd_buffer: &metal::CommandBuffer, backbuffer: &MTLBackbuffer) {
-        cmd_buffer.present_drawable(&backbuffer.drawable);
+    pub(crate) fn present(&self, cmd_buffer: &ProtocolObject<dyn objc2_metal::MTLCommandBuffer>, backbuffer: &MTLBackbuffer) {
+        cmd_buffer.presentDrawable(ProtocolObject::from_ref::<ProtocolObject<dyn objc2_metal::MTLDrawable>>(backbuffer.drawable.as_ref()));
     }
 }
 
@@ -90,8 +101,8 @@ impl gpu::Swapchain<MTLBackend> for MTLSwapchain {
     }
 
     unsafe fn next_backbuffer(&mut self) -> Result<MTLBackbuffer, gpu::SwapchainError> {
-        let drawable = self.surface.layer.next_drawable().unwrap().to_owned();
-        let texture = MTLTexture::from_mtl_texture(drawable.texture(), true);
+        let drawable = self.surface.layer.nextDrawable().unwrap();
+        let texture = MTLTexture::from_mtl_texture(drawable.texture());
 
         self.width = texture.info().width;
         self.height = texture.info().height;

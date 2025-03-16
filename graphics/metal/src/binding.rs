@@ -1,5 +1,9 @@
-use metal;
-use metal::foreign_types::{ForeignType, ForeignTypeRef};
+use std::ptr::NonNull;
+
+use objc2::rc::Retained;
+use objc2::runtime::ProtocolObject;
+use objc2_foundation::{NSRange, NSUInteger};
+use objc2_metal::{self, MTLComputeCommandEncoder as _, MTLRenderCommandEncoder};
 
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu;
@@ -8,14 +12,14 @@ use super::*;
 
 #[derive(Clone, Debug)]
 pub(crate) struct MTLBufferBindingInfo {
-    pub(crate) buffer: metal::Buffer,
+    pub(crate) buffer: Retained<ProtocolObject<dyn objc2_metal::MTLBuffer>>,
     pub(crate) offset: u64,
     pub(crate) length: u64
 }
 
 #[derive(Clone)]
 pub(crate) struct MTLBufferBindingInfoRef<'a> {
-    pub(crate) buffer: &'a metal::BufferRef,
+    pub(crate) buffer: &'a ProtocolObject<dyn objc2_metal::MTLBuffer>,
     pub(crate) offset: u64,
     pub(crate) length: u64
 }
@@ -23,7 +27,7 @@ pub(crate) struct MTLBufferBindingInfoRef<'a> {
 impl From<&MTLBufferBindingInfoRef<'_>> for MTLBufferBindingInfo {
     fn from(binding: &MTLBufferBindingInfoRef<'_>) -> Self {
         Self {
-            buffer: binding.buffer.to_owned(),
+            buffer: Retained::from(binding.buffer),
             offset: binding.offset,
             length: binding.length
         }
@@ -32,7 +36,7 @@ impl From<&MTLBufferBindingInfoRef<'_>> for MTLBufferBindingInfo {
 
 impl PartialEq<MTLBufferBindingInfoRef<'_>> for MTLBufferBindingInfo {
     fn eq(&self, other: &MTLBufferBindingInfoRef) -> bool {
-        self.buffer.as_ptr() == other.buffer.as_ptr() && self.offset == other.offset && self.length == other.length
+        self.buffer.as_ref() == other.buffer && self.offset == other.offset && self.length == other.length
     }
 }
 
@@ -43,14 +47,14 @@ pub(crate) enum MTLBoundResource {
     UniformBufferArray(SmallVec<[MTLBufferBindingInfo; gpu::PER_SET_BINDINGS as usize]>),
     StorageBuffer(MTLBufferBindingInfo),
     StorageBufferArray(SmallVec<[MTLBufferBindingInfo; gpu::PER_SET_BINDINGS as usize]>),
-    StorageTexture(metal::Texture),
-    StorageTextureArray(SmallVec<[metal::Texture; gpu::PER_SET_BINDINGS as usize]>),
-    SampledTexture(metal::Texture),
-    SampledTextureArray(SmallVec<[metal::Texture; gpu::PER_SET_BINDINGS as usize]>),
-    SampledTextureAndSampler(metal::Texture, metal::SamplerState),
-    SampledTextureAndSamplerArray(SmallVec<[(metal::Texture, metal::SamplerState); gpu::PER_SET_BINDINGS as usize]>),
-    Sampler(metal::SamplerState),
-    AccelerationStructure(metal::AccelerationStructure),
+    StorageTexture(Retained<ProtocolObject<dyn objc2_metal::MTLTexture>>),
+    StorageTextureArray(SmallVec<[Retained<ProtocolObject<dyn objc2_metal::MTLTexture>>; gpu::PER_SET_BINDINGS as usize]>),
+    SampledTexture(Retained<ProtocolObject<dyn objc2_metal::MTLTexture>>),
+    SampledTextureArray(SmallVec<[Retained<ProtocolObject<dyn objc2_metal::MTLTexture>>; gpu::PER_SET_BINDINGS as usize]>),
+    SampledTextureAndSampler(Retained<ProtocolObject<dyn objc2_metal::MTLTexture>>, Retained<ProtocolObject<dyn objc2_metal::MTLSamplerState>>),
+    SampledTextureAndSamplerArray(SmallVec<[(Retained<ProtocolObject<dyn objc2_metal::MTLTexture>>, Retained<ProtocolObject<dyn objc2_metal::MTLSamplerState>>); gpu::PER_SET_BINDINGS as usize]>),
+    Sampler(Retained<ProtocolObject<dyn objc2_metal::MTLSamplerState>>),
+    AccelerationStructure(Retained<ProtocolObject<dyn objc2_metal::MTLAccelerationStructure>>),
 }
 
 impl Default for MTLBoundResource {
@@ -67,14 +71,14 @@ pub(crate) enum MTLBoundResourceRef<'a> {
     UniformBufferArray(&'a [MTLBufferBindingInfoRef<'a>]),
     StorageBuffer(MTLBufferBindingInfoRef<'a>),
     StorageBufferArray(&'a [MTLBufferBindingInfoRef<'a>]),
-    StorageTexture(&'a metal::TextureRef),
-    StorageTextureArray(&'a [&'a metal::TextureRef]),
-    SampledTexture(&'a metal::TextureRef),
-    SampledTextureArray(&'a [&'a metal::TextureRef]),
-    SampledTextureAndSampler(&'a metal::TextureRef, &'a metal::SamplerStateRef),
-    SampledTextureAndSamplerArray(&'a [(&'a metal::TextureRef, &'a metal::SamplerStateRef)]),
-    Sampler(&'a metal::SamplerStateRef),
-    AccelerationStructure(&'a metal::AccelerationStructureRef),
+    StorageTexture(&'a ProtocolObject<dyn objc2_metal::MTLTexture>),
+    StorageTextureArray(&'a [&'a ProtocolObject<dyn objc2_metal::MTLTexture>]),
+    SampledTexture(&'a ProtocolObject<dyn objc2_metal::MTLTexture>),
+    SampledTextureArray(&'a [&'a ProtocolObject<dyn objc2_metal::MTLTexture>]),
+    SampledTextureAndSampler(&'a ProtocolObject<dyn objc2_metal::MTLTexture>, &'a ProtocolObject<dyn objc2_metal::MTLSamplerState>),
+    SampledTextureAndSamplerArray(&'a [(&'a ProtocolObject<dyn objc2_metal::MTLTexture>, &'a ProtocolObject<dyn objc2_metal::MTLSamplerState>)]),
+    Sampler(&'a ProtocolObject<dyn objc2_metal::MTLSamplerState>),
+    AccelerationStructure(&'a ProtocolObject<dyn objc2_metal::MTLAccelerationStructure>),
 }
 
 impl Default for MTLBoundResourceRef<'_> {
@@ -89,14 +93,14 @@ impl From<&MTLBoundResourceRef<'_>> for MTLBoundResource {
             MTLBoundResourceRef::None => MTLBoundResource::None,
             MTLBoundResourceRef::UniformBuffer(info) => MTLBoundResource::UniformBuffer(info.into()),
             MTLBoundResourceRef::StorageBuffer(info) => MTLBoundResource::StorageBuffer(info.into()),
-            MTLBoundResourceRef::StorageTexture(view) => MTLBoundResource::StorageTexture((*view).to_owned()),
-            MTLBoundResourceRef::SampledTexture(view) => MTLBoundResource::SampledTexture((*view).to_owned()),
+            MTLBoundResourceRef::StorageTexture(view) => MTLBoundResource::StorageTexture(Retained::from(*view)),
+            MTLBoundResourceRef::SampledTexture(view) => MTLBoundResource::SampledTexture(Retained::from(*view)),
             MTLBoundResourceRef::SampledTextureAndSampler(view, sampler) => {
-                MTLBoundResource::SampledTextureAndSampler((*view).to_owned(), (*sampler).to_owned())
+                MTLBoundResource::SampledTextureAndSampler(Retained::from(*view), Retained::from(*sampler))
             }
-            MTLBoundResourceRef::Sampler(sampler) => MTLBoundResource::Sampler((*sampler).to_owned()),
+            MTLBoundResourceRef::Sampler(sampler) => MTLBoundResource::Sampler(Retained::from(*sampler)),
             MTLBoundResourceRef::AccelerationStructure(accel) => {
-                MTLBoundResource::AccelerationStructure((*accel).to_owned())
+                MTLBoundResource::AccelerationStructure(Retained::from(*accel))
             }
             MTLBoundResourceRef::UniformBufferArray(arr) => MTLBoundResource::UniformBufferArray(
                 arr.iter()
@@ -109,16 +113,16 @@ impl From<&MTLBoundResourceRef<'_>> for MTLBoundResource {
                     .collect(),
             ),
             MTLBoundResourceRef::StorageTextureArray(arr) => {
-                MTLBoundResource::StorageTextureArray(arr.iter().map(|a| (*a).to_owned()).collect())
+                MTLBoundResource::StorageTextureArray(arr.iter().map(|a| Retained::from(*a)).collect())
             }
             MTLBoundResourceRef::SampledTextureArray(arr) => {
-                MTLBoundResource::SampledTextureArray(arr.iter().map(|a| (*a).to_owned()).collect())
+                MTLBoundResource::SampledTextureArray(arr.iter().map(|a| Retained::from(*a)).collect())
             }
             MTLBoundResourceRef::SampledTextureAndSamplerArray(arr) => {
                 MTLBoundResource::SampledTextureAndSamplerArray(
                     arr.iter()
                         .map(|(t, s)| {
-                            let tuple: (metal::Texture, metal::SamplerState) = ((*t).to_owned(), (*s).to_owned());
+                            let tuple: (Retained<ProtocolObject<dyn objc2_metal::MTLTexture>>, Retained<ProtocolObject<dyn objc2_metal::MTLSamplerState>>) = (Retained::from(*t), Retained::from(*s));
                             tuple
                         })
                         .collect(),
@@ -150,7 +154,7 @@ impl PartialEq<MTLBoundResourceRef<'_>> for MTLBoundResource {
                     offset: new_offset,
                     length: new_length,
                 }),
-            ) => old.as_ptr() == new.as_ptr() && old_offset == new_offset && old_length == new_length,
+            ) => old.as_ref() == *new && old_offset == new_offset && old_length == new_length,
             (
                 MTLBoundResource::StorageBuffer(MTLBufferBindingInfo {
                     buffer: old,
@@ -162,24 +166,24 @@ impl PartialEq<MTLBoundResourceRef<'_>> for MTLBoundResource {
                     offset: new_offset,
                     length: new_length,
                 }),
-            ) => old.as_ptr() == new.as_ptr() && old_offset == new_offset && old_length == new_length,
+            ) => old.as_ref() == *new && old_offset == new_offset && old_length == new_length,
             (MTLBoundResource::StorageTexture(old), MTLBoundResourceRef::StorageTexture(new)) => {
-                old.as_ptr() == new.as_ptr()
+                old.as_ref() == *new
             }
             (MTLBoundResource::SampledTexture(old), MTLBoundResourceRef::SampledTexture(new)) => {
-                old.as_ptr() == new.as_ptr()
+                old.as_ref() == *new
             }
             (
                 MTLBoundResource::SampledTextureAndSampler(old_tex, old_sampler),
                 MTLBoundResourceRef::SampledTextureAndSampler(new_tex, new_sampler),
-            ) => old_tex.as_ptr() == new_tex.as_ptr() && old_sampler.as_ptr() == new_sampler.as_ptr(),
+            ) => old_tex.as_ref() == *new_tex && old_sampler.as_ref() == *new_sampler,
             (MTLBoundResource::Sampler(old_sampler), MTLBoundResourceRef::Sampler(new_sampler)) => {
-                old_sampler.as_ptr() == new_sampler.as_ptr()
+                old_sampler.as_ref() == *new_sampler
             }
             (
                 MTLBoundResource::AccelerationStructure(old),
                 MTLBoundResourceRef::AccelerationStructure(new),
-            ) => old.as_ptr() == new.as_ptr(),
+            ) => old.as_ref() == *new,
             (
                 MTLBoundResource::StorageBufferArray(old),
                 MTLBoundResourceRef::StorageBufferArray(new),
@@ -191,17 +195,17 @@ impl PartialEq<MTLBoundResourceRef<'_>> for MTLBoundResource {
             (
                 MTLBoundResource::SampledTextureArray(old),
                 MTLBoundResourceRef::SampledTextureArray(new),
-            ) => old.iter().zip(new.iter()).all(|(old, new)| old.as_ptr() == new.as_ptr()),
+            ) => old.iter().zip(new.iter()).all(|(old, new)| old.as_ref() == *new),
             (
                 MTLBoundResource::StorageTextureArray(old),
                 MTLBoundResourceRef::StorageTextureArray(new),
-            ) => old.iter().zip(new.iter()).all(|(old, new)| old.as_ptr() == new.as_ptr()),
+            ) => old.iter().zip(new.iter()).all(|(old, new)| old.as_ref() == *new),
             (
                 MTLBoundResource::SampledTextureAndSamplerArray(old),
                 MTLBoundResourceRef::SampledTextureAndSamplerArray(new),
             ) => old.iter().zip(new.iter()).all(
                 |((old_texture, old_sampler), (new_texture, new_sampler))| {
-                    old_texture.as_ptr() == new_texture.as_ptr() && old_sampler.as_ptr() == new_sampler.as_ptr()
+                    old_texture.as_ref() == *new_texture && old_sampler.as_ref() == *new_sampler
                 },
             ),
             _ => false,
@@ -210,8 +214,8 @@ impl PartialEq<MTLBoundResourceRef<'_>> for MTLBoundResource {
 }
 
 pub(crate) enum MTLEncoderRef<'a> {
-    Graphics(&'a metal::RenderCommandEncoderRef),
-    Compute(&'a metal::ComputeCommandEncoderRef)
+    Graphics(&'a ProtocolObject<dyn objc2_metal::MTLRenderCommandEncoder>),
+    Compute(&'a ProtocolObject<dyn objc2_metal::MTLComputeCommandEncoder>)
 }
 
 pub(crate) struct MTLBindingManager {
@@ -250,7 +254,7 @@ impl MTLBindingManager {
         }
     }
 
-    pub(crate) fn finish(
+    pub(crate) unsafe fn finish(
         &mut self,
         encoder: MTLEncoderRef,
         pipeline: &PipelineResourceMap
@@ -260,129 +264,157 @@ impl MTLBindingManager {
                 for (set_index, dirty) in &mut self.dirty.iter_mut().enumerate() {
                     while dirty.count_ones() != 0 {
                         let slot = dirty.trailing_zeros();
-                        *dirty &= !(1 << slot as u64);
+                        *dirty &= !(1 << slot as NSUInteger);
 
                         let metal_index_opt = pipeline.resources.get(&(gpu::ShaderType::VertexShader, set_index as u32, slot));
                         if let Some(metal_binding) = metal_index_opt {
                             match &self.bindings[set_index][slot as usize] {
                                 MTLBoundResource::None => {
                                     if let Some(binding) = metal_binding.texture_binding {
-                                        encoder.set_vertex_texture(binding as u64, None);
+                                        encoder.setVertexTexture_atIndex(None, binding as NSUInteger);
                                     }
                                     if let Some(binding) = metal_binding.sampler_binding {
-                                        encoder.set_vertex_sampler_state(binding as u64, None);
+                                        encoder.setVertexSamplerState_atIndex(None, binding as NSUInteger);
                                     }
                                     if let Some(binding) = metal_binding.buffer_binding {
-                                        encoder.set_vertex_buffer(binding as u64, None, 0u64);
+                                        encoder.setVertexBuffer_offset_atIndex(None,  0, binding as NSUInteger);
                                     }
                                 },
                                 MTLBoundResource::SampledTexture(texture) => {
                                     if metal_binding.texture_binding.is_none() {
                                         continue;
                                     }
-                                    encoder.set_vertex_texture(metal_binding.texture_binding.unwrap() as u64, Some(texture));
+                                    encoder.setVertexTexture_atIndex(Some(texture), metal_binding.texture_binding.unwrap() as NSUInteger);
                                 },
                                 MTLBoundResource::Sampler(sampler) => {
                                     if metal_binding.sampler_binding.is_none() {
                                         continue;
                                     }
-                                    encoder.set_vertex_sampler_state(metal_binding.sampler_binding.unwrap() as u64, Some(sampler));
+                                    encoder.setVertexSamplerState_atIndex(Some(sampler), metal_binding.sampler_binding.unwrap() as NSUInteger);
                                 },
                                 MTLBoundResource::StorageTexture(texture) => {
                                     if metal_binding.texture_binding.is_none() {
                                         continue;
                                     }
-                                    encoder.set_vertex_texture(metal_binding.texture_binding.unwrap() as u64, Some(texture));
+                                    encoder.setVertexTexture_atIndex(Some(texture), metal_binding.texture_binding.unwrap() as NSUInteger);
                                 },
                                 MTLBoundResource::SampledTextureAndSampler(texture, sampler) => {
                                     if metal_binding.texture_binding.is_none() || metal_binding.sampler_binding.is_none() {
                                         continue;
                                     }
-                                    encoder.set_vertex_texture(metal_binding.texture_binding.unwrap() as u64, Some(texture));
-                                    encoder.set_vertex_sampler_state(metal_binding.sampler_binding.unwrap() as u64, Some(sampler));
+                                    encoder.setVertexTexture_atIndex(Some(texture), metal_binding.texture_binding.unwrap() as NSUInteger);
+                                    encoder.setVertexSamplerState_atIndex(Some(sampler), metal_binding.sampler_binding.unwrap() as NSUInteger);
                                 }
                                 MTLBoundResource::SampledTextureArray(textures) => {
                                     if metal_binding.texture_binding.is_none() {
                                         continue;
                                     }
-                                    let mut handles_opt = SmallVec::<[Option<&metal::TextureRef>; 32]>::with_capacity(metal_binding.array_count as usize);
+                                    let start_binding = metal_binding.texture_binding.unwrap() as NSUInteger;
+                                    let mut handles_opt = SmallVec::<[*const ProtocolObject<dyn objc2_metal::MTLTexture>; 32]>::with_capacity(metal_binding.array_count as usize);
                                     for array_entry in textures {
-                                        handles_opt.push(Some(&array_entry));
+                                        handles_opt.push(array_entry.as_ref() as *const ProtocolObject<dyn objc2_metal::MTLTexture>);
                                     }
-                                    handles_opt.resize(metal_binding.array_count as usize, None);
-                                    encoder.set_vertex_textures(metal_binding.texture_binding.unwrap() as u64, &handles_opt);
+                                    encoder.setVertexTextures_withRange(NonNull::new(handles_opt.as_mut_ptr()).unwrap(), NSRange {
+                                        location: start_binding,
+                                        length: handles_opt.len()
+                                    });
+                                    for i in (start_binding + handles_opt.len())..(start_binding as NSUInteger + metal_binding.array_count as NSUInteger) {
+                                        encoder.setVertexTexture_atIndex(None, i);
+                                    }
                                 }
                                 MTLBoundResource::StorageTextureArray(textures) => {
                                     if metal_binding.texture_binding.is_none() {
                                         continue;
                                     }
-                                    let mut handles_opt = SmallVec::<[Option<&metal::TextureRef>; 32]>::with_capacity(metal_binding.array_count as usize);
+                                    let start_binding = metal_binding.texture_binding.unwrap() as NSUInteger;
+                                    let mut handles_opt = SmallVec::<[*const ProtocolObject<dyn objc2_metal::MTLTexture>; 32]>::with_capacity(metal_binding.array_count as usize);
                                     for array_entry in textures {
-                                        handles_opt.push(Some(&array_entry));
+                                        handles_opt.push(array_entry.as_ref() as *const ProtocolObject<dyn objc2_metal::MTLTexture>);
                                     }
-                                    handles_opt.resize(metal_binding.array_count as usize, None);
-                                    encoder.set_vertex_textures(metal_binding.texture_binding.unwrap() as u64, &handles_opt);
+                                    encoder.setVertexTextures_withRange(NonNull::new(handles_opt.as_mut_ptr()).unwrap(), NSRange {
+                                        location: start_binding,
+                                        length: handles_opt.len()
+                                    });
+                                    for i in (start_binding + handles_opt.len())..(start_binding as NSUInteger + metal_binding.array_count as NSUInteger) {
+                                        encoder.setVertexTexture_atIndex(None, i);
+                                    }
                                 }
                                 MTLBoundResource::SampledTextureAndSamplerArray(textures_and_samplers) => {
                                     if metal_binding.texture_binding.is_none() || metal_binding.sampler_binding.is_none() {
                                         continue;
                                     }
-                                    let mut texture_handles_opt = SmallVec::<[Option<&metal::TextureRef>; 32]>::with_capacity(metal_binding.array_count as usize);
-                                    let mut sampler_handles_opt = SmallVec::<[Option<&metal::SamplerStateRef>; 32]>::with_capacity(metal_binding.array_count as usize);
+                                    let mut texture_handles_opt = SmallVec::<[*const ProtocolObject<dyn objc2_metal::MTLTexture>; 32]>::with_capacity(metal_binding.array_count as usize);
+                                    let mut sampler_handles_opt = SmallVec::<[*const ProtocolObject<dyn objc2_metal::MTLSamplerState>; 32]>::with_capacity(metal_binding.array_count as usize);
                                     for (texture, sampler) in textures_and_samplers {
-                                        texture_handles_opt.push(Some(&texture));
-                                        sampler_handles_opt.push(Some(&sampler));
+                                        texture_handles_opt.push(texture.as_ref() as *const ProtocolObject<dyn objc2_metal::MTLTexture>);
+                                        sampler_handles_opt.push(sampler.as_ref() as *const ProtocolObject<dyn objc2_metal::MTLSamplerState>);
                                     }
-                                    texture_handles_opt.resize(metal_binding.array_count as usize, None);
-                                    sampler_handles_opt.resize(metal_binding.array_count as usize, None);
-                                    encoder.set_vertex_textures(metal_binding.texture_binding.unwrap() as u64, &texture_handles_opt);
-                                    encoder.set_vertex_sampler_states(metal_binding.sampler_binding.unwrap() as u64, &sampler_handles_opt);
+                                    encoder.setVertexTextures_withRange(NonNull::new(texture_handles_opt.as_mut_ptr()).unwrap(), NSRange {
+                                        location: metal_binding.texture_binding.unwrap() as NSUInteger,
+                                        length: texture_handles_opt.len()
+                                    });
+                                    encoder.setVertexSamplerStates_withRange(NonNull::new(sampler_handles_opt.as_mut_ptr()).unwrap(), NSRange {
+                                        location: metal_binding.sampler_binding.unwrap() as NSUInteger,
+                                        length: sampler_handles_opt.len()
+                                    });
+                                    for i in 0..(metal_binding.array_count as NSUInteger) {
+                                        encoder.setVertexTexture_atIndex(None, metal_binding.texture_binding.unwrap() as NSUInteger + i);
+                                        encoder.setVertexSamplerState_atIndex(None, metal_binding.sampler_binding.unwrap() as NSUInteger + i);
+                                    }
                                 }
                                 MTLBoundResource::UniformBuffer(buffer_info) => {
                                     if metal_binding.buffer_binding.is_none() {
                                         continue;
                                     }
-                                    encoder.set_vertex_buffer(metal_binding.buffer_binding.unwrap() as u64, Some(&buffer_info.buffer), buffer_info.offset);
+                                    encoder.setVertexBuffer_offset_atIndex(Some(&buffer_info.buffer), buffer_info.offset as NSUInteger, metal_binding.buffer_binding.unwrap() as NSUInteger);
                                 }
                                 MTLBoundResource::StorageBuffer(buffer_info) => {
                                     if metal_binding.buffer_binding.is_none() {
                                         continue;
                                     }
-                                    encoder.set_vertex_buffer(metal_binding.buffer_binding.unwrap() as u64, Some(&buffer_info.buffer), buffer_info.offset);
+                                    encoder.setVertexBuffer_offset_atIndex(Some(&buffer_info.buffer), buffer_info.offset as NSUInteger, metal_binding.buffer_binding.unwrap() as NSUInteger);
                                 }
                                 MTLBoundResource::AccelerationStructure(acceleration_structure) => {
                                     if metal_binding.buffer_binding.is_none() {
                                         continue;
                                     }
-                                    encoder.set_vertex_acceleration_structure(metal_binding.buffer_binding.unwrap() as u64, Some(&acceleration_structure));
+                                    encoder.setVertexAccelerationStructure_atBufferIndex(Some(&acceleration_structure), metal_binding.buffer_binding.unwrap() as NSUInteger);
                                 }
                                 MTLBoundResource::UniformBufferArray(buffers) => {
                                     if metal_binding.buffer_binding.is_none() {
                                         continue;
                                     }
-                                    let mut handles_opt = SmallVec::<[Option<&metal::BufferRef>; 32]>::with_capacity(metal_binding.array_count as usize);
-                                    let mut offsets = SmallVec::<[u64; 32]>::with_capacity(metal_binding.array_count as usize);
+                                    let start_binding = metal_binding.buffer_binding.unwrap() as NSUInteger;
+                                    let mut handles_opt = SmallVec::<[*const ProtocolObject<dyn objc2_metal::MTLBuffer>; 32]>::with_capacity(metal_binding.array_count as usize);
+                                    let mut offsets = SmallVec::<[NSUInteger; 32]>::with_capacity(metal_binding.array_count as usize);
                                     for array_entry in buffers {
-                                        handles_opt.push(Some(&array_entry.buffer));
-                                        offsets.push(array_entry.offset);
+                                        handles_opt.push(array_entry.buffer.as_ref() as *const ProtocolObject<dyn objc2_metal::MTLBuffer>);
+                                        offsets.push(array_entry.offset as NSUInteger);
                                     }
-                                    handles_opt.resize(metal_binding.array_count as usize, None);
-                                    offsets.resize(metal_binding.array_count as usize, 0u64);
-                                    encoder.set_vertex_buffers(metal_binding.texture_binding.unwrap() as u64, &handles_opt, &offsets);
+                                    encoder.setVertexBuffers_offsets_withRange(NonNull::new(handles_opt.as_mut_ptr()).unwrap(),
+                                        NonNull::new(offsets.as_mut_ptr()).unwrap(),
+                                        NSRange {
+                                            location: start_binding,
+                                            length: handles_opt.len()
+                                        });
                                 },
                                 MTLBoundResource::StorageBufferArray(buffers) => {
                                     if metal_binding.buffer_binding.is_none() {
                                         continue;
                                     }
-                                    let mut handles_opt = SmallVec::<[Option<&metal::BufferRef>; 32]>::with_capacity(metal_binding.array_count as usize);
-                                    let mut offsets = SmallVec::<[u64; 32]>::with_capacity(metal_binding.array_count as usize);
+                                    let start_binding = metal_binding.buffer_binding.unwrap() as NSUInteger;
+                                    let mut handles_opt = SmallVec::<[*const ProtocolObject<dyn objc2_metal::MTLBuffer>; 32]>::with_capacity(metal_binding.array_count as usize);
+                                    let mut offsets = SmallVec::<[NSUInteger; 32]>::with_capacity(metal_binding.array_count as usize);
                                     for array_entry in buffers {
-                                        handles_opt.push(Some(&array_entry.buffer));
-                                        offsets.push(array_entry.offset);
+                                        handles_opt.push(array_entry.buffer.as_ref() as *const ProtocolObject<dyn objc2_metal::MTLBuffer>);
+                                        offsets.push(array_entry.offset as NSUInteger);
                                     }
-                                    handles_opt.resize(metal_binding.array_count as usize, None);
-                                    offsets.resize(metal_binding.array_count as usize, 0u64);
-                                    encoder.set_vertex_buffers(metal_binding.texture_binding.unwrap() as u64, &handles_opt, &offsets);
+                                    encoder.setVertexBuffers_offsets_withRange(NonNull::new(handles_opt.as_mut_ptr()).unwrap(),
+                                        NonNull::new(offsets.as_mut_ptr()).unwrap(),
+                                        NSRange {
+                                            location: start_binding,
+                                            length: handles_opt.len()
+                                        });
                                 },
                             }
                         }
@@ -391,122 +423,150 @@ impl MTLBindingManager {
                             match &self.bindings[set_index][slot as usize] {
                                 MTLBoundResource::None => {
                                     if let Some(binding) = metal_binding.texture_binding {
-                                        encoder.set_fragment_texture(binding as u64, None);
+                                        encoder.setFragmentTexture_atIndex(None, binding as NSUInteger);
                                     }
                                     if let Some(binding) = metal_binding.sampler_binding {
-                                        encoder.set_fragment_sampler_state(binding as u64, None);
+                                        encoder.setFragmentSamplerState_atIndex(None, binding as NSUInteger);
                                     }
                                     if let Some(binding) = metal_binding.buffer_binding {
-                                        encoder.set_fragment_buffer(binding as u64, None, 0u64);
+                                        encoder.setFragmentBuffer_offset_atIndex(None,  0, binding as NSUInteger);
                                     }
                                 },
                                 MTLBoundResource::SampledTexture(texture) => {
                                     if metal_binding.texture_binding.is_none() {
                                         continue;
                                     }
-                                    encoder.set_fragment_texture(metal_binding.texture_binding.unwrap() as u64, Some(texture));
+                                    encoder.setFragmentTexture_atIndex(Some(texture), metal_binding.texture_binding.unwrap() as NSUInteger);
                                 },
                                 MTLBoundResource::Sampler(sampler) => {
                                     if metal_binding.sampler_binding.is_none() {
                                         continue;
                                     }
-                                    encoder.set_fragment_sampler_state(metal_binding.sampler_binding.unwrap() as u64, Some(sampler));
+                                    encoder.setFragmentSamplerState_atIndex(Some(sampler), metal_binding.sampler_binding.unwrap() as NSUInteger);
                                 },
                                 MTLBoundResource::StorageTexture(texture) => {
                                     if metal_binding.texture_binding.is_none() {
                                         continue;
                                     }
-                                    encoder.set_fragment_texture(metal_binding.texture_binding.unwrap() as u64, Some(texture));
+                                    encoder.setFragmentTexture_atIndex(Some(texture), metal_binding.texture_binding.unwrap() as NSUInteger);
                                 },
                                 MTLBoundResource::SampledTextureAndSampler(texture, sampler) => {
                                     if metal_binding.texture_binding.is_none() || metal_binding.sampler_binding.is_none() {
                                         continue;
                                     }
-                                    encoder.set_fragment_texture(metal_binding.texture_binding.unwrap() as u64, Some(texture));
-                                    encoder.set_fragment_sampler_state(metal_binding.sampler_binding.unwrap() as u64, Some(sampler));
+                                    encoder.setFragmentTexture_atIndex(Some(texture), metal_binding.texture_binding.unwrap() as NSUInteger);
+                                    encoder.setFragmentSamplerState_atIndex(Some(sampler), metal_binding.sampler_binding.unwrap() as NSUInteger);
                                 }
                                 MTLBoundResource::SampledTextureArray(textures) => {
                                     if metal_binding.texture_binding.is_none() {
                                         continue;
                                     }
-                                    let mut handles_opt = SmallVec::<[Option<&metal::TextureRef>; 32]>::with_capacity(metal_binding.array_count as usize);
+                                    let start_binding = metal_binding.texture_binding.unwrap() as NSUInteger;
+                                    let mut handles_opt = SmallVec::<[*const ProtocolObject<dyn objc2_metal::MTLTexture>; 32]>::with_capacity(metal_binding.array_count as usize);
                                     for array_entry in textures {
-                                        handles_opt.push(Some(&array_entry));
+                                        handles_opt.push(array_entry.as_ref() as *const ProtocolObject<dyn objc2_metal::MTLTexture>);
                                     }
-                                    handles_opt.resize(metal_binding.array_count as usize, None);
-                                    encoder.set_fragment_textures(metal_binding.texture_binding.unwrap() as u64, &handles_opt);
+                                    encoder.setFragmentTextures_withRange(NonNull::new(handles_opt.as_mut_ptr()).unwrap(), NSRange {
+                                        location: start_binding,
+                                        length: handles_opt.len()
+                                    });
+                                    for i in (start_binding + handles_opt.len())..(start_binding as NSUInteger + metal_binding.array_count as NSUInteger) {
+                                        encoder.setFragmentTexture_atIndex(None, i);
+                                    }
                                 }
                                 MTLBoundResource::StorageTextureArray(textures) => {
                                     if metal_binding.texture_binding.is_none() {
                                         continue;
                                     }
-                                    let mut handles_opt = SmallVec::<[Option<&metal::TextureRef>; 32]>::with_capacity(metal_binding.array_count as usize);
+                                    let start_binding = metal_binding.texture_binding.unwrap() as NSUInteger;
+                                    let mut handles_opt = SmallVec::<[*const ProtocolObject<dyn objc2_metal::MTLTexture>; 32]>::with_capacity(metal_binding.array_count as usize);
                                     for array_entry in textures {
-                                        handles_opt.push(Some(&array_entry));
+                                        handles_opt.push(array_entry.as_ref() as *const ProtocolObject<dyn objc2_metal::MTLTexture>);
                                     }
-                                    handles_opt.resize(metal_binding.array_count as usize, None);
-                                    encoder.set_fragment_textures(metal_binding.texture_binding.unwrap() as u64, &handles_opt);
+                                    encoder.setFragmentTextures_withRange(NonNull::new(handles_opt.as_mut_ptr()).unwrap(), NSRange {
+                                        location: start_binding,
+                                        length: handles_opt.len()
+                                    });
+                                    for i in (start_binding + handles_opt.len())..(start_binding as NSUInteger + metal_binding.array_count as NSUInteger) {
+                                        encoder.setFragmentTexture_atIndex(None, i);
+                                    }
                                 }
                                 MTLBoundResource::SampledTextureAndSamplerArray(textures_and_samplers) => {
                                     if metal_binding.texture_binding.is_none() || metal_binding.sampler_binding.is_none() {
                                         continue;
                                     }
-                                    let mut texture_handles_opt = SmallVec::<[Option<&metal::TextureRef>; 32]>::with_capacity(metal_binding.array_count as usize);
-                                    let mut sampler_handles_opt = SmallVec::<[Option<&metal::SamplerStateRef>; 32]>::with_capacity(metal_binding.array_count as usize);
+                                    let mut texture_handles_opt = SmallVec::<[*const ProtocolObject<dyn objc2_metal::MTLTexture>; 32]>::with_capacity(metal_binding.array_count as usize);
+                                    let mut sampler_handles_opt = SmallVec::<[*const ProtocolObject<dyn objc2_metal::MTLSamplerState>; 32]>::with_capacity(metal_binding.array_count as usize);
                                     for (texture, sampler) in textures_and_samplers {
-                                        texture_handles_opt.push(Some(&texture));
-                                        sampler_handles_opt.push(Some(&sampler));
+                                        texture_handles_opt.push(texture.as_ref() as *const ProtocolObject<dyn objc2_metal::MTLTexture>);
+                                        sampler_handles_opt.push(sampler.as_ref() as *const ProtocolObject<dyn objc2_metal::MTLSamplerState>);
                                     }
-                                    texture_handles_opt.resize(metal_binding.array_count as usize, None);
-                                    sampler_handles_opt.resize(metal_binding.array_count as usize, None);
-                                    encoder.set_fragment_textures(metal_binding.texture_binding.unwrap() as u64, &texture_handles_opt);
-                                    encoder.set_fragment_sampler_states(metal_binding.sampler_binding.unwrap() as u64, &sampler_handles_opt);
+                                    encoder.setFragmentTextures_withRange(NonNull::new(texture_handles_opt.as_mut_ptr()).unwrap(), NSRange {
+                                        location: metal_binding.texture_binding.unwrap() as NSUInteger,
+                                        length: texture_handles_opt.len()
+                                    });
+                                    encoder.setFragmentSamplerStates_withRange(NonNull::new(sampler_handles_opt.as_mut_ptr()).unwrap(), NSRange {
+                                        location: metal_binding.sampler_binding.unwrap() as NSUInteger,
+                                        length: sampler_handles_opt.len()
+                                    });
+                                    for i in 0..(metal_binding.array_count as NSUInteger) {
+                                        encoder.setFragmentTexture_atIndex(None, metal_binding.texture_binding.unwrap() as NSUInteger + i);
+                                        encoder.setFragmentSamplerState_atIndex(None, metal_binding.sampler_binding.unwrap() as NSUInteger + i);
+                                    }
                                 }
                                 MTLBoundResource::UniformBuffer(buffer_info) => {
                                     if metal_binding.buffer_binding.is_none() {
                                         continue;
                                     }
-                                    encoder.set_fragment_buffer(metal_binding.buffer_binding.unwrap() as u64, Some(&buffer_info.buffer), buffer_info.offset);
+                                    encoder.setFragmentBuffer_offset_atIndex(Some(&buffer_info.buffer), buffer_info.offset as NSUInteger, metal_binding.buffer_binding.unwrap() as NSUInteger);
                                 }
                                 MTLBoundResource::StorageBuffer(buffer_info) => {
                                     if metal_binding.buffer_binding.is_none() {
                                         continue;
                                     }
-                                    encoder.set_fragment_buffer(metal_binding.buffer_binding.unwrap() as u64, Some(&buffer_info.buffer), buffer_info.offset);
+                                    encoder.setFragmentBuffer_offset_atIndex(Some(&buffer_info.buffer), buffer_info.offset as NSUInteger, metal_binding.buffer_binding.unwrap() as NSUInteger);
                                 }
                                 MTLBoundResource::AccelerationStructure(acceleration_structure) => {
                                     if metal_binding.buffer_binding.is_none() {
                                         continue;
                                     }
-                                    encoder.set_fragment_acceleration_structure(metal_binding.buffer_binding.unwrap() as u64, Some(&acceleration_structure));
+                                    encoder.setFragmentAccelerationStructure_atBufferIndex(Some(&acceleration_structure), metal_binding.buffer_binding.unwrap() as NSUInteger);
                                 }
                                 MTLBoundResource::UniformBufferArray(buffers) => {
                                     if metal_binding.buffer_binding.is_none() {
                                         continue;
                                     }
-                                    let mut handles_opt = SmallVec::<[Option<&metal::BufferRef>; 32]>::with_capacity(metal_binding.array_count as usize);
-                                    let mut offsets = SmallVec::<[u64; 32]>::with_capacity(metal_binding.array_count as usize);
+                                    let start_binding = metal_binding.buffer_binding.unwrap() as NSUInteger;
+                                    let mut handles_opt = SmallVec::<[*const ProtocolObject<dyn objc2_metal::MTLBuffer>; 32]>::with_capacity(metal_binding.array_count as usize);
+                                    let mut offsets = SmallVec::<[NSUInteger; 32]>::with_capacity(metal_binding.array_count as usize);
                                     for array_entry in buffers {
-                                        handles_opt.push(Some(&array_entry.buffer));
-                                        offsets.push(array_entry.offset);
+                                        handles_opt.push(array_entry.buffer.as_ref() as *const ProtocolObject<dyn objc2_metal::MTLBuffer>);
+                                        offsets.push(array_entry.offset as NSUInteger);
                                     }
-                                    handles_opt.resize(metal_binding.array_count as usize, None);
-                                    offsets.resize(metal_binding.array_count as usize, 0u64);
-                                    encoder.set_fragment_buffers(metal_binding.texture_binding.unwrap() as u64, &handles_opt, &offsets);
+                                    encoder.setFragmentBuffers_offsets_withRange(NonNull::new(handles_opt.as_mut_ptr()).unwrap(),
+                                        NonNull::new(offsets.as_mut_ptr()).unwrap(),
+                                        NSRange {
+                                            location: start_binding,
+                                            length: handles_opt.len()
+                                        });
                                 },
                                 MTLBoundResource::StorageBufferArray(buffers) => {
                                     if metal_binding.buffer_binding.is_none() {
                                         continue;
                                     }
-                                    let mut handles_opt = SmallVec::<[Option<&metal::BufferRef>; 32]>::with_capacity(metal_binding.array_count as usize);
-                                    let mut offsets = SmallVec::<[u64; 32]>::with_capacity(metal_binding.array_count as usize);
+                                    let start_binding = metal_binding.buffer_binding.unwrap() as NSUInteger;
+                                    let mut handles_opt = SmallVec::<[*const ProtocolObject<dyn objc2_metal::MTLBuffer>; 32]>::with_capacity(metal_binding.array_count as usize);
+                                    let mut offsets = SmallVec::<[NSUInteger; 32]>::with_capacity(metal_binding.array_count as usize);
                                     for array_entry in buffers {
-                                        handles_opt.push(Some(&array_entry.buffer));
-                                        offsets.push(array_entry.offset);
+                                        handles_opt.push(array_entry.buffer.as_ref() as *const ProtocolObject<dyn objc2_metal::MTLBuffer>);
+                                        offsets.push(array_entry.offset as NSUInteger);
                                     }
-                                    handles_opt.resize(metal_binding.array_count as usize, None);
-                                    offsets.resize(metal_binding.array_count as usize, 0u64);
-                                    encoder.set_fragment_buffers(metal_binding.texture_binding.unwrap() as u64, &handles_opt, &offsets);
+                                    encoder.setFragmentBuffers_offsets_withRange(NonNull::new(handles_opt.as_mut_ptr()).unwrap(),
+                                        NonNull::new(offsets.as_mut_ptr()).unwrap(),
+                                        NSRange {
+                                            location: start_binding,
+                                            length: handles_opt.len()
+                                        });
                                 },
                             }
                         }
@@ -519,7 +579,7 @@ impl MTLBindingManager {
                 for (set_index, dirty) in &mut self.dirty.iter_mut().enumerate() {
                     while dirty.count_ones() != 0 {
                         let slot = dirty.trailing_zeros();
-                        *dirty &= !(1 << slot as u64);
+                        *dirty &= !(1 << slot as NSUInteger);
 
                         let metal_index_opt = pipeline.resources.get(&(gpu::ShaderType::ComputeShader, set_index as u32, slot));
                         if metal_index_opt.is_none() {
@@ -529,122 +589,150 @@ impl MTLBindingManager {
                         match &self.bindings[set_index][slot as usize] {
                             MTLBoundResource::None => {
                                 if let Some(binding) = metal_binding.texture_binding {
-                                    encoder.set_texture(binding as u64, None);
+                                    encoder.setTexture_atIndex(None, binding as NSUInteger);
                                 }
                                 if let Some(binding) = metal_binding.sampler_binding {
-                                    encoder.set_sampler_state(binding as u64, None);
+                                    encoder.setSamplerState_atIndex(None, binding as NSUInteger);
                                 }
                                 if let Some(binding) = metal_binding.buffer_binding {
-                                    encoder.set_buffer(binding as u64, None, 0u64);
+                                    encoder.setBuffer_offset_atIndex(None,  0, binding as NSUInteger);
                                 }
                             },
                             MTLBoundResource::SampledTexture(texture) => {
                                 if metal_binding.texture_binding.is_none() {
                                     continue;
                                 }
-                                encoder.set_texture(metal_binding.texture_binding.unwrap() as u64, Some(texture));
+                                encoder.setTexture_atIndex(Some(texture), metal_binding.texture_binding.unwrap() as NSUInteger);
                             },
                             MTLBoundResource::Sampler(sampler) => {
                                 if metal_binding.sampler_binding.is_none() {
                                     continue;
                                 }
-                                encoder.set_sampler_state(metal_binding.sampler_binding.unwrap() as u64, Some(sampler));
+                                encoder.setSamplerState_atIndex(Some(sampler), metal_binding.sampler_binding.unwrap() as NSUInteger);
                             },
                             MTLBoundResource::StorageTexture(texture) => {
                                 if metal_binding.texture_binding.is_none() {
                                     continue;
                                 }
-                                encoder.set_texture(metal_binding.texture_binding.unwrap() as u64, Some(texture));
+                                encoder.setTexture_atIndex(Some(texture), metal_binding.texture_binding.unwrap() as NSUInteger);
                             },
                             MTLBoundResource::SampledTextureAndSampler(texture, sampler) => {
                                 if metal_binding.texture_binding.is_none() || metal_binding.sampler_binding.is_none() {
                                     continue;
                                 }
-                                encoder.set_texture(metal_binding.texture_binding.unwrap() as u64, Some(texture));
-                                encoder.set_sampler_state(metal_binding.sampler_binding.unwrap() as u64, Some(sampler));
+                                encoder.setTexture_atIndex(Some(texture), metal_binding.texture_binding.unwrap() as NSUInteger);
+                                encoder.setSamplerState_atIndex(Some(sampler), metal_binding.sampler_binding.unwrap() as NSUInteger);
                             }
                             MTLBoundResource::SampledTextureArray(textures) => {
                                 if metal_binding.texture_binding.is_none() {
                                     continue;
                                 }
-                                let mut handles_opt = SmallVec::<[Option<&metal::TextureRef>; 32]>::with_capacity(metal_binding.array_count as usize);
+                                let start_binding = metal_binding.texture_binding.unwrap() as NSUInteger;
+                                let mut handles_opt = SmallVec::<[*const ProtocolObject<dyn objc2_metal::MTLTexture>; 32]>::with_capacity(metal_binding.array_count as usize);
                                 for array_entry in textures {
-                                    handles_opt.push(Some(&array_entry));
+                                    handles_opt.push(array_entry.as_ref() as *const ProtocolObject<dyn objc2_metal::MTLTexture>);
                                 }
-                                handles_opt.resize(metal_binding.array_count as usize, None);
-                                encoder.set_textures(metal_binding.texture_binding.unwrap() as u64, &handles_opt);
+                                encoder.setTextures_withRange(NonNull::new(handles_opt.as_mut_ptr()).unwrap(), NSRange {
+                                    location: start_binding,
+                                    length: handles_opt.len()
+                                });
+                                for i in (start_binding + handles_opt.len())..(start_binding as NSUInteger + metal_binding.array_count as NSUInteger) {
+                                    encoder.setTexture_atIndex(None, i);
+                                }
                             }
                             MTLBoundResource::StorageTextureArray(textures) => {
                                 if metal_binding.texture_binding.is_none() {
                                     continue;
                                 }
-                                let mut handles_opt = SmallVec::<[Option<&metal::TextureRef>; 32]>::with_capacity(metal_binding.array_count as usize);
+                                let start_binding = metal_binding.texture_binding.unwrap() as NSUInteger;
+                                let mut handles_opt = SmallVec::<[*const ProtocolObject<dyn objc2_metal::MTLTexture>; 32]>::with_capacity(metal_binding.array_count as usize);
                                 for array_entry in textures {
-                                    handles_opt.push(Some(&array_entry));
+                                    handles_opt.push(array_entry.as_ref() as *const ProtocolObject<dyn objc2_metal::MTLTexture>);
                                 }
-                                handles_opt.resize(metal_binding.array_count as usize, None);
-                                encoder.set_textures(metal_binding.texture_binding.unwrap() as u64, &handles_opt);
+                                encoder.setTextures_withRange(NonNull::new(handles_opt.as_mut_ptr()).unwrap(), NSRange {
+                                    location: start_binding,
+                                    length: handles_opt.len()
+                                });
+                                for i in (start_binding + handles_opt.len())..(start_binding as NSUInteger + metal_binding.array_count as NSUInteger) {
+                                    encoder.setTexture_atIndex(None, i);
+                                }
                             }
                             MTLBoundResource::SampledTextureAndSamplerArray(textures_and_samplers) => {
                                 if metal_binding.texture_binding.is_none() || metal_binding.sampler_binding.is_none() {
                                     continue;
                                 }
-                                let mut texture_handles_opt = SmallVec::<[Option<&metal::TextureRef>; 32]>::with_capacity(metal_binding.array_count as usize);
-                                let mut sampler_handles_opt = SmallVec::<[Option<&metal::SamplerStateRef>; 32]>::with_capacity(metal_binding.array_count as usize);
+                                let mut texture_handles_opt = SmallVec::<[*const ProtocolObject<dyn objc2_metal::MTLTexture>; 32]>::with_capacity(metal_binding.array_count as usize);
+                                let mut sampler_handles_opt = SmallVec::<[*const ProtocolObject<dyn objc2_metal::MTLSamplerState>; 32]>::with_capacity(metal_binding.array_count as usize);
                                 for (texture, sampler) in textures_and_samplers {
-                                    texture_handles_opt.push(Some(&texture));
-                                    sampler_handles_opt.push(Some(&sampler));
+                                    texture_handles_opt.push(texture.as_ref() as *const ProtocolObject<dyn objc2_metal::MTLTexture>);
+                                    sampler_handles_opt.push(sampler.as_ref() as *const ProtocolObject<dyn objc2_metal::MTLSamplerState>);
                                 }
-                                texture_handles_opt.resize(metal_binding.array_count as usize, None);
-                                sampler_handles_opt.resize(metal_binding.array_count as usize, None);
-                                encoder.set_textures(metal_binding.texture_binding.unwrap() as u64, &texture_handles_opt);
-                                encoder.set_sampler_states(metal_binding.sampler_binding.unwrap() as u64, &sampler_handles_opt);
+                                encoder.setTextures_withRange(NonNull::new(texture_handles_opt.as_mut_ptr()).unwrap(), NSRange {
+                                    location: metal_binding.texture_binding.unwrap() as NSUInteger,
+                                    length: texture_handles_opt.len()
+                                });
+                                encoder.setSamplerStates_withRange(NonNull::new(sampler_handles_opt.as_mut_ptr()).unwrap(), NSRange {
+                                    location: metal_binding.sampler_binding.unwrap() as NSUInteger,
+                                    length: sampler_handles_opt.len()
+                                });
+                                for i in 0..(metal_binding.array_count as NSUInteger) {
+                                    encoder.setTexture_atIndex(None, metal_binding.texture_binding.unwrap() as NSUInteger + i);
+                                    encoder.setSamplerState_atIndex(None, metal_binding.sampler_binding.unwrap() as NSUInteger + i);
+                                }
                             }
                             MTLBoundResource::UniformBuffer(buffer_info) => {
                                 if metal_binding.buffer_binding.is_none() {
                                     continue;
                                 }
-                                encoder.set_buffer(metal_binding.buffer_binding.unwrap() as u64, Some(&buffer_info.buffer), buffer_info.offset);
+                                encoder.setBuffer_offset_atIndex(Some(&buffer_info.buffer), buffer_info.offset as NSUInteger, metal_binding.buffer_binding.unwrap() as NSUInteger);
                             }
                             MTLBoundResource::StorageBuffer(buffer_info) => {
                                 if metal_binding.buffer_binding.is_none() {
                                     continue;
                                 }
-                                encoder.set_buffer(metal_binding.buffer_binding.unwrap() as u64, Some(&buffer_info.buffer), buffer_info.offset);
+                                encoder.setBuffer_offset_atIndex(Some(&buffer_info.buffer), buffer_info.offset as NSUInteger, metal_binding.buffer_binding.unwrap() as NSUInteger);
                             }
                             MTLBoundResource::AccelerationStructure(acceleration_structure) => {
                                 if metal_binding.buffer_binding.is_none() {
                                     continue;
                                 }
-                                encoder.set_acceleration_structure(metal_binding.buffer_binding.unwrap() as u64, Some(&acceleration_structure));
+                                encoder.setAccelerationStructure_atBufferIndex(Some(&acceleration_structure), metal_binding.buffer_binding.unwrap() as NSUInteger);
                             }
                             MTLBoundResource::UniformBufferArray(buffers) => {
                                 if metal_binding.buffer_binding.is_none() {
                                     continue;
                                 }
-                                let mut handles_opt = SmallVec::<[Option<&metal::BufferRef>; 32]>::with_capacity(metal_binding.array_count as usize);
-                                let mut offsets = SmallVec::<[u64; 32]>::with_capacity(metal_binding.array_count as usize);
+                                let start_binding = metal_binding.buffer_binding.unwrap() as NSUInteger;
+                                let mut handles_opt = SmallVec::<[*const ProtocolObject<dyn objc2_metal::MTLBuffer>; 32]>::with_capacity(metal_binding.array_count as usize);
+                                let mut offsets = SmallVec::<[NSUInteger; 32]>::with_capacity(metal_binding.array_count as usize);
                                 for array_entry in buffers {
-                                    handles_opt.push(Some(&array_entry.buffer));
-                                    offsets.push(array_entry.offset);
+                                    handles_opt.push(array_entry.buffer.as_ref() as *const ProtocolObject<dyn objc2_metal::MTLBuffer>);
+                                    offsets.push(array_entry.offset as NSUInteger);
                                 }
-                                handles_opt.resize(metal_binding.array_count as usize, None);
-                                offsets.resize(metal_binding.array_count as usize, 0u64);
-                                encoder.set_buffers(metal_binding.texture_binding.unwrap() as u64, &handles_opt, &offsets);
+                                encoder.setBuffers_offsets_withRange(NonNull::new(handles_opt.as_mut_ptr()).unwrap(),
+                                    NonNull::new(offsets.as_mut_ptr()).unwrap(),
+                                    NSRange {
+                                        location: start_binding,
+                                        length: handles_opt.len()
+                                    });
                             },
                             MTLBoundResource::StorageBufferArray(buffers) => {
                                 if metal_binding.buffer_binding.is_none() {
                                     continue;
                                 }
-                                let mut handles_opt = SmallVec::<[Option<&metal::BufferRef>; 32]>::with_capacity(metal_binding.array_count as usize);
-                                let mut offsets = SmallVec::<[u64; 32]>::with_capacity(metal_binding.array_count as usize);
+                                let start_binding = metal_binding.buffer_binding.unwrap() as NSUInteger;
+                                let mut handles_opt = SmallVec::<[*const ProtocolObject<dyn objc2_metal::MTLBuffer>; 32]>::with_capacity(metal_binding.array_count as usize);
+                                let mut offsets = SmallVec::<[NSUInteger; 32]>::with_capacity(metal_binding.array_count as usize);
                                 for array_entry in buffers {
-                                    handles_opt.push(Some(&array_entry.buffer));
-                                    offsets.push(array_entry.offset);
+                                    handles_opt.push(array_entry.buffer.as_ref() as *const ProtocolObject<dyn objc2_metal::MTLBuffer>);
+                                    offsets.push(array_entry.offset as NSUInteger);
                                 }
-                                handles_opt.resize(metal_binding.array_count as usize, None);
-                                offsets.resize(metal_binding.array_count as usize, 0u64);
-                                encoder.set_buffers(metal_binding.texture_binding.unwrap() as u64, &handles_opt, &offsets);
+                                encoder.setBuffers_offsets_withRange(NonNull::new(handles_opt.as_mut_ptr()).unwrap(),
+                                    NonNull::new(offsets.as_mut_ptr()).unwrap(),
+                                    NSRange {
+                                        location: start_binding,
+                                        length: handles_opt.len()
+                                    });
                             },
                         }
                     }
