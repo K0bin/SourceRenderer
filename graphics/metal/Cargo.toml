@@ -7,8 +7,12 @@ build = "build.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-metal = "0.31"
-objc = "0.2"
+objc2-metal = "0.3"
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-quartz-core = "0.3.0"
+dispatch2 = "0.2.0"
+block2 = "0.6.0"
 block = "0.1"
 sourcerenderer_core = { path = "../../core" }
 bitflags = "2.4"

@@ -1,42 +1,40 @@
-use std::ffi::c_void;
+use objc2::rc::Retained;
 
-use metal;
-use metal::objc::sel;
-use metal::objc::sel_impl;
-use metal::objc::runtime::BOOL;
+use objc2::runtime::ProtocolObject;
+use objc2_metal;
 
-use metal::EventRef;
-use metal::SharedEventRef;
-use objc::class;
-use objc::msg_send;
+use objc2_metal::{MTLDevice as _, MTLSharedEvent as _};
 
 use sourcerenderer_core::gpu;
 
 enum MTLEventType {
-    Shared(metal::SharedEvent),
-    Regular(metal::Event)
+    Shared(Retained<ProtocolObject<dyn objc2_metal::MTLSharedEvent>>),
+    Regular(Retained<ProtocolObject<dyn objc2_metal::MTLEvent>>)
 }
 
 pub struct MTLFence {
     event: MTLEventType
 }
 
+unsafe impl Send for MTLFence {}
+unsafe impl Sync for MTLFence {}
+
 impl MTLFence {
-    pub(crate) fn new(device: &metal::DeviceRef, is_cpu_accessible: bool) -> Self {
+    pub(crate) fn new(device: &ProtocolObject<dyn objc2_metal::MTLDevice>, is_cpu_accessible: bool) -> Self {
         let event = if is_cpu_accessible {
-            MTLEventType::Shared(device.new_shared_event())
+            MTLEventType::Shared(device.newSharedEvent().unwrap())
         } else {
-            MTLEventType::Regular(device.new_event())
+            MTLEventType::Regular(device.newEvent().unwrap())
         };
         Self {
             event
         }
     }
 
-    pub(crate) fn event_handle(&self) -> &metal::EventRef {
+    pub(crate) fn event_handle(&self) -> &ProtocolObject<dyn objc2_metal::MTLEvent> {
         match &self.event {
-            MTLEventType::Regular(event) => event,
-            MTLEventType::Shared(event) => event
+            MTLEventType::Regular(event) => ProtocolObject::from_ref::<ProtocolObject<dyn objc2_metal::MTLEvent>>(event.as_ref()),
+            MTLEventType::Shared(event) => ProtocolObject::from_ref::<ProtocolObject<dyn objc2_metal::MTLSharedEvent>>(event.as_ref())
         }
     }
 
@@ -47,36 +45,10 @@ impl MTLFence {
         }
     }
 
-    pub(crate) fn shared_handle(&self) -> &metal::SharedEventRef {
+    pub(crate) fn shared_handle(&self) -> &ProtocolObject<dyn objc2_metal::MTLSharedEvent> {
         match &self.event {
             MTLEventType::Regular(_) => panic!(),
             MTLEventType::Shared(event) => event
-        }
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn event_set_label(event: &EventRef, label: &str) {
-        fn nsstring_from_str(string: &str) -> *mut objc::runtime::Object {
-            const UTF8_ENCODING: usize = 4;
-
-            let cls = class!(NSString);
-            let bytes = string.as_ptr() as *const c_void;
-            unsafe {
-                let obj: *mut objc::runtime::Object = msg_send![cls, alloc];
-                let obj: *mut objc::runtime::Object = msg_send![
-                    obj,
-                    initWithBytes:bytes
-                    length:string.len()
-                    encoding:UTF8_ENCODING
-                ];
-                let _: *mut c_void = msg_send![obj, autorelease];
-                obj
-            }
-        }
-
-        unsafe {
-            let nslabel = nsstring_from_str(label);
-            let () = msg_send![event, setLabel: nslabel];
         }
     }
 }
@@ -84,7 +56,7 @@ impl MTLFence {
 impl gpu::Fence for MTLFence {
     unsafe fn value(&self) -> u64 {
         match &self.event {
-            MTLEventType::Shared(event) => event.signaled_value(),
+            MTLEventType::Shared(event) => event.signaledValue(),
             _ => panic!("Fence is not CPU accessible")
         }
     }
@@ -92,11 +64,7 @@ impl gpu::Fence for MTLFence {
     unsafe fn await_value(&self, value: u64) {
         let timeout = u64::MAX;
         match &self.event {
-            MTLEventType::Shared(event) => unsafe {
-                let _result: BOOL = msg_send![event as &SharedEventRef,
-                    waitUntilSignaledValue:value
-                        timeoutMS:timeout];
-            },
+            MTLEventType::Shared(event) => { event.waitUntilSignaledValue_timeoutMS(value, timeout); },
             _ => panic!("Fence is not CPU accessible")
         }
     }

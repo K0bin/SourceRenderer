@@ -1,19 +1,22 @@
 use std::{collections::HashMap, sync::Arc};
 
-use metal;
-use metal::foreign_types::ForeignType;
+use objc2::{rc::Retained, runtime::ProtocolObject};
+use objc2_foundation::{NSArray, NSUInteger};
+use objc2_metal::{self, MTLAccelerationStructureCommandEncoder, MTLDevice, MTLHeap, MTLResource};
 
-use objc::{msg_send, sel, sel_impl};
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{self, Buffer as _};
 
 use super::*;
 
 pub struct MTLAccelerationStructure {
-    acceleration_structure: metal::AccelerationStructure,
+    acceleration_structure: Retained<ProtocolObject<dyn objc2_metal::MTLAccelerationStructure>>,
     is_blas: bool,
     shared: Arc<MTLShared>
 }
+
+unsafe impl Send for MTLAccelerationStructure {}
+unsafe impl Sync for MTLAccelerationStructure {}
 
 impl MTLAccelerationStructure {
     pub(crate) unsafe fn upload_top_level_instances(
@@ -22,108 +25,116 @@ impl MTLAccelerationStructure {
         target_buffer_offset: u64,
         instances: &[gpu::AccelerationStructureInstance<MTLBackend>],
     ) {
-        let mut instances_index_map = HashMap::<usize, u32>::with_capacity(instances.len());
+        let mut instances_index_map = HashMap::<Retained<ProtocolObject<dyn objc2_metal::MTLAccelerationStructure>>, u32>::with_capacity(instances.len());
         {
             let list = shared.acceleration_structure_list.lock().unwrap();
             for (index, blas) in list.iter().enumerate() {
-                instances_index_map.insert(blas.as_ptr() as usize, index as u32);
+                instances_index_map.insert(blas.clone(), index as u32);
             }
         }
 
-        let instances: Vec<metal::MTLAccelerationStructureUserIDInstanceDescriptor> = instances
+        let instances: Vec<objc2_metal::MTLAccelerationStructureUserIDInstanceDescriptor> = instances
             .iter()
             .map(|instance| {
-                let mut transform_data = [[0f32; 3]; 4];
+                let mut transform_data = [objc2_metal::MTLPackedFloat3 { x: 0.0f32, y: 0.0f32, z: 0.0f32 }; 4];
                 for col in 0..4 {
-                    for row in 0..3 {
-                        transform_data[col][row] = instance.transform.col(col as usize)[row as usize];
-                    }
+                    transform_data[col].x = instance.transform.col(col as usize).x;
+                    transform_data[col].y = instance.transform.col(col as usize).z;
+                    transform_data[col].z = instance.transform.col(col as usize).y;
                 }
 
-                let mut options = metal::MTLAccelerationStructureInstanceOptions::Opaque;
+                let mut options = objc2_metal::MTLAccelerationStructureInstanceOptions::Opaque;
                 if instance.front_face == gpu::FrontFace::CounterClockwise {
-                    options |= metal::MTLAccelerationStructureInstanceOptions::TriangleFrontFacingWindingCounterClockwise;
+                    options |= objc2_metal::MTLAccelerationStructureInstanceOptions::TriangleFrontFacingWindingCounterClockwise;
                 }
 
-                let index = instances_index_map.get(&(instance.acceleration_structure.acceleration_structure.as_ptr() as usize));
-                metal::MTLAccelerationStructureUserIDInstanceDescriptor {
-                    transformation_matrix: transform_data,
+                let index = instances_index_map.get(&instance.acceleration_structure.acceleration_structure);
+                objc2_metal::MTLAccelerationStructureUserIDInstanceDescriptor {
+                    transformationMatrix: objc2_metal::MTLPackedFloat4x3 { columns: transform_data },
                     options,
                     mask: 0xFFFFu32,
-                    intersection_function_table_offset: 0u32,
-                    acceleration_structure_index: *index.unwrap(),
-                    user_id: instance.id
+                    intersectionFunctionTableOffset: 0u32,
+                    accelerationStructureIndex: *index.unwrap(),
+                    userID: instance.id
                 }
             })
             .collect();
 
         let size: u64 = std::mem::size_of_val(&instances) as u64;
-        let ptr = target_buffer.map(target_buffer_offset, size, false).expect("Failed to map buffer.") as *mut metal::MTLAccelerationStructureUserIDInstanceDescriptor;
+        let ptr = target_buffer.map(target_buffer_offset, size, false).expect("Failed to map buffer.") as *mut objc2_metal::MTLAccelerationStructureUserIDInstanceDescriptor;
         ptr.copy_from(instances.as_ptr(), instances.len());
         target_buffer.unmap(target_buffer_offset, size, true);
     }
 
-    fn bottom_level_descriptor(info: &gpu::BottomLevelAccelerationStructureInfo<MTLBackend>) -> metal::PrimitiveAccelerationStructureDescriptor {
-        let descriptor = metal::PrimitiveAccelerationStructureDescriptor::descriptor();
-        let mut geometries = SmallVec::<[metal::AccelerationStructureGeometryDescriptor; 16]>::with_capacity(info.mesh_parts.len());
+    unsafe fn bottom_level_descriptor(info: &gpu::BottomLevelAccelerationStructureInfo<MTLBackend>) -> Retained<objc2_metal::MTLPrimitiveAccelerationStructureDescriptor> {
+        let descriptor = objc2_metal::MTLPrimitiveAccelerationStructureDescriptor::new();
+        let mut geometries = SmallVec::<[Retained<objc2_metal::MTLAccelerationStructureGeometryDescriptor>; 16]>::with_capacity(info.mesh_parts.len());
         for part in info.mesh_parts {
-            let geometry: metal::AccelerationStructureTriangleGeometryDescriptor = metal::AccelerationStructureTriangleGeometryDescriptor::descriptor();
-            geometry.set_index_buffer(Some(info.index_buffer.handle()));
-            geometry.set_index_buffer_offset(info.index_buffer_offset
-                + (part.primitive_start as u64) * 3 * (if info.index_format == gpu::IndexFormat::U16 { 2 } else { 4 }));
-            geometry.set_vertex_buffer(Some(info.vertex_buffer.handle()));
-            geometry.set_vertex_buffer_offset(info.vertex_buffer_offset + info.vertex_position_offset as u64);
-            geometry.set_index_type(index_format_to_mtl(info.index_format));
-            geometry.set_vertex_stride(info.vertex_stride as u64);
-            geometry.set_opaque(info.opaque);
-            geometry.set_triangle_count(part.primitive_count as u64);
-            geometry.set_vertex_format(format_to_mtl_attribute_format(info.vertex_format));
-            let _: () = unsafe { msg_send![&geometry as &metal::AccelerationStructureTriangleGeometryDescriptorRef, retain] };
-            geometries.push(metal::AccelerationStructureGeometryDescriptor::from(geometry));
+            let geometry = objc2_metal::MTLAccelerationStructureTriangleGeometryDescriptor::new();
+            geometry.setIndexBuffer(Some(info.index_buffer.handle()));
+            geometry.setIndexBufferOffset(info.index_buffer_offset as NSUInteger
+                + (part.primitive_start as NSUInteger) * 3 * (if info.index_format == gpu::IndexFormat::U16 { 2 } else { 4 }));
+            geometry.setVertexBuffer(Some(info.vertex_buffer.handle()));
+            geometry.setVertexBufferOffset(info.vertex_buffer_offset as NSUInteger + info.vertex_position_offset as NSUInteger);
+            geometry.setIndexType(index_format_to_mtl(info.index_format));
+            geometry.setVertexStride(info.vertex_stride as NSUInteger);
+            geometry.setOpaque(info.opaque);
+            geometry.setTriangleCount(part.primitive_count as NSUInteger);
+            geometry.setVertexFormat(format_to_mtl_attribute_format(info.vertex_format));
+            geometries.push(geometry.downcast().unwrap());
         }
-        let geometries_array = metal::Array::from_owned_slice(&geometries);
-        descriptor.set_geometry_descriptors(geometries_array);
-        let _: () = unsafe { msg_send![&descriptor as &metal::PrimitiveAccelerationStructureDescriptorRef, retain] };
+        let mut geometry_refs = SmallVec::<[&objc2_metal::MTLAccelerationStructureGeometryDescriptor; 16]>::with_capacity(info.mesh_parts.len());
+        for geometry in &geometries {
+            geometry_refs.push(geometry.as_ref());
+        }
+        let geometries_array = NSArray::from_slice(&geometry_refs);
+        descriptor.setGeometryDescriptors(Some(geometries_array.as_ref()));
         descriptor
     }
 
-    fn top_level_descriptor(info: &gpu::TopLevelAccelerationStructureInfo<MTLBackend>, instances: &[metal::AccelerationStructure]) -> metal::InstanceAccelerationStructureDescriptor {
-        let descriptor = metal::InstanceAccelerationStructureDescriptor::descriptor();
-        descriptor.set_instance_descriptor_type(metal::MTLAccelerationStructureInstanceDescriptorType::UserID);
-        descriptor.set_instance_count(info.instances_count as u64);
-        descriptor.set_instanced_acceleration_structures(&metal::Array::from_owned_slice(instances));
-        descriptor.set_instance_descriptor_buffer_offset(info.instances_buffer_offset);
-        descriptor.set_instance_descriptor_buffer(info.instances_buffer.handle());
-        descriptor.set_instance_descriptor_stride(std::mem::size_of::<metal::MTLAccelerationStructureUserIDInstanceDescriptor>() as u64);
-        let _: () = unsafe { msg_send![&descriptor as &metal::InstanceAccelerationStructureDescriptorRef, retain] };
+    unsafe fn top_level_descriptor(info: &gpu::TopLevelAccelerationStructureInfo<MTLBackend>, instances: &[Retained<ProtocolObject<dyn objc2_metal::MTLAccelerationStructure>>]) -> Retained<objc2_metal::MTLInstanceAccelerationStructureDescriptor> {
+        let mut instances_refs = SmallVec::<[&ProtocolObject<dyn objc2_metal::MTLAccelerationStructure>; 16]>::with_capacity(instances.len());
+        for instance in instances {
+            instances_refs.push(instance.as_ref());
+        }
+        let instances_nsarray = objc2_foundation::NSArray::from_slice(&instances_refs);
+
+        let descriptor = objc2_metal::MTLInstanceAccelerationStructureDescriptor::descriptor();
+        descriptor.setInstanceDescriptorType(objc2_metal::MTLAccelerationStructureInstanceDescriptorType::UserID);
+        descriptor.setInstanceCount(info.instances_count as NSUInteger);
+        descriptor.setInstancedAccelerationStructures(Some(&instances_nsarray));
+        descriptor.setInstanceDescriptorBufferOffset(info.instances_buffer_offset as NSUInteger);
+        descriptor.setInstanceDescriptorBuffer(Some(info.instances_buffer.handle()));
+        descriptor.setInstanceDescriptorStride(std::mem::size_of::<objc2_metal::MTLAccelerationStructureUserIDInstanceDescriptor>() as NSUInteger);
         descriptor
     }
 
-    pub(crate) fn bottom_level_size(device: &metal::DeviceRef, info: &gpu::BottomLevelAccelerationStructureInfo<MTLBackend>) -> gpu::AccelerationStructureSizes {
-        let sizes = device.acceleration_structure_sizes_with_descriptor(&Self::bottom_level_descriptor(info));
+    pub(crate) unsafe fn bottom_level_size(device: &ProtocolObject<dyn objc2_metal::MTLDevice>, info: &gpu::BottomLevelAccelerationStructureInfo<MTLBackend>) -> gpu::AccelerationStructureSizes {
+        let descriptor: Retained<objc2_metal::MTLAccelerationStructureDescriptor> = Self::bottom_level_descriptor(info).downcast().unwrap();
+        let sizes = device.accelerationStructureSizesWithDescriptor(&descriptor);
         gpu::AccelerationStructureSizes {
-            size: sizes.acceleration_structure_size,
-            build_scratch_size: sizes.build_scratch_buffer_size,
-            update_scratch_size: sizes.refit_scratch_buffer_size,
+            size: sizes.accelerationStructureSize as u64,
+            build_scratch_size: sizes.buildScratchBufferSize as u64,
+            update_scratch_size: sizes.refitScratchBufferSize as u64,
         }
     }
 
-    pub(crate) fn top_level_size(device: &metal::DeviceRef, shared: &Arc<MTLShared>, info: &gpu::TopLevelAccelerationStructureInfo<MTLBackend>) -> gpu::AccelerationStructureSizes {
+    pub(crate) unsafe fn top_level_size(device: &ProtocolObject<dyn objc2_metal::MTLDevice>, shared: &Arc<MTLShared>, info: &gpu::TopLevelAccelerationStructureInfo<MTLBackend>) -> gpu::AccelerationStructureSizes {
         let guard = shared.acceleration_structure_list.lock().unwrap();
         let descriptor = Self::top_level_descriptor(info, &guard);
-        let sizes = device.acceleration_structure_sizes_with_descriptor(&descriptor);
+        let sizes = device.accelerationStructureSizesWithDescriptor(&descriptor);
         gpu::AccelerationStructureSizes {
-            size: sizes.acceleration_structure_size,
-            build_scratch_size: sizes.build_scratch_buffer_size,
-            update_scratch_size: sizes.refit_scratch_buffer_size,
+            size: sizes.accelerationStructureSize as u64,
+            build_scratch_size: sizes.buildScratchBufferSize as u64,
+            update_scratch_size: sizes.refitScratchBufferSize as u64,
         }
     }
 
-    pub(crate) fn new_bottom_level(encoder: &metal::AccelerationStructureCommandEncoderRef, shared: &Arc<MTLShared>, size: u64, target_buffer: &MTLBuffer, target_buffer_offset: u64, scratch_buffer: &MTLBuffer, scratch_buffer_offset: u64, info: &gpu::BottomLevelAccelerationStructureInfo<MTLBackend>, _cmd_buffer: &metal::CommandBuffer) -> Self {
+    pub(crate) unsafe fn new_bottom_level(encoder: &ProtocolObject<dyn objc2_metal::MTLAccelerationStructureCommandEncoder>, shared: &Arc<MTLShared>, size: u64, target_buffer: &MTLBuffer, target_buffer_offset: u64, scratch_buffer: &MTLBuffer, scratch_buffer_offset: u64, info: &gpu::BottomLevelAccelerationStructureInfo<MTLBackend>, _cmd_buffer: &ProtocolObject<dyn objc2_metal::MTLCommandBuffer>) -> Self {
         let descriptor = Self::bottom_level_descriptor(info);
-        let heap = target_buffer.handle().heap();
-        let acceleration_structure: metal::AccelerationStructure = unsafe { msg_send![heap, newAccelerationStructureWithSize: size offset:target_buffer_offset] };
-        encoder.build_acceleration_structure(&acceleration_structure, &descriptor, scratch_buffer.handle(), scratch_buffer_offset);
+        let heap = target_buffer.handle().heap().unwrap();
+        let acceleration_structure = heap.newAccelerationStructureWithSize_offset(size as NSUInteger, target_buffer_offset as NSUInteger).unwrap();
+        encoder.buildAccelerationStructure_descriptor_scratchBuffer_scratchBufferOffset(&acceleration_structure, &descriptor, scratch_buffer.handle(), scratch_buffer_offset as NSUInteger);
         {
             let mut list = shared.acceleration_structure_list.lock().unwrap();
             list.push(acceleration_structure.clone());
@@ -135,12 +146,12 @@ impl MTLAccelerationStructure {
         }
     }
 
-    pub(crate) fn new_top_level(encoder: &metal::AccelerationStructureCommandEncoderRef, shared: &Arc<MTLShared>, size: u64, target_buffer: &MTLBuffer, target_buffer_offset: u64, scratch_buffer: &MTLBuffer, scratch_buffer_offset: u64, info: &gpu::TopLevelAccelerationStructureInfo<MTLBackend>, _cmd_buffer: &metal::CommandBuffer) -> Self {
+    pub(crate) unsafe fn new_top_level(encoder: &ProtocolObject<dyn objc2_metal::MTLAccelerationStructureCommandEncoder>, shared: &Arc<MTLShared>, size: u64, target_buffer: &MTLBuffer, target_buffer_offset: u64, scratch_buffer: &MTLBuffer, scratch_buffer_offset: u64, info: &gpu::TopLevelAccelerationStructureInfo<MTLBackend>, _cmd_buffer: &ProtocolObject<dyn objc2_metal::MTLCommandBuffer>) -> Self {
         let guard = shared.acceleration_structure_list.lock().unwrap();
         let descriptor = Self::top_level_descriptor(info, &guard);
-        let heap = target_buffer.handle().heap();
-        let acceleration_structure: metal::AccelerationStructure = unsafe { msg_send![heap, newAccelerationStructureWithSize: size offset:target_buffer_offset] };
-        encoder.build_acceleration_structure(&acceleration_structure, &descriptor, scratch_buffer.handle(), scratch_buffer_offset);
+        let heap = target_buffer.handle().heap().unwrap();
+        let acceleration_structure = heap.newAccelerationStructureWithSize_offset(size as NSUInteger, target_buffer_offset as NSUInteger).unwrap();
+        encoder.buildAccelerationStructure_descriptor_scratchBuffer_scratchBufferOffset(&acceleration_structure, &descriptor, scratch_buffer.handle(), scratch_buffer_offset as NSUInteger);
         Self {
             acceleration_structure,
             shared: shared.clone(),
@@ -148,7 +159,7 @@ impl MTLAccelerationStructure {
         }
     }
 
-    pub(crate) fn handle(&self) -> &metal::AccelerationStructureRef {
+    pub(crate) fn handle(&self) -> &ProtocolObject<dyn objc2_metal::MTLAccelerationStructure> {
         &self.acceleration_structure
     }
 }
@@ -159,7 +170,7 @@ impl Drop for MTLAccelerationStructure {
     fn drop(&mut self) {
         if self.is_blas {
             let mut lock_guard = self.shared.acceleration_structure_list.lock().unwrap();
-            let index = lock_guard.iter().enumerate().find_map(|(index, blas)| if blas.as_ptr() == self.acceleration_structure.as_ptr() {
+            let index = lock_guard.iter().enumerate().find_map(|(index, blas)| if blas == &self.acceleration_structure {
                 Some(index)
             } else {
                 None

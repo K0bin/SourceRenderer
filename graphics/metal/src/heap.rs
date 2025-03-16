@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
-use metal;
-use metal::foreign_types::ForeignType;
-use metal::objc::{msg_send, sel, sel_impl};
+use objc2::rc::Retained;
+use objc2::runtime::ProtocolObject;
+use objc2_foundation::NSUInteger;
+use objc2_metal::{self, MTLDevice as _};
 
 use sourcerenderer_core::gpu;
 
@@ -10,8 +11,8 @@ use super::*;
 
 pub(crate) enum ResourceMemory<'a> {
     Dedicated {
-        device: &'a metal::DeviceRef,
-        options: metal::MTLResourceOptions
+        device: &'a ProtocolObject<dyn objc2_metal::MTLDevice>,
+        options: objc2_metal::MTLResourceOptions
     },
     Suballocated {
         memory: &'a MTLHeap,
@@ -20,36 +21,38 @@ pub(crate) enum ResourceMemory<'a> {
 }
 
 pub struct MTLHeap {
-    heap: metal::Heap,
+    heap: Retained<ProtocolObject<dyn objc2_metal::MTLHeap>>,
     memory_type_index: u32,
-    options: metal::MTLResourceOptions,
+    options: objc2_metal::MTLResourceOptions,
     shared: Arc<MTLShared>
 }
 
+unsafe impl Send for MTLHeap {}
+unsafe impl Sync for MTLHeap {}
+
 impl MTLHeap {
-    pub(crate) fn new(device: &metal::DeviceRef, shared: &Arc<MTLShared>, size: u64, memory_type_index: u32, cached: bool, memory_kind: gpu::MemoryKind, mut options: metal::MTLResourceOptions) -> Result<Self, gpu::OutOfMemoryError> {
-        let descriptor = metal::HeapDescriptor::new();
-        descriptor.set_size(size);
-        unsafe {
-            let _: () = msg_send![&descriptor as &metal::HeapDescriptorRef, setType: metal::MTLHeapType::Placement];
-        }
+    pub(crate) unsafe fn new(device: &ProtocolObject<dyn objc2_metal::MTLDevice>, shared: &Arc<MTLShared>, size: u64, memory_type_index: u32, cached: bool, memory_kind: gpu::MemoryKind, mut options: objc2_metal::MTLResourceOptions) -> Result<Self, gpu::OutOfMemoryError> {
+        let descriptor = objc2_metal::MTLHeapDescriptor::new();
+        descriptor.setSize(size as NSUInteger);
+        descriptor.setType(objc2_metal::MTLHeapType::Placement);
 
-        options |= metal::MTLResourceOptions::HazardTrackingModeUntracked;
+        options |= objc2_metal::MTLResourceOptions::HazardTrackingModeUntracked;
 
-        if !device.has_unified_memory() {
+        if !device.hasUnifiedMemory() {
             if memory_kind == gpu::MemoryKind::VRAM {
-                descriptor.set_storage_mode(metal::MTLStorageMode::Private);
+                descriptor.setStorageMode(objc2_metal::MTLStorageMode::Private);
             } else {
-                descriptor.set_storage_mode(metal::MTLStorageMode::Shared);
+                descriptor.setStorageMode(objc2_metal::MTLStorageMode::Shared);
             }
         } else {
-            descriptor.set_storage_mode(metal::MTLStorageMode::Shared);
+            descriptor.setStorageMode(objc2_metal::MTLStorageMode::Shared);
         }
-        descriptor.set_cpu_cache_mode(if cached { metal::MTLCPUCacheMode::DefaultCache } else { metal::MTLCPUCacheMode::WriteCombined });
-        let heap = device.new_heap(&descriptor);
-        if heap.as_ptr() == std::ptr::null_mut() {
+        descriptor.setCpuCacheMode(if cached { objc2_metal::MTLCPUCacheMode::DefaultCache } else { objc2_metal::MTLCPUCacheMode::WriteCombined });
+        let heap_opt = device.newHeapWithDescriptor(&descriptor);
+        if heap_opt.is_none() {
             return Err(gpu::OutOfMemoryError {});
         }
+        let heap = heap_opt.unwrap();
         {
             let mut list = shared.heap_list.write().unwrap();
             list.push(heap.clone());
@@ -62,11 +65,11 @@ impl MTLHeap {
         })
     }
 
-    pub(crate) fn handle(&self) -> &metal::HeapRef {
+    pub(crate) fn handle(&self) -> &ProtocolObject<dyn objc2_metal::MTLHeap> {
         &self.heap
     }
 
-    pub(crate) fn resource_options(&self) -> metal::MTLResourceOptions {
+    pub(crate) fn resource_options(&self) -> objc2_metal::MTLResourceOptions {
         self.options
     }
 }
@@ -102,7 +105,7 @@ impl gpu::Heap<MTLBackend> for MTLHeap {
 impl Drop for MTLHeap {
     fn drop(&mut self) {
         let mut list = self.shared.heap_list.write().unwrap();
-        let index = list.iter().enumerate().find_map(|(index, heap)| if heap.as_ptr() == self.heap.as_ptr() {
+        let index = list.iter().enumerate().find_map(|(index, heap)| if heap == &self.heap {
             Some(index)
         } else {
             None

@@ -1,8 +1,8 @@
 use std::{ffi::c_void, hash::Hash};
 
-use metal;
-use metal::foreign_types::ForeignType;
-use metal::objc::{msg_send, sel, sel_impl};
+use objc2::{rc::Retained, runtime::ProtocolObject};
+use objc2_foundation::NSUInteger;
+use objc2_metal::{self, MTLBuffer as _, MTLDevice as _, MTLHeap as _, MTLResource as _};
 
 use sourcerenderer_core::gpu;
 
@@ -10,49 +10,54 @@ use crate::heap::ResourceMemory;
 
 pub struct MTLBuffer {
     info: gpu::BufferInfo,
-    buffer: metal::Buffer,
-    _heap: Option<metal::Heap>
+    buffer: Retained<ProtocolObject<dyn objc2_metal::MTLBuffer>>,
+    _heap: Option<Retained<ProtocolObject<dyn objc2_metal::MTLHeap>>>
 }
 
+unsafe impl Send for MTLBuffer {}
+unsafe impl Sync for MTLBuffer {}
+
 impl MTLBuffer {
-    pub(crate) fn new(memory: ResourceMemory, info: &gpu::BufferInfo, name: Option<&str>) -> Result<Self, gpu::OutOfMemoryError> {
+    pub(crate) unsafe fn new(memory: ResourceMemory, info: &gpu::BufferInfo, name: Option<&str>) -> Result<Self, gpu::OutOfMemoryError> {
         let mut options = Self::resource_options(info);
         let (buffer, heap) = match memory {
             ResourceMemory::Dedicated { device, options: memory_options } => {
                 let buffer = if info.usage.contains(gpu::BufferUsage::ACCELERATION_STRUCTURE) {
-                    let heap_descriptor = metal::HeapDescriptor::new();
-                    options |= metal::MTLResourceOptions::HazardTrackingModeTracked;
-                    let size = device.heap_buffer_size_and_align(info.size, options);
-                    heap_descriptor.set_size(size.size);
-                    if !memory_options.contains(metal::MTLResourceOptions::StorageModePrivate) {
+                    let heap_descriptor = objc2_metal::MTLHeapDescriptor::new();
+                    options |= objc2_metal::MTLResourceOptions::HazardTrackingModeTracked;
+                    let size = device.heapBufferSizeAndAlignWithLength_options(info.size as NSUInteger, options);
+                    heap_descriptor.setSize(size.size);
+                    if !memory_options.contains(objc2_metal::MTLResourceOptions::StorageModePrivate) {
                         panic!("Acceleration structure memory must not be cpu accessible");
                     }
-                    unsafe {
-                        let _: () = msg_send![&heap_descriptor as &metal::HeapDescriptorRef, setType: metal::MTLHeapType::Placement];
-                        let _: () = msg_send![&heap_descriptor as &metal::HeapDescriptorRef, setResourceOptions: options | memory_options];
+                    heap_descriptor.setType(objc2_metal::MTLHeapType::Placement);
+                    heap_descriptor.setResourceOptions(options | memory_options);
+                    let heap_opt = device.newHeapWithDescriptor(&heap_descriptor);
+                    if heap_opt.is_none() {
+                        return Err(gpu::OutOfMemoryError {});
                     }
-                    let heap = device.new_heap(&heap_descriptor);
-                    let buffer = heap.new_buffer_with_offset(info.size, options | memory_options, 0u64).unwrap();
-                    buffer.make_aliasable();
+                    let heap = heap_opt.unwrap();
+                    let buffer = heap.newBufferWithLength_options(info.size as NSUInteger, options | memory_options).unwrap();
+                    buffer.makeAliasable();
                     (buffer, Some(heap))
                 } else {
                     if info.usage.gpu_writable() {
-                        options |= metal::MTLResourceOptions::HazardTrackingModeTracked;
+                        options |= objc2_metal::MTLResourceOptions::HazardTrackingModeTracked;
                     } else {
-                        options |= metal::MTLResourceOptions::HazardTrackingModeUntracked;
+                        options |= objc2_metal::MTLResourceOptions::HazardTrackingModeUntracked;
                     }
-                    let buffer = device.new_buffer(info.size, options | memory_options);
-                    if buffer.as_ptr() == std::ptr::null_mut() {
+                    let buffer_opt = device.newBufferWithLength_options(info.size as NSUInteger, options | memory_options);
+                    if buffer_opt.is_none() {
                         return Err(gpu::OutOfMemoryError {});
                     }
-                    (buffer, None)
+                    (buffer_opt.unwrap(), None)
                 };
                 buffer
             },
             ResourceMemory::Suballocated { memory, offset } => {
-                options |= metal::MTLResourceOptions::HazardTrackingModeUntracked;
+                options |= objc2_metal::MTLResourceOptions::HazardTrackingModeUntracked;
                 options |= memory.resource_options();
-                let buffer_opt = memory.handle().new_buffer_with_offset(info.size, options, offset);
+                let buffer_opt = memory.handle().newBufferWithLength_options_offset(info.size as NSUInteger, options, offset as NSUInteger);
                 if buffer_opt.is_none() {
                     return Err(gpu::OutOfMemoryError {});
                 }
@@ -60,9 +65,9 @@ impl MTLBuffer {
             }
         };
         if let Some(name) = name {
-            buffer.add_debug_marker(name, metal::NSRange {
-                location: 0u64,
-                length: info.size
+            buffer.addDebugMarker_range(&objc2_foundation::NSString::from_str(name), objc2_foundation::NSRange {
+                location: 0,
+                length: info.size as NSUInteger
             });
         }
         Ok(Self {
@@ -72,12 +77,12 @@ impl MTLBuffer {
         })
     }
 
-    pub(crate) fn resource_options(_info: &gpu::BufferInfo) -> metal::MTLResourceOptions {
-        let options = metal::MTLResourceOptions::empty();
+    pub(crate) fn resource_options(_info: &gpu::BufferInfo) -> objc2_metal::MTLResourceOptions {
+        let options = objc2_metal::MTLResourceOptions::empty();
         options
     }
 
-    pub(crate) fn handle(&self) -> &metal::BufferRef {
+    pub(crate) fn handle(&self) -> &ProtocolObject<dyn objc2_metal::MTLBuffer> {
         &self.buffer
     }
 }
@@ -88,11 +93,15 @@ impl gpu::Buffer for MTLBuffer {
     }
 
     unsafe fn map(&self, offset: u64, _length: u64, _invalidate: bool) -> Option<*mut c_void> {
-        let ptr = self.buffer.contents();
-        if ptr == std::ptr::null_mut() {
+        if self.buffer.storageMode() == objc2_metal::MTLStorageMode::Private {
             return None;
         }
-        return Some(ptr.offset(offset as isize));
+        let ptr = self.buffer.contents();
+        /* objc2_metal marks the pointer incorrectly as
+        if ptr == std::ptr::null_mut() {
+            return None;
+        }*/
+        return Some(ptr.as_ptr().offset(offset as isize));
     }
 
     unsafe fn unmap(&self, _offset: u64, _length: u64, _flush: bool) {
@@ -101,13 +110,13 @@ impl gpu::Buffer for MTLBuffer {
 
 impl Hash for MTLBuffer {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.buffer.as_ptr().hash(state);
+        self.buffer.hash(state);
     }
 }
 
 impl PartialEq<MTLBuffer> for MTLBuffer {
     fn eq(&self, other: &MTLBuffer) -> bool {
-        self.buffer.as_ptr() == other.buffer.as_ptr()
+        self.buffer == other.buffer
     }
 }
 

@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use metal::foreign_types::ForeignTypeRef;
+use objc2::rc::Retained;
 use sdl2::video::WindowBuilder;
 use sourcerenderer_core::platform::GraphicsPlatform;
 use sourcerenderer_metal::{MTLBackend, MTLDevice, MTLInstance, MTLSurface, MTLSwapchain};
@@ -27,12 +27,15 @@ pub(crate) fn create_surface(sdl_window_handle: &sdl2::video::Window, graphics_i
     };
 
     let layer = unsafe { sdl2_sys::SDL_Metal_GetLayer(view.as_ptr()) };
-    let layer_ref = unsafe { metal::MetalLayerRef::from_ptr(std::mem::transmute(layer)) };
+    let layer_ref: Retained<objc2_quartz_core::CAMetalLayer> = unsafe { Retained::from_raw(std::mem::transmute(layer)).unwrap() };
+    std::mem::forget(layer_ref.clone()); // Increase ref count, Retained::from_raw doesn't do that.
     MTLSurface::new(graphics_instance, layer_ref)
 }
 
 pub(crate) fn create_swapchain(_vsync: bool, width: u32, height: u32, device: &MTLDevice, surface: MTLSurface) -> MTLSwapchain {
-    MTLSwapchain::new(surface, device.handle(), Some((width, height)))
+    unsafe {
+        MTLSwapchain::new(surface, device.handle(), Some((width, height)))
+    }
 }
 
 pub(crate) fn prepare_window(window_builder: &mut WindowBuilder) {

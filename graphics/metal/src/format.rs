@@ -1,4 +1,4 @@
-use metal::MTLPixelFormat;
+use objc2_metal::MTLPixelFormat;
 
 use sourcerenderer_core::gpu::Format;
 
