@@ -88,7 +88,7 @@ fn main() {
             }
         }
     } else {
-        pkg_config::Config::new().probe("sdl2").unwrap();
+        pkg_config::Config::new().probe("sdl3").unwrap();
     }
 
     log::logger().flush();

@@ -21,7 +21,7 @@ pub struct VkInstance {
 }
 
 impl VkInstance {
-    pub fn new(instance_extensions: &[&str], debug_layers: bool) -> Self {
+    pub fn new(instance_extensions: &[String], debug_layers: bool) -> Self {
         let entry: ash::Entry = unsafe { ash::Entry::load().unwrap() };
 
         let extensions = unsafe { entry.enumerate_instance_extension_properties(None) }.unwrap();
@@ -71,7 +71,7 @@ impl VkInstance {
 
         let mut extension_names_c: Vec<CString> = instance_extensions
             .iter()
-            .map(|ext| CString::new(*ext).unwrap())
+            .map(|ext| CString::new(ext.as_str()).unwrap())
             .collect();
         if supports_debug_utils {
             extension_names_c.push(CString::from(ash::ext::debug_utils::NAME));

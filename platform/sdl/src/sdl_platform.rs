@@ -11,12 +11,12 @@ use notify::{
     RecommendedWatcher,
     Watcher,
 };
-use sdl2::event::{
+use sdl3::event::{
     Event as SDLEvent,
     WindowEvent,
 };
-use sdl2::keyboard::Scancode;
-use sdl2::{
+use sdl3::keyboard::Scancode;
+use sdl3::{
     EventPump,
     Sdl,
     VideoSubsystem,
@@ -63,13 +63,13 @@ pub struct SDLPlatform {
 }
 
 pub struct SDLWindow {
-    window: sdl2::video::Window,
+    window: sdl3::video::Window,
     _is_active: bool,
 }
 
 impl SDLPlatform {
     pub fn new() -> Box<SDLPlatform> {
-        let sdl_context = sdl2::init().unwrap();
+        let sdl_context = sdl3::init().unwrap();
         let video_subsystem = sdl_context.video().unwrap();
         let event_pump = sdl_context.event_pump().unwrap();
 
@@ -134,19 +134,13 @@ impl SDLPlatform {
                     timestamp: _,
                     win_event,
                 } => match win_event {
-                    WindowEvent::Resized(width, height) => {
+                    WindowEvent::PixelSizeChanged(width, height) => {
                         engine.window_changed::<SDLPlatform>(WindowState::Window(Vec2UI::new(
                             width as u32,
                             height as u32,
                         )));
                     }
-                    WindowEvent::SizeChanged(width, height) => {
-                        engine.window_changed::<SDLPlatform>(WindowState::Window(Vec2UI::new(
-                            width as u32,
-                            height as u32,
-                        )));
-                    }
-                    WindowEvent::Close => {
+                    WindowEvent::CloseRequested => {
                         engine.stop::<SDLPlatform>();
                     }
                     _ => {}
@@ -160,10 +154,10 @@ impl SDLPlatform {
 
     pub(crate) fn update_mouse_lock(&self, is_locked: bool) {
         let mouse_util = self.sdl_context.mouse();
-        mouse_util.set_relative_mouse_mode(is_locked);
+        mouse_util.set_relative_mouse_mode(self.window.sdl_window_handle(), is_locked);
         if is_locked {
-            let (width, height) = self.window.window.drawable_size();
-            mouse_util.warp_mouse_in_window(self.window.sdl_window_handle(), width as i32 / 2, height as i32 / 2);
+            let (width, height) = self.window.window.size_in_pixels();
+            mouse_util.warp_mouse_in_window(self.window.sdl_window_handle(), width as f32 / 2.0f32, height as f32 / 2.0f32);
         }
     }
 }
@@ -186,7 +180,7 @@ impl SDLWindow {
         }
     }
 
-    pub(crate) fn sdl_window_handle(&self) -> &sdl2::video::Window {
+    pub(crate) fn sdl_window_handle(&self) -> &sdl3::video::Window {
         &self.window
     }
 }
@@ -227,16 +221,16 @@ impl Window<SDLGPUBackend> for SDLWindow {
         device: &<SDLGPUBackend as gpu::GPUBackend>::Device,
         surface: <SDLGPUBackend as gpu::GPUBackend>::Surface
      ) -> <SDLGPUBackend as gpu::GPUBackend>::Swapchain {
-        let (width, height) = self.window.drawable_size();
+        let (width, height) = self.window.size_in_pixels();
         sdl_gpu::create_swapchain(vsync, width, height, device, surface)
     }
 
     fn width(&self) -> u32 {
-        self.window.drawable_size().0
+        self.window.size_in_pixels().0
     }
 
     fn height(&self) -> u32 {
-        self.window.drawable_size().1
+        self.window.size_in_pixels().1
     }
 }
 
