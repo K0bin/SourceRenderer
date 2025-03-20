@@ -23,7 +23,7 @@ fn main() {
     }
 
     let mut output_shading_languages = ShadingLanguage::SpirV | ShadingLanguage::Dxil | ShadingLanguage::Air;
-    if env::var("DEBUG").map(|envvar| envvar == "true").unwrap_or_default() {
+    if env::var("DUMP_SHADERS").map(|envvar| envvar == "true" || envvar == "True" || envvar == "1").unwrap_or_default() {
         output_shading_languages |= ShadingLanguage::Msl | ShadingLanguage::Hlsl;
     }
 

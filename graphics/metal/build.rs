@@ -14,13 +14,19 @@ fn main() {
     let mut meta_shader_dir = manifest_dir.clone();
     meta_shader_dir.push("meta_shaders");
 
+
+    let mut output_shading_languages = ShadingLanguage::Air;
+    if env::var("DUMP_SHADERS").map(|envvar| envvar == "true" || envvar == "True" || envvar == "1").unwrap_or_default() {
+        output_shading_languages |= ShadingLanguage::Msl;
+    }
+
     compile_shaders(
         &meta_shader_dir,
         &meta_shader_dir,
         true,
         false,
         &HashMap::new(),
-        ShadingLanguage::Air,
+        output_shading_languages,
         |_| true,
     );
 
