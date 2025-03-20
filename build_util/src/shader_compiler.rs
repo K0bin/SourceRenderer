@@ -8,7 +8,7 @@ use std::process::Command;
 
 use bitflags::bitflags;
 
-use log::{error, info};
+use log::{error, info, warn};
 use naga::back::wgsl::WriterFlags;
 use naga::front::spv::Options;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
@@ -964,15 +964,18 @@ fn compile_msl_to_air(
 
     match &cmd_result {
         Err(e) => {
-            error!("Error compiling Metal shader: {}", output_path.to_str().unwrap());
+            error!("Result-Error compiling Metal shader: {}", output_path.to_str().unwrap());
             error!("{}", e.to_string());
             return Err(());
         },
         Ok(output) => {
             if !output.status.success() {
-                error!("Error compiling Metal shader: {}", shader_name);
-                error!("{}", std::str::from_utf8(&output.stderr).unwrap());
-                return Err(());
+                let text = std::str::from_utf8(&output.stderr).unwrap();
+                if !text.contains("unused") {
+                    warn!("Ok-Error compiling Metal shader: {}", shader_name);
+                    warn!("{}", text);
+                    return Err(());
+                }
             }
         }
     }
