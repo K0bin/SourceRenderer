@@ -114,11 +114,13 @@ impl DeferredDestroyer {
 
     pub fn set_counter(&self, counter: u64) {
         let mut guard = self.inner.lock().unwrap();
+        assert!(guard.current_counter <= counter);
         guard.current_counter = counter;
     }
 
     pub fn destroy_unused(&self, counter: u64) {
         let mut guard = self.inner.lock().unwrap();
+        assert!(guard.current_counter >= counter);
         guard.acceleration_structures.retain(|(resource_counter, _)| *resource_counter > counter);
         guard.buffer_slice_refs.retain(|(resource_counter, _)| *resource_counter > counter);
         guard.textures.retain(|(resource_counter, _)| *resource_counter > counter);
