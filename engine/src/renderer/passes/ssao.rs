@@ -134,7 +134,7 @@ impl SsaoPass {
 
     pub fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder,
+        cmd_buffer: &mut CommandBuffer,
         pass_params: &RenderPassParameters<'_>,
         depth_name: &str,
         motion_name: Option<&str>,

@@ -53,7 +53,7 @@ impl MotionVectorPass {
 
     pub fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder,
+        cmd_buffer: &mut CommandBuffer,
         pass_params: &RenderPassParameters<'_>
     ) {
         let pipeline = pass_params.assets.get_compute_pipeline(self.pipeline).unwrap();

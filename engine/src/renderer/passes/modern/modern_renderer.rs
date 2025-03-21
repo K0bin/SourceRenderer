@@ -24,7 +24,7 @@ use super::sharpen::SharpenPass;
 use super::ssao::SsaoPass;
 use super::taa::TAAPass;
 use super::visibility_buffer::VisibilityBufferPass;
-use crate::graphics::{GraphicsContext, CommandBufferRecorder};
+use crate::graphics::{GraphicsContext, CommandBuffer};
 use crate::renderer::passes::blue_noise::BlueNoise;
 use crate::renderer::passes::compositing::CompositingPass;
 use crate::renderer::passes::modern::motion_vectors::MotionVectorPass;
@@ -185,7 +185,7 @@ impl ModernRenderer {
 
     fn setup_frame(
         &self,
-        cmd_buf: &mut CommandBufferRecorder,
+        cmd_buf: &mut CommandBuffer,
         scene: &SceneInfo,
         swapchain: &Swapchain,
         gpu_scene_buffers: SceneBuffers,

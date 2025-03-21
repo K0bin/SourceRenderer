@@ -62,7 +62,7 @@ impl DrawPrepPass {
 
     pub fn execute(
         &self,
-        cmd_buffer: &mut CommandBufferRecorder,
+        cmd_buffer: &mut CommandBuffer,
         pass_params: &RenderPassParameters<'_>
     ) {
         {

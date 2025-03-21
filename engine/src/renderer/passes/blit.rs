@@ -56,7 +56,7 @@ impl BlitPass {
     pub(super) fn execute(
         &mut self,
         _graphics_context: &GraphicsContext,
-        cmd_buffer: &mut CommandBufferRecorder,
+        cmd_buffer: &mut CommandBuffer,
         assets: &RendererAssetsReadOnly<'_>,
         src_view: &TextureView,
         dst_view: &TextureView,
@@ -70,7 +70,7 @@ impl BlitPass {
                 store_op: StoreOp::Store
             }],
             depth_stencil: None
-        }, RenderpassRecordingMode::Commands);
+        });
 
         let pipeline = assets.get_graphics_pipeline(self.pipeline_handle).unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));

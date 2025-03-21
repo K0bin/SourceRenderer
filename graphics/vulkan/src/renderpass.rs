@@ -112,7 +112,7 @@ pub(crate) fn begin_render_pass(
     }
 
     let info = vk::RenderingInfo {
-        flags: if recording_mode == gpu::RenderpassRecordingMode::CommandBuffers { vk::RenderingFlags::CONTENTS_SECONDARY_COMMAND_BUFFERS } else { vk::RenderingFlags::empty() },
+        flags: if let gpu::RenderpassRecordingMode::CommandBuffers(_) = recording_mode { vk::RenderingFlags::CONTENTS_SECONDARY_COMMAND_BUFFERS } else { vk::RenderingFlags::empty() },
         color_attachment_count: color_attachments.len() as u32,
         p_color_attachments: color_attachments.as_ptr(),
         view_mask: 0u32,

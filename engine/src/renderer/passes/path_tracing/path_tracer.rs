@@ -25,7 +25,7 @@ impl PathTracerPass {
         resolution: Vec2UI,
         resources: &mut RendererResources,
         asset_manager: &Arc<AssetManager>,
-        _init_cmd_buffer: &mut CommandBufferRecorder,
+        _init_cmd_buffer: &mut CommandBuffer,
     ) -> Self {
         resources.create_texture(
             Self::PATH_TRACING_TARGET,
@@ -73,7 +73,7 @@ impl PathTracerPass {
 
     pub fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder,
+        cmd_buffer: &mut CommandBuffer,
         pass_params: &RenderPassParameters<'_>,
         acceleration_structure: &Arc<AccelerationStructure>,
         blue_noise: &Arc<TextureView>,

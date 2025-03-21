@@ -29,7 +29,7 @@ impl GeometryPass {
         device: &Arc<crate::graphics::Device>,
         asset_manager: &Arc<AssetManager>,
         swapchain: &crate::graphics::Swapchain,
-        _init_cmd_buffer: &mut crate::graphics::CommandBufferRecorder,
+        _init_cmd_buffer: &mut crate::graphics::CommandBuffer,
         resources: &mut RendererResources,
     ) -> Self {
         let sampler = device.create_sampler(&SamplerInfo {
@@ -149,7 +149,7 @@ impl GeometryPass {
 
     pub(super) fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder,
+        cmd_buffer: &mut CommandBuffer,
         scene: &RendererScene,
         view: &View,
         camera_buffer: &TransientBufferSlice,
@@ -197,7 +197,6 @@ impl GeometryPass {
                     store_op: StoreOp::Store,
                 })
             },
-            RenderpassRecordingMode::Commands,
         );
 
         let pipeline: &Arc<GraphicsPipeline> = assets.get_graphics_pipeline(self.pipeline).expect("Pipeline is not compiled yet");

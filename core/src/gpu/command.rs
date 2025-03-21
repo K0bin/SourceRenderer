@@ -82,7 +82,7 @@ pub enum ImageLayout {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum RenderpassRecordingMode {
   Commands,
-  CommandBuffers
+  CommandBuffers(u32)
 }
 
 #[derive(Debug)]
@@ -142,13 +142,12 @@ pub trait CommandBuffer<B: GPUBackend> : Send {
   unsafe fn clear_storage_texture(&mut self, view: &B::Texture, array_layer: u32, mip_level: u32, values: [u32; 4]);
   unsafe fn clear_storage_buffer(&mut self, buffer: &B::Buffer, offset: u64, length_in_u32s: u64, value: u32);
 
-  unsafe fn begin_render_pass(&mut self, renderpass_info: &RenderPassBeginInfo<B>, recording_mode: RenderpassRecordingMode);
+  unsafe fn begin_render_pass(&mut self, renderpass_info: &RenderPassBeginInfo<B>, recording_mode: RenderpassRecordingMode) -> Option<Self::CommandBufferInheritance>;
   unsafe fn end_render_pass(&mut self);
   unsafe fn barrier(&mut self, barriers: &[Barrier<B>]);
 
-  unsafe fn inheritance(&self) -> &Self::CommandBufferInheritance;
   type CommandBufferInheritance: Send + Sync;
-  unsafe fn execute_inner(&mut self, submission: &[&B::CommandBuffer]);
+  unsafe fn execute_inner(&mut self, submission: &[&B::CommandBuffer], inheritance: Self::CommandBufferInheritance);
 
   unsafe fn reset(&mut self, frame: u64);
 

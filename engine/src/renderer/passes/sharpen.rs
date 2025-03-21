@@ -60,7 +60,7 @@ impl SharpenPass {
 
     pub fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder,
+        cmd_buffer: &mut CommandBuffer,
         pass_params: &RenderPassParameters<'_>
     ) {
         let input_image_uav = pass_params.resources.access_view(

@@ -50,7 +50,7 @@ impl ShadowMapPass {
     pub fn new(
         _device: &Arc<Device>,
         resources: &mut RendererResources,
-        _init_cmd_buffer: &mut CommandBufferRecorder,
+        _init_cmd_buffer: &mut CommandBuffer,
         asset_manager: &Arc<AssetManager>,
     ) -> Self {
         let shadow_map_res = 4096;
@@ -190,7 +190,7 @@ impl ShadowMapPass {
 
     pub fn prepare(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder,
+        cmd_buffer: &mut CommandBuffer,
         pass_params: &RenderPassParameters<'_>
     ) {
         cmd_buffer.begin_label("Shadow map culling");
@@ -258,7 +258,7 @@ impl ShadowMapPass {
 
     pub fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder,
+        cmd_buffer: &mut CommandBuffer,
         pass_params: &RenderPassParameters<'_>
     ) {
         cmd_buffer.begin_label("Shadow map");
@@ -305,8 +305,7 @@ impl ShadowMapPass {
                         load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
                         store_op: StoreOp::Store,
                     })
-                },
-                RenderpassRecordingMode::Commands,
+                }
             );
 
             let dsv_info = shadow_map.texture().unwrap().info();

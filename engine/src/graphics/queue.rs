@@ -14,8 +14,8 @@ type Backbuffer = active_gpu_backend::Backbuffer;
 
 enum StoredQueueSubmission {
     CommandBuffer {
-        command_buffer: Box<super::CommandBuffer>,
-        return_sender: Sender<Box<super::CommandBuffer>>,
+        command_buffer: active_gpu_backend::CommandBuffer,
+        return_sender: Sender<active_gpu_backend::CommandBuffer>,
         signal_swapchain: Option<(Arc<Mutex<super::Swapchain>>, Arc<Backbuffer>)>,
         wait_swapchain: Option<(Arc<Mutex<super::Swapchain>>, Arc<Backbuffer>)>,
         signal_fences: SmallVec<[SharedFenceValuePair; 4]>,
@@ -62,10 +62,10 @@ impl Queue {
         guard.is_idle = false;
 
         let QueueSubmission { command_buffer: finished_cmd_buffer, wait_fences, signal_fences, acquire_swapchain, release_swapchain } = submission;
-        let FinishedCommandBuffer { inner, sender } = finished_cmd_buffer;
+        let FinishedCommandBuffer { handle, sender } = finished_cmd_buffer;
 
         guard.virtual_queue.push_back(StoredQueueSubmission::CommandBuffer {
-            command_buffer: inner,
+            command_buffer: handle,
             return_sender: sender,
             signal_fences: signal_fences.iter().map(|fence_ref| SharedFenceValuePair::from(fence_ref)).collect(),
             wait_fences: wait_fences.iter().map(|fence_ref| SharedFenceValuePair::from(fence_ref)).collect(),
@@ -233,9 +233,9 @@ impl Queue {
                     wait_swapchain
                 } => {
                     if wait_fences.is_empty() && signal_fences.is_empty() && wait_swapchain.is_none() && signal_swapchain.is_none() {
-                        push_command_buffer(&mut holder, command_buffer.handle());
+                        push_command_buffer(&mut holder, command_buffer);
                     } else {
-                        push_submission(&mut holder, command_buffer.handle(), wait_fences, signal_fences, wait_swapchain.as_ref().map(|(s, key)| (s, key.as_ref())), signal_swapchain.as_ref().map(|(s, key)| (s, key.as_ref())));
+                        push_submission(&mut holder, command_buffer, wait_fences, signal_fences, wait_swapchain.as_ref().map(|(s, key)| (s, key.as_ref())), signal_swapchain.as_ref().map(|(s, key)| (s, key.as_ref())));
                     }
                 },
                 StoredQueueSubmission::Present { swapchain: (swapchain, key) } => {

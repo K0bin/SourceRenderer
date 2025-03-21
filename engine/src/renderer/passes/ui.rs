@@ -90,7 +90,7 @@ impl UIPass {
 
     pub fn execute(
         &mut self,
-        command_buffer: &mut CommandBufferRecorder,
+        command_buffer: &mut CommandBuffer,
         pass_params: &RenderPassParameters<'_>,
         output_texture_name: &str,
         draw: &UIDrawData
@@ -137,7 +137,7 @@ impl UIPass {
                 }
             ],
             depth_stencil: None
-        }, RenderpassRecordingMode::Commands);
+        });
 
         for list in &draw.draw_lists {
             command_buffer.set_index_buffer(BufferRef::Regular(&list.index_buffer), 0, IndexFormat::U32); //if std::mem::size_of::<imgui::DrawIdx>() == 2 { IndexFormat::U16 } else { IndexFormat::U32 });

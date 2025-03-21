@@ -188,7 +188,7 @@ impl OcclusionPass {
     pub fn execute(
         &mut self,
         context: &GraphicsContext,
-        command_buffer: &mut CommandBufferRecorder,
+        command_buffer: &mut CommandBuffer,
         pass_params: &RenderPassParameters<'_>,
         frame: u64,
         camera_history_buffer: &Arc<BufferSlice>,
@@ -252,8 +252,7 @@ impl OcclusionPass {
                         read_only: true,
                     }),
                 }],
-            },
-            RenderpassRecordingMode::CommandBuffers,
+            }
         );
 
         let device = pass_params.device;
@@ -263,7 +262,6 @@ impl OcclusionPass {
         let query_count = AtomicU32::new(0);
         const CHUNK_SIZE: usize = 256;
         let chunks = self.visible_drawable_indices.par_chunks(CHUNK_SIZE);
-        let inheritance = command_buffer.inheritance();
         let inner_cmd_buffers: Vec<FinishedCommandBuffer> =
             chunks
                 .map(|chunk| {

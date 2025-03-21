@@ -11,7 +11,7 @@ use sourcerenderer_core::{
 };
 
 use crate::renderer::passes::modern::acceleration_structure_update::AccelerationStructureUpdatePass;
-use crate::graphics::{GraphicsContext, CommandBufferRecorder};
+use crate::graphics::{GraphicsContext, CommandBuffer};
 use crate::renderer::passes::blue_noise::BlueNoise;
 use crate::renderer::render_path::{
     FrameInfo, RenderPassParameters, RenderPath, RenderPathResult, SceneInfo
@@ -86,7 +86,7 @@ impl PathTracingRenderer {
 
     fn setup_frame(
         &self,
-        cmd_buf: &mut CommandBufferRecorder,
+        cmd_buf: &mut CommandBuffer,
         scene: &SceneInfo,
         swapchain: &Swapchain,
         gpu_scene_buffers: SceneBuffers,

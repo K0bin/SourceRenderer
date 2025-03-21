@@ -9,7 +9,7 @@ use crate::{binding::{self, WebGPUBindingManager, WebGPUBoundResourceRef, WebGPU
 
 enum WebGPUPassEncoder {
     None,
-    Render(GpuRenderPassEncoder, Option<WebGPURenderBundleInheritance>),
+    Render(GpuRenderPassEncoder),
     Compute(GpuComputePassEncoder)
 }
 
@@ -32,7 +32,6 @@ struct WebGPUFinishedCommandBuffer {
 
 struct WebGPURenderBundleCommandBuffer {
     bundle: GpuRenderBundleEncoder,
-    _inheritance: WebGPURenderBundleInheritance,
     pipeline_layout: Option<Arc<WebGPUPipelineLayout>>,
     binding_manager: WebGPUBindingManager,
 }
@@ -185,41 +184,38 @@ impl WebGPUCommandBuffer {
 
 impl WebGPURecordingCommandBuffer {
     fn get_compute_encoder(&mut self) -> &GpuComputePassEncoder {
-        let mut has_active_compute_encoder = false;
-        match &mut self.pass_encoder {
-            WebGPUPassEncoder::Render(render, _) => { render.end(); },
-            WebGPUPassEncoder::Compute(_compute) => { has_active_compute_encoder = true; },
-            _ => {}
-        }
-        if !has_active_compute_encoder {
+        let has_existing_encoder = if let WebGPUPassEncoder::Compute(_) = &self.pass_encoder {
+            true
+        } else {
+            false
+        };
+
+        if !has_existing_encoder {
             self.pass_encoder = WebGPUPassEncoder::Compute(self.command_encoder.begin_compute_pass());
         }
-        match &self.pass_encoder {
-            WebGPUPassEncoder::Compute(compute) => return compute,
-            _ => unreachable!()
+        if let WebGPUPassEncoder::Compute(encoder) = &self.pass_encoder {
+            encoder
+        } else {
+            unreachable!()
         }
     }
 
     fn get_render_encoder(&mut self) -> &GpuRenderPassEncoder {
         match &self.pass_encoder {
-            WebGPUPassEncoder::Render(render, _) => return render,
+            WebGPUPassEncoder::Render(encoder) => return encoder,
             _ => panic!("No active render pass")
         }
     }
 
     fn ensure_no_active_pass(&mut self) {
-        let has_compute_pass = match &self.pass_encoder {
-            WebGPUPassEncoder::Compute(compute) => {
-                compute.end();
-                true
+        match std::mem::replace(&mut self.pass_encoder, WebGPUPassEncoder::None) {
+            WebGPUPassEncoder::Compute(encoder) => {
+                encoder.end();
+                self.binding_manager.mark_all_dirty();
             },
-            WebGPUPassEncoder::Render(_render, _) => panic!("Render passes have to be ended manually using end_render_pass."),
-            _ => false
+            WebGPUPassEncoder::Render(_encoder) => panic!("Render passes have to be ended manually using end_render_pass."),
+            _ => {}
         };
-        self.pass_encoder = WebGPUPassEncoder::None;
-        if has_compute_pass {
-            self.binding_manager.mark_all_dirty();
-        }
     }
 }
 
@@ -470,7 +466,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
 
             match &cmd_buffer.pass_encoder {
                 WebGPUPassEncoder::None => {},
-                WebGPUPassEncoder::Render(gpu_render_pass_encoder, _) => {
+                WebGPUPassEncoder::Render(gpu_render_pass_encoder) => {
                     for (set_index, binding) in binding_infos.iter().enumerate() {
                         if binding.is_none() {
                             continue;
@@ -627,7 +623,6 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
             self.handle = WebGPUCommandBufferHandle::Secondary(WebGPURenderBundleCommandBuffer {
                 bundle: bundle_encoder,
                 pipeline_layout: None,
-                _inheritance: inheritance.clone(),
                 binding_manager
             });
         } else {
@@ -740,7 +735,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         }
     }
 
-    unsafe fn begin_render_pass(&mut self, renderpass_info: &gpu::RenderPassBeginInfo<WebGPUBackend>, recording_mode: gpu::RenderpassRecordingMode) {
+    unsafe fn begin_render_pass(&mut self, renderpass_info: &gpu::RenderPassBeginInfo<WebGPUBackend>, recording_mode: gpu::RenderpassRecordingMode) -> Option<Self::CommandBufferInheritance> {
         let color_attachments = Array::new_with_length(renderpass_info.render_targets.len() as u32);
         let color_formats = Array::new_with_length(renderpass_info.render_targets.len() as u32);
         let color = Array::new_with_length(4);
@@ -801,21 +796,21 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         }
         let recording = self.get_recording_mut();
         recording.ensure_no_active_pass();
-        let inheritance = if recording_mode == gpu::RenderpassRecordingMode::CommandBuffers {
+        recording.pass_encoder = WebGPUPassEncoder::Render(recording.command_encoder.begin_render_pass(&descriptor).unwrap());
+        if let gpu::RenderpassRecordingMode::CommandBuffers(_) = recording_mode {
             Some(WebGPURenderBundleInheritance {
                 descriptor: bundle_descriptor
             })
         } else {
             None
-        };
-        recording.pass_encoder = WebGPUPassEncoder::Render(recording.command_encoder.begin_render_pass(&descriptor).unwrap(), inheritance);
+        }
     }
 
     unsafe fn end_render_pass(&mut self) {
         let recording = self.get_recording_mut();
         recording.binding_manager.mark_all_dirty();
         match &recording.pass_encoder {
-            WebGPUPassEncoder::Render(render, _) => render.end(),
+            WebGPUPassEncoder::Render(render) => render.end(),
             _ => panic!("No active render pass.")
         };
         recording.pass_encoder = WebGPUPassEncoder::None;
@@ -825,18 +820,9 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         // Handled by the WebGPU implementation
     }
 
-    unsafe fn inheritance(&self) -> &Self::CommandBufferInheritance {
-        let recording = self.get_recording();
-        if let WebGPUPassEncoder::Render(_, inheritance) = &recording.pass_encoder {
-            inheritance.as_ref().expect("Can only retrieve the inheritance after starting a render pass for inner command buffers")
-        } else {
-            panic!("Can only retrieve the inheritance after starting a render pass for inner command buffers")
-        }
-    }
-
     type CommandBufferInheritance = WebGPURenderBundleInheritance;
 
-    unsafe fn execute_inner(&mut self, submission: &[&WebGPUCommandBuffer]) {
+    unsafe fn execute_inner(&mut self, submission: &[&WebGPUCommandBuffer], _inheritance: Self::CommandBufferInheritance) {
         let cmd_buffer = self.get_recording_mut();
         let render_pass_encoder = cmd_buffer.get_render_encoder();
         let array = Array::new_with_length(submission.len() as u32);

@@ -30,7 +30,7 @@ impl ShadingPass {
         resolution: Vec2UI,
         resources: &mut RendererResources,
         asset_manager: &Arc<AssetManager>,
-        _init_cmd_buffer: &mut CommandBufferRecorder,
+        _init_cmd_buffer: &mut CommandBuffer,
     ) -> Self {
         let pipeline = asset_manager.request_compute_pipeline("shaders/shading.comp.json");
 
@@ -90,7 +90,7 @@ impl ShadingPass {
     #[profiling::function]
     pub(super) fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder,
+        cmd_buffer: &mut CommandBuffer,
         pass_params: &RenderPassParameters<'_>
     ) {
         let (width, height) = {

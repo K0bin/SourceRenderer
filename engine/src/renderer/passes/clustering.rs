@@ -57,7 +57,7 @@ impl ClusteringPass {
 
     pub fn execute(
         &mut self,
-        command_buffer: &mut CommandBufferRecorder,
+        command_buffer: &mut CommandBuffer,
         pass_params: &RenderPassParameters<'_>,
         rt_size: Vec2UI,
         camera_buffer: &TransientBufferSlice

@@ -2,7 +2,7 @@ use std::{ffi::c_void, ptr::NonNull, sync::Arc};
 
 use dispatch2::ffi::dispatch_data_create;
 use objc2::{msg_send, rc::Retained, runtime::ProtocolObject};
-use objc2_foundation::{NSData, NSError, NSObjectProtocol, NSUInteger};
+use objc2_foundation::{NSData, NSError, NSUInteger};
 use objc2_metal::{self, MTLDevice as _, MTLTexture as _};
 use smallvec::{smallvec, SmallVec};
 

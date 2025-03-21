@@ -16,7 +16,7 @@ pub struct AccelerationStructureUpdatePass {
 impl AccelerationStructureUpdatePass {
     pub fn new(
         _device: &Arc<Device>,
-        init_cmd_buffer: &mut CommandBufferRecorder
+        init_cmd_buffer: &mut CommandBuffer
     ) -> Self {
         let info = TopLevelAccelerationStructureInfo {
             instances: &[]
@@ -33,7 +33,7 @@ impl AccelerationStructureUpdatePass {
 
     pub fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder,
+        cmd_buffer: &mut CommandBuffer,
         pass_params: &RenderPassParameters<'_>
     ) {
         // We never reuse handles, so this works.
