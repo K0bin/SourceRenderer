@@ -27,7 +27,7 @@ impl HierarchicalZPass {
         device: &Arc<Device>,
         resources: &mut RendererResources,
         asset_manager: &Arc<AssetManager>,
-        init_cmd_buffer: &mut CommandBufferRecorder,
+        init_cmd_buffer: &mut CommandBuffer,
         depth_name: &str,
     ) -> Self {
         let mut texture_info = resources.texture_info(depth_name).clone();
@@ -98,7 +98,7 @@ impl HierarchicalZPass {
 
     pub fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder,
+        cmd_buffer: &mut CommandBuffer,
         pass_params: &RenderPassParameters<'_>,
         depth_name: &str,
     ) {

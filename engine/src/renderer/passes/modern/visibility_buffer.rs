@@ -151,7 +151,7 @@ impl VisibilityBufferPass {
     #[profiling::function]
     pub(super) fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder,
+        cmd_buffer: &mut CommandBuffer,
         params: &RenderPassParameters<'_>
     ) {
         cmd_buffer.begin_label("Visibility Buffer pass");
@@ -215,8 +215,7 @@ impl VisibilityBufferPass {
                     load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
                     store_op: StoreOp::Store,
                 })
-            },
-            RenderpassRecordingMode::Commands,
+            }
         );
 
         let rtv_info = barycentrics_rtv.texture().unwrap().info();

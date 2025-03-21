@@ -56,7 +56,7 @@ mod active_gpu_backend {
     pub use sourcerenderer_vulkan::VkCommandPool as CommandPool;
     pub use sourcerenderer_vulkan::VkCommandBuffer as CommandBuffer;
     pub use sourcerenderer_vulkan::VkSampler as Sampler;
-    pub use sourcerenderer_vulkan::VkInnerCommandBufferInfo as CommandBufferInheritance;
+    pub use sourcerenderer_vulkan::VkSecondaryCommandBufferInheritance as CommandBufferInheritance;
     pub use sourcerenderer_vulkan::VkQueue as Queue;
     pub use sourcerenderer_vulkan::VkTimelineSemaphore as Fence;
     pub use sourcerenderer_vulkan::VkSwapchain as Swapchain;

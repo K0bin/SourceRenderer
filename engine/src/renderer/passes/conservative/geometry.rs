@@ -1,7 +1,6 @@
 use std::cell::Ref;
 use std::sync::Arc;
 
-use bevy_tasks::ParallelSlice;
 use smallvec::SmallVec;
 use sourcerenderer_core::{
     Matrix4, Platform, Vec2, Vec2I, Vec2UI, Vec3UI, Vec4
@@ -176,14 +175,16 @@ impl GeometryPass {
     }
 
     #[profiling::function]
-    pub(super) fn execute<P: Platform>(
+    pub(super) fn execute<'a, P: Platform>(
         &mut self,
-        context: &mut GraphicsContext,
-        cmd_buffer: &mut crate::graphics::CommandBufferRecorder,
+        context: &'a GraphicsContext,
+        cmd_buffer: &mut crate::graphics::CommandBuffer<'a>,
         pass_params: &RenderPassParameters<'_>,
         depth_name: &str,
         bindings: &FrameBindings,
     ) {
+        let view = &pass_params.scene.scene.views()[pass_params.scene.active_view_index];
+
         cmd_buffer.begin_label("Geometry pass");
         let static_drawables = pass_params.scene.scene.static_drawables();
 
@@ -262,238 +263,226 @@ impl GeometryPass {
           HistoryResourceEntry::Current
         ).clone();
 
-        cmd_buffer.begin_render_pass(
-            &RenderPassBeginInfo {
-                render_targets: &[
-                    RenderTarget {
-                        view: &rtv,
-                        load_op: LoadOpColor::Clear(ClearColor::BLACK),
-                        store_op: StoreOp::Store
-                    }
-                ],
-                depth_stencil: Some(&DepthStencilAttachment {
-                    view: prepass_depth,
-                    load_op: LoadOpDepthStencil::Load,
-                    store_op: StoreOp::Store
-                })
-            },
-            RenderpassRecordingMode::CommandBuffers,
-        );
-
         let assets = &pass_params.assets;
         let lightmap = pass_params.scene.lightmap;
 
-        let inheritance = cmd_buffer.inheritance();
-        const CHUNK_SIZE: usize = 128;
-        let view = &pass_params.scene.scene.views()[pass_params.scene.active_view_index];
-        let chunk_size = (view.drawable_parts.len() / 15).max(CHUNK_SIZE);
+        const CHUNK_SIZE: u32 = 128;
+        let chunk_size = (view.drawable_parts.len() as u32 / 15).max(CHUNK_SIZE);
         let pipeline = pass_params.assets.get_graphics_pipeline(self.pipeline).unwrap();
-        let task_pool = bevy_tasks::ComputeTaskPool::get();
-        let inner_cmd_buffers: Vec<FinishedCommandBuffer> = view.drawable_parts.par_chunk_map(task_pool, chunk_size, |_index, chunk| {
-                P::thread_memory_management_pool(|| {
-                    let mut command_buffer = context.get_inner_command_buffer(inheritance);
 
-                    command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
-                    command_buffer.set_viewports(&[Viewport {
-                        position: Vec2::new(0.0f32, 0.0f32),
-                        extent: Vec2::new(width as f32, height as f32),
-                        min_depth: 0.0f32,
-                        max_depth: 1.0f32,
-                    }]);
-                    command_buffer.set_scissors(&[Scissor {
-                        position: Vec2I::new(0, 0),
-                        extent: Vec2UI::new(width, height),
-                    }]);
+        let owned_cmd_buffer = std::mem::replace(cmd_buffer, context.get_command_buffer(QueueType::Graphics));
+        *cmd_buffer = owned_cmd_buffer.split_render_pass_with_chunks(&RenderPassBeginInfo {
+            render_targets: &[
+                RenderTarget {
+                    view: &rtv,
+                    load_op: LoadOpColor::Clear(ClearColor::BLACK),
+                    store_op: StoreOp::Store
+                }
+            ],
+            depth_stencil: Some(&DepthStencilAttachment {
+                view: prepass_depth,
+                load_op: LoadOpDepthStencil::Load,
+                store_op: StoreOp::Store
+            })
+        }, &view.drawable_parts, chunk_size, |command_buffer, _chunk_index, _chunk_size, chunk| {
+            P::thread_memory_management_pool(|| {
+                command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
+                command_buffer.set_viewports(&[Viewport {
+                    position: Vec2::new(0.0f32, 0.0f32),
+                    extent: Vec2::new(width as f32, height as f32),
+                    min_depth: 0.0f32,
+                    max_depth: 1.0f32,
+                }]);
+                command_buffer.set_scissors(&[Scissor {
+                    position: Vec2I::new(0, 0),
+                    extent: Vec2UI::new(width, height),
+                }]);
 
+                command_buffer.bind_sampling_view_and_sampler(
+                    BindingFrequency::Frequent,
+                    0,
+                    if let Some(lightmap) = lightmap { &lightmap.view } else { &assets.get_placeholder_texture_white().view },
+                    &self.sampler,
+                );
+                command_buffer.bind_sampler(BindingFrequency::Frequent, 1, &self.sampler);
+                if let Some(shadows) = shadows {
                     command_buffer.bind_sampling_view_and_sampler(
                         BindingFrequency::Frequent,
-                        0,
-                        if let Some(lightmap) = lightmap { &lightmap.view } else { &assets.get_placeholder_texture_white().view },
+                        2,
+                        &shadows,
                         &self.sampler,
                     );
-                    command_buffer.bind_sampler(BindingFrequency::Frequent, 1, &self.sampler);
-                    if let Some(shadows) = shadows {
+                }
+                command_buffer.bind_storage_buffer(
+                    BindingFrequency::Frequent,
+                    3,
+                    BufferRef::Regular(&light_bitmask_buffer),
+                    0,
+                    WHOLE_BUFFER,
+                );
+                command_buffer.bind_sampling_view_and_sampler(
+                    BindingFrequency::Frequent,
+                    4,
+                    &ssao,
+                    &self.sampler,
+                );
+                command_buffer.bind_storage_buffer(BindingFrequency::Frequent, 5, BufferRef::Regular(&clusters), 0, WHOLE_BUFFER);
+
+                let mut last_material = Option::<&RendererMaterial>::None;
+
+                for part in chunk.iter() {
+                    let drawable = &static_drawables[part.drawable_index];
+                    if Self::DRAWABLE_LABELS {
+                        command_buffer.begin_label(&format!("Drawable {}", part.drawable_index));
+                    }
+
+                    setup_frame(command_buffer, bindings);
+
+                    command_buffer.set_push_constant_data(
+                        &[drawable.transform],
+                        ShaderType::VertexShader,
+                    );
+
+                    let model = assets.get_model(drawable.model);
+                    if model.is_none() {
+                        log::info!("Skipping draw because of missing model");
+                        continue;
+                    }
+                    let model = model.unwrap();
+                    let mesh = assets.get_mesh(model.mesh_handle());
+                    if mesh.is_none() {
+                        log::info!("Skipping draw because of missing mesh");
+                        continue;
+                    }
+                    let mesh = mesh.unwrap();
+                    let materials: SmallVec<[&RendererMaterial; 8]> = model
+                        .material_handles()
+                        .iter()
+                        .map(|handle| assets.get_material(*handle))
+                        .collect();
+
+                    command_buffer
+                        .set_vertex_buffer(0, BufferRef::Regular(mesh.vertices.buffer()), mesh.vertices.offset() as u64);
+                    if let Some(indices) = mesh.indices.as_ref() {
+                        command_buffer.set_index_buffer(
+                            BufferRef::Regular(indices.buffer()),
+                            indices.offset() as u64,
+                            IndexFormat::U32,
+                        );
+                    }
+
+                    let range = &mesh.parts[part.part_index];
+                    let material = &materials[part.part_index];
+
+                    if last_material.as_ref() != Some(material) {
+                        #[repr(C)]
+                        #[derive(Clone, Copy)]
+                        struct MaterialInfo {
+                            albedo: Vec4,
+                            roughness_factor: f32,
+                            metalness_factor: f32,
+                            albedo_texture_index: u32,
+                        }
+                        let mut material_info = MaterialInfo {
+                            albedo: Vec4::new(1f32, 1f32, 1f32, 1f32),
+                            roughness_factor: 0f32,
+                            metalness_factor: 0f32,
+                            albedo_texture_index: 0u32,
+                        };
+
                         command_buffer.bind_sampling_view_and_sampler(
-                            BindingFrequency::Frequent,
-                            2,
-                            &shadows,
+                            BindingFrequency::VeryFrequent,
+                            0,
+                            &assets.get_placeholder_texture_white().view,
                             &self.sampler,
                         );
-                    }
-                    command_buffer.bind_storage_buffer(
-                        BindingFrequency::Frequent,
-                        3,
-                        BufferRef::Regular(&light_bitmask_buffer),
-                        0,
-                        WHOLE_BUFFER,
-                    );
-                    command_buffer.bind_sampling_view_and_sampler(
-                        BindingFrequency::Frequent,
-                        4,
-                        &ssao,
-                        &self.sampler,
-                    );
-                    command_buffer.bind_storage_buffer(BindingFrequency::Frequent, 5, BufferRef::Regular(&clusters), 0, WHOLE_BUFFER);
-
-                    let mut last_material = Option::<&RendererMaterial>::None;
-
-                    for part in chunk.iter() {
-                        let drawable = &static_drawables[part.drawable_index];
-                        if Self::DRAWABLE_LABELS {
-                            command_buffer.begin_label(&format!("Drawable {}", part.drawable_index));
-                        }
-
-                        setup_frame(&mut command_buffer, bindings);
-
-                        command_buffer.set_push_constant_data(
-                            &[drawable.transform],
-                            ShaderType::VertexShader,
+                        command_buffer.bind_sampling_view_and_sampler(
+                            BindingFrequency::VeryFrequent,
+                            1,
+                            &assets.get_placeholder_texture_white().view,
+                            &self.sampler,
+                        );
+                        command_buffer.bind_sampling_view_and_sampler(
+                            BindingFrequency::VeryFrequent,
+                            2,
+                            &assets.get_placeholder_texture_white().view,
+                            &self.sampler,
                         );
 
-                        let model = assets.get_model(drawable.model);
-                        if model.is_none() {
-                            log::info!("Skipping draw because of missing model");
-                            continue;
-                        }
-                        let model = model.unwrap();
-                        let mesh = assets.get_mesh(model.mesh_handle());
-                        if mesh.is_none() {
-                            log::info!("Skipping draw because of missing mesh");
-                            continue;
-                        }
-                        let mesh = mesh.unwrap();
-                        let materials: SmallVec<[&RendererMaterial; 8]> = model
-                            .material_handles()
-                            .iter()
-                            .map(|handle| assets.get_material(*handle))
-                            .collect();
-
-                        command_buffer
-                            .set_vertex_buffer(0, BufferRef::Regular(mesh.vertices.buffer()), mesh.vertices.offset() as u64);
-                        if let Some(indices) = mesh.indices.as_ref() {
-                            command_buffer.set_index_buffer(
-                                BufferRef::Regular(indices.buffer()),
-                                indices.offset() as u64,
-                                IndexFormat::U32,
-                            );
-                        }
-
-                        let range = &mesh.parts[part.part_index];
-                        let material = &materials[part.part_index];
-
-                        if last_material.as_ref() != Some(material) {
-                            #[repr(C)]
-                            #[derive(Clone, Copy)]
-                            struct MaterialInfo {
-                                albedo: Vec4,
-                                roughness_factor: f32,
-                                metalness_factor: f32,
-                                albedo_texture_index: u32,
+                        let albedo_value = material.get("albedo").unwrap();
+                        match albedo_value {
+                            RendererMaterialValue::Texture(handle) => {
+                                let albedo_view = &assets.get_texture(*handle).view;
+                                command_buffer.bind_sampling_view_and_sampler(
+                                    BindingFrequency::VeryFrequent,
+                                    0,
+                                    albedo_view,
+                                    &self.sampler,
+                                );
+                                material_info.albedo_texture_index = 0;
                             }
-                            let mut material_info = MaterialInfo {
-                                albedo: Vec4::new(1f32, 1f32, 1f32, 1f32),
-                                roughness_factor: 0f32,
-                                metalness_factor: 0f32,
-                                albedo_texture_index: 0u32,
-                            };
-
-                            command_buffer.bind_sampling_view_and_sampler(
-                                BindingFrequency::VeryFrequent,
-                                0,
-                                &assets.get_placeholder_texture_white().view,
-                                &self.sampler,
-                            );
-                            command_buffer.bind_sampling_view_and_sampler(
-                                BindingFrequency::VeryFrequent,
-                                1,
-                                &assets.get_placeholder_texture_white().view,
-                                &self.sampler,
-                            );
-                            command_buffer.bind_sampling_view_and_sampler(
-                                BindingFrequency::VeryFrequent,
-                                2,
-                                &assets.get_placeholder_texture_white().view,
-                                &self.sampler,
-                            );
-
-                            let albedo_value = material.get("albedo").unwrap();
-                            match albedo_value {
-                                RendererMaterialValue::Texture(handle) => {
-                                    let albedo_view = &assets.get_texture(*handle).view;
-                                    command_buffer.bind_sampling_view_and_sampler(
-                                        BindingFrequency::VeryFrequent,
-                                        0,
-                                        albedo_view,
-                                        &self.sampler,
-                                    );
-                                    material_info.albedo_texture_index = 0;
-                                }
-                                RendererMaterialValue::Vec4(val) => material_info.albedo = *val,
-                                RendererMaterialValue::Float(_) => unimplemented!(),
-                            }
-                            let roughness_value = material.get("roughness");
-                            match roughness_value {
-                                Some(RendererMaterialValue::Texture(handle)) => {
-                                    let roughness_view = &assets.get_texture(*handle).view;
-                                    command_buffer.bind_sampling_view_and_sampler(
-                                        BindingFrequency::VeryFrequent,
-                                        1,
-                                        roughness_view,
-                                        &self.sampler,
-                                    );
-                                }
-                                Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
-                                Some(RendererMaterialValue::Float(val)) => {
-                                    material_info.roughness_factor = *val;
-                                }
-                                None => {}
-                            }
-                            let metalness_value = material.get("metalness");
-                            match metalness_value {
-                                Some(RendererMaterialValue::Texture(handle)) => {
-                                    let metalness_view = &assets.get_texture_opt(*handle).unwrap_or(assets.get_placeholder_texture_black()).view;
-                                    command_buffer.bind_sampling_view_and_sampler(
-                                        BindingFrequency::VeryFrequent,
-                                        2,
-                                        metalness_view,
-                                        &self.sampler,
-                                    );
-                                }
-                                Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
-                                Some(RendererMaterialValue::Float(val)) => {
-                                    material_info.metalness_factor = *val;
-                                }
-                                None => {}
-                            }
-                            let material_info_buffer = command_buffer
-                                .upload_dynamic_data(&[material_info], BufferUsage::CONSTANT).unwrap();
-                            command_buffer.bind_uniform_buffer(
-                                BindingFrequency::VeryFrequent,
-                                3,
-                                BufferRef::Transient(&material_info_buffer),
-                                0,
-                                WHOLE_BUFFER,
-                            );
-                            last_material = Some(material);
+                            RendererMaterialValue::Vec4(val) => material_info.albedo = *val,
+                            RendererMaterialValue::Float(_) => unimplemented!(),
                         }
-
-                        command_buffer.finish_binding();
-
-                        if mesh.indices.is_some() {
-                            command_buffer.draw_indexed(1, 0, range.count, range.start, 0);
-                        } else {
-                            command_buffer.draw(range.count, range.start);
+                        let roughness_value = material.get("roughness");
+                        match roughness_value {
+                            Some(RendererMaterialValue::Texture(handle)) => {
+                                let roughness_view = &assets.get_texture(*handle).view;
+                                command_buffer.bind_sampling_view_and_sampler(
+                                    BindingFrequency::VeryFrequent,
+                                    1,
+                                    roughness_view,
+                                    &self.sampler,
+                                );
+                            }
+                            Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
+                            Some(RendererMaterialValue::Float(val)) => {
+                                material_info.roughness_factor = *val;
+                            }
+                            None => {}
                         }
-                        if Self::DRAWABLE_LABELS {
-                            command_buffer.end_label();
+                        let metalness_value = material.get("metalness");
+                        match metalness_value {
+                            Some(RendererMaterialValue::Texture(handle)) => {
+                                let metalness_view = &assets.get_texture_opt(*handle).unwrap_or(assets.get_placeholder_texture_black()).view;
+                                command_buffer.bind_sampling_view_and_sampler(
+                                    BindingFrequency::VeryFrequent,
+                                    2,
+                                    metalness_view,
+                                    &self.sampler,
+                                );
+                            }
+                            Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
+                            Some(RendererMaterialValue::Float(val)) => {
+                                material_info.metalness_factor = *val;
+                            }
+                            None => {}
                         }
+                        let material_info_buffer = command_buffer
+                            .upload_dynamic_data(&[material_info], BufferUsage::CONSTANT).unwrap();
+                        command_buffer.bind_uniform_buffer(
+                            BindingFrequency::VeryFrequent,
+                            3,
+                            BufferRef::Transient(&material_info_buffer),
+                            0,
+                            WHOLE_BUFFER,
+                        );
+                        last_material = Some(material);
                     }
-                    command_buffer.finish()
-                })
-            });
 
-        cmd_buffer.execute_inner(inner_cmd_buffers);
-        cmd_buffer.end_render_pass();
+                    command_buffer.finish_binding();
+
+                    if mesh.indices.is_some() {
+                        command_buffer.draw_indexed(1, 0, range.count, range.start, 0);
+                    } else {
+                        command_buffer.draw(range.count, range.start);
+                    }
+                    if Self::DRAWABLE_LABELS {
+                        command_buffer.end_label();
+                    }
+                }
+            })
+        });
         cmd_buffer.end_label();
     }
 }

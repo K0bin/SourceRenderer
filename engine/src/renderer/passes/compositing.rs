@@ -55,7 +55,7 @@ impl CompositingPass {
 
     pub fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder,
+        cmd_buffer: &mut CommandBuffer,
         params: &RenderPassParameters<'_>,
         input_name: &str,
     ) {

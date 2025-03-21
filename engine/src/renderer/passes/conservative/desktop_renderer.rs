@@ -147,7 +147,7 @@ impl ConservativeRenderer {
 
     fn create_frame_bindings<'a, 'b>(
         &'b self,
-        cmd_buf: &'b mut CommandBufferRecorder,
+        cmd_buf: &'b mut CommandBuffer,
         scene: &'a SceneInfo<'a>,
         swapchain: &'a Swapchain,
         gpu_scene_buffers: &'a SceneBuffers,
@@ -480,7 +480,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer {
     }
 }
 
-pub fn setup_frame(cmd_buf: &mut CommandBufferRecorder, frame_bindings: &FrameBindings) {
+pub fn setup_frame(cmd_buf: &mut CommandBuffer, frame_bindings: &FrameBindings) {
     for i in 0..7 {
         cmd_buf.bind_storage_buffer(
             BindingFrequency::Frame,

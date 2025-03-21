@@ -218,7 +218,7 @@ impl RendererResources {
 
     fn access_texture_internal(
         &self,
-        cmd_buffer: &mut CommandBufferRecorder,
+        cmd_buffer: &mut CommandBuffer,
         name: &str,
         mut stages: BarrierSync,
         range: &BarrierTextureRange,
@@ -327,7 +327,7 @@ impl RendererResources {
 
     pub fn access_texture(
         &self,
-        cmd_buffer: &mut CommandBufferRecorder,
+        cmd_buffer: &mut CommandBuffer,
         name: &str,
         range: &BarrierTextureRange,
         stages: BarrierSync,
@@ -357,7 +357,7 @@ impl RendererResources {
 
     pub fn access_view(
         &self,
-        cmd_buffer: &mut CommandBufferRecorder,
+        cmd_buffer: &mut CommandBuffer,
         name: &str,
         stages: BarrierSync,
         access: BarrierAccess,
@@ -430,7 +430,7 @@ impl RendererResources {
 
     pub fn access_buffer(
         &self,
-        cmd_buffer: &mut CommandBufferRecorder,
+        cmd_buffer: &mut CommandBuffer,
         name: &str,
         mut stages: BarrierSync,
         mut access: BarrierAccess,

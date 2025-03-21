@@ -90,7 +90,7 @@ impl TAAPass {
 
     pub fn execute(
         &mut self,
-        cmd_buf: &mut CommandBufferRecorder,
+        cmd_buf: &mut CommandBuffer,
         pass_params: &RenderPassParameters<'_>,
         input_name: &str,
         depth_name: &str,

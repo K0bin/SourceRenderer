@@ -5,8 +5,7 @@ use crossbeam_channel::{Sender, Receiver};
 use smallvec::SmallVec;
 use thread_local::ThreadLocal;
 
-use sourcerenderer_core::gpu::*;
-use sourcerenderer_core::gpu;
+use sourcerenderer_core::gpu::{self, CommandBuffer as _, CommandPool as _, Queue as _};
 use atomic_refcell::{AtomicRefCell, AtomicRefMut};
 
 use super::*;
@@ -29,16 +28,23 @@ pub struct ThreadContext {
 }
 
 pub struct FrameContext {
+  device: Arc<active_gpu_backend::Device>,
   command_pool: FrameContextCommandPool,
   secondary_command_pool: FrameContextCommandPool,
-  buffer_allocator: Arc<TransientBufferAllocator>,
+  buffer_refs: Vec<Arc<BufferSlice>>,
+  transient_buffer_allocator: TransientBufferAllocator,
+  global_buffer_allocator: Arc<BufferAllocator>,
+  destroyer: Arc<DeferredDestroyer>,
+  pub(super) acceleration_structure_scratch: Option<TransientBufferSlice>,
+  pub(super) acceleration_structure_scratch_offset: u64,
+  frame: u64,
 }
 
 struct FrameContextCommandPool {
     command_pool: active_gpu_backend::CommandPool,
-    sender: Sender<Box<CommandBuffer>>,
-    receiver: Receiver<Box<CommandBuffer>>,
-    existing_cmd_buffers: VecDeque<Box<CommandBuffer>>
+    sender: Sender<active_gpu_backend::CommandBuffer>,
+    receiver: Receiver<active_gpu_backend::CommandBuffer>,
+    existing_cmd_buffer_handles: VecDeque<active_gpu_backend::CommandBuffer>
 }
 
 impl GraphicsContext {
@@ -72,17 +78,22 @@ impl GraphicsContext {
     for thread_context in &mut (*self.thread_contexts) {
       let frame_context = thread_context.get_frame_mut(self.current_frame);
 
+      frame_context.buffer_refs.clear();
+      frame_context.acceleration_structure_scratch = None;
+      frame_context.acceleration_structure_scratch_offset = 0;
+      frame_context.frame = new_frame;
+
       unsafe { frame_context.command_pool.command_pool.reset(); }
       unsafe { frame_context.secondary_command_pool.command_pool.reset(); }
-      frame_context.buffer_allocator.reset();
+      frame_context.transient_buffer_allocator.reset();
 
       while let Ok(mut existing_cmd_buffer) = frame_context.command_pool.receiver.try_recv() {
-        existing_cmd_buffer.reset(self.current_frame);
-        frame_context.command_pool.existing_cmd_buffers.push_back(existing_cmd_buffer);
+        unsafe { existing_cmd_buffer.reset(self.current_frame); }
+        frame_context.command_pool.existing_cmd_buffer_handles.push_back(existing_cmd_buffer);
       }
       while let Ok(mut existing_cmd_buffer) = frame_context.secondary_command_pool.receiver.try_recv() {
-        existing_cmd_buffer.reset(self.current_frame);
-        frame_context.secondary_command_pool.existing_cmd_buffers.push_back(existing_cmd_buffer);
+        unsafe { existing_cmd_buffer.reset(self.current_frame); }
+        frame_context.secondary_command_pool.existing_cmd_buffer_handles.push_back(existing_cmd_buffer);
       }
     }
   }
@@ -97,46 +108,39 @@ impl GraphicsContext {
     }
   }
 
-  pub fn get_command_buffer(&mut self, _queue_type: QueueType) -> CommandBufferRecorder {
+  pub fn get_command_buffer<'a>(&'a self, _queue_type: QueueType) -> CommandBuffer<'a> {
     let thread_context = self.get_thread_context();
     let mut frame_context = thread_context.get_frame(self.current_frame);
 
-    let existing_cmd_buffer = frame_context.command_pool.existing_cmd_buffers.pop_front();
-    let cmd_buffer = existing_cmd_buffer.unwrap_or_else(|| {
-        Box::new(CommandBuffer::new(
-            unsafe { frame_context.command_pool.command_pool.create_command_buffer() },
-            &self.device,
-            &frame_context.buffer_allocator,
-            &self.global_buffer_allocator,
-            &self.destroyer
-        ))
+    let existing_cmd_buffer_handle = frame_context.command_pool.existing_cmd_buffer_handles.pop_front();
+    let cmd_buffer = existing_cmd_buffer_handle.unwrap_or_else(|| {
+      unsafe { frame_context.command_pool.command_pool.create_command_buffer() }
     });
-    let mut recorder = CommandBufferRecorder::new(cmd_buffer, frame_context.command_pool.sender.clone());
+    let mut recorder = CommandBuffer::new(self, frame_context, cmd_buffer, false);
     recorder.begin(self.current_frame, None);
     recorder
   }
 
-  pub fn get_inner_command_buffer(&self, inheritance: &<active_gpu_backend::CommandBuffer as gpu::CommandBuffer<active_gpu_backend::Backend>>::CommandBufferInheritance) -> CommandBufferRecorder {
+  pub(super) fn get_inner_command_buffer<'a>(&'a self, inheritance: &<active_gpu_backend::CommandBuffer as gpu::CommandBuffer<active_gpu_backend::Backend>>::CommandBufferInheritance) -> CommandBuffer<'a> {
     let thread_context = self.get_thread_context();
     let mut frame_context = thread_context.get_frame(self.current_frame);
 
-    let existing_cmd_buffer = frame_context.secondary_command_pool.existing_cmd_buffers.pop_front();
-    let cmd_buffer = existing_cmd_buffer.unwrap_or_else(|| {
-        Box::new(CommandBuffer::new(
-            unsafe { frame_context.secondary_command_pool.command_pool.create_command_buffer() },
-            &self.device,
-            &frame_context.buffer_allocator,
-            &self.global_buffer_allocator,
-            &self.destroyer
-        ))
+    let existing_cmd_buffer_handle = frame_context.secondary_command_pool.existing_cmd_buffer_handles.pop_front();
+    let cmd_buffer = existing_cmd_buffer_handle.unwrap_or_else(|| {
+      unsafe { frame_context.secondary_command_pool.command_pool.create_command_buffer() }
     });
-    let mut recorder = CommandBufferRecorder::new(cmd_buffer, frame_context.secondary_command_pool.sender.clone());
+    let mut recorder = CommandBuffer::new(self, frame_context, cmd_buffer, true);
     recorder.begin(self.current_frame, Some(inheritance));
     recorder
   }
 
+  pub(super) fn get_thread_frame_context(&self, frame: u64) -> AtomicRefMut<FrameContext> {
+    let thread_context = self.get_thread_context();
+    thread_context.get_frame(frame)
+  }
+
   fn get_thread_context(&self) -> &ThreadContext {
-    self.thread_contexts.get_or(|| ThreadContext::new(&self.device, &self.memory_allocator, &self.destroyer, self.prerendered_frames))
+    self.thread_contexts.get_or(|| ThreadContext::new(&self.device, &self.global_buffer_allocator, &self.memory_allocator, &self.destroyer, self.prerendered_frames))
   }
 
   #[inline(always)]
@@ -158,10 +162,16 @@ impl Drop for GraphicsContext {
 }
 
 impl ThreadContext {
-  fn new(device: &Arc<active_gpu_backend::Device>, memory_allocator: &Arc<MemoryAllocator>, destroyer: &Arc<DeferredDestroyer>, prerendered_frames: u32) -> Self {
+  fn new(
+    device: &Arc<active_gpu_backend::Device>,
+    buffer_allocator: &Arc<BufferAllocator>,
+    memory_allocator: &Arc<MemoryAllocator>,
+    destroyer: &Arc<DeferredDestroyer>,
+    prerendered_frames: u32
+  ) -> Self {
     let mut frames = SmallVec::<[FrameContext; 5]>::with_capacity(prerendered_frames as usize);
     for _ in 0..prerendered_frames {
-      frames.push(FrameContext::new(device, memory_allocator, destroyer));
+      frames.push(FrameContext::new(device, buffer_allocator, memory_allocator, destroyer));
     }
 
     Self {
@@ -185,26 +195,76 @@ impl ThreadContext {
 }
 
 impl FrameContext {
-  fn new(device: &Arc<active_gpu_backend::Device>, memory_allocator: &Arc<MemoryAllocator>, destroyer: &Arc<DeferredDestroyer>) -> Self {
-    let command_pool = unsafe { device.graphics_queue().create_command_pool(CommandPoolType::CommandBuffers, CommandPoolFlags::empty()) };
-    let secondary_command_pool = unsafe { device.graphics_queue().create_command_pool(CommandPoolType::InnerCommandBuffers, CommandPoolFlags::empty()) };
-    let (sender, receiver) = crossbeam_channel::unbounded::<Box<CommandBuffer>>();
-    let (secondary_sender, secondary_receiver) = crossbeam_channel::unbounded::<Box<CommandBuffer>>();
-    let buffer_allocator = TransientBufferAllocator::new(device, memory_allocator, destroyer, memory_allocator.is_uma());
+  fn new(
+    device: &Arc<active_gpu_backend::Device>,
+    buffer_allocator: &Arc<BufferAllocator>,
+    memory_allocator: &Arc<MemoryAllocator>,
+    destroyer: &Arc<DeferredDestroyer>
+  ) -> Self {
+    let command_pool = unsafe { device.graphics_queue().create_command_pool(gpu::CommandPoolType::CommandBuffers, gpu::CommandPoolFlags::empty()) };
+    let secondary_command_pool = unsafe { device.graphics_queue().create_command_pool(gpu::CommandPoolType::InnerCommandBuffers, gpu::CommandPoolFlags::empty()) };
+    let (sender, receiver) = crossbeam_channel::unbounded::<active_gpu_backend::CommandBuffer>();
+    let (secondary_sender, secondary_receiver) = crossbeam_channel::unbounded::<active_gpu_backend::CommandBuffer>();
+    let transient_buffer_allocator = TransientBufferAllocator::new(device, memory_allocator, destroyer, memory_allocator.is_uma());
     Self {
+      device: device.clone(),
       command_pool: FrameContextCommandPool {
         command_pool,
         sender,
         receiver,
-        existing_cmd_buffers: VecDeque::new()
+        existing_cmd_buffer_handles: VecDeque::new()
       },
       secondary_command_pool: FrameContextCommandPool {
         command_pool: secondary_command_pool,
         sender: secondary_sender,
         receiver: secondary_receiver,
-        existing_cmd_buffers: VecDeque::new()
+        existing_cmd_buffer_handles: VecDeque::new()
       },
-      buffer_allocator: Arc::new(buffer_allocator),
+      transient_buffer_allocator: transient_buffer_allocator,
+      global_buffer_allocator: buffer_allocator.clone(),
+      buffer_refs: Vec::new(),
+      destroyer: destroyer.clone(),
+      acceleration_structure_scratch: None,
+      acceleration_structure_scratch_offset: 0u64,
+      frame: 1u64
+    }
+  }
+
+  #[inline(always)]
+  pub(super) fn reference_buffer(&mut self, buffer: &Arc<BufferSlice>) {
+      self.buffer_refs.push(buffer.clone());
+  }
+
+  #[inline(always)]
+  pub(super) fn transient_buffer_allocator(&self) -> &TransientBufferAllocator {
+    &self.transient_buffer_allocator
+  }
+
+  #[inline(always)]
+  pub(super) fn global_buffer_allocator(&self) -> &BufferAllocator {
+    &self.global_buffer_allocator
+  }
+
+  #[inline(always)]
+  pub(super) fn destroyer(&self) -> &Arc<DeferredDestroyer> {
+    &self.destroyer
+  }
+
+  #[inline(always)]
+  pub(super) fn device(&self) -> &Arc<active_gpu_backend::Device> {
+    &self.device
+  }
+
+  pub(super) fn frame(&self) -> u64 {
+    self.frame
+  }
+
+  #[inline(always)]
+  pub(super) fn sender(&self, is_secondary: bool) -> &Sender<active_gpu_backend::CommandBuffer> {
+    if !is_secondary {
+      &self.command_pool.sender
+    } else {
+      &self.secondary_command_pool.sender
     }
   }
 }

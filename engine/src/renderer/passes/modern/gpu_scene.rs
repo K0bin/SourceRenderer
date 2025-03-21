@@ -140,7 +140,7 @@ pub struct SceneBuffers {
 
 #[profiling::function]
 pub fn upload(
-    cmd_buffer: &mut CommandBufferRecorder,
+    cmd_buffer: &mut CommandBuffer,
     scene: &RendererScene,
     zero_view_index: u32,
     assets: &RendererAssetsReadOnly<'_>,

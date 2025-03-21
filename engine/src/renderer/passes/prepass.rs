@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use bevy_math::Affine3A;
-use bevy_tasks::ParallelSlice;
 use sourcerenderer_core::{
     Matrix4,
     Vec2,
@@ -9,7 +8,7 @@ use sourcerenderer_core::{
     Vec2UI,
 };
 use crate::asset::AssetManager;
-use crate::graphics::CommandBufferRecorder;
+use crate::graphics::CommandBuffer;
 
 use crate::renderer::asset::{GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssetsReadOnly};
 use crate::renderer::passes::taa::scaled_halton_point;
@@ -140,10 +139,10 @@ impl Prepass {
     }
 
     #[profiling::function]
-    pub(super) fn execute(
+    pub(super) fn execute<'a>(
         &mut self,
-        graphics_context: &GraphicsContext,
-        cmd_buffer: &mut CommandBufferRecorder,
+        context: &'a GraphicsContext,
+        cmd_buffer: &mut CommandBuffer<'a>,
         pass_params: &RenderPassParameters<'_>,
         swapchain_transform: Matrix4,
         frame: u64,
@@ -166,18 +165,6 @@ impl Prepass {
             HistoryResourceEntry::Current,
         );
 
-        cmd_buffer.begin_render_pass(
-            &RenderPassBeginInfo {
-                render_targets: &[],
-                depth_stencil: Some(&DepthStencilAttachment {
-                    view: &*depth_buffer,
-                    load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
-                    store_op: StoreOp::Store
-                })
-            },
-            RenderpassRecordingMode::CommandBuffers,
-        );
-
         let info = depth_buffer.texture().unwrap().info();
         let per_frame = FrameData {
             swapchain_transform,
@@ -186,103 +173,105 @@ impl Prepass {
         let transform_constant_buffer =
             cmd_buffer.upload_dynamic_data(&[per_frame], BufferUsage::CONSTANT).unwrap();
 
-        let inheritance = cmd_buffer.inheritance();
-        const CHUNK_SIZE: usize = 128;
-        let chunk_size = (view.drawable_parts.len() / 15).max(CHUNK_SIZE);
-        let pipeline = pass_params.assets.get_graphics_pipeline(self.pipeline).unwrap();
-        let task_pool = bevy_tasks::ComputeTaskPool::get();
         let assets = pass_params.assets;
-        let inner_cmd_buffers: Vec<FinishedCommandBuffer> = view.drawable_parts.par_chunk_map(task_pool, chunk_size, |_index, chunk| {
-                let mut command_buffer = graphics_context.get_inner_command_buffer(inheritance);
 
-                command_buffer.set_pipeline(crate::graphics::PipelineBinding::Graphics(&pipeline));
-                command_buffer.set_viewports(&[Viewport {
-                    position: Vec2::new(0.0f32, 0.0f32),
-                    extent: Vec2::new(info.width as f32, info.height as f32),
-                    min_depth: 0.0f32,
-                    max_depth: 1.0f32,
-                }]);
-                command_buffer.set_scissors(&[Scissor {
-                    position: Vec2I::new(0, 0),
-                    extent: Vec2UI::new(info.width, info.height),
-                }]);
-                command_buffer.bind_uniform_buffer(
-                    BindingFrequency::Frequent,
-                    2,
-                    BufferRef::Transient(&transform_constant_buffer),
-                    0,
-                    WHOLE_BUFFER,
-                );
+        const CHUNK_SIZE: u32 = 128;
+        let chunk_size = (view.drawable_parts.len() as u32 / 15).max(CHUNK_SIZE);
+        let pipeline = pass_params.assets.get_graphics_pipeline(self.pipeline).unwrap();
 
-                command_buffer.bind_uniform_buffer(
-                    BindingFrequency::Frequent,
-                    0,
-                    BufferRef::Transient(camera_buffer),
-                    0,
-                    WHOLE_BUFFER,
-                );
-                command_buffer.bind_uniform_buffer(
-                    BindingFrequency::Frequent,
-                    1,
-                    BufferRef::Transient(camera_history_buffer),
-                    0,
-                    WHOLE_BUFFER,
-                );
-                command_buffer.finish_binding();
+        let owned_cmd_buffer = std::mem::replace(cmd_buffer, context.get_command_buffer(QueueType::Graphics));
+        *cmd_buffer = owned_cmd_buffer.split_render_pass_with_chunks(&RenderPassBeginInfo {
+            render_targets: &[],
+            depth_stencil: Some(&DepthStencilAttachment {
+                view: &*depth_buffer,
+                load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
+                store_op: StoreOp::Store
+            })
+        }, &view.drawable_parts, chunk_size, |command_buffer, _chunk_index, _chunk_size, chunk| {
+            command_buffer.set_pipeline(crate::graphics::PipelineBinding::Graphics(&pipeline));
+            command_buffer.set_viewports(&[Viewport {
+                position: Vec2::new(0.0f32, 0.0f32),
+                extent: Vec2::new(info.width as f32, info.height as f32),
+                min_depth: 0.0f32,
+                max_depth: 1.0f32,
+            }]);
+            command_buffer.set_scissors(&[Scissor {
+                position: Vec2I::new(0, 0),
+                extent: Vec2UI::new(info.width, info.height),
+            }]);
+            command_buffer.bind_uniform_buffer(
+                BindingFrequency::Frequent,
+                2,
+                BufferRef::Transient(&transform_constant_buffer),
+                0,
+                WHOLE_BUFFER,
+            );
 
-                for part in chunk.iter() {
-                    let drawable = &static_drawables[part.drawable_index];
-                    if Self::DRAWABLE_LABELS {
-                        command_buffer.begin_label(&format!("Drawable {}", part.drawable_index));
-                    }
+            command_buffer.bind_uniform_buffer(
+                BindingFrequency::Frequent,
+                0,
+                BufferRef::Transient(camera_buffer),
+                0,
+                WHOLE_BUFFER,
+            );
+            command_buffer.bind_uniform_buffer(
+                BindingFrequency::Frequent,
+                1,
+                BufferRef::Transient(camera_history_buffer),
+                0,
+                WHOLE_BUFFER,
+            );
+            command_buffer.finish_binding();
 
-                    command_buffer.set_push_constant_data(
-                        &[PrepassModelCB {
-                            model: drawable.transform,
-                            old_model: drawable.old_transform,
-                        }],
-                        ShaderType::VertexShader,
-                    );
-
-                    let model: Option<&crate::renderer::asset::RendererModel> = assets.get_model(drawable.model);
-                    if model.is_none() {
-                        log::info!("Skipping draw because of missing model");
-                        continue;
-                    }
-                    let model = model.unwrap();
-                    let mesh = assets.get_mesh(model.mesh_handle());
-                    if mesh.is_none() {
-                        log::info!("Skipping draw because of missing mesh");
-                        continue;
-                    }
-                    let mesh = mesh.unwrap();
-
-                    command_buffer
-                        .set_vertex_buffer(0, BufferRef::Regular(mesh.vertices.buffer()), mesh.vertices.offset() as u64);
-                    if let Some(indices) = mesh.indices.as_ref() {
-                        command_buffer.set_index_buffer(
-                            BufferRef::Regular(indices.buffer()),
-                            indices.offset() as u64,
-                            IndexFormat::U32,
-                        );
-                    }
-
-                    let range = &mesh.parts[part.part_index];
-
-                    if mesh.indices.is_some() {
-                        command_buffer.draw_indexed(1, 0, range.count, range.start, 0);
-                    } else {
-                        command_buffer.draw(range.count, range.start);
-                    }
-                    if Self::DRAWABLE_LABELS {
-                        command_buffer.end_label();
-                    }
+            for part in chunk.iter() {
+                let drawable = &static_drawables[part.drawable_index];
+                if Self::DRAWABLE_LABELS {
+                    command_buffer.begin_label(&format!("Drawable {}", part.drawable_index));
                 }
-                command_buffer.finish()
-            });
 
-        cmd_buffer.execute_inner(inner_cmd_buffers);
-        cmd_buffer.end_render_pass();
+                command_buffer.set_push_constant_data(
+                    &[PrepassModelCB {
+                        model: drawable.transform,
+                        old_model: drawable.old_transform,
+                    }],
+                    ShaderType::VertexShader,
+                );
+
+                let model: Option<&crate::renderer::asset::RendererModel> = assets.get_model(drawable.model);
+                if model.is_none() {
+                    log::info!("Skipping draw because of missing model");
+                    continue;
+                }
+                let model = model.unwrap();
+                let mesh = assets.get_mesh(model.mesh_handle());
+                if mesh.is_none() {
+                    log::info!("Skipping draw because of missing mesh");
+                    continue;
+                }
+                let mesh = mesh.unwrap();
+
+                command_buffer
+                    .set_vertex_buffer(0, BufferRef::Regular(mesh.vertices.buffer()), mesh.vertices.offset() as u64);
+                if let Some(indices) = mesh.indices.as_ref() {
+                    command_buffer.set_index_buffer(
+                        BufferRef::Regular(indices.buffer()),
+                        indices.offset() as u64,
+                        IndexFormat::U32,
+                    );
+                }
+
+                let range = &mesh.parts[part.part_index];
+
+                if mesh.indices.is_some() {
+                    command_buffer.draw_indexed(1, 0, range.count, range.start, 0);
+                } else {
+                    command_buffer.draw(range.count, range.start);
+                }
+                if Self::DRAWABLE_LABELS {
+                    command_buffer.end_label();
+                }
+            }
+        });
         cmd_buffer.end_label();
     }
 }

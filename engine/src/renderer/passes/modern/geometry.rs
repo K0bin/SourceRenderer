@@ -228,7 +228,7 @@ impl GeometryPass {
     #[profiling::function]
     pub(super) fn execute(
         &mut self,
-        cmd_buffer: &mut CommandBufferRecorder,
+        cmd_buffer: &mut CommandBuffer,
         barriers: &RendererResources,
         device: &Arc<crate::graphics::Device>,
         depth_name: &str,
@@ -362,8 +362,7 @@ impl GeometryPass {
                     load_op: LoadOpDepthStencil::Load,
                     store_op: StoreOp::Store,
                 })
-            },
-            RenderpassRecordingMode::Commands,
+            }
         );
 
         let rtv_info = rtv.texture().unwrap().info();

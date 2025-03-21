@@ -83,7 +83,7 @@ pub(crate) enum VkCommandBufferState {
     Submitted,
 }
 
-pub struct VkInnerCommandBufferInfo {
+pub struct VkSecondaryCommandBufferInheritance {
     pub(crate) rt_formats: SmallVec<[vk::Format; 8]>,
     pub(crate) depth_format: vk::Format,
     pub(crate) stencil_format: vk::Format,
@@ -117,7 +117,6 @@ pub struct VkCommandBuffer {
     shared: Arc<VkShared>,
     pipeline: Option<BoundPipeline>,
     descriptor_manager: VkBindingManager,
-    inheritance: Option<VkInnerCommandBufferInfo>,
     frame: u64,
     reset_individually: bool,
     is_in_render_pass: bool
@@ -152,7 +151,6 @@ impl VkCommandBuffer {
             shared: shared.clone(),
             state: AtomicCell::new(VkCommandBufferState::Ready),
             descriptor_manager: VkBindingManager::new(device),
-            inheritance: None,
             frame: 0u64,
             reset_individually,
             is_in_render_pass: false
@@ -190,7 +188,7 @@ impl Drop for VkCommandBuffer {
 }
 
 impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
-    type CommandBufferInheritance = VkInnerCommandBufferInfo;
+    type CommandBufferInheritance = VkSecondaryCommandBufferInheritance;
 
     unsafe fn set_pipeline(&mut self, pipeline: gpu::PipelineBinding<VkBackend>) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
@@ -610,7 +608,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         }
     }
 
-    unsafe fn execute_inner(&mut self, submissions: &[&VkCommandBuffer]) {
+    unsafe fn execute_inner(&mut self, submissions: &[&VkCommandBuffer], _inheritance: Self::CommandBufferInheritance) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         if submissions.is_empty() {
             return;
@@ -977,13 +975,13 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         &mut self,
         renderpass_begin_info: &gpu::RenderPassBeginInfo<VkBackend>,
         recording_mode: gpu::RenderpassRecordingMode,
-    ) {
+    ) -> Option<Self::CommandBufferInheritance> {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
 
         begin_render_pass(self.device.as_ref(), self.cmd_buffer, renderpass_begin_info, recording_mode);
         self.is_in_render_pass = true;
 
-        if recording_mode == gpu::RenderpassRecordingMode::CommandBuffers {
+        if let gpu::RenderpassRecordingMode::CommandBuffers(_) = recording_mode {
             let formats: SmallVec<[vk::Format; 8]> = renderpass_begin_info.render_targets.iter()
                 .map(|rt| format_to_vk(rt.view.info().format.unwrap_or(rt.view.texture_info().format), false))
                 .collect();
@@ -1002,17 +1000,15 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             } else {
                 panic!("Render pass must have either render target or depth stencil attachment")
             };
-            self.inheritance = Some(VkInnerCommandBufferInfo {
+            Some(VkSecondaryCommandBufferInheritance {
                 rt_formats: formats,
                 depth_format,
                 stencil_format,
                 sample_count: samples
-            });
+            })
+        } else {
+            None
         }
-    }
-
-    unsafe fn inheritance(&self) -> &VkInnerCommandBufferInfo {
-        self.inheritance.as_ref().unwrap()
     }
 
     unsafe fn create_bottom_level_acceleration_structure(
@@ -1371,7 +1367,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         self.descriptor_manager.mark_all_dirty();
     }
 
-    unsafe fn begin(&mut self, frame: u64, inner_info: Option<&VkInnerCommandBufferInfo>) {
+    unsafe fn begin(&mut self, frame: u64, inner_info: Option<&VkSecondaryCommandBufferInheritance>) {
         assert_eq!(self.state.load(), VkCommandBufferState::Ready);
 
         self.descriptor_manager.mark_all_dirty();
