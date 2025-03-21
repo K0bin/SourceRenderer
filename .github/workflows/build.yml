@@ -16,9 +16,11 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: Update apt
+      run: sudo apt-get update
     - name: Install spirv-cross
       run: sudo apt install -y spirv-cross
-    - name: Install spirv-cross
+    - name: Install SDL
       run: sudo apt install -y libsdl3-0
     - name: Build
       run: cargo build --verbose
