@@ -824,6 +824,9 @@ impl<'a> CommandBuffer<'a> {
             let chunk_index = thread_index;
             let chunk_size = ((elements.len() as u32) + (threads_count - 1)) / threads_count;
             let element_index = thread_index * chunk_size;
+            if element_index >= elements.len() as u32 {
+                return;
+            }
             let element_count = chunk_size.min((elements.len() as u32) - element_index);
             let chunk = &elements[(element_index as usize)..((element_index + element_count) as usize)];
             thread_func(cmd_buffer, chunk_index, chunk_size, chunk)
