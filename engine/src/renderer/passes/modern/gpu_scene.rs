@@ -398,7 +398,7 @@ pub fn upload(
     unsafe {
         profiling::scope!("Copying scene data to VRAM");
 
-        let base_ptr = scene_buffer.map(false).unwrap();
+        let base_ptr = scene_buffer.map(cmd_buffer.frame(), false).unwrap();
 
         let mut ptr = base_ptr.add(scene_offset as usize);
         ptr.copy_from(std::mem::transmute(&local), scene_size as usize);
@@ -421,7 +421,7 @@ pub fn upload(
         ptr = base_ptr.add(lights_offset as usize);
         ptr.copy_from(std::mem::transmute(lights.as_ptr()), lights_size as usize);
 
-        scene_buffer.unmap(true);
+        scene_buffer.unmap(cmd_buffer.frame(), true);
     }
 
     SceneBuffers {

@@ -62,7 +62,7 @@ impl Queue {
         guard.is_idle = false;
 
         let QueueSubmission { command_buffer: finished_cmd_buffer, wait_fences, signal_fences, acquire_swapchain, release_swapchain } = submission;
-        let FinishedCommandBuffer { handle, sender } = finished_cmd_buffer;
+        let FinishedCommandBuffer { handle, sender, frame: _ } = finished_cmd_buffer;
 
         guard.virtual_queue.push_back(StoredQueueSubmission::CommandBuffer {
             command_buffer: handle,

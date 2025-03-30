@@ -8,7 +8,8 @@ pub struct TransientBufferSlice {
     _owned_buffer: Option<Box<TransientBuffer>>,
     buffer: &'static active_gpu_backend::Buffer,
     offset: u64,
-    length: u64
+    length: u64,
+    frame: u64,
 }
 
 unsafe impl Send for TransientBufferSlice {}
@@ -38,18 +39,19 @@ impl TransientBufferSlice {
     }
 
     #[inline(always)]
-    pub(super) fn handle<'a>(&'a self) -> &'a active_gpu_backend::Buffer {
+    pub(super) fn handle<'a>(&'a self, frame: u64) -> &'a active_gpu_backend::Buffer {
+        assert_eq!(self.frame, frame);
         self.buffer
     }
 
     #[inline(always)]
-    pub unsafe fn map(&self, invalidate: bool) -> Option<*mut c_void> {
-        self.handle().map(self.offset, self.length, invalidate)
+    pub unsafe fn map(&self, frame: u64, invalidate: bool) -> Option<*mut c_void> {
+        self.handle(frame).map(self.offset, self.length, invalidate)
     }
 
     #[inline(always)]
-    pub unsafe fn unmap(&self, flush: bool) {
-        self.handle().unmap(self.offset, self.length, flush)
+    pub unsafe fn unmap(&self, frame: u64, flush: bool) {
+        self.handle(frame).unmap(self.offset, self.length, flush)
     }
 }
 
@@ -141,6 +143,7 @@ impl TransientBufferAllocator {
       &self,
       info: &BufferInfo,
       memory_usage: MemoryUsage,
+      frame: u64,
       _name: Option<&str>,
     ) -> Result<TransientBufferSlice, OutOfMemoryError> {
         let heap_info = unsafe { self.device.get_buffer_heap_info(info) };
@@ -167,7 +170,8 @@ impl TransientBufferAllocator {
                 _owned_buffer: Some(boxed_buffer),
                 buffer: boxed_buffer_ref,
                 offset: 0,
-                length: info.size
+                length: info.size,
+                frame,
             };
             return Ok(slice);
         }
@@ -197,7 +201,8 @@ impl TransientBufferAllocator {
                 _owned_buffer: None,
                 buffer: unsafe { std::mem::transmute(&sliced_buffer.buffer) },
                 offset: aligned_offset,
-                length: info.size
+                length: info.size,
+                frame,
             });
 
             let used_up = sliced_buffer.size - sliced_buffer.offset <= BUFFER_FULL_GAP_THRESHOLD;
@@ -231,7 +236,8 @@ impl TransientBufferAllocator {
             _owned_buffer: None,
             buffer: unsafe { extend_lifetime(&sliced_buffer.buffer) },
             offset: 0,
-            length: info.size
+            length: info.size,
+            frame,
         };
         sliced_buffer.offset += info.size;
         matching_buffers.buffers.push(sliced_buffer);
