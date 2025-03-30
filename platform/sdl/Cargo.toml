@@ -28,7 +28,8 @@ async-fs = "2.1"
 objc2-metal = "0.3"
 objc2 = "0.6"
 objc2-foundation = "0.3"
-objc2-quartz-core = "0.3.0"
+objc2-quartz-core = "0.3"
+objc2-app-kit = "0.3"
 sourcerenderer_metal = { path = "../../graphics/metal" }
 
 [target.'cfg(not(target_os = "macos"))'.dependencies]

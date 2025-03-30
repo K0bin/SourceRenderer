@@ -1,7 +1,7 @@
-use std::error::Error;
+use std::{error::Error, ffi::c_void};
 
 use objc2::rc::Retained;
-use sdl2::video::WindowBuilder;
+use sdl3::video::WindowBuilder;
 use sourcerenderer_core::platform::GraphicsPlatform;
 use sourcerenderer_metal::{MTLBackend, MTLDevice, MTLInstance, MTLSurface, MTLSwapchain};
 
@@ -17,7 +17,7 @@ impl GraphicsPlatform<MTLBackend> for SDLPlatform {
     }
 }
 
-pub(crate) fn create_surface(sdl_window_handle: &sdl2::video::Window, graphics_instance: &MTLInstance) -> MTLSurface {
+pub(crate) fn create_surface(sdl_window_handle: &sdl3::video::Window, graphics_instance: &MTLInstance) -> MTLSurface {
     let has_handle: &dyn HasWindowHandle = sdl_window_handle;
     let handle = has_handle.window_handle();
     let view = match handle.expect("Failed to get window handle").as_raw() {
@@ -26,7 +26,17 @@ pub(crate) fn create_surface(sdl_window_handle: &sdl2::video::Window, graphics_i
         _ => unreachable!(),
     };
 
-    let layer = unsafe { sdl2_sys::SDL_Metal_GetLayer(view.as_ptr()) };
+    let mut layer: *mut c_void = std::ptr::null_mut();
+    let ns_view = view.as_ptr() as *mut objc2_app_kit::NSView;
+    for subview in unsafe { (*ns_view).subviews().iter() } {
+        let subview_ptr = Retained::as_ptr(&subview);
+        let subview_mut_ptr: *mut objc2_app_kit::NSView = unsafe { std::mem::transmute(subview_ptr) };
+        layer = unsafe { sdl3_sys::everything::SDL_Metal_GetLayer(subview_mut_ptr as *mut c_void) };
+        if !layer.is_null() {
+            break;
+        }
+    }
+
     let layer_ref: Retained<objc2_quartz_core::CAMetalLayer> = unsafe { Retained::from_raw(std::mem::transmute(layer)).unwrap() };
     std::mem::forget(layer_ref.clone()); // Increase ref count, Retained::from_raw doesn't do that.
     MTLSurface::new(graphics_instance, layer_ref)
