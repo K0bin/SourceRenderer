@@ -256,6 +256,7 @@ impl MTLCommandBuffer {
             MTLEncoder::Compute(encoder) => { encoder.endEncoding(); }
             MTLEncoder::Blit(encoder) => { encoder.endEncoding(); }
             MTLEncoder::AccelerationStructure(encoder) => { encoder.endEncoding(); }
+            MTLEncoder::None => {}
             _ => { panic!("Rendering encoders need to be ended manually using end_render_pass.")}
         }
         self.binding.mark_all_dirty();
