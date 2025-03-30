@@ -20,6 +20,7 @@ struct DeferredDestroyerInner {
     graphics_pipelines: Vec<(u64, active_gpu_backend::GraphicsPipeline)>,
     compute_pipelines: Vec<(u64, active_gpu_backend::ComputePipeline)>,
     raytracing_pipelines: Vec<(u64, active_gpu_backend::RayTracingPipeline)>,
+    buffer_allocations: Vec<(u64, Allocation<BufferAndAllocation>)>,
     query_pools: Vec<(u64, active_gpu_backend::QueryPool)>,
 }
 
@@ -42,6 +43,7 @@ impl DeferredDestroyer {
                     graphics_pipelines: Vec::new(),
                     compute_pipelines: Vec::new(),
                     raytracing_pipelines: Vec::new(),
+                    buffer_allocations: Vec::new(),
                     query_pools: Vec::new(),
                 }
             )
@@ -90,12 +92,6 @@ impl DeferredDestroyer {
         guard.acceleration_structures.push((frame, acceleration_structure));
     }
 
-    pub(super) fn destroy_buffer_slice_ref(&self, buffer_slice_ref: Arc<BufferSlice>) {
-        let mut guard = self.inner.lock().unwrap();
-        let frame = guard.current_counter;
-        guard.buffer_slice_refs.push((frame, buffer_slice_ref));
-    }
-
     pub(super) fn destroy_graphics_pipeline(&self, pipeline: active_gpu_backend::GraphicsPipeline) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
@@ -120,6 +116,12 @@ impl DeferredDestroyer {
         guard.query_pools.push((frame, query_pool));
     }
 
+    pub(super) fn destroy_buffer_allocation(&self, buffer_allocation: Allocation<BufferAndAllocation>) {
+        let mut guard = self.inner.lock().unwrap();
+        let frame = guard.current_counter;
+        guard.buffer_allocations.push((frame, buffer_allocation));
+    }
+
     pub(super) fn set_counter(&self, counter: u64) {
         let mut guard = self.inner.lock().unwrap();
         assert!(guard.current_counter <= counter);
@@ -141,6 +143,7 @@ impl DeferredDestroyer {
         guard.compute_pipelines.retain(|(resource_counter, _)| *resource_counter > counter);
         guard.raytracing_pipelines.retain(|(resource_counter, _)| *resource_counter > counter);
         guard.query_pools.retain(|(resource_counter, _)| *resource_counter > counter);
+        guard.buffer_allocations.retain(|(resource_counter, _)| *resource_counter > counter);
     }
 }
 
@@ -159,5 +162,6 @@ impl Drop for DeferredDestroyer {
         assert!(guard.compute_pipelines.is_empty());
         assert!(guard.raytracing_pipelines.is_empty());
         assert!(guard.query_pools.is_empty());
+        assert!(guard.buffer_allocations.is_empty());
     }
 }

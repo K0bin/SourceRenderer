@@ -61,8 +61,7 @@ impl AccelerationStructure {
 impl Drop for AccelerationStructure {
     fn drop(&mut self) {
         let acceleration_structure = unsafe { ManuallyDrop::take(&mut self.acceleration_structure) };
-        let buffer = unsafe { ManuallyDrop::take(&mut self.buffer) };
         self.destroyer.destroy_acceleration_structure(acceleration_structure);
-        self.destroyer.destroy_buffer_slice_ref(buffer);
+        unsafe { ManuallyDrop::drop(&mut self.buffer) };
     }
 }

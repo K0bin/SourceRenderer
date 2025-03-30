@@ -153,17 +153,13 @@ impl TransientBufferAllocator {
 
         if info.size > UNIQUE_ALLOCATION_THRESHOLD {
             // Don't do one-off buffers for command lists
-            let buffer_and_alloc = BufferAllocator::create_buffer(&self.device, &self.allocator, &self.destroyer, info, memory_usage, None)?;
-            let buffer = unsafe { std::ptr::read(&buffer_and_alloc.buffer as *const ManuallyDrop<active_gpu_backend::Buffer>) };
-            let allocation = unsafe { std::ptr::read(&buffer_and_alloc.allocation as *const Option<MemoryAllocation<active_gpu_backend::Heap>>) };
-            let destroyer = unsafe { std::ptr::read(&buffer_and_alloc.destroyer as *const Arc<DeferredDestroyer>) };
-            std::mem::forget(buffer_and_alloc);
+            let BufferAndAllocation { buffer, allocation } = BufferAllocator::create_buffer(&self.device, &self.allocator, info, memory_usage, None)?;
             let boxed_buffer = Box::new(TransientBuffer {
                 size: info.size,
                 offset: 0,
-                buffer,
+                buffer: ManuallyDrop::new(buffer),
                 allocation,
-                destroyer,
+                destroyer: self.destroyer.clone(),
             });
             let boxed_buffer_ref: &'static active_gpu_backend::Buffer = unsafe { extend_lifetime(&boxed_buffer.as_ref().buffer) };
             let slice = TransientBufferSlice {
@@ -218,18 +214,13 @@ impl TransientBufferAllocator {
         let mut new_buffer_info = info.clone();
         new_buffer_info.size = BUFFER_SIZE.max(info.size);
 
-        let buffer_and_alloc = BufferAllocator::create_buffer(&self.device, &self.allocator, &self.destroyer, &new_buffer_info, memory_usage, None)?;
-        let buffer = unsafe { std::ptr::read(&buffer_and_alloc.buffer as *const ManuallyDrop<active_gpu_backend::Buffer>) };
-        let allocation = unsafe { std::ptr::read(&buffer_and_alloc.allocation as *const Option<MemoryAllocation<active_gpu_backend::Heap>>) };
-        let destroyer = unsafe { std::ptr::read(&buffer_and_alloc.destroyer as *const Arc<DeferredDestroyer>) };
-        std::mem::forget(buffer_and_alloc);
-
+        let BufferAndAllocation { buffer, allocation } = BufferAllocator::create_buffer(&self.device, &self.allocator, info, memory_usage, None)?;
         let mut sliced_buffer = Box::new(TransientBuffer {
             size: new_buffer_info.size,
             offset: 0,
-            buffer: buffer,
+            buffer: ManuallyDrop::new(buffer),
             allocation,
-            destroyer,
+            destroyer: self.destroyer.clone(),
         });
         sliced_buffer.reset();
         let slice: TransientBufferSlice = TransientBufferSlice {
