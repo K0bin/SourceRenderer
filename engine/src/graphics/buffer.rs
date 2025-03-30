@@ -1,4 +1,9 @@
-use std::{sync::{Arc, Mutex}, collections::HashMap, fmt::{Debug, Formatter}, hash::Hash, ffi::c_void};
+use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
+use std::hash::Hash;
+use std::ffi::c_void;
+use std::mem::ManuallyDrop;
 
 use log::trace;
 use sourcerenderer_core::gpu::Buffer as _;
@@ -7,8 +12,19 @@ use sourcerenderer_core::gpu::Heap as _;
 use super::*;
 
 pub struct BufferAndAllocation {
-    pub(super) buffer: active_gpu_backend::Buffer,
-    pub(super) allocation: Option<MemoryAllocation<active_gpu_backend::Heap>>
+    pub(super) buffer: ManuallyDrop<active_gpu_backend::Buffer>,
+    pub(super) allocation: Option<MemoryAllocation<active_gpu_backend::Heap>>,
+    pub(super) destroyer: Arc<DeferredDestroyer>,
+}
+
+impl Drop for BufferAndAllocation {
+    fn drop(&mut self) {
+        let buffer = unsafe { ManuallyDrop::take(&mut self.buffer) };
+        self.destroyer.destroy_buffer(buffer);
+        if let Some(allocation) = self.allocation.take() {
+            self.destroyer.destroy_allocation(allocation)
+        }
+    }
 }
 
 pub struct BufferSlice(Allocation<BufferAndAllocation>);
@@ -95,14 +111,16 @@ struct BufferKey {
 pub struct BufferAllocator {
     device: Arc<active_gpu_backend::Device>,
     allocator: Arc<MemoryAllocator>,
+    destroyer: Arc<DeferredDestroyer>,
     buffers: Mutex<HashMap<BufferKey, Vec<Chunk<BufferAndAllocation>>>>,
 }
 
 impl BufferAllocator {
-    pub(super) fn new(device: &Arc<active_gpu_backend::Device>, memory_allocator: &Arc<MemoryAllocator>) -> Self {
+    pub(super) fn new(device: &Arc<active_gpu_backend::Device>, memory_allocator: &Arc<MemoryAllocator>, destroyer: &Arc<DeferredDestroyer>) -> Self {
         Self {
             device: device.clone(),
             allocator: memory_allocator.clone(),
+            destroyer: destroyer.clone(),
             buffers: Mutex::new(HashMap::new())
         }
     }
@@ -118,7 +136,7 @@ impl BufferAllocator {
 
         if info.size > UNIQUE_ALLOCATION_THRESHOLD {
             // Don't do one-off buffers for command lists
-            let buffer_and_allocation = BufferAllocator::create_buffer(&self.device, &self.allocator, info, memory_usage, name)?;
+            let buffer_and_allocation = BufferAllocator::create_buffer(&self.device, &self.allocator, &self.destroyer, info, memory_usage, name)?;
             let chunk = Chunk::new(buffer_and_allocation, info.size);
             let suballocation = chunk.allocate(info.size, alignment).ok_or(OutOfMemoryError {})?;
             return Ok(Arc::new(BufferSlice(suballocation)));
@@ -141,14 +159,14 @@ impl BufferAllocator {
         let mut sliced_buffer_info = info.clone();
         sliced_buffer_info.size = SLICED_BUFFER_SIZE.max(info.size);
 
-        let buffer_and_allocation = BufferAllocator::create_buffer(&self.device, &self.allocator, &sliced_buffer_info, memory_usage, None)?;
+        let buffer_and_allocation = BufferAllocator::create_buffer(&self.device, &self.allocator, &self.destroyer, &sliced_buffer_info, memory_usage, None)?;
         let chunk = Chunk::new(buffer_and_allocation, sliced_buffer_info.size);
         let allocation = chunk.allocate(info.size, alignment).unwrap();
         matching_chunks.push(chunk);
         return Ok(Arc::new(BufferSlice(allocation)));
     }
 
-    pub(super) fn create_buffer(device: &Arc<active_gpu_backend::Device>, allocator: &MemoryAllocator, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) -> Result<BufferAndAllocation, OutOfMemoryError> {
+    pub(super) fn create_buffer(device: &Arc<active_gpu_backend::Device>, allocator: &MemoryAllocator, destroyer: &Arc<DeferredDestroyer>, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) -> Result<BufferAndAllocation, OutOfMemoryError> {
         let heap_info = unsafe { device.get_buffer_heap_info(info) };
         if heap_info.dedicated_allocation_preference == DedicatedAllocationPreference::RequireDedicated || heap_info.dedicated_allocation_preference == DedicatedAllocationPreference::PreferDedicated {
             let memory_types = unsafe { device.memory_type_infos() };
@@ -192,15 +210,17 @@ impl BufferAllocator {
             }
 
             Ok(BufferAndAllocation {
-                buffer: buffer?,
-                allocation: None
+                buffer: ManuallyDrop::new(buffer?),
+                allocation: None,
+                destroyer: destroyer.clone(),
             })
         } else {
             let allocation = allocator.allocate(memory_usage, &heap_info)?;
             let buffer = unsafe { allocation.as_ref().data().create_buffer(info, allocation.as_ref().range.offset, name) }?;
             Ok(BufferAndAllocation {
-                buffer,
-                allocation: Some(allocation)
+                buffer: ManuallyDrop::new(buffer),
+                allocation: Some(allocation),
+                destroyer: destroyer.clone(),
             })
         }
     }
