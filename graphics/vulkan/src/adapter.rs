@@ -342,6 +342,10 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             panic!("Your Vulkan driver is not capable of running this application. Dynamic rendering is a required feature!");
         }
 
+        if !supported_features_12.host_query_reset == vk::TRUE {
+            panic!("Your Vulkan driver is not capable of running this application. Host query reset is a required feature!");
+        }
+
         if extensions
             .intersects(VkAdapterExtensionSupport::BARYCENTRICS)
         {
@@ -391,6 +395,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
 
         enabled_features.features.shader_storage_image_write_without_format = vk::TRUE;
         enabled_features.features.sampler_anisotropy = vk::TRUE;
+        enabled_features_12.host_query_reset = vk::TRUE;
         enabled_features_13.dynamic_rendering = vk::TRUE;
 
         enabled_features_11.p_next = std::mem::replace(
