@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::{sync::Arc, mem::ManuallyDrop};
+use std::{sync::{Arc, atomic::{AtomicU64, Ordering}}, mem::ManuallyDrop};
 
 use crossbeam_channel::{Sender, Receiver};
 use smallvec::SmallVec;
@@ -41,6 +41,15 @@ pub struct FrameContext {
   pub(super) acceleration_structure_scratch_offset: u64,
   frame: u64,
   query_allocator: QueryAllocator,
+  remaining_command_buffers: Arc<AtomicU64>,
+}
+
+pub struct FrameContextCommandBufferEntry(Arc<AtomicU64>);
+
+impl Drop for FrameContextCommandBufferEntry {
+  fn drop(&mut self) {
+    self.0.fetch_sub(1, Ordering::SeqCst);
+  }
 }
 
 struct FrameContextCommandPool {
@@ -80,6 +89,7 @@ impl GraphicsContext {
 
     for thread_context in &mut (*self.thread_contexts) {
       let frame_context = thread_context.get_frame_mut(self.current_frame);
+      assert_eq!(frame_context.remaining_command_buffers.load(Ordering::SeqCst), 0);
 
       frame_context.buffer_refs.clear();
       frame_context.acceleration_structure_scratch = None;
@@ -89,6 +99,8 @@ impl GraphicsContext {
       unsafe { frame_context.command_pool.command_pool.reset(); }
       unsafe { frame_context.secondary_command_pool.command_pool.reset(); }
       frame_context.transient_buffer_allocator.reset();
+
+      frame_context.query_allocator.reset();
 
       while let Ok(mut existing_cmd_buffer) = frame_context.command_pool.receiver.try_recv() {
         unsafe { existing_cmd_buffer.reset(self.current_frame); }
@@ -120,7 +132,18 @@ impl GraphicsContext {
     let cmd_buffer = existing_cmd_buffer_handle.unwrap_or_else(|| {
       unsafe { frame_context.command_pool.command_pool.create_command_buffer() }
     });
-    let mut recorder = CommandBuffer::new(self, frame_context, cmd_buffer, false);
+
+    let counter = frame_context.remaining_command_buffers.clone();
+    counter.fetch_add(1, Ordering::SeqCst);
+    let frame_context_entry = FrameContextCommandBufferEntry(counter);
+
+    let mut recorder = CommandBuffer::new(
+      self,
+      frame_context,
+      cmd_buffer,
+      frame_context_entry,
+      false
+    );
     recorder.begin(self.current_frame, None);
     recorder
   }
@@ -133,7 +156,18 @@ impl GraphicsContext {
     let cmd_buffer = existing_cmd_buffer_handle.unwrap_or_else(|| {
       unsafe { frame_context.secondary_command_pool.command_pool.create_command_buffer() }
     });
-    let mut recorder = CommandBuffer::new(self, frame_context, cmd_buffer, true);
+
+    let counter = frame_context.remaining_command_buffers.clone();
+    counter.fetch_add(1, Ordering::SeqCst);
+    let frame_context_entry = FrameContextCommandBufferEntry(counter);
+
+    let mut recorder = CommandBuffer::new(
+      self,
+      frame_context,
+      cmd_buffer,
+      frame_context_entry,
+      true
+    );
     recorder.begin(self.current_frame, Some(inheritance));
     recorder
   }
@@ -231,7 +265,8 @@ impl FrameContext {
       acceleration_structure_scratch: None,
       acceleration_structure_scratch_offset: 0u64,
       frame: 1u64,
-      query_allocator: QueryAllocator::new(device, destroyer, QUERY_COUNT)
+      query_allocator: QueryAllocator::new(device, destroyer, QUERY_COUNT),
+      remaining_command_buffers: Arc::new(AtomicU64::new(0u64)),
     }
   }
 

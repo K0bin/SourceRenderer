@@ -20,6 +20,7 @@ enum StoredQueueSubmission {
         wait_swapchain: Option<(Arc<Mutex<super::Swapchain>>, Arc<Backbuffer>)>,
         signal_fences: SmallVec<[SharedFenceValuePair; 4]>,
         wait_fences: SmallVec<[SharedFenceValuePair; 4]>,
+        _frame_context_entry: FrameContextCommandBufferEntry,
     },
     Present {
         swapchain: (Arc<Mutex<super::Swapchain>>, Arc<active_gpu_backend::Backbuffer>),
@@ -62,7 +63,7 @@ impl Queue {
         guard.is_idle = false;
 
         let QueueSubmission { command_buffer: finished_cmd_buffer, wait_fences, signal_fences, acquire_swapchain, release_swapchain } = submission;
-        let FinishedCommandBuffer { handle, sender, frame: _ } = finished_cmd_buffer;
+        let FinishedCommandBuffer { handle, sender, frame_context_entry } = finished_cmd_buffer;
 
         guard.virtual_queue.push_back(StoredQueueSubmission::CommandBuffer {
             command_buffer: handle,
@@ -71,6 +72,7 @@ impl Queue {
             wait_fences: wait_fences.iter().map(|fence_ref| SharedFenceValuePair::from(fence_ref)).collect(),
             signal_swapchain: release_swapchain.map(|(swapchain, key)| (swapchain.clone(), key.clone())),
             wait_swapchain: acquire_swapchain.map(|(swapchain, key)| (swapchain.clone(), key.clone())),
+            _frame_context_entry: frame_context_entry,
         });
     }
 
@@ -230,7 +232,8 @@ impl Queue {
                     signal_fences,
                     signal_swapchain,
                     wait_fences,
-                    wait_swapchain
+                    wait_swapchain,
+                    _frame_context_entry,
                 } => {
                     if wait_fences.is_empty() && signal_fences.is_empty() && wait_swapchain.is_none() && signal_swapchain.is_none() {
                         push_command_buffer(&mut holder, command_buffer);
