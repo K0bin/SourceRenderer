@@ -248,7 +248,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         queue.write_texture_with_u8_slice_and_gpu_extent_3d_dict(&dst_info, slice, &src_info, &copy_size).unwrap();
     }
 
-    unsafe fn create_query_pool(&mut self, count: u32) -> WebGPUQueryPool {
+    unsafe fn create_query_pool(&self, count: u32) -> WebGPUQueryPool {
         WebGPUQueryPool::new(&self.device, count)
     }
 }

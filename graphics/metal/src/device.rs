@@ -364,7 +364,7 @@ impl gpu::Device<MTLBackend> for MTLDevice {
         );
     }
 
-    unsafe fn create_query_pool(&mut self, count: u32) -> MTLQueryPool {
+    unsafe fn create_query_pool(&self, count: u32) -> MTLQueryPool {
         MTLQueryPool::new(&self.device, count)
     }
 }
