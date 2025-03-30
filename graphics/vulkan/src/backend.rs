@@ -24,7 +24,7 @@ impl gpu::GPUBackend for VkBackend {
     type Fence = VkTimelineSemaphore;
     type Queue = VkQueue;
     type Heap = VkMemoryHeap;
-    //type QueryRange = VkQueryRange;
+    type QueryPool = VkQueryPool;
     type AccelerationStructure = VkAccelerationStructure;
 
     fn name() -> &'static str {

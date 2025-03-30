@@ -470,6 +470,10 @@ impl gpu::Device<VkBackend> for VkDevice {
             ..Default::default()
         }).unwrap();
     }
+
+    unsafe fn create_query_pool(&mut self, count: u32) -> VkQueryPool {
+        VkQueryPool::new(&self.device, vk::QueryType::OCCLUSION, count)
+    }
 }
 
 impl Drop for VkDevice {

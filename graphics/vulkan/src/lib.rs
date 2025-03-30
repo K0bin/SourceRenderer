@@ -1,7 +1,5 @@
 mod raw;
 
-// pub use self::bindless::*;
-//pub use self::query::*;
 pub use self::queue::*;
 pub use self::{
     adapter::*,
@@ -21,6 +19,7 @@ pub use self::{
     heap::*,
     bindless::*,
     rt::*,
+    query::*
 };
 pub(crate) use self::renderpass::*;
 pub(crate) use crate::raw::*;
@@ -35,7 +34,7 @@ mod device;
 mod format;
 mod instance;
 mod pipeline;
-//mod query; // NEEDS REDESIGN
+mod query;
 mod queue;
 mod renderpass;
 mod rt;

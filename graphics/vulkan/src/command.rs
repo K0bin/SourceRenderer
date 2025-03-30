@@ -87,7 +87,8 @@ pub struct VkSecondaryCommandBufferInheritance {
     pub(crate) rt_formats: SmallVec<[vk::Format; 8]>,
     pub(crate) depth_format: vk::Format,
     pub(crate) stencil_format: vk::Format,
-    pub(crate) sample_count: vk::SampleCountFlags
+    pub(crate) sample_count: vk::SampleCountFlags,
+    pub(crate) query_pool: Option<vk::QueryPool>,
 }
 
 pub(crate) enum BoundPipeline {
@@ -119,7 +120,8 @@ pub struct VkCommandBuffer {
     descriptor_manager: VkBindingManager,
     frame: u64,
     reset_individually: bool,
-    is_in_render_pass: bool
+    is_in_render_pass: bool,
+    query_pool: Option<vk::QueryPool>,
 }
 
 impl VkCommandBuffer {
@@ -153,7 +155,8 @@ impl VkCommandBuffer {
             descriptor_manager: VkBindingManager::new(device),
             frame: 0u64,
             reset_individually,
-            is_in_render_pass: false
+            is_in_render_pass: false,
+            query_pool: None,
         }
     }
 
@@ -1004,7 +1007,8 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                 rt_formats: formats,
                 depth_format,
                 stencil_format,
-                sample_count: samples
+                sample_count: samples,
+                query_pool: self.query_pool.clone()
             })
         } else {
             None
@@ -1375,6 +1379,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         self.frame = frame;
 
         let (flags, rendering_inhertiance_info) = if let Some(inner_info) = inner_info {
+            self.query_pool = inner_info.query_pool.clone();
             (
                 vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT
                     | vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE,
@@ -1481,6 +1486,19 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         }
         self.descriptor_manager.reset(frame);
         self.state.store(VkCommandBufferState::Ready);
+    }
+
+    unsafe fn begin_query(&mut self, index: u32) {
+        self.device.cmd_begin_query(self.cmd_buffer, self.query_pool.unwrap(), index, vk::QueryControlFlags::empty());
+    }
+
+    unsafe fn end_query(&mut self, index: u32) {
+        self.device.cmd_end_query(self.cmd_buffer, self.query_pool.unwrap(), index);
+    }
+
+    unsafe fn copy_query_results_to_buffer(&mut self, query_pool: &VkQueryPool, start_index: u32, count: u32, buffer: &VkBuffer, buffer_offset: u64) {
+        self.device.cmd_copy_query_pool_results(self.cmd_buffer, query_pool.handle(), start_index, count,
+            buffer.handle(), buffer_offset as u64, std::mem::size_of::<u32>() as u64, vk::QueryResultFlags::WAIT | vk::QueryResultFlags::TYPE_64);
     }
 }
 
