@@ -146,6 +146,10 @@ pub trait CommandBuffer<B: GPUBackend> : Send {
   unsafe fn end_render_pass(&mut self);
   unsafe fn barrier(&mut self, barriers: &[Barrier<B>]);
 
+  unsafe fn begin_query(&mut self, query_index: u32);
+  unsafe fn end_query(&mut self, query_index: u32);
+  unsafe fn copy_query_results_to_buffer(&mut self, query_pool: &B::QueryPool, start_index: u32, count: u32, buffer: &B::Buffer, buffer_offset: u64);
+
   type CommandBufferInheritance: Send + Sync;
   unsafe fn execute_inner(&mut self, submission: &[&B::CommandBuffer], inheritance: Self::CommandBufferInheritance);
 
@@ -272,7 +276,8 @@ pub struct DepthStencilAttachment<'a, B: GPUBackend> {
 
 pub struct RenderPassBeginInfo<'a, B: GPUBackend> {
   pub render_targets: &'a [RenderTarget<'a, B>],
-  pub depth_stencil: Option<&'a DepthStencilAttachment<'a, B>>
+  pub depth_stencil: Option<&'a DepthStencilAttachment<'a, B>>,
+  pub query_pool: Option<&'a B::QueryPool>,
 }
 
 bitflags! {

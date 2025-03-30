@@ -22,7 +22,7 @@ pub trait GPUBackend: 'static + Sized {
   type Fence : Fence + Send + Sync;
   type Queue : Queue<Self> + Send + Sync;
   type Heap : Heap<Self>;
-  //type QueryRange : Send + Sync;
+  type QueryPool : QueryPool + Send + Sync;
   type AccelerationStructure : AccelerationStructure + Send + Sync;
 
   fn name() -> &'static str;
