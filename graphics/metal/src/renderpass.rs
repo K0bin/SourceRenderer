@@ -70,6 +70,7 @@ pub(crate) unsafe fn render_pass_to_descriptors(info: &gpu::RenderPassBeginInfo<
             attachment_desc.setClearDepth(value.depth as f64);
         }
     }
+    descriptor.setVisibilityResultBuffer(info.query_pool.map(|p| p.handle()));
     descriptor.to_owned()
 }
 

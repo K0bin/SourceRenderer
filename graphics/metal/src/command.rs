@@ -2,7 +2,7 @@ use std::{ffi::{c_void, CStr}, ptr::NonNull, sync::{Arc, Mutex}};
 
 use objc2::{rc::Retained, runtime::ProtocolObject};
 use objc2_foundation::{NSInteger, NSRange, NSString, NSUInteger};
-use objc2_metal::{self, MTLAccelerationStructureCommandEncoder as _, MTLBlitCommandEncoder, MTLBuffer as _, MTLCommandBuffer as _, MTLCommandEncoder as _, MTLCommandQueue as _, MTLComputeCommandEncoder as _, MTLDevice as _, MTLIndirectCommandBuffer as _, MTLParallelRenderCommandEncoder as _, MTLRenderCommandEncoder as _, MTLTexture as _};
+use objc2_metal::{self, MTLAccelerationStructureCommandEncoder as _, MTLBlitCommandEncoder, MTLBuffer as _, MTLCommandBuffer as _, MTLCommandEncoder as _, MTLCommandQueue as _, MTLComputeCommandEncoder as _, MTLDevice as _, MTLIndirectCommandBuffer as _, MTLParallelRenderCommandEncoder as _, MTLRenderCommandEncoder, MTLTexture as _};
 
 use smallvec::SmallVec;
 use sourcerenderer_core::{align_up_32, gpu::{self, Texture as _}};
@@ -777,6 +777,27 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
 
     unsafe fn trace_ray(&mut self, _width: u32, _height: u32, _depth: u32) {
         panic!("Metal does not support ray tracing pipelines")
+    }
+
+    unsafe fn begin_query(&mut self, query_index: u32) {
+        let encoder = self.get_render_pass_encoder();
+        encoder.setVisibilityResultMode_offset(objc2_metal::MTLVisibilityResultMode::Counting, (query_index as NSUInteger) * 8);
+    }
+
+    unsafe fn end_query(&mut self, query_index: u32) {
+        let encoder = self.get_render_pass_encoder();
+        encoder.setVisibilityResultMode_offset(objc2_metal::MTLVisibilityResultMode::Disabled, (query_index as NSUInteger) * 8);
+    }
+
+    unsafe fn copy_query_results_to_buffer(&mut self, query_pool: &MTLQueryPool, start_index: u32, count: u32, buffer: &MTLBuffer, buffer_offset: u64) {
+        let blit_encoder = self.get_blit_encoder();
+        blit_encoder.copyFromBuffer_sourceOffset_toBuffer_destinationOffset_size(
+            query_pool.handle(),
+            start_index as NSUInteger * 8,
+            buffer.handle(),
+            buffer_offset as NSUInteger,
+            count as NSUInteger * 8
+        );
     }
 }
 

@@ -363,4 +363,8 @@ impl gpu::Device<MTLBackend> for MTLDevice {
             NonNull::new_unchecked(std::mem::transmute::<*const c_void, *mut c_void>(src)), row_pitch, slice_pitch
         );
     }
+
+    unsafe fn create_query_pool(&mut self, count: u32) -> MTLQueryPool {
+        MTLQueryPool::new(&self.device, count)
+    }
 }
