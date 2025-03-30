@@ -62,7 +62,7 @@ impl GraphicsContext {
     }
   }
 
-  pub fn begin_frame(&mut self) {
+  pub fn begin_frame(&mut self) -> u64 {
     self.current_frame += 1;
     let new_frame = self.current_frame;
     self.destroyer.set_counter(new_frame);
@@ -96,6 +96,7 @@ impl GraphicsContext {
         frame_context.secondary_command_pool.existing_cmd_buffer_handles.push_back(existing_cmd_buffer);
       }
     }
+    new_frame
   }
 
   pub fn end_frame(&mut self) -> SharedFenceValuePairRef {
@@ -255,6 +256,7 @@ impl FrameContext {
     &self.device
   }
 
+  #[inline(always)]
   pub(super) fn frame(&self) -> u64 {
     self.frame
   }

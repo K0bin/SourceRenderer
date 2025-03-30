@@ -170,7 +170,7 @@ impl<P: Platform> Renderer<P> {
         };
 
         let mut swapchain_guard = self.swapchain.lock().unwrap();
-        self.context.begin_frame();
+        let _ = self.context.begin_frame();
         self.asset_manager.bump_frame(&self.context);
 
         let render_path_result = self.render_path.render(

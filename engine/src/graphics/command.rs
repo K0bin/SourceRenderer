@@ -67,12 +67,31 @@ pub struct CommandBuffer<'a> {
 
 pub struct FinishedCommandBuffer {
     pub(super) handle: active_gpu_backend::CommandBuffer,
-    pub(super) sender: Sender<active_gpu_backend::CommandBuffer>
+    pub(super) sender: Sender<active_gpu_backend::CommandBuffer>,
+    pub(super) frame: u64,
 }
 
 pub enum BufferRef<'a> {
     Transient(&'a TransientBufferSlice),
     Regular(&'a Arc<BufferSlice>)
+}
+
+impl<'a> BufferRef<'a> {
+    #[inline(always)]
+    fn deconstruct(&self, frame: u64) -> BufferHandleRef<'a> {
+        match self {
+            BufferRef::Regular(b) => BufferHandleRef {
+                handle: b.handle(),
+                offset: b.offset(),
+                length: b.length()
+            },
+            BufferRef::Transient(t) => BufferHandleRef {
+                handle: t.handle(frame),
+                offset: t.offset(),
+                length: t.length()
+            }
+        }
+    }
 }
 
 impl<'a> Clone for BufferRef<'a> {
@@ -82,6 +101,12 @@ impl<'a> Clone for BufferRef<'a> {
             BufferRef::Transient(t) => BufferRef::Transient(t)
         }
     }
+}
+
+struct BufferHandleRef<'a> {
+    handle: &'a active_gpu_backend::Buffer,
+    offset: u64,
+    length: u64,
 }
 
 impl<'a> Copy for BufferRef<'a> {}
@@ -103,40 +128,14 @@ impl<'a> CommandBuffer<'a> {
     }
 
     pub fn set_vertex_buffer(&mut self, index: u32, buffer: BufferRef, offset: u64) {
-        let buffer_handle: &active_gpu_backend::Buffer;
-        let buffer_offset: u64;
-
-        match buffer {
-            BufferRef::Transient(transient_buffer) => {
-                buffer_handle = transient_buffer.handle();
-                buffer_offset = transient_buffer.offset();
-            }
-            BufferRef::Regular(buffer) => {
-                self.context.reference_buffer(buffer);
-                buffer_handle = buffer.handle();
-                buffer_offset = buffer.offset();
-            }
-        }
+        let BufferHandleRef { handle: buffer_handle, offset: buffer_offset, length: _ } = buffer.deconstruct(self.frame());
         unsafe {
             self.cmd_buffer_handle.set_vertex_buffer(index, buffer_handle, buffer_offset + offset);
         }
     }
 
     pub fn set_index_buffer(&mut self, buffer: BufferRef, offset: u64, format: IndexFormat) {
-        let buffer_handle: &active_gpu_backend::Buffer;
-        let buffer_offset: u64;
-
-        match buffer {
-            BufferRef::Transient(transient_buffer) => {
-                buffer_handle = transient_buffer.handle();
-                buffer_offset = transient_buffer.offset();
-            }
-            BufferRef::Regular(buffer) => {
-                self.context.reference_buffer(buffer);
-                buffer_handle = buffer.handle();
-                buffer_offset = buffer.offset();
-            }
-        }
+        let BufferHandleRef { handle: buffer_handle, offset: buffer_offset, length: _ } = buffer.deconstruct(self.frame());
         unsafe {
             self.cmd_buffer_handle.set_index_buffer(buffer_handle, buffer_offset + offset, format);
         }
@@ -186,29 +185,17 @@ impl<'a> CommandBuffer<'a> {
     }
 
     pub fn draw_indexed_indirect(&mut self, draw_buffer: BufferRef, draw_buffer_offset: u32, count_buffer: BufferRef, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
+        let BufferHandleRef { handle: draw_buffer_handle, offset: _, length: _ } = draw_buffer.deconstruct(self.frame());
+        let BufferHandleRef { handle: count_buffer_handle, offset: _, length: _ } = count_buffer.deconstruct(self.frame());
         unsafe {
-            let draw_buffer_handle = match draw_buffer {
-                BufferRef::Regular(b) => b.handle(),
-                BufferRef::Transient(b) => b.handle()
-            };
-            let count_buffer_handle = match count_buffer {
-                BufferRef::Regular(b) => b.handle(),
-                BufferRef::Transient(b) => b.handle()
-            };
             self.cmd_buffer_handle.draw_indexed_indirect(draw_buffer_handle, draw_buffer_offset, count_buffer_handle, count_buffer_offset, max_draw_count, stride);
         }
     }
 
     pub fn draw_indirect(&mut self, draw_buffer: BufferRef, draw_buffer_offset: u32, count_buffer: BufferRef, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
+        let BufferHandleRef { handle: draw_buffer_handle, offset: _, length: _ } = draw_buffer.deconstruct(self.frame());
+        let BufferHandleRef { handle: count_buffer_handle, offset: _, length: _ } = count_buffer.deconstruct(self.frame());
         unsafe {
-            let draw_buffer_handle = match draw_buffer {
-                BufferRef::Regular(b) => b.handle(),
-                BufferRef::Transient(b) => b.handle()
-            };
-            let count_buffer_handle = match count_buffer {
-                BufferRef::Regular(b) => b.handle(),
-                BufferRef::Transient(b) => b.handle()
-            };
             self.cmd_buffer_handle.draw_indirect(draw_buffer_handle, draw_buffer_offset, count_buffer_handle, count_buffer_offset, max_draw_count, stride);
         }
     }
@@ -246,48 +233,14 @@ impl<'a> CommandBuffer<'a> {
     }
 
     pub fn bind_uniform_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: BufferRef, offset: u64, length: u64) {
-        let buffer_handle: &active_gpu_backend::Buffer;
-        let buffer_offset: u64;
-        let buffer_length: u64;
-
-        match buffer {
-            BufferRef::Transient(transient_buffer) => {
-                buffer_handle = transient_buffer.handle();
-                buffer_offset = transient_buffer.offset();
-                buffer_length = transient_buffer.length();
-            }
-            BufferRef::Regular(buffer) => {
-                self.context.reference_buffer(buffer);
-                buffer_handle = buffer.handle();
-                buffer_offset = buffer.offset();
-                buffer_length = buffer.length();
-            }
-        }
-
+        let BufferHandleRef { handle: buffer_handle, offset: buffer_offset, length: buffer_length } = buffer.deconstruct(self.frame());
         unsafe {
             self.cmd_buffer_handle.bind_uniform_buffer(frequency, binding, buffer_handle, buffer_offset + offset, length.min(buffer_length - offset));
         }
     }
 
     pub fn bind_storage_buffer(&mut self, frequency: BindingFrequency, binding: u32, buffer: BufferRef, offset: u64, length: u64) {
-        let buffer_handle: &active_gpu_backend::Buffer;
-        let buffer_offset: u64;
-        let buffer_length: u64;
-
-        match buffer {
-            BufferRef::Transient(transient_buffer) => {
-                buffer_handle = transient_buffer.handle();
-                buffer_offset = transient_buffer.offset();
-                buffer_length = transient_buffer.length();
-            }
-            BufferRef::Regular(buffer) => {
-                self.context.reference_buffer(buffer);
-                buffer_handle = buffer.handle();
-                buffer_offset = buffer.offset();
-                buffer_length = buffer.length();
-            }
-        }
-
+        let BufferHandleRef { handle: buffer_handle, offset: buffer_offset, length: buffer_length } = buffer.deconstruct(self.frame());
         unsafe {
             self.cmd_buffer_handle.bind_storage_buffer(frequency, binding, buffer_handle, buffer_offset + offset, length.min(buffer_length - offset));
         }
@@ -366,8 +319,9 @@ impl<'a> CommandBuffer<'a> {
             self.cmd_buffer_handle.finish();
         }
 
+        let frame = self.frame();
         let CommandBuffer { context, global_context: _, cmd_buffer_handle, is_secondary, no_send_sync: _ } = self;
-        FinishedCommandBuffer { handle: cmd_buffer_handle, sender: context.sender(is_secondary).clone() }
+        FinishedCommandBuffer { handle: cmd_buffer_handle, sender: context.sender(is_secondary).clone(), frame }
     }
 
     pub fn clear_storage_texture(&mut self, view: &super::Texture, array_layer: u32, mip_level: u32, values: [u32; 4]) {
@@ -377,24 +331,7 @@ impl<'a> CommandBuffer<'a> {
     }
 
     pub fn clear_storage_buffer(&mut self, buffer: BufferRef, offset: u64, length_in_u32s: u64, value: u32) {
-        let buffer_handle: &active_gpu_backend::Buffer;
-        let buffer_offset: u64;
-        let buffer_length: u64;
-
-        match buffer {
-            BufferRef::Transient(transient_buffer) => {
-                buffer_handle = transient_buffer.handle();
-                buffer_offset = transient_buffer.offset();
-                buffer_length = transient_buffer.length();
-            }
-            BufferRef::Regular(buffer) => {
-                self.context.reference_buffer(buffer);
-                buffer_handle = buffer.handle();
-                buffer_offset = buffer.offset();
-                buffer_length = buffer.length();
-            }
-        }
-
+        let BufferHandleRef { handle: buffer_handle, offset: buffer_offset, length: buffer_length } = buffer.deconstruct(self.frame());
         unsafe {
             self.cmd_buffer_handle.clear_storage_buffer(buffer_handle, offset + buffer_offset, length_in_u32s.min((buffer_length - offset) / 4), value);
         }
@@ -409,11 +346,11 @@ impl<'a> CommandBuffer<'a> {
         let buffer = self.context.transient_buffer_allocator().get_slice(&BufferInfo {
             size: size,
             usage,
-            sharing_mode: QueueSharingMode::Exclusive
-        }, MemoryUsage::MappableGPUMemory, None)?;
+            sharing_mode: QueueSharingMode::Exclusive,
+        }, MemoryUsage::MappableGPUMemory, self.frame(), None)?;
 
         unsafe {
-            let ptr_void = buffer.map(false).unwrap();
+            let ptr_void = buffer.map(self.frame(), false).unwrap();
 
             if required_size < size {
                 let ptr_u8 = (ptr_void as *mut u8).offset(required_size as isize);
@@ -423,13 +360,13 @@ impl<'a> CommandBuffer<'a> {
             let ptr = ptr_void as *mut T;
             ptr.copy_from(data.as_ptr(), data.len());
 
-            buffer.unmap(true);
+            buffer.unmap(self.frame(), true);
         }
         Ok(buffer)
     }
 
     pub fn create_temporary_buffer(&mut self, info: &BufferInfo, usage: MemoryUsage) -> Result<TransientBufferSlice, OutOfMemoryError> {
-        self.context.transient_buffer_allocator().get_slice(info, usage, None)
+        self.context.transient_buffer_allocator().get_slice(info, usage, self.frame(), None)
     }
 
     fn fat_barrier(&mut self) {
@@ -478,11 +415,7 @@ impl<'a> CommandBuffer<'a> {
                     buffer,
                     queue_ownership
                 } => {
-                    let (buffer_handle, buffer_offset, buffer_length) = match buffer {
-                        BufferRef::Regular(b) => (b.handle(), b.offset(), b.length()),
-                        BufferRef::Transient(b) => (b.handle(), b.offset(), b.length())
-                    };
-
+                    let BufferHandleRef { handle: buffer_handle, offset: buffer_offset, length: buffer_length } = buffer.deconstruct(self.frame());
                     gpu::Barrier::BufferBarrier {
                         old_sync: *old_sync,
                         new_sync: *new_sync,
@@ -597,7 +530,7 @@ impl<'a> CommandBuffer<'a> {
             size: scratch_size,
             usage: BufferUsage::ACCELERATION_STRUCTURE_BUILD | BufferUsage::STORAGE,
             sharing_mode: QueueSharingMode::Exclusive
-        }, MemoryUsage::GPUMemory, None);
+        }, MemoryUsage::GPUMemory, self.frame(), None);
 
         if let Ok(scratch) = scratch_result {
             self.context.acceleration_structure_scratch = Some(scratch);
@@ -636,11 +569,11 @@ impl<'a> CommandBuffer<'a> {
         if let Some(preallocated_scratch) = self.context.acceleration_structure_scratch.as_ref() {
             // Does the required scratch fit into the entire preallocated scratch buffer?
             // If not, we need to create a one-off buffer.
-            use_preallocated_scratch = use_preallocated_scratch && preallocated_scratch.handle().info().size >= size.build_scratch_size;
+            use_preallocated_scratch = use_preallocated_scratch && preallocated_scratch.handle(self.frame()).info().size >= size.build_scratch_size;
 
             // Does the required scratch fit into the remaining preallocated scratch buffer space?
             // If not, we need to insert a barrier to make the entire space available again.
-            let remaining_scratch_with_aligned_offset = preallocated_scratch.handle().info().size - align_up_64(self.context.acceleration_structure_scratch_offset, 256);
+            let remaining_scratch_with_aligned_offset = preallocated_scratch.handle(self.frame()).info().size - align_up_64(self.context.acceleration_structure_scratch_offset, 256);
             reset_scratch_bump_alloc = use_preallocated_scratch
                 && remaining_scratch_with_aligned_offset < size.build_scratch_size;
         } else {
@@ -664,7 +597,7 @@ impl<'a> CommandBuffer<'a> {
                             new_sync: BarrierSync::ACCELERATION_STRUCTURE_BUILD,
                             old_access: BarrierAccess::ACCELERATION_STRUCTURE_WRITE,
                             new_access: BarrierAccess::ACCELERATION_STRUCTURE_READ | BarrierAccess::ACCELERATION_STRUCTURE_WRITE,
-                            buffer: preallocated_scratch.handle(),
+                            buffer: preallocated_scratch.handle(self.frame()),
                             offset: preallocated_scratch.offset(),
                             length: preallocated_scratch.length(),
                             queue_ownership: None
@@ -682,7 +615,7 @@ impl<'a> CommandBuffer<'a> {
                 size: size.build_scratch_size,
                 usage: BufferUsage::ACCELERATION_STRUCTURE_BUILD | BufferUsage::STORAGE,
                 sharing_mode: QueueSharingMode::Exclusive
-            }, MemoryUsage::GPUMemory, None).ok()?);
+            }, MemoryUsage::GPUMemory, self.frame(), None).ok()?);
             (_owned_scratch.as_ref().unwrap(), 0)
         };
 
@@ -691,7 +624,7 @@ impl<'a> CommandBuffer<'a> {
             size.size,
             buffer.handle(),
             buffer.offset(),
-            scratch.handle(),
+            scratch.handle(self.frame()),
             scratch.offset() + scratch_offset
         )};
 
@@ -713,21 +646,22 @@ impl<'a> CommandBuffer<'a> {
             size: instances_buffer_size,
             usage: BufferUsage::ACCELERATION_STRUCTURE_BUILD,
             sharing_mode: QueueSharingMode::Exclusive
-        }, MemoryUsage::MappableGPUMemory, None).ok()?;
+        }, MemoryUsage::MappableGPUMemory, self.frame(), None).ok()?;
         if required_instances_buffer_size < instances_buffer_size {
             unsafe {
-                let ptr = instances_buffer.map(false).unwrap();
+                let ptr = instances_buffer.map(self.frame(), false).unwrap();
                 std::ptr::write_bytes(ptr as *mut u8, 0u8, (instances_buffer_size - required_instances_buffer_size) as usize);
-                instances_buffer.unmap(true);
+                instances_buffer.unmap(self.frame(), true);
             }
         }
 
+        let instance_buffer_handle = instances_buffer.handle(self.frame());
         if required_instances_buffer_size != 0 {
-            unsafe { self.cmd_buffer_handle.upload_top_level_instances(&core_instances, instances_buffer.handle(),  instances_buffer.offset()); }
+            unsafe { self.cmd_buffer_handle.upload_top_level_instances(&core_instances, instance_buffer_handle,  instances_buffer.offset()); }
         }
 
         let core_info = gpu::TopLevelAccelerationStructureInfo {
-            instances_buffer: instances_buffer.handle(),
+            instances_buffer: instance_buffer_handle,
             instances_buffer_offset: instances_buffer.offset(),
             instances_count: info.instances.len() as u32,
         };
@@ -747,11 +681,11 @@ impl<'a> CommandBuffer<'a> {
         if let Some(preallocated_scratch) = self.context.acceleration_structure_scratch.as_ref() {
             // Does the required scratch fit into the entire preallocated scratch buffer?
             // If not, we need to create a one-off buffer.
-            use_preallocated_scratch = use_preallocated_scratch && preallocated_scratch.handle().info().size >= size.build_scratch_size;
+            use_preallocated_scratch = use_preallocated_scratch && preallocated_scratch.handle(self.frame()).info().size >= size.build_scratch_size;
 
             // Does the required scratch fit into the remaining preallocated scratch buffer space?
             // If not, we need to insert a barrier to make the entire space available again.
-            let remaining_scratch_with_aligned_offset = preallocated_scratch.handle().info().size - align_up_64(self.context.acceleration_structure_scratch_offset, 256);
+            let remaining_scratch_with_aligned_offset = preallocated_scratch.handle(self.frame()).info().size - align_up_64(self.context.acceleration_structure_scratch_offset, 256);
             reset_scratch_bump_alloc = use_preallocated_scratch
                 && remaining_scratch_with_aligned_offset < size.build_scratch_size;
         } else {
@@ -775,7 +709,7 @@ impl<'a> CommandBuffer<'a> {
                             new_sync: BarrierSync::ACCELERATION_STRUCTURE_BUILD,
                             old_access: BarrierAccess::ACCELERATION_STRUCTURE_WRITE,
                             new_access: BarrierAccess::ACCELERATION_STRUCTURE_READ | BarrierAccess::ACCELERATION_STRUCTURE_WRITE,
-                            buffer: preallocated_scratch.handle(),
+                            buffer: preallocated_scratch.handle(self.frame()),
                             offset: preallocated_scratch.offset(),
                             length: preallocated_scratch.length(),
                             queue_ownership: None
@@ -793,7 +727,7 @@ impl<'a> CommandBuffer<'a> {
                 size: size.build_scratch_size,
                 usage: BufferUsage::ACCELERATION_STRUCTURE_BUILD | BufferUsage::STORAGE,
                 sharing_mode: QueueSharingMode::Exclusive
-            }, MemoryUsage::GPUMemory, None).ok()?);
+            }, MemoryUsage::GPUMemory, self.frame(), None).ok()?);
             (_owned_scratch.as_ref().unwrap(), 0)
         };
 
@@ -802,7 +736,7 @@ impl<'a> CommandBuffer<'a> {
             size.size,
             buffer.handle(),
             buffer.offset(),
-            scratch.handle(),
+            scratch.handle(self.frame()),
             scratch.offset() + scratch_offset
         )};
 
@@ -892,6 +826,11 @@ impl<'a> CommandBuffer<'a> {
         };
         new_self.end_render_pass();
         new_self
+    }
+
+    #[inline(always)]
+    pub fn frame(&self) -> u64 {
+        self.context.frame()
     }
 }
 
