@@ -33,7 +33,6 @@ pub struct FrameContext {
   device: Arc<active_gpu_backend::Device>,
   command_pool: FrameContextCommandPool,
   secondary_command_pool: FrameContextCommandPool,
-  buffer_refs: Vec<Arc<BufferSlice>>,
   transient_buffer_allocator: TransientBufferAllocator,
   global_buffer_allocator: Arc<BufferAllocator>,
   destroyer: Arc<DeferredDestroyer>,
@@ -91,7 +90,6 @@ impl GraphicsContext {
       let frame_context = thread_context.get_frame_mut(self.current_frame);
       assert_eq!(frame_context.remaining_command_buffers.load(Ordering::SeqCst), 0);
 
-      frame_context.buffer_refs.clear();
       frame_context.acceleration_structure_scratch = None;
       frame_context.acceleration_structure_scratch_offset = 0;
       frame_context.frame = new_frame;
@@ -260,7 +258,6 @@ impl FrameContext {
       },
       transient_buffer_allocator: transient_buffer_allocator,
       global_buffer_allocator: buffer_allocator.clone(),
-      buffer_refs: Vec::new(),
       destroyer: destroyer.clone(),
       acceleration_structure_scratch: None,
       acceleration_structure_scratch_offset: 0u64,
@@ -268,11 +265,6 @@ impl FrameContext {
       query_allocator: QueryAllocator::new(device, destroyer, QUERY_COUNT),
       remaining_command_buffers: Arc::new(AtomicU64::new(0u64)),
     }
-  }
-
-  #[inline(always)]
-  pub(super) fn reference_buffer(&mut self, buffer: &Arc<BufferSlice>) {
-      self.buffer_refs.push(buffer.clone());
   }
 
   #[inline(always)]
