@@ -5,7 +5,7 @@ use log::warn;
 use sourcerenderer_core::{align_up_32, gpu::{self, Buffer as _, Texture as _, TextureView as _}};
 use web_sys::{GpuCommandBuffer, GpuCommandEncoder, GpuComputePassEncoder, GpuDevice, GpuExtent3dDict, GpuIndexFormat, GpuLoadOp, GpuRenderBundle, GpuRenderBundleEncoder, GpuRenderBundleEncoderDescriptor, GpuRenderPassColorAttachment, GpuRenderPassDepthStencilAttachment, GpuRenderPassDescriptor, GpuRenderPassEncoder, GpuStoreOp, GpuTexelCopyBufferInfo, GpuTexelCopyTextureInfo};
 
-use crate::{binding::{self, WebGPUBindingManager, WebGPUBoundResourceRef, WebGPUBufferBindingInfo, WebGPUHashableSampler, WebGPUHashableTextureView, WebGPUPipelineLayout}, buffer::WebGPUBuffer, pipeline::sample_count_to_webgpu, sampler::WebGPUSampler, stubs::WebGPUAccelerationStructure, texture::{format_to_webgpu, WebGPUTexture, WebGPUTextureView}, WebGPUBackend, WebGPUBindGroupBinding, WebGPULimits};
+use crate::{binding::{self, WebGPUBindingManager, WebGPUBoundResourceRef, WebGPUBufferBindingInfo, WebGPUHashableSampler, WebGPUHashableTextureView, WebGPUPipelineLayout}, buffer::WebGPUBuffer, pipeline::sample_count_to_webgpu, sampler::WebGPUSampler, stubs::WebGPUAccelerationStructure, texture::{format_to_webgpu, WebGPUTexture, WebGPUTextureView}, WebGPUBackend, WebGPUBindGroupBinding, WebGPULimits, WebGPUQueryPool};
 
 enum WebGPUPassEncoder {
     None,
@@ -906,6 +906,35 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
 
     unsafe fn trace_ray(&mut self, _width: u32, _height: u32, _depth: u32) {
         panic!("WebGPU does not support ray tracing.");
+    }
+
+    unsafe fn begin_query(&mut self, query_index: u32) {
+        if !self.is_inner {
+            let cmd_buffer = self.get_recording_mut();
+            let render_pass_encoder = cmd_buffer.get_render_encoder();
+            render_pass_encoder.begin_occlusion_query(query_index);
+        } else {
+            panic!("WebGPU does not support occlusion queries in render bundles");
+        }
+    }
+
+    unsafe fn end_query(&mut self, _query_index: u32) {
+        if !self.is_inner {
+            let cmd_buffer = self.get_recording_mut();
+            let render_pass_encoder = cmd_buffer.get_render_encoder();
+            render_pass_encoder.end_occlusion_query();
+        } else {
+            panic!("WebGPU does not support occlusion queries in render bundles");
+        }
+    }
+
+    unsafe fn copy_query_results_to_buffer(&mut self, query_pool: &WebGPUQueryPool, start_index: u32, count: u32, buffer: &WebGPUBuffer, buffer_offset: u64) {
+        if !self.is_inner {
+            let cmd_buffer = self.get_recording_mut();
+            cmd_buffer.command_encoder.resolve_query_set_with_u32(&query_pool.handle(), start_index, count, &buffer.handle(), buffer_offset as u32);
+        } else {
+            panic!("copy_query_results_to_buffer is not supported in inner command buffers");
+        }
     }
 }
 

@@ -2,7 +2,7 @@ use js_sys::{wasm_bindgen::{prelude::Closure, JsCast, JsValue}, Array};
 use sourcerenderer_core::{align_up_32, gpu::{self, Texture as _}};
 use web_sys::{GpuDevice, GpuTexelCopyTextureInfo, GpuTexelCopyBufferLayout, GpuExtent3dDict};
 
-use crate::{WebGPUBackend, WebGPUBuffer, WebGPUComputePipeline, WebGPUFeatures, WebGPUFence, WebGPUGraphicsPipeline, WebGPUHeap, WebGPULimits, WebGPUQueue, WebGPUSampler, WebGPUShader, WebGPUShared, WebGPUTexture, WebGPUTextureView};
+use crate::{WebGPUBackend, WebGPUBuffer, WebGPUComputePipeline, WebGPUFeatures, WebGPUFence, WebGPUGraphicsPipeline, WebGPUHeap, WebGPULimits, WebGPUQueue, WebGPUSampler, WebGPUShader, WebGPUShared, WebGPUTexture, WebGPUTextureView, WebGPUQueryPool};
 
 pub struct WebGPUDevice {
     device: GpuDevice,
@@ -246,5 +246,9 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         let data_len = slice_pitch as usize * dst.info().depth as usize;
         let slice = unsafe { std::slice::from_raw_parts(src as *const u8, data_len) };
         queue.write_texture_with_u8_slice_and_gpu_extent_3d_dict(&dst_info, slice, &src_info, &copy_size).unwrap();
+    }
+
+    unsafe fn create_query_pool(&mut self, count: u32) -> WebGPUQueryPool {
+        WebGPUQueryPool::new(&self.device, count)
     }
 }
