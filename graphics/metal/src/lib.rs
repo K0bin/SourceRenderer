@@ -19,6 +19,7 @@ pub use self::{
     rt::*,
     swapchain::*,
     device::*,
+    query::*,
 };
 
 mod backend;
@@ -38,3 +39,4 @@ mod binding;
 mod renderpass;
 mod shared;
 mod bindless;
+mod query;
