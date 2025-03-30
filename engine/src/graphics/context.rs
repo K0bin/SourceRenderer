@@ -11,6 +11,8 @@ use atomic_refcell::{AtomicRefCell, AtomicRefMut};
 use super::*;
 use super::CommandBuffer;
 
+const QUERY_COUNT: u32 = 1024;
+
 pub struct GraphicsContext {
   device: Arc<active_gpu_backend::Device>,
   memory_allocator: Arc<MemoryAllocator>,
@@ -38,6 +40,7 @@ pub struct FrameContext {
   pub(super) acceleration_structure_scratch: Option<TransientBufferSlice>,
   pub(super) acceleration_structure_scratch_offset: u64,
   frame: u64,
+  query_allocator: QueryAllocator,
 }
 
 struct FrameContextCommandPool {
@@ -227,7 +230,8 @@ impl FrameContext {
       destroyer: destroyer.clone(),
       acceleration_structure_scratch: None,
       acceleration_structure_scratch_offset: 0u64,
-      frame: 1u64
+      frame: 1u64,
+      query_allocator: QueryAllocator::new(device, destroyer, QUERY_COUNT)
     }
   }
 
@@ -259,6 +263,11 @@ impl FrameContext {
   #[inline(always)]
   pub(super) fn frame(&self) -> u64 {
     self.frame
+  }
+
+  #[inline(always)]
+  pub(super) fn query_allocator(&mut self) -> &mut QueryAllocator {
+    &mut self.query_allocator
   }
 
   #[inline(always)]

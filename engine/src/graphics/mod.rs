@@ -18,6 +18,7 @@ pub use instance::*;
 pub use pipeline::*;
 pub use util::*;
 pub use graphics_plugin::*;
+pub use query::*;
 
 pub use command::PipelineBinding; // why is this necessary?
 
@@ -41,6 +42,7 @@ mod swapchain;
 mod instance;
 mod util;
 mod graphics_plugin;
+mod query;
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "android", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd"))]
 mod active_gpu_backend {
@@ -65,6 +67,7 @@ mod active_gpu_backend {
     pub use sourcerenderer_vulkan::VkPipeline as GraphicsPipeline;
     pub use sourcerenderer_vulkan::VkPipeline as ComputePipeline;
     pub use sourcerenderer_vulkan::VkPipeline as RayTracingPipeline;
+    pub use sourcerenderer_vulkan::VkQueryPool as QueryPool;
     pub use sourcerenderer_vulkan::VkShader as Shader;
     pub type Barrier<'a> = sourcerenderer_core::gpu::Barrier<'a, self::Backend>;
     pub type RenderTarget<'a> = sourcerenderer_core::gpu::RenderTarget<'a, self::Backend>;
@@ -98,6 +101,7 @@ mod active_gpu_backend {
     pub use sourcerenderer_webgpu::WebGPUBackbuffer as Backbuffer;
     pub use sourcerenderer_webgpu::WebGPUGraphicsPipeline as GraphicsPipeline;
     pub use sourcerenderer_webgpu::WebGPUComputePipeline as ComputePipeline;
+    pub use sourcerenderer_webgpu::WebGPUQueryPool as QueryPool;
     pub type RayTracingPipeline = <sourcerenderer_webgpu::WebGPUBackend as sourcerenderer_core::gpu::GPUBackend>::RayTracingPipeline;
     pub use sourcerenderer_webgpu::WebGPUShader as Shader;
     pub type Barrier<'a> = sourcerenderer_core::gpu::Barrier<'a, self::Backend>;
@@ -131,6 +135,7 @@ mod active_gpu_backend {
     pub use sourcerenderer_metal::MTLBackbuffer as Backbuffer;
     pub use sourcerenderer_metal::MTLGraphicsPipeline as GraphicsPipeline;
     pub use sourcerenderer_metal::MTLComputePipeline as ComputePipeline;
+    pub use sourcerenderer_metal::MTLQueryPool as QueryPool;
     pub type RayTracingPipeline = ();
     pub use sourcerenderer_metal::MTLShader as Shader;
     pub type Barrier<'a> = sourcerenderer_core::gpu::Barrier<'a, self::Backend>;

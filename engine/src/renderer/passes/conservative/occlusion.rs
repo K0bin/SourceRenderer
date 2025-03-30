@@ -252,6 +252,7 @@ impl OcclusionPass {
                         read_only: true,
                     }),
                 }],
+                query_range: None,
             }
         );
 

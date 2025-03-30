@@ -69,7 +69,8 @@ impl BlitPass {
                 load_op: LoadOpColor::DontCare,
                 store_op: StoreOp::Store
             }],
-            depth_stencil: None
+            depth_stencil: None,
+            query_range: None,
         });
 
         let pipeline = assets.get_graphics_pipeline(self.pipeline_handle).unwrap();

@@ -61,6 +61,7 @@ pub struct CommandBuffer<'a> {
     context: AtomicRefMut<'a, FrameContext>,
     global_context: &'a GraphicsContext,
     cmd_buffer_handle: active_gpu_backend::CommandBuffer,
+    active_query_range: Option<QueryRange>,
     is_secondary: bool,
     no_send_sync: PhantomData<*mut u8>
 }
@@ -123,6 +124,7 @@ impl<'a> CommandBuffer<'a> {
             context,
             cmd_buffer_handle: handle,
             is_secondary,
+            active_query_range: None,
             no_send_sync: PhantomData
         }
     }
@@ -320,7 +322,7 @@ impl<'a> CommandBuffer<'a> {
         }
 
         let frame = self.frame();
-        let CommandBuffer { context, global_context: _, cmd_buffer_handle, is_secondary, no_send_sync: _ } = self;
+        let CommandBuffer { context, global_context: _, cmd_buffer_handle, is_secondary, active_query_range: _, no_send_sync: _ } = self;
         FinishedCommandBuffer { handle: cmd_buffer_handle, sender: context.sender(is_secondary).clone(), frame }
     }
 
@@ -506,11 +508,12 @@ impl<'a> CommandBuffer<'a> {
             }
         });
 
+        self.active_query_range = renderpass_info.query_range.clone();
         unsafe {
             self.cmd_buffer_handle.begin_render_pass(&gpu::RenderPassBeginInfo {
                 render_targets: &attachments,
                 depth_stencil: depth_stencil.as_ref(),
-                query_pool: None,
+                query_pool: renderpass_info.query_range.as_ref().map(|q| q.pool_handle(self.frame())),
             }, recording_mode)
         }
     }
@@ -789,7 +792,7 @@ impl<'a> CommandBuffer<'a> {
             let task_pool = bevy_tasks::ComputeTaskPool::get();
             let task_count = if thread_count_hint == 0 { task_pool.thread_num() as u32 } else { thread_count_hint.max(task_pool.thread_num() as u32) };
             let inheritance = self.begin_render_pass_impl(renderpass_info, RenderpassRecordingMode::CommandBuffers(task_count)).unwrap();
-            let CommandBuffer { global_context, context, mut cmd_buffer_handle, is_secondary: _, no_send_sync: _ } = self;
+            let CommandBuffer { global_context, context, mut cmd_buffer_handle, is_secondary: _, active_query_range, no_send_sync: _ } = self;
             let secondary_recycle_sender = context.sender(true).clone();
             let frame = context.frame();
             std::mem::drop(context);
@@ -821,6 +824,7 @@ impl<'a> CommandBuffer<'a> {
                 global_context,
                 cmd_buffer_handle,
                 is_secondary: false,
+                active_query_range: active_query_range,
                 no_send_sync: PhantomData,
             }
         };
@@ -828,9 +832,28 @@ impl<'a> CommandBuffer<'a> {
         new_self
     }
 
+    pub fn begin_query(&mut self, query_index: u32) {
+        let query_range = self.active_query_range.as_ref().unwrap();
+        unsafe {
+            self.cmd_buffer_handle.begin_query(query_range.query_index(query_index));
+        }
+    }
+
+    pub fn end_query(&mut self, query_index: u32) {
+        let query_range = self.active_query_range.as_ref().unwrap();
+        unsafe {
+            self.cmd_buffer_handle.end_query(query_range.query_index(query_index));
+        }
+    }
+
     #[inline(always)]
     pub fn frame(&self) -> u64 {
         self.context.frame()
+    }
+
+    pub fn get_queries(&mut self, query_count: u32) -> Result<QueryRange, OutOfQueriesError> {
+        let frame = self.frame();
+        self.context.query_allocator().get_queries(frame, query_count)
     }
 }
 
@@ -859,5 +882,6 @@ pub struct ResolveAttachment<'a> {
 
   pub struct RenderPassBeginInfo<'a> {
     pub render_targets: &'a [RenderTarget<'a>],
-    pub depth_stencil: Option<&'a DepthStencilAttachment<'a>>
+    pub depth_stencil: Option<&'a DepthStencilAttachment<'a>>,
+    pub query_range: Option<QueryRange>,
   }

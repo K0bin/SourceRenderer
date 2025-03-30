@@ -304,7 +304,8 @@ impl ShadowMapPass {
                         view: &shadow_map,
                         load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
                         store_op: StoreOp::Store,
-                    })
+                    }),
+                    query_range: None,
                 }
             );
 
