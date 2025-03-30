@@ -361,7 +361,8 @@ impl GeometryPass {
                     view: &prepass_depth,
                     load_op: LoadOpDepthStencil::Load,
                     store_op: StoreOp::Store,
-                })
+                }),
+                query_range: None,
             }
         );
 

@@ -283,7 +283,8 @@ impl GeometryPass {
                 view: prepass_depth,
                 load_op: LoadOpDepthStencil::Load,
                 store_op: StoreOp::Store
-            })
+            }),
+            query_range: None,
         }, &view.drawable_parts, chunk_size, |command_buffer, _chunk_index, _chunk_size, chunk| {
             P::thread_memory_management_pool(|| {
                 command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));

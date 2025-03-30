@@ -195,7 +195,8 @@ impl GeometryPass {
                     view: &dsv,
                     load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
                     store_op: StoreOp::Store,
-                })
+                }),
+                query_range: None,
             },
         );
 

@@ -136,7 +136,8 @@ impl UIPass {
                     store_op: StoreOp::Store
                 }
             ],
-            depth_stencil: None
+            depth_stencil: None,
+            query_range: None,
         });
 
         for list in &draw.draw_lists {

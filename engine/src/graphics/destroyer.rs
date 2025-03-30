@@ -20,12 +20,13 @@ struct DeferredDestroyerInner {
     graphics_pipelines: Vec<(u64, active_gpu_backend::GraphicsPipeline)>,
     compute_pipelines: Vec<(u64, active_gpu_backend::ComputePipeline)>,
     raytracing_pipelines: Vec<(u64, active_gpu_backend::RayTracingPipeline)>,
+    query_pools: Vec<(u64, active_gpu_backend::QueryPool)>,
 }
 
 // TODO: Turn into a union to save memory
 
 impl DeferredDestroyer {
-    pub(crate) fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             inner: Mutex::new(
                 DeferredDestroyerInner {
@@ -40,85 +41,92 @@ impl DeferredDestroyer {
                     buffer_slice_refs: Vec::new(),
                     graphics_pipelines: Vec::new(),
                     compute_pipelines: Vec::new(),
-                    raytracing_pipelines: Vec::new()
+                    raytracing_pipelines: Vec::new(),
+                    query_pools: Vec::new(),
                 }
             )
         }
     }
 
-    pub fn destroy_allocation(&self, allocation: MemoryAllocation<active_gpu_backend::Heap>) {
+    pub(super) fn destroy_allocation(&self, allocation: MemoryAllocation<active_gpu_backend::Heap>) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.allocations.push((frame, allocation));
     }
 
-    pub fn destroy_texture(&self, texture: active_gpu_backend::Texture) {
+    pub(super) fn destroy_texture(&self, texture: active_gpu_backend::Texture) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.textures.push((frame, texture));
     }
 
-    pub fn destroy_texture_view(&self, texture_view: active_gpu_backend::TextureView) {
+    pub(super) fn destroy_texture_view(&self, texture_view: active_gpu_backend::TextureView) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.texture_views.push((frame, texture_view));
     }
 
-    pub fn destroy_buffer(&self, buffer: active_gpu_backend::Buffer) {
+    pub(super) fn destroy_buffer(&self, buffer: active_gpu_backend::Buffer) {
         let mut guard: crate::MutexGuard<'_, DeferredDestroyerInner> = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.buffers.push((frame, buffer));
     }
 
-    pub fn destroy_sampler(&self, sampler: active_gpu_backend::Sampler) {
+    pub(super) fn destroy_sampler(&self, sampler: active_gpu_backend::Sampler) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.samplers.push((frame, sampler));
     }
 
-    pub fn destroy_fence(&self, fence: active_gpu_backend::Fence) {
+    pub(super) fn destroy_fence(&self, fence: active_gpu_backend::Fence) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.fences.push((frame, fence));
     }
 
-    pub fn destroy_acceleration_structure(&self, acceleration_structure: active_gpu_backend::AccelerationStructure) {
+    pub(super) fn destroy_acceleration_structure(&self, acceleration_structure: active_gpu_backend::AccelerationStructure) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.acceleration_structures.push((frame, acceleration_structure));
     }
 
-    pub fn destroy_buffer_slice_ref(&self, buffer_slice_ref: Arc<BufferSlice>) {
+    pub(super) fn destroy_buffer_slice_ref(&self, buffer_slice_ref: Arc<BufferSlice>) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.buffer_slice_refs.push((frame, buffer_slice_ref));
     }
 
-    pub fn destroy_graphics_pipeline(&self, pipeline: active_gpu_backend::GraphicsPipeline) {
+    pub(super) fn destroy_graphics_pipeline(&self, pipeline: active_gpu_backend::GraphicsPipeline) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.graphics_pipelines.push((frame, pipeline));
     }
 
-    pub fn destroy_compute_pipeline(&self, pipeline: active_gpu_backend::ComputePipeline) {
+    pub(super) fn destroy_compute_pipeline(&self, pipeline: active_gpu_backend::ComputePipeline) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.compute_pipelines.push((frame, pipeline));
     }
 
-    pub fn destroy_raytracing_pipeline(&self, pipeline: active_gpu_backend::RayTracingPipeline) {
+    pub(super) fn destroy_raytracing_pipeline(&self, pipeline: active_gpu_backend::RayTracingPipeline) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.raytracing_pipelines.push((frame, pipeline));
     }
 
-    pub fn set_counter(&self, counter: u64) {
+    pub(super) fn destroy_query_pool(&self, query_pool: active_gpu_backend::QueryPool) {
+        let mut guard = self.inner.lock().unwrap();
+        let frame = guard.current_counter;
+        guard.query_pools.push((frame, query_pool));
+    }
+
+    pub(super) fn set_counter(&self, counter: u64) {
         let mut guard = self.inner.lock().unwrap();
         assert!(guard.current_counter <= counter);
         guard.current_counter = counter;
     }
 
-    pub fn destroy_unused(&self, counter: u64) {
+    pub(super) fn destroy_unused(&self, counter: u64) {
         let mut guard = self.inner.lock().unwrap();
         assert!(guard.current_counter >= counter);
         guard.acceleration_structures.retain(|(resource_counter, _)| *resource_counter > counter);
@@ -132,6 +140,7 @@ impl DeferredDestroyer {
         guard.graphics_pipelines.retain(|(resource_counter, _)| *resource_counter > counter);
         guard.compute_pipelines.retain(|(resource_counter, _)| *resource_counter > counter);
         guard.raytracing_pipelines.retain(|(resource_counter, _)| *resource_counter > counter);
+        guard.query_pools.retain(|(resource_counter, _)| *resource_counter > counter);
     }
 }
 
@@ -149,5 +158,6 @@ impl Drop for DeferredDestroyer {
         assert!(guard.graphics_pipelines.is_empty());
         assert!(guard.compute_pipelines.is_empty());
         assert!(guard.raytracing_pipelines.is_empty());
+        assert!(guard.query_pools.is_empty());
     }
 }

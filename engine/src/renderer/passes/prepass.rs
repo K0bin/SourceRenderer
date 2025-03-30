@@ -186,7 +186,8 @@ impl Prepass {
                 view: &*depth_buffer,
                 load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
                 store_op: StoreOp::Store
-            })
+            }),
+            query_range: None,
         }, &view.drawable_parts, chunk_size, |command_buffer, _chunk_index, _chunk_size, chunk| {
             command_buffer.set_pipeline(crate::graphics::PipelineBinding::Graphics(&pipeline));
             command_buffer.set_viewports(&[Viewport {
