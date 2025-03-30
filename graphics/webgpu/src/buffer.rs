@@ -9,6 +9,7 @@ pub(crate) const PREFER_DISCARD_OVER_QUEUE_WRITE: bool = false;
 pub struct WebGPUBuffer {
     device: GpuDevice,
     buffer: RefCell<GpuBuffer>,
+    readback_buffer: Option<RefCell<GpuBuffer>>,
     descriptor: GpuBufferDescriptor,
     rust_memory: RefCell<Option<Box<[u8]>>>,
     retained_memory_limit: u64,
@@ -27,8 +28,7 @@ impl Eq for WebGPUBuffer {}
 impl Hash for WebGPUBuffer {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         let buffer = self.buffer.borrow();
-        let ptr_val: usize = unsafe { std::mem::transmute(buffer.as_ref() as *const GpuBuffer) };
-        ptr_val.hash(state);
+        Self::handle_as_usize(&buffer).hash(state);
     }
 }
 
@@ -36,7 +36,7 @@ unsafe impl Send for WebGPUBuffer {}
 unsafe impl Sync for WebGPUBuffer {}
 
 impl WebGPUBuffer {
-    pub fn new(device: &GpuDevice, info: &gpu::BufferInfo, mappable: bool, name: Option<&str>) -> Result<Self, ()> {
+    pub(crate) fn new(device: &GpuDevice, info: &gpu::BufferInfo, mappable: bool, name: Option<&str>) -> Result<Self, ()> {
         // If usage contains MAP_WRITE, it must not contain any other usage flags besides COPY_SRC.
         // If usage contains MAP_READ, it must not contain any other usage flags besides COPY_DST.
         // Besides that map() is async and the buffer can not be used by the GPU while it is mapped.
@@ -65,6 +65,9 @@ impl WebGPUBuffer {
         if info.usage.intersects(gpu::BufferUsage::COPY_DST | gpu::BufferUsage::INITIAL_COPY) {
             usage |= web_sys::gpu_buffer_usage::COPY_DST;
         }
+        if info.usage.contains(gpu::BufferUsage::COPY_DST) {
+            usage |= web_sys::gpu_buffer_usage::QUERY_RESOLVE;
+        }
         if info.usage == gpu::BufferUsage::COPY_DST && mappable {
             usage = web_sys::gpu_buffer_usage::COPY_DST | web_sys::gpu_buffer_usage::MAP_READ;
         }
@@ -78,6 +81,7 @@ impl WebGPUBuffer {
         if info.usage.gpu_writable() && !info.usage.gpu_readable() && !mappable {
             panic!("The buffer is useless because it can only be written on the GPU but the contents cannot be read anywhere.");
         }
+
         retained_rust_memory_limit = retained_rust_memory_limit.min(info.size);
         let retain_entire_buffer = retained_rust_memory_limit == info.size;
         if (usage & web_sys::gpu_buffer_usage::MAP_WRITE) == 0 && mappable && (info.usage.gpu_writable() || !retain_entire_buffer || !PREFER_DISCARD_OVER_QUEUE_WRITE) {
@@ -96,16 +100,36 @@ impl WebGPUBuffer {
         if let Some(name) = name {
             descriptor.set_label(name);
         }
-        let mapped_at_creation = mappable && !info.usage.gpu_writable();
+        let mapped_at_creation = mappable && !info.usage.gpu_writable() && info.usage.contains(gpu::BufferUsage::INITIAL_COPY);
         assert!(!mapped_at_creation || info.size % 4 == 0);
-        descriptor.set_mapped_at_creation(mapped_at_creation);
+        // Mapping at creation would mean we'd have to guarantee it gets unmapped to make it usable on the GPU which would involve lots of tracking.
+        // We'll only do it for buffers with INITIAL_COPY and just assume those will get mapped & unmapped at least once before they get used on the GPU.
+        descriptor.set_mapped_at_creation(false);
         let buffer = device.create_buffer(&descriptor).map_err(|e| {
             log::error!("Failed to create buffer: {:?}", e);
             ()
         })?;
+
+        let readback_buffer = if info.usage.gpu_writable() && mappable && usage != (web_sys::gpu_buffer_usage::COPY_DST | web_sys::gpu_buffer_usage::MAP_READ) {
+            // WebGPU does not allow USAGE_MAP_READ with anything except USAGE_COPY_DST.
+            // So we have to keep a second buffer around and copy to that at the end of every command buffer.
+            let readback_descriptor = GpuBufferDescriptor::new(info.size as f64, web_sys::gpu_buffer_usage::COPY_DST | web_sys::gpu_buffer_usage::MAP_READ);
+            if let Some(name) = name {
+                readback_descriptor.set_label(&format!("{}_readback", name));
+            }
+            readback_descriptor.set_mapped_at_creation(true);
+            Some(RefCell::new(device.create_buffer(&readback_descriptor).map_err(|e| {
+                log::error!("Failed to create buffer: {:?}", e);
+                ()
+            })?))
+        } else {
+            None
+        };
+
         Ok(Self {
             device: device.clone(),
             buffer: RefCell::new(buffer),
+            readback_buffer,
             descriptor,
             rust_memory: RefCell::new(rust_memory),
             mappable,
@@ -115,8 +139,23 @@ impl WebGPUBuffer {
     }
 
     #[inline(always)]
-    pub fn handle(&self) -> Ref<GpuBuffer> {
+    pub(crate) fn handle(&self) -> Ref<GpuBuffer> {
         self.buffer.borrow()
+    }
+
+    #[inline(always)]
+    pub(crate) fn readback_handle(&self) -> Option<Ref<GpuBuffer>> {
+        self.readback_buffer.as_ref().map(|b| b.borrow())
+    }
+
+    #[inline(always)]
+    pub(crate) fn is_mappable(&self) -> bool {
+        self.mappable
+    }
+
+    #[inline(always)]
+    pub(crate) fn handle_as_usize(handle: &GpuBuffer) -> usize {
+        unsafe { std::mem::transmute(handle as *const GpuBuffer) }
     }
 }
 
@@ -136,6 +175,10 @@ impl gpu::Buffer for WebGPUBuffer {
         if !self.mappable {
             return None;
         }
+        if !invalidate && !self.info.usage.gpu_readable() {
+            log::warn!("Mapping a GPU-writeonly buffer (so probably mapping for reading) without invalidating will cause issues.");
+        }
+
         length = length.min(self.info.size - offset);
         debug_assert!(offset + length <= self.info.size);
 
@@ -164,15 +207,28 @@ impl gpu::Buffer for WebGPUBuffer {
         };
 
         if invalidate {
-            let buffer = self.buffer.borrow_mut();
-            if (&*buffer).map_state() == web_sys::GpuBufferMapState::Mapped {
-                let mapped_range = buffer.get_mapped_range().unwrap();
-                let uint8_array = Uint8Array::new_with_byte_offset_and_length(&mapped_range, offset as u32, length as u32);
-                uint8_array.copy_to(memory_slice);
-            } else if self.info.usage.gpu_writable() {
-                panic!("Cannot read back. Buffer either wasn't mapped after writing or is not ready yet.\nReading back data from the GPU will require more workarounds.");
-            } else if !entire_buffer_was_already_mapped {
-                panic!("Cannot read back. Read only buffer was not entirely retained in memory.");
+            let mut use_readback_buffer = false;
+            if let Some(readback_buffer) = self.readback_buffer.as_ref() {
+                let buffer = readback_buffer.borrow_mut();
+                if (&*buffer).map_state() == web_sys::GpuBufferMapState::Mapped {
+                    let mapped_range = buffer.get_mapped_range().unwrap();
+                    let uint8_array = Uint8Array::new_with_byte_offset_and_length(&mapped_range, offset as u32, length as u32);
+                    uint8_array.copy_to(memory_slice);
+                    use_readback_buffer = true;
+                } else if self.info.usage.gpu_writable() {
+                    panic!("Cannot read back. Buffer either wasn't mapped after writing or is not ready yet.");
+                }
+            }
+
+            if !use_readback_buffer {
+                let buffer = self.buffer.borrow_mut();
+                if (&*buffer).map_state() == web_sys::GpuBufferMapState::Mapped {
+                    let mapped_range = buffer.get_mapped_range().unwrap();
+                    let uint8_array = Uint8Array::new_with_byte_offset_and_length(&mapped_range, offset as u32, length as u32);
+                    uint8_array.copy_to(memory_slice);
+                } else if !entire_buffer_was_already_mapped {
+                    panic!("Cannot read back. Read only buffer was not entirely retained in memory.");
+                }
             }
         }
 
@@ -186,6 +242,10 @@ impl gpu::Buffer for WebGPUBuffer {
             // Buffer wasn't mapped
             return;
         }
+        if !flush && !self.info.usage.gpu_writable() {
+            log::warn!("Mapping a GPU-readonly buffer (so probably mapped for writing) without flushing will cause issues.");
+        }
+
         let retain_entire_buffer = self.retained_memory_limit == self.info.size;
         let memory = memory_opt.as_mut().unwrap();
 
@@ -236,6 +296,30 @@ impl gpu::Buffer for WebGPUBuffer {
                     offset as u32,
                     memory_slice
                 ).unwrap();
+            }
+            if let Some(readback_buffer) = self.readback_buffer.as_ref() {
+                if PREFER_DISCARD_OVER_QUEUE_WRITE && offset == 0 && length == self.info.size {
+                    let mut readback_buffer_mut = readback_buffer.borrow_mut();
+                    let readback_descriptor = GpuBufferDescriptor::new(self.info.size as f64, web_sys::gpu_buffer_usage::COPY_DST | web_sys::gpu_buffer_usage::MAP_READ);
+                    readback_descriptor.set_label(&readback_buffer_mut.label());
+                    readback_descriptor.set_mapped_at_creation(true);
+                    *readback_buffer_mut = self.device.create_buffer(&readback_descriptor).map_err(|e| {
+                        log::error!("Failed to create buffer: {:?}", e);
+                        ()
+                    }).unwrap();
+                    assert!(readback_buffer_mut.map_state() == web_sys::GpuBufferMapState::Mapped);
+                    let mapped_range = readback_buffer_mut.get_mapped_range().unwrap();
+                    let uint8_array = Uint8Array::new_with_byte_offset_and_length(&mapped_range, 0, self.info.size as u32);
+                    uint8_array.copy_from(memory_slice);
+                    readback_buffer_mut.unmap();
+                } else {
+                    let readback_buffer = readback_buffer.borrow();
+                    self.device.queue().write_buffer_with_u32_and_u8_slice(
+                        &readback_buffer,
+                        offset as u32,
+                        memory_slice
+                    ).unwrap();
+                }
             }
         }
         if (memory.len() as u64) > self.retained_memory_limit {
