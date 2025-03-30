@@ -471,7 +471,7 @@ impl gpu::Device<VkBackend> for VkDevice {
         }).unwrap();
     }
 
-    unsafe fn create_query_pool(&mut self, count: u32) -> VkQueryPool {
+    unsafe fn create_query_pool(&self, count: u32) -> VkQueryPool {
         VkQueryPool::new(&self.device, vk::QueryType::OCCLUSION, count)
     }
 }

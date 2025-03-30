@@ -66,10 +66,3 @@ impl Drop for VkQueryPool {
         }
     }
 }
-
-#[derive(PartialEq, Eq, Hash)]
-pub struct VkQueryRange {
-    pub(crate) pool: Arc<VkQueryPool>,
-    pub(crate) index: u32,
-    pub(crate) count: u32,
-}

@@ -73,5 +73,5 @@ pub trait Device<B: GPUBackend> {
   fn get_top_level_instances_buffer_size(&self, instances: &[AccelerationStructureInstance<B>]) -> u64;
   unsafe fn get_raytracing_pipeline_sbt_buffer_size(&self, info: &RayTracingPipelineInfo<B>) -> u64;
   unsafe fn create_raytracing_pipeline(&self, info: &RayTracingPipelineInfo<B>, sbt_buffer: &B::Buffer, sbt_buffer_offset: u64, name: Option<&str>) -> B::RayTracingPipeline;
-  unsafe fn create_query_pool(&mut self, count: u32) -> B::QueryPool;
+  unsafe fn create_query_pool(&self, count: u32) -> B::QueryPool;
 }
