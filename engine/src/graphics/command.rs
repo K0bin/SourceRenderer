@@ -576,7 +576,8 @@ impl<'a> CommandBuffer<'a> {
         unsafe {
             self.cmd_buffer_handle.begin_render_pass(&gpu::RenderPassBeginInfo {
                 render_targets: &attachments,
-                depth_stencil: depth_stencil.as_ref()
+                depth_stencil: depth_stencil.as_ref(),
+                query_pool: None,
             }, recording_mode)
         }
     }
