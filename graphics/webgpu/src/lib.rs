@@ -13,6 +13,7 @@ mod command;
 mod binding;
 mod shared;
 mod device;
+mod query;
 
 pub use backend::*;
 pub use instance::*;
@@ -20,6 +21,7 @@ pub use surface::*;
 pub use swapchain::*;
 pub use adapter::*;
 pub use device::*;
+pub use query::*;
 
 pub(crate) use buffer::*;
 pub(crate) use texture::*;

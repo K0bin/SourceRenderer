@@ -13,6 +13,7 @@ pub use crate::{
     texture::*,
     device::*,
     instance::*,
+    query::*,
 };
 
 pub struct WebGPUBackend();
@@ -37,6 +38,7 @@ impl GPUBackend for WebGPUBackend {
     type Queue = WebGPUQueue;
     type Heap = WebGPUHeap;
     type AccelerationStructure = WebGPUAccelerationStructure;
+    type QueryPool = WebGPUQueryPool;
 
     fn name() -> &'static str {
         "WebGPU"
