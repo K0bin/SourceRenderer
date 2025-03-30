@@ -25,7 +25,7 @@ impl Device {
         let device = Arc::new(device);
         let memory_allocator = ManuallyDrop::new(Arc::new(MemoryAllocator::new(&device)));
         let destroyer = ManuallyDrop::new(Arc::new(DeferredDestroyer::new()));
-        let buffer_allocator = Arc::new(BufferAllocator::new(&device, &memory_allocator));
+        let buffer_allocator = Arc::new(BufferAllocator::new(&device, &memory_allocator, &destroyer));
 
         let prerendered_frames = if cfg!(not(target_arch = "wasm32")) {
             3

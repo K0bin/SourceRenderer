@@ -35,7 +35,6 @@ pub(super) struct Allocation<T>
     where T : Send + Sync
 {
     inner: Arc<ChunkInner<T>>,
-    data_ptr: *const T,
     pub range: Range,
 }
 
@@ -59,9 +58,7 @@ impl<T> Allocation<T>
 
     #[inline(always)]
     pub fn data(&self) -> &T {
-        unsafe {
-            &*self.data_ptr
-        }
+        &self.inner.data
     }
 }
 
@@ -113,7 +110,6 @@ impl<T> Chunk<T>
             }
             return Some(Allocation {
                 inner: self.inner.clone(),
-                data_ptr: &self.inner.data as *const T,
                 range: Range {
                     offset: aligned_offset,
                     length: size
@@ -178,7 +174,6 @@ impl<T> Chunk<T>
 
             Allocation {
                 inner: self.inner.clone(),
-                data_ptr: &self.inner.data as *const T,
                 range
             }
         })
