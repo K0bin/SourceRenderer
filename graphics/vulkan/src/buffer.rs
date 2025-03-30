@@ -343,5 +343,9 @@ pub fn buffer_usage_to_vk(usage: gpu::BufferUsage, rt_supported: bool) -> vk::Bu
             | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS_EXT;
     }
 
+    if usage.contains(gpu::BufferUsage::QUERY_RESOLVE) {
+        flags |= vk::BufferUsageFlags::TRANSFER_DST;
+    }
+
     flags
 }

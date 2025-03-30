@@ -1,7 +1,9 @@
 use std::sync::Arc;
+use std::collections::{HashSet, hash_set::Iter};
 
 use js_sys::{wasm_bindgen::JsValue, Array, Uint32Array};
 use log::warn;
+use smallvec::SmallVec;
 use sourcerenderer_core::{align_up_32, gpu::{self, Buffer as _, Texture as _, TextureView as _}};
 use web_sys::{GpuCommandBuffer, GpuCommandEncoder, GpuComputePassEncoder, GpuDevice, GpuExtent3dDict, GpuIndexFormat, GpuLoadOp, GpuRenderBundle, GpuRenderBundleEncoder, GpuRenderBundleEncoderDescriptor, GpuRenderPassColorAttachment, GpuRenderPassDepthStencilAttachment, GpuRenderPassDescriptor, GpuRenderPassEncoder, GpuStoreOp, GpuTexelCopyBufferInfo, GpuTexelCopyTextureInfo};
 
@@ -59,11 +61,33 @@ enum WebGPUCommandBufferHandle {
     Uninit
 }
 
+#[derive(Clone)]
+pub(crate) struct WebGPUReadbackBufferSync {
+    pub(crate) src: web_sys::GpuBuffer,
+    pub(crate) dst: Option<web_sys::GpuBuffer>,
+    pub(crate) size: u32,
+}
+
+impl std::hash::Hash for WebGPUReadbackBufferSync {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        WebGPUBuffer::handle_as_usize(&self.src).hash(state);
+    }
+}
+
+impl PartialEq for WebGPUReadbackBufferSync {
+    fn eq(&self, other: &Self) -> bool {
+        self.src == other.src && self.dst == other.dst && self.size == other.size
+    }
+}
+
+impl Eq for WebGPUReadbackBufferSync {}
+
 pub struct WebGPUCommandBuffer {
     handle: WebGPUCommandBufferHandle,
     is_inner: bool,
     device: GpuDevice,
     frame: u64,
+    readback_syncs: HashSet<WebGPUReadbackBufferSync>,
 }
 
 unsafe impl Send for WebGPUCommandBuffer {}
@@ -113,7 +137,8 @@ impl WebGPUCommandBuffer {
                 })
             },
             is_inner,
-            frame: 0u64
+            frame: 0u64,
+            readback_syncs: HashSet::new(),
         }
     }
 
@@ -179,6 +204,10 @@ impl WebGPUCommandBuffer {
             WebGPUCommandBufferHandle::Uninit => unreachable!(),
             _ => panic!("Primary command buffers aren't supported here")
         }
+    }
+
+    pub(crate) fn readback_syncs(&self) -> Iter<'_, WebGPUReadbackBufferSync> {
+        self.readback_syncs.iter()
     }
 }
 
@@ -391,16 +420,26 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
     }
 
     unsafe fn bind_storage_buffer(&mut self, frequency: gpu::BindingFrequency, binding: u32, buffer: &WebGPUBuffer, offset: u64, length: u64) {
-        let binding_manager = if !self.is_inner {
-            &mut self.get_recording_mut().binding_manager
-        } else {
-            &mut self.get_recording_inner_mut().binding_manager
-        };
-        binding_manager.bind(frequency, binding, WebGPUBoundResourceRef::StorageBuffer(WebGPUBufferBindingInfo {
-            buffer: buffer.handle().clone(),
-            offset,
-            length,
-        }));
+        let identical: bool;
+        {
+            let binding_manager = if !self.is_inner {
+                &mut self.get_recording_mut().binding_manager
+            } else {
+                &mut self.get_recording_inner_mut().binding_manager
+            };
+            identical = binding_manager.bind(frequency, binding, WebGPUBoundResourceRef::StorageBuffer(WebGPUBufferBindingInfo {
+                buffer: buffer.handle().clone(),
+                offset,
+                length,
+            }));
+        }
+        if !identical && buffer.is_mappable() && buffer.info().usage.gpu_writable() {
+            self.readback_syncs.insert(WebGPUReadbackBufferSync {
+                src: buffer.handle().clone(),
+                dst: buffer.readback_handle().map(|h| (*h).clone()),
+                size: buffer.info().size as u32,
+            });
+        }
     }
 
     unsafe fn bind_storage_texture(&mut self, frequency: gpu::BindingFrequency, binding: u32, texture: &WebGPUTextureView) {
@@ -641,6 +680,29 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
     }
 
     unsafe fn finish(&mut self) {
+        if !self.is_inner && !self.readback_syncs.is_empty() {
+            // Copy all buffers that were written to their readback buffers.
+            let mut copies = SmallVec::<[WebGPUReadbackBufferSync; 8]>::new();
+            for sync in &self.readback_syncs {
+                if sync.dst.is_some() {
+                    copies.push(sync.clone());
+                }
+            }
+
+            let recording = self.get_recording_mut();
+            recording.ensure_no_active_pass();
+            for sync in copies {
+                let dst = sync.dst.clone().unwrap();
+                recording.command_encoder.copy_buffer_to_buffer_with_u32_and_u32_and_u32(
+                    &sync.src,
+                    0,
+                    &dst,
+                    0,
+                    sync.size
+                ).unwrap();
+            }
+        }
+
         let handle = std::mem::replace(&mut self.handle, WebGPUCommandBufferHandle::Uninit);
         if !self.is_inner {
             let (cmd_buffer, binding_manager) = match handle {
@@ -669,6 +731,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
     unsafe fn copy_buffer_to_texture(&mut self, src: &WebGPUBuffer, dst: &WebGPUTexture, region: &gpu::BufferTextureCopyRegion) {
         let recording = self.get_recording_mut();
         recording.ensure_no_active_pass();
+
         let src_info = GpuTexelCopyBufferInfo::new(&src.handle());
         src_info.set_offset(region.buffer_offset as f64);
 
@@ -710,6 +773,13 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
     }
 
     unsafe fn copy_buffer(&mut self, src: &WebGPUBuffer, dst: &WebGPUBuffer, region: &gpu::BufferCopyRegion) {
+        if dst.is_mappable() {
+            self.readback_syncs.insert(WebGPUReadbackBufferSync {
+                src: dst.handle().clone(),
+                dst: dst.readback_handle().map(|h| (*h).clone()),
+                size: dst.info().size as u32,
+            });
+        }
         let recording = self.get_recording_mut();
         recording.ensure_no_active_pass();
         recording.command_encoder.copy_buffer_to_buffer_with_u32_and_u32_and_u32(
@@ -726,6 +796,14 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
     }
 
     unsafe fn clear_storage_buffer(&mut self, buffer: &WebGPUBuffer, offset: u64, length_in_u32s: u64, value: u32) {
+        if buffer.is_mappable() {
+            self.readback_syncs.insert(WebGPUReadbackBufferSync {
+                src: buffer.handle().clone(),
+                dst: buffer.readback_handle().map(|h| (*h).clone()),
+                size: buffer.info().size as u32,
+            });
+        }
+
         if value != 0 {
             todo!("clear_storage_buffer is only implemented for value 0. TODO: Write a compute shader to clear buffers.")
         } else {
@@ -823,6 +901,11 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
     type CommandBufferInheritance = WebGPURenderBundleInheritance;
 
     unsafe fn execute_inner(&mut self, submission: &[&WebGPUCommandBuffer], _inheritance: Self::CommandBufferInheritance) {
+        for s in submission {
+            for sync in &s.readback_syncs {
+                self.readback_syncs.insert(sync.clone());
+            }
+        }
         let cmd_buffer = self.get_recording_mut();
         let render_pass_encoder = cmd_buffer.get_render_encoder();
         let array = Array::new_with_length(submission.len() as u32);
@@ -842,6 +925,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
     }
 
     unsafe fn reset(&mut self, frame: u64) {
+        self.readback_syncs.clear();
         let handle = std::mem::replace(&mut self.handle, WebGPUCommandBufferHandle::Uninit);
         if !self.is_inner {
             let mut binding_manager = match handle {
@@ -930,6 +1014,14 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
 
     unsafe fn copy_query_results_to_buffer(&mut self, query_pool: &WebGPUQueryPool, start_index: u32, count: u32, buffer: &WebGPUBuffer, buffer_offset: u64) {
         if !self.is_inner {
+            if buffer.is_mappable() {
+                self.readback_syncs.insert(WebGPUReadbackBufferSync {
+                    src: buffer.handle().clone(),
+                    dst: buffer.readback_handle().map(|h| (*h).clone()),
+                    size: buffer.info().size as u32,
+                });
+            }
+
             let cmd_buffer = self.get_recording_mut();
             cmd_buffer.command_encoder.resolve_query_set_with_u32(&query_pool.handle(), start_index, count, &buffer.handle(), buffer_offset as u32);
         } else {

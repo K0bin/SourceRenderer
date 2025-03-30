@@ -837,7 +837,7 @@ impl WebGPUBindingManager {
         frequency: gpu::BindingFrequency,
         slot: u32,
         binding: WebGPUBoundResourceRef,
-    ) {
+    ) -> bool {
         let adjusted_slot = slot * 2 + if frequency == gpu::BindingFrequency::VeryFrequent { 2 } else { 0 };
 
         let mut internal_binding_2 = WebGPUBoundResourceRefInternal::None;
@@ -873,6 +873,7 @@ impl WebGPUBindingManager {
             *existing_binding = (&internal_binding).into();
             *existing_binding_2 = (&internal_binding_2).into();
         }
+        identical
     }
 
     fn create_push_const_buffer(device: &GpuDevice, size: u64, mapped: bool, usage: u32) -> GpuBuffer {
