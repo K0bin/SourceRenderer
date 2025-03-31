@@ -265,7 +265,7 @@ impl gpu::Device<VkBackend> for VkDevice {
 
         let mut alignment = requirements.memory_requirements.alignment;
         alignment = alignment.max(self.device.properties.limits.min_memory_map_alignment as u64);
-        alignment = alignment.max(self.device.properties.limits.non_coherent_atom_sSize as u64);
+        alignment = alignment.max(self.device.properties.limits.non_coherent_atom_size as u64);
         alignment = alignment.max(self.device.properties.limits.buffer_image_granularity as u64);
         if info.usage.contains(gpu::BufferUsage::COPY_DST | gpu::BufferUsage::COPY_SRC) {
             alignment = alignment.max(self.device.properties.limits.min_uniform_buffer_offset_alignment);
