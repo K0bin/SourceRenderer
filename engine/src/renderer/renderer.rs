@@ -11,7 +11,6 @@ use bevy_math::Affine3A;
 use crossbeam_channel::{
     unbounded, Receiver, Sender, TryRecvError
 };
-use log::{info, trace, warn};
 use sourcerenderer_core::platform::Platform;
 use sourcerenderer_core::{
     console::Console, Vec3
@@ -79,12 +78,12 @@ impl<P: Platform> Renderer<P> {
         asset_manager: &Arc<AssetManager>,
         _console: &Arc<Console>,
     ) -> (Self, RendererSender) {
-        info!("Initializing renderer with {} backend", crate::graphics::ActiveBackend::name());
+        log::info!("Initializing renderer with {} backend", crate::graphics::ActiveBackend::name());
 
         let (sender, receiver) = unbounded::<RendererCommand>();
         let mut context: GraphicsContext = device.create_context();
 
-        trace!("Initializing render path");
+        log::trace!("Initializing render path");
         let render_path = Box::new(WebRenderer::new(device, &swapchain, &mut context, asset_manager));
         //let render_path: Box<dyn RenderPath> = Box::new(NoOpRenderPath);
 
@@ -139,13 +138,13 @@ impl<P: Platform> Renderer<P> {
         } else {
             message_receiving_result = self.receive_messages();
             if message_receiving_result == ReceiveMessagesResult::WaitForMessages {
-                warn!("No finished frame yet.");
+                log::warn!("No finished frame yet.");
                 return;
             }
         }
 
         if message_receiving_result == ReceiveMessagesResult::Quit {
-            info!("Quitting renderer.");
+            log::info!("Quitting renderer.");
             self.notify_stopped_running();
             return;
         }
@@ -530,7 +529,7 @@ impl RendererSender {
     }
 
     pub fn stop(&self) {
-        trace!("Stopping renderer");
+        log::trace!("Stopping renderer");
         if cfg!(feature = "threading") {
             let was_running = self.state.is_running.swap(false, Ordering::Release);
             if !was_running {
