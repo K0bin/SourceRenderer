@@ -28,16 +28,18 @@ pub(crate) fn create_surface(sdl_window_handle: &sdl3::video::Window, graphics_i
 
     let mut layer: *mut c_void = std::ptr::null_mut();
     let ns_view = view.as_ptr() as *mut objc2_app_kit::NSView;
-    for subview in unsafe { (*ns_view).subviews().iter() } {
-        let subview_ptr = Retained::as_ptr(&subview);
-        let subview_mut_ptr: *mut objc2_app_kit::NSView = unsafe { std::mem::transmute(subview_ptr) };
-        layer = unsafe { sdl3_sys::everything::SDL_Metal_GetLayer(subview_mut_ptr as *mut c_void) };
-        if !layer.is_null() {
-            break;
+    unsafe {
+        for subview in (*ns_view).subviews().iter() {
+            let subview_ptr = Retained::into_raw(subview);
+            layer = sdl3_sys::everything::SDL_Metal_GetLayer(subview_ptr as *mut c_void);
+            let _ = Retained::from_raw(subview_ptr);
+            if !layer.is_null() {
+                break;
+            }
         }
     }
 
-    let layer_ref: Retained<objc2_quartz_core::CAMetalLayer> = unsafe { Retained::from_raw(std::mem::transmute(layer)).unwrap() };
+    let layer_ref: Retained<objc2_quartz_core::CAMetalLayer> = unsafe { Retained::from_raw(layer as *mut objc2_quartz_core::CAMetalLayer).unwrap() };
     std::mem::forget(layer_ref.clone()); // Increase ref count, Retained::from_raw doesn't do that.
     MTLSurface::new(graphics_instance, layer_ref)
 }
