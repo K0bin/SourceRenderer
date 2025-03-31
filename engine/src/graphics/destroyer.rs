@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use crate::Mutex;
+use crate::{Mutex, MutexGuard};
 
 use super::*;
 
@@ -130,6 +130,16 @@ impl DeferredDestroyer {
 
     pub(super) fn destroy_unused(&self, counter: u64) {
         let mut guard = self.inner.lock().unwrap();
+        Self::destroy_unused_locked(&mut guard, counter);
+    }
+
+    pub(super) unsafe fn destroy_all(&self) {
+        let mut guard = self.inner.lock().unwrap();
+        let counter = guard.current_counter;
+        Self::destroy_unused_locked(&mut guard, counter);
+    }
+
+    fn destroy_unused_locked(guard: &mut MutexGuard<'_, DeferredDestroyerInner>, counter: u64) {
         assert!(guard.current_counter >= counter);
         guard.acceleration_structures.retain(|(resource_counter, _)| *resource_counter > counter);
         guard.buffer_slice_refs.retain(|(resource_counter, _)| *resource_counter > counter);

@@ -338,12 +338,12 @@ impl Device {
 impl Drop for Device {
     fn drop(&mut self) {
         unsafe {
-            ManuallyDrop::drop(&mut self.buffer_allocator);
             ManuallyDrop::drop(&mut self.transfer);
             self.device.wait_for_idle();
-            self.destroyer.destroy_unused(u64::MAX);
-            ManuallyDrop::drop(&mut self.destroyer);
+            ManuallyDrop::drop(&mut self.buffer_allocator);
             ManuallyDrop::drop(&mut self.allocator);
+            self.destroyer.destroy_all();
+            ManuallyDrop::drop(&mut self.destroyer);
         }
     }
 }

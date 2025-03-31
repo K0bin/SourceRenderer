@@ -14,7 +14,6 @@ use bevy_time::{Fixed, Time, TimePlugin};
 use bevy_transform::TransformPlugin;
 use bevy_hierarchy::HierarchyPlugin;
 
-use log::{trace, warn};
 use sourcerenderer_core::platform::{GraphicsPlatform, Platform, WindowProvider};
 use sourcerenderer_core::{
     console::Console,
@@ -86,7 +85,7 @@ impl Engine {
 
     pub fn frame(&mut self) {
         if !self.is_running {
-            warn!("Frame called after engine was stopped.");
+            log::warn!("Frame called after engine was stopped.");
             return;
         }
 
@@ -140,7 +139,7 @@ impl Engine {
             return;
         }
         self.is_running = false;
-        trace!("Stopping engine");
+        log::info!("Stopping engine");
         RendererPlugin::<P>::stop(&mut self.app);
     }
 
