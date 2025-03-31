@@ -108,6 +108,10 @@ impl Engine {
         }
 
         app.update();
+        if let Some(exit) = app.should_exit() {
+            log::info!("Exiting because of app: {:?}", exit);
+            self.is_running = false;
+        }
     }
 
     pub fn is_mouse_locked(&self) -> bool {
@@ -135,6 +139,7 @@ impl Engine {
         if !self.is_running {
             return;
         }
+        self.is_running = false;
         trace!("Stopping engine");
         RendererPlugin::<P>::stop(&mut self.app);
     }
