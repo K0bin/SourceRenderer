@@ -18,7 +18,7 @@ I had code for that before Bevy existed and I prefer my solutions.
     * Ray tracing (if supported, RT pipelines on Vulkan, RT queries on Vulkan & Metal)
     * Multi draw indirect (if supported on Vulkan & Metal)
     * Texture uploads either directly on the CPU or via a separate transfer queue
-    * Occlusion queries (TODO)
+    * Occlusion queries
 * Shared graphics abstraction on top of that:
     * Submission batching (runs on a worker thread if multi-threading is enabled)
     * Resource lifetimes are automatically handled by delaying destruction to when they are unused
@@ -59,7 +59,7 @@ I had code for that before Bevy existed and I prefer my solutions.
         * GPU-driven multi draw indirect
         * Bindless materials
         * Frustum culling in a compute shader
-        * Occlusion culling in a compute shader by reprojecting previous frames depth buffer
+        * Occlusion culling in a compute shader using the two pass hierarchical depth buffer approach
         * Depth prepass
         * Tile-based forward shading
         * PBR
@@ -70,9 +70,10 @@ I had code for that before Bevy existed and I prefer my solutions.
         * TAA
       * Compatibility
         * CPU-driven but will hopefully use batching and instancing
-        * Occlusion culling (haven't decided whether it's based on occlusion queries)
+        * Occlusion culling using occlusion queries done with AABBs of geometry and a one frame delay to avoid synchronization
         * Re-ordering to save re-binding
         * Tile-based forward shading
+        * PBR
         * SSAO
         * Bloom
         * Depth of field
