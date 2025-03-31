@@ -230,14 +230,14 @@ impl VkBuffer {
 impl Drop for VkBuffer {
     fn drop(&mut self) {
         unsafe {
+            self.device.destroy_buffer(self.buffer, None);
+
             if self.is_memory_owned {
                 if self.map_ptr.is_some() {
                     self.device.unmap_memory(self.memory);
                 }
                 self.device.free_memory(self.memory, None);
             }
-
-            self.device.destroy_buffer(self.buffer, None);
         }
     }
 }
