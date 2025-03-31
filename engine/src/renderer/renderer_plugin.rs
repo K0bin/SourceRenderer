@@ -175,6 +175,7 @@ fn insert_renderer_resource<P: Platform>(
     app.insert_resource(wrapper);
 }
 
+#[allow(unused)]
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 struct SyncSet;
 
@@ -334,6 +335,7 @@ fn end_frame<P: Platform>(mut renderer: ResMut<RendererResourceWrapper<P>>) {
     renderer.renderer.get().render();
 }
 
+#[allow(unused)]
 fn begin_frame<P: Platform>(renderer: ResMut<RendererResourceWrapper<P>>) {
     // Unblock regularly so the fixed time systems can run.
     // All rendering systems check if the renderer is saturated before sending new commands.
