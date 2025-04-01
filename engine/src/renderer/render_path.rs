@@ -48,6 +48,7 @@ pub trait RenderPath<P: Platform> : Send {
         swapchain: &mut Swapchain,
         scene: &SceneInfo,
         frame_info: &FrameInfo,
+        resources: &mut RendererResources,
         assets: &RendererAssetsReadOnly<'_>,
     ) -> Result<RenderPathResult, SwapchainError>;
 }
@@ -68,6 +69,7 @@ impl<P: Platform> RenderPath<P> for NoOpRenderPath {
         swapchain: &mut Swapchain,
         _scene: &SceneInfo,
         _frame_info: &FrameInfo,
+        _resources: &mut RendererResources,
         _assets: &RendererAssetsReadOnly<'_>,
     ) -> Result<RenderPathResult, SwapchainError> {
         let backbuffer = swapchain.next_backbuffer()?;

@@ -35,7 +35,6 @@ struct CameraBuffer {
 
 pub struct WebRenderer {
     geometry: GeometryPass,
-    resources: RendererResources,
 }
 
 impl WebRenderer {
@@ -43,16 +42,16 @@ impl WebRenderer {
         device: &Arc<Device>,
         swapchain: &Swapchain,
         context: &mut GraphicsContext,
+        resources: &mut RendererResources,
         asset_manager: &Arc<AssetManager>
     ) -> Self {
-        let mut resources = RendererResources::new(device);
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
         let geometry_pass = GeometryPass::new(
             device,
             asset_manager,
             swapchain,
             &mut init_cmd_buffer,
-            &mut resources,
+            resources,
         );
 
         init_cmd_buffer.flush_barriers();
@@ -71,7 +70,6 @@ impl WebRenderer {
 
         Self {
             geometry: geometry_pass,
-            resources,
         }
     }
 }
@@ -102,6 +100,7 @@ impl<P: Platform> RenderPath<P> for WebRenderer {
         swapchain: &mut Swapchain,
         scene: &SceneInfo,
         _frame_info: &FrameInfo,
+        resources: &mut RendererResources,
         assets: &RendererAssetsReadOnly<'_>
     ) -> Result<RenderPathResult, sourcerenderer_core::gpu::SwapchainError> {
         let backbuffer = swapchain.next_backbuffer()?;
@@ -133,7 +132,7 @@ impl<P: Platform> RenderPath<P> for WebRenderer {
             scene.scene,
             main_view,
             &camera_buffer,
-            &self.resources,
+            resources,
             &backbuffer_view,
             backbuffer_handle,
             swapchain.width(),

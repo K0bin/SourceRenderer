@@ -86,8 +86,10 @@ impl<P: Platform> Renderer<P> {
         let (sender, receiver) = unbounded::<RendererCommand>();
         let mut context: GraphicsContext = device.create_context();
 
+        let mut resources = RendererResources::new(device);
+
         log::trace!("Initializing render path");
-        let render_path = Box::new(WebRenderer::new(device, &swapchain, &mut context, asset_manager));
+        let render_path = Box::new(WebRenderer::new(device, &swapchain, &mut context, &mut resources, asset_manager));
         //let render_path: Box<dyn RenderPath> = Box::new(NoOpRenderPath);
 
         let renderer = Self {
@@ -98,7 +100,7 @@ impl<P: Platform> Renderer<P> {
             }),
             receiver,
             asset_manager: asset_manager.clone(),
-            resources: RendererResources::new(device),
+            resources,
             scene: RendererScene::new(),
             swapchain: Arc::new(Mutex::new(swapchain)),
             context,
@@ -178,6 +180,7 @@ impl<P: Platform> Renderer<P> {
             &mut swapchain_guard,
             &scene_info,
             &frame_info,
+            &mut self.resources,
             &assets
         );
         let frame_end_signal = self.context.end_frame();

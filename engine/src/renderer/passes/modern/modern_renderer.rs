@@ -42,9 +42,7 @@ use crate::ui::UIDrawData;
 
 pub struct ModernRenderer {
     device: Arc<Device>,
-    barriers: RendererResources,
     ui_data: UIDrawData,
-
     clustering_pass: ClusteringPass,
     light_binning_pass: LightBinningPass,
     geometry_draw_prep: DrawPrepPass,
@@ -96,54 +94,53 @@ impl ModernRenderer {
         device: &Arc<crate::graphics::Device>,
         swapchain: &crate::graphics::Swapchain,
         context: &mut GraphicsContext,
+        resources: &mut RendererResources,
         asset_manager: &Arc<AssetManager>
     ) -> Self {
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
         let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
 
-        let mut barriers = RendererResources::new(device);
-
         let blue_noise = BlueNoise::new(device);
 
-        let clustering = ClusteringPass::new(&mut barriers, asset_manager);
-        let light_binning = LightBinningPass::new(&mut barriers, asset_manager);
-        let ssao = SsaoPass::new(device, resolution, &mut barriers, asset_manager, true);
+        let clustering = ClusteringPass::new(resources, asset_manager);
+        let light_binning = LightBinningPass::new(resources, asset_manager);
+        let ssao = SsaoPass::new(device, resolution, resources, asset_manager, true);
         let rt_passes = (device.supports_ray_tracing() && false).then(|| RTPasses {
             acceleration_structure_update: AccelerationStructureUpdatePass::new(
                 device,
                 &mut init_cmd_buffer,
             ),
-            shadows: RTShadowPass::new(resolution, &mut barriers, asset_manager),
+            shadows: RTShadowPass::new(resolution, resources, asset_manager),
         });
         let visibility_buffer =
-            VisibilityBufferPass::new(resolution, &mut barriers, asset_manager);
-        let draw_prep = DrawPrepPass::new(&mut barriers, asset_manager);
+            VisibilityBufferPass::new(resolution, resources, asset_manager);
+        let draw_prep = DrawPrepPass::new(resources, asset_manager);
         let hi_z_pass = HierarchicalZPass::new(
             device,
-            &mut barriers,
+            resources,
             asset_manager,
             &mut init_cmd_buffer,
             VisibilityBufferPass::DEPTH_TEXTURE_NAME,
         );
-        let ssr_pass = SsrPass::new(resolution, &mut barriers, asset_manager, true);
+        let ssr_pass = SsrPass::new(resolution, resources, asset_manager, true);
         let shading_pass = ShadingPass::new(
             device,
             resolution,
-            &mut barriers,
+            resources,
             asset_manager,
             &mut init_cmd_buffer,
         );
-        let compositing_pass = CompositingPass::new(resolution, &mut barriers, asset_manager);
+        let compositing_pass = CompositingPass::new(resolution, resources, asset_manager);
         let motion_vector_pass =
-            MotionVectorPass::new(&mut barriers, resolution, asset_manager);
+            MotionVectorPass::new(resources, resolution, asset_manager);
 
         let anti_aliasing = {
-            let taa = TAAPass::new(resolution, &mut barriers, asset_manager, true);
-            let sharpen = SharpenPass::new(resolution, &mut barriers, asset_manager);
+            let taa = TAAPass::new(resolution, resources, asset_manager, true);
+            let sharpen = SharpenPass::new(resolution, resources, asset_manager);
             AntiAliasing::TAA { taa, sharpen }
         };
 
-        let shadow_map = ShadowMapPass::new(device, &mut barriers, &mut init_cmd_buffer, asset_manager);
+        let shadow_map = ShadowMapPass::new(device, resources, &mut init_cmd_buffer, asset_manager);
 
         let ui_pass = UIPass::new(device, asset_manager);
 
@@ -163,7 +160,6 @@ impl ModernRenderer {
 
         Self {
             device: device.clone(),
-            barriers,
             ui_data: UIDrawData::default(),
             clustering_pass: clustering,
             light_binning_pass: light_binning,
@@ -366,6 +362,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer {
         swapchain: &mut Swapchain,
         scene: &SceneInfo,
         frame_info: &FrameInfo,
+        resources: &mut RendererResources,
         assets: &RendererAssetsReadOnly<'_>,
     ) -> Result<RenderPathResult, SwapchainError> {
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
@@ -404,8 +401,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer {
         );
 
         let resolution = {
-            let info: std::cell::Ref<'_, TextureInfo> = self
-                .barriers
+            let info: std::cell::Ref<'_, TextureInfo> = resources
                 .texture_info(VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME);
             Vec2UI::new(info.width, info.height)
         };
@@ -413,7 +409,7 @@ impl<P: Platform> RenderPath<P> for ModernRenderer {
         let params = RenderPassParameters {
             device: self.device.as_ref(),
             scene,
-            resources: &mut self.barriers,
+            resources,
             assets
         };
 

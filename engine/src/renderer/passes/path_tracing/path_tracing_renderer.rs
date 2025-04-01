@@ -27,7 +27,6 @@ use super::PathTracerPass;
 
 pub struct PathTracingRenderer {
     device: Arc<Device>,
-    barriers: RendererResources,
     ui_data: UIDrawData,
     blue_noise: BlueNoise,
     acceleration_structure_update: AccelerationStructureUpdatePass,
@@ -41,12 +40,11 @@ impl PathTracingRenderer {
         device: &Arc<crate::graphics::Device>,
         swapchain: &crate::graphics::Swapchain,
         context: &mut GraphicsContext,
+        resources: &mut RendererResources,
         asset_manager: &Arc<AssetManager>,
     ) -> Self {
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
         let resolution = Vec2UI::new(swapchain.width() * 2, swapchain.height() * 2);
-
-        let mut barriers = RendererResources::new(device);
 
         let blue_noise = BlueNoise::new(device);
 
@@ -57,8 +55,8 @@ impl PathTracingRenderer {
             device,
             &mut init_cmd_buffer,
         );
-        let blit_pass = BlitPass::new(&mut barriers, asset_manager, swapchain.format());
-        let path_tracer_pass = PathTracerPass::new(device, resolution, &mut barriers, asset_manager, &mut init_cmd_buffer);
+        let blit_pass = BlitPass::new(resources, asset_manager, swapchain.format());
+        let path_tracer_pass = PathTracerPass::new(device, resolution, resources, asset_manager, &mut init_cmd_buffer);
 
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
@@ -75,7 +73,6 @@ impl PathTracingRenderer {
         task_pool.spawn(async move { c_device.flush(QueueType::Graphics); }).detach();
         Self {
             device: device.clone(),
-            barriers,
             ui_data: UIDrawData::default(),
             blue_noise,
             acceleration_structure_update,
@@ -244,6 +241,7 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer {
         swapchain: &mut Swapchain,
         scene: &SceneInfo,
         frame_info: &FrameInfo,
+        resources: &mut RendererResources,
         assets: &RendererAssetsReadOnly<'_>,
     ) -> Result<RenderPathResult, SwapchainError> {
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
@@ -269,7 +267,7 @@ impl<P: Platform> RenderPath<P> for PathTracingRenderer {
         let params = RenderPassParameters {
             device: self.device.as_ref(),
             scene,
-            resources: &mut self.barriers,
+            resources,
             assets,
         };
 
