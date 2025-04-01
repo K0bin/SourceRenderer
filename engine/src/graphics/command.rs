@@ -359,9 +359,9 @@ impl<'a> CommandBuffer<'a> {
         unsafe {
             let ptr_void = buffer.map(self.frame(), false).unwrap();
 
-            if required_size < (size as usize) {
+            if required_size < size {
                 let ptr_u8 = (ptr_void as *mut u8).offset(required_size as isize);
-                std::ptr::write_bytes(ptr_u8, 0u8, ((size as usize) - required_size) as usize);
+                std::ptr::write_bytes(ptr_u8, 0u8, size - required_size);
             }
 
             if required_size != 0 {
