@@ -347,12 +347,11 @@ impl<'a> CommandBuffer<'a> {
 
     pub fn upload_dynamic_data<T>(&mut self, data: &[T], usage: BufferUsage) -> Result<TransientBufferSlice, OutOfMemoryError>
     where T: 'static + Send + Sync + Sized + Clone {
-        let required_size = std::mem::size_of_val(data) as u64;
-        assert_ne!(required_size, 0u64);
-        let size = align_up_64(required_size, 64);
+        let required_size = std::mem::size_of_val(data);
+        let size = align_up(required_size.max(64), 64);
 
         let buffer = self.context.transient_buffer_allocator().get_slice(&BufferInfo {
-            size: size,
+            size: size as u64,
             usage,
             sharing_mode: QueueSharingMode::Exclusive,
         }, MemoryUsage::MappableGPUMemory, self.frame(), None)?;
@@ -360,13 +359,15 @@ impl<'a> CommandBuffer<'a> {
         unsafe {
             let ptr_void = buffer.map(self.frame(), false).unwrap();
 
-            if required_size < size {
+            if required_size < (size as usize) {
                 let ptr_u8 = (ptr_void as *mut u8).offset(required_size as isize);
-                std::ptr::write_bytes(ptr_u8, 0u8, (size - required_size) as usize);
+                std::ptr::write_bytes(ptr_u8, 0u8, ((size as usize) - required_size) as usize);
             }
 
-            let ptr = ptr_void as *mut T;
-            ptr.copy_from(data.as_ptr(), data.len());
+            if required_size != 0 {
+                let ptr = ptr_void as *mut u8;
+                ptr.copy_from(data.as_ptr() as *const u8, required_size);
+            }
 
             buffer.unmap(self.frame(), true);
         }

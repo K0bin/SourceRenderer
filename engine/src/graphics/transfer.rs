@@ -716,15 +716,15 @@ impl Transfer {
     }
 
     fn upload_data<T>(&self, data: &[T], length: u64, memory_usage: MemoryUsage, usage: BufferUsage) -> Result<Arc<BufferSlice>, OutOfMemoryError> {
-      let required_size = std::mem::size_of_val(data) as u64;
-      assert_ne!(required_size, 0u64);
-      let size = align_up_64(
-        if length == 0 { required_size } else { required_size.min(length) },
-        256u64
+      let required_size = std::mem::size_of_val(data);
+      assert_ne!(required_size, 0);
+      let size = align_up(
+        if length == 0 { required_size } else { required_size.min(length as usize) },
+        256
       );
 
       let slice = self.buffer_allocator.get_slice(&BufferInfo {
-          size,
+          size: size as u64,
           usage,
           sharing_mode: QueueSharingMode::Concurrent
       }, memory_usage, None)?;
@@ -732,13 +732,15 @@ impl Transfer {
       unsafe {
           let ptr_void = slice.map(false).unwrap();
 
-          if required_size < size {
+          if required_size < (size as usize) {
               let ptr_u8 = (ptr_void as *mut u8).offset(required_size as isize);
-              std::ptr::write_bytes(ptr_u8, 0u8, (size - required_size) as usize);
+              std::ptr::write_bytes(ptr_u8, 0u8, ((size as usize) - required_size) as usize);
           }
 
-          let ptr = ptr_void as *mut T;
-          ptr.copy_from(data.as_ptr(), data.len());
+          if required_size != 0 {
+              let ptr = ptr_void as *mut u8;
+              ptr.copy_from(data.as_ptr() as *const u8, required_size);
+          }
 
           slice.unmap(true);
       }

@@ -118,11 +118,11 @@ impl Device {
     }
 
     pub fn upload_data<T>(&self, data: &[T], memory_usage: MemoryUsage, usage: BufferUsage) -> Result<Arc<BufferSlice>, OutOfMemoryError> {
-        let required_size = std::mem::size_of_val(data) as u64;
-        let size = align_up_64(required_size.max(64), 64);
+        let required_size = std::mem::size_of_val(data);
+        let size = align_up(required_size.max(64), 64);
 
         let slice = self.buffer_allocator.get_slice(&BufferInfo {
-            size,
+            size: size as u64,
             usage,
             sharing_mode: QueueSharingMode::Concurrent
         }, memory_usage, None)?;
@@ -136,9 +136,10 @@ impl Device {
             }
 
             if required_size != 0 {
-                let ptr = ptr_void as *mut T;
-                ptr.copy_from(data.as_ptr(), data.len());
+                let ptr = ptr_void as *mut u8;
+                ptr.copy_from(data.as_ptr() as *const u8, std::mem::size_of_val(data));
             }
+
             slice.unmap(true);
         }
         Ok(slice)
