@@ -8,12 +8,18 @@ use super::{active_gpu_backend, Device, Instance, Swapchain};
 #[derive(Resource)]
 pub struct GPUDeviceResource(pub Arc<Device>);
 
+impl Drop for GPUDeviceResource {
+    fn drop(&mut self) {
+        log::warn!("Dropping GPUDevicePlugin");
+    }
+}
+
 #[derive(Resource)]
 pub struct GPUSwapchainResource(pub Swapchain);
 
 pub(crate) fn initialize_graphics<P: Platform + GraphicsPlatform<active_gpu_backend::Backend> + WindowProvider<active_gpu_backend::Backend>>(platform: &P, app: &mut bevy_app::App) {
     let api_instance = platform
-        .create_instance(false)
+        .create_instance(true)
         .expect("Failed to initialize graphics");
     let gpu_instance = Instance::new(api_instance);
 

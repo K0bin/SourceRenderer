@@ -12,6 +12,12 @@ pub struct Swapchain {
     recreation_count: u32
 }
 
+impl Drop for Swapchain {
+    fn drop(&mut self) {
+        log::error!("Dropping swapchain");
+    }
+}
+
 impl Swapchain {
     pub fn new(swapchain: active_gpu_backend::Swapchain, device: &Device) -> Self {
         Self {

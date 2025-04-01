@@ -554,6 +554,12 @@ where
     }
 }
 
+impl Drop for ShaderManager {
+    fn drop(&mut self) {
+        log::warn!("Dropping ShaderManager");
+    }
+}
+
 impl ShaderManager {
     pub fn new(
         device: &Arc<Device>,

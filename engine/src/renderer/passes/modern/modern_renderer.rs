@@ -60,6 +60,12 @@ pub struct ModernRenderer {
     ui_pass: UIPass
 }
 
+impl Drop for ModernRenderer {
+    fn drop(&mut self) {
+        log::warn!("Dropping ModernRenderer");
+    }
+}
+
 enum AntiAliasing {
     TAA { taa: TAAPass, sharpen: SharpenPass },
 }

@@ -339,6 +339,7 @@ impl Device {
 impl Drop for Device {
     fn drop(&mut self) {
         unsafe {
+            log::warn!("Dropping high level graphics device");
             ManuallyDrop::drop(&mut self.transfer);
             self.device.wait_for_idle();
             ManuallyDrop::drop(&mut self.buffer_allocator);

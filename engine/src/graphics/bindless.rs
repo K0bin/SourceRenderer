@@ -6,6 +6,12 @@ pub(super) struct BindlessSlotAllocator {
     chunk: Chunk<()>
 }
 
+impl Drop for BindlessSlotAllocator {
+    fn drop(&mut self) {
+        log::error!("Dropping bindless allocator");
+    }
+}
+
 pub struct BindlessSlot {
     alloc: Allocation<()>,
     texture: Arc<super::TextureView>

@@ -278,13 +278,14 @@ impl gpu::Device<VkBackend> for VkDevice {
         }
 
         gpu::ResourceHeapInfo {
-            dedicated_allocation_preference: if dedicated_requirements.requires_dedicated_allocation == vk::TRUE {
+            /*dedicated_allocation_preference: if dedicated_requirements.requires_dedicated_allocation == vk::TRUE {
                 gpu::DedicatedAllocationPreference::RequireDedicated
             } else if dedicated_requirements.prefers_dedicated_allocation == vk::TRUE {
                 gpu::DedicatedAllocationPreference::PreferDedicated
             } else {
                 gpu::DedicatedAllocationPreference::DontCare
-            },
+            },*/
+            dedicated_allocation_preference: gpu::DedicatedAllocationPreference::RequireDedicated,
             memory_type_mask: requirements.memory_requirements.memory_type_bits,
             alignment,
             size: requirements.memory_requirements.size

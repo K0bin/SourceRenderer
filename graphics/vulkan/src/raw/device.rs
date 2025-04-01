@@ -97,6 +97,7 @@ impl Deref for RawVkDevice {
 impl Drop for RawVkDevice {
     fn drop(&mut self) {
         unsafe {
+            log::error!("Destroying device");
             self.device.destroy_device(None);
         }
     }

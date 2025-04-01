@@ -82,6 +82,14 @@ pub struct RendererResources {
     global: RefCell<GlobalMemoryBarrier>,
 }
 
+impl Drop for RendererResources {
+    fn drop(&mut self) {
+        log::warn!("Dropping RendererResources {:?}", unsafe {
+            std::mem::transmute_copy::<*const Self, usize>(&(self as *const Self))
+        });
+    }
+}
+
 impl RendererResources {
     pub fn new(device: &Arc<Device>) -> Self {
         let nearest_sampler = Arc::new(device.create_sampler(&SamplerInfo {
@@ -111,6 +119,7 @@ impl RendererResources {
             max_lod: None,
         }));
 
+        log::warn!("Creating renderer resources");
         Self {
             device: device.clone(),
             textures: HashMap::new(),

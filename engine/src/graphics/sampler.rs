@@ -26,7 +26,9 @@ impl Sampler {
 
 impl Drop for Sampler {
     fn drop(&mut self) {
+        log::warn!("Destroying sampler");
         let sampler = unsafe { ManuallyDrop::take(&mut self.sampler) };
         self.destroyer.destroy_sampler(sampler);
+        log::warn!("Destroying sampler done");
     }
 }

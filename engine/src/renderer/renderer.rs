@@ -52,7 +52,6 @@ enum ReceiveMessagesResult {
 }
 
 pub struct Renderer<P: Platform> {
-    device: Arc<Device>,
     state: Arc<RendererState>,
     receiver: Receiver<RendererCommand>,
     asset_manager: Arc<AssetManager>,
@@ -63,14 +62,17 @@ pub struct Renderer<P: Platform> {
     render_path: Box<dyn RenderPath<P>>,
 
     last_frame: Instant,
-    frame: u64
+    frame: u64,
+    device: Arc<Device>,
 }
 
 impl<P: Platform> Drop for Renderer<P> {
     fn drop(&mut self) {
+        log::warn!("Dropping renderer");
         let mut counter_guard = self.state.queued_frames_counter.lock().unwrap();
         *counter_guard = 0;
         self.state.cond_var.notify_all();
+        log::warn!("Done dropping renderer");
     }
 }
 

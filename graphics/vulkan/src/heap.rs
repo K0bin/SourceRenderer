@@ -32,9 +32,11 @@ impl Drop for VkMemoryHeap {
     fn drop(&mut self) {
         unsafe {
             if let Some(_map_ptr) = self.map_ptr {
+                log::warn!("Unmapping heap");
                 self.device.unmap_memory(self.memory);
             }
 
+            log::warn!("Freeing memory");
             self.device.free_memory(self.memory, None);
         }
     }

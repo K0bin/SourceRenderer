@@ -230,10 +230,12 @@ impl VkBuffer {
 impl Drop for VkBuffer {
     fn drop(&mut self) {
         unsafe {
+            log::warn!("Destroying buffer with size: {:?}", self.info.size);
             self.device.destroy_buffer(self.buffer, None);
 
             if self.is_memory_owned {
                 if self.map_ptr.is_some() {
+                    log::warn!("unmapping buffer with size: {:?}", self.info.size);
                     self.device.unmap_memory(self.memory);
                 }
                 self.device.free_memory(self.memory, None);
@@ -262,7 +264,13 @@ impl gpu::Buffer for VkBuffer {
     }
 
     unsafe fn map(&self, offset: u64, length: u64, invalidate: bool) -> Option<*mut c_void> {
+        /*let map_ptr = self.device.map_memory(self.memory, self.memory_offset + offset, length, vk::MemoryMapFlags::empty()).unwrap();
+        return Some(map_ptr);*/
+
         let map_ptr = self.map_ptr?;
+        if !self.is_coherent {
+            log::warn!("Mapping incoherent memory");
+        }
         if invalidate && !self.is_coherent {
             let aligned_offset = align_down_64(offset + self.memory_offset, self.device.properties.limits.non_coherent_atom_size as u64);
             let aligned_end = align_up_64((offset + length).min(self.info.size), self.device.properties.limits.non_coherent_atom_size as u64);
@@ -279,6 +287,9 @@ impl gpu::Buffer for VkBuffer {
     }
 
     unsafe fn unmap(&self, offset: u64, length: u64, flush: bool) {
+        /*self.device.unmap_memory(self.memory);
+        return;*/
+
         if self.map_ptr.is_none() || !flush || self.is_coherent {
             return;
         }

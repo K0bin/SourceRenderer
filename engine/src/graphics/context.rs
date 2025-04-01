@@ -187,13 +187,20 @@ impl GraphicsContext {
 
 impl Drop for GraphicsContext {
     fn drop(&mut self) {
+        log::warn!("Dropping graphics context");
         if self.current_frame > 0 {
+          log::warn!("Dropping graphics context A");
             self.fence.await_value(self.completed_frame);
+            log::warn!("Dropping graphics context B");
             self.destroyer.destroy_unused(self.completed_frame);
+            log::warn!("Dropping graphics context C");
         }
 
+        log::warn!("Dropping graphics context D");
         unsafe { ManuallyDrop::drop(&mut self.thread_contexts) };
+        log::warn!("Dropping graphics context E");
         unsafe { ManuallyDrop::drop(&mut self.destroyer) };
+        log::warn!("Dropping graphics context DONE");
     }
 }
 

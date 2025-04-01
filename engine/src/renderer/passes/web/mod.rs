@@ -37,6 +37,12 @@ pub struct WebRenderer {
     geometry: GeometryPass,
 }
 
+impl Drop for WebRenderer {
+    fn drop(&mut self) {
+        log::error!("Dropping WebRenderer");
+    }
+}
+
 impl WebRenderer {
     pub fn new(
         device: &Arc<Device>,

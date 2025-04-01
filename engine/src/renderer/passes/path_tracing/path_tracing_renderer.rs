@@ -34,6 +34,12 @@ pub struct PathTracingRenderer {
     path_tracer: PathTracerPass
 }
 
+impl Drop for PathTracingRenderer {
+    fn drop(&mut self) {
+        log::warn!("Dropping PathTracingRenderer");
+    }
+}
+
 impl PathTracingRenderer {
     #[allow(unused)]
     pub fn new(

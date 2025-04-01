@@ -16,6 +16,13 @@ pub(super) struct Chunk<T>
     size: u64
 }
 
+impl<T> Drop for Chunk<T>
+where T : Send + Sync {
+    fn drop(&mut self) {
+        log::error!("Dropping chunk");
+    }
+}
+
 struct ChunkInner<T>
 where T : Send + Sync {
     free_list: Mutex<SmallVec<[Range; 16]>>,
@@ -199,6 +206,7 @@ impl<T> Drop for Allocation<T>
     where T : Send + Sync
 {
     fn drop(&mut self) {
+        //log::error!("Dropping allocation");
         if DEBUG {
             return;
         }
@@ -242,5 +250,6 @@ impl<T> Drop for Allocation<T>
         if let Some(callback) = self.inner.free_callback.as_ref() {
             callback(&free_list[..]);
         }
+        //log::error!("Dropping allocation done");
     }
 }

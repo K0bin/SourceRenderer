@@ -23,12 +23,13 @@ use sourcerenderer_game::GamePlugin;
 
 pub fn main() {
     //std::thread::sleep(instant::::Duration::from_secs(20));
-
+    {
     let mut platform = SDLPlatform::new();
     let mut engine = Box::new(Engine::run(platform.as_ref(), GamePlugin::<SDLPlatform>::default()));
 
     'event_loop: loop {
         if !platform.poll_events(&mut engine) {
+            log::error!("Exiting main loop A");
             break 'event_loop;
         }
 
@@ -36,7 +37,12 @@ pub fn main() {
 
         let result = engine.frame();
         if result == EngineLoopFuncResult::Exit {
+            log::error!("Exiting main loop");
             break 'event_loop;
         }
     }
+    }
+
+    log::error!("Done stopping engine.");
+    loop {}
 }
