@@ -1,14 +1,17 @@
+#[cfg(feature = "threading")]
+use std::thread::JoinHandle;
+
+use std::mem::ManuallyDrop;
+
 use web_time::Duration;
 
 use atomic_refcell::AtomicRefCell;
 use bevy_app::{
-    App,
-    Last,
-    Plugin,
+    App, AppExit, Last, Plugin
 };
 use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::event::Event;
+use bevy_ecs::event::{Event, EventWriter};
 use bevy_ecs::removal_detection::RemovedComponents;
 use bevy_ecs::schedule::{
     IntoSystemConfigs,
@@ -35,10 +38,10 @@ use super::{
     Renderer,
     StaticRenderableComponent,
 };
+use crate::EngineLoopFuncResult;
 use crate::asset::AssetManagerECSResource;
 use crate::engine::{
-    ConsoleResource,
-    WindowState, TICK_RATE,
+    ConsoleResource, WindowState, TICK_RATE
 };
 use crate::graphics::{GPUDeviceResource, GPUSwapchainResource};
 use crate::transform::InterpolatedTransform;
@@ -113,13 +116,6 @@ impl<P: Platform> RendererPlugin<P> {
         Self(PlatformPhantomData::default())
     }
 
-    pub fn stop(app: &mut App) {
-        let renderer_resource_opt = app.world_mut().remove_resource::<RendererResourceWrapper<P>>();
-        if let Some(resource) = renderer_resource_opt {
-            resource.sender.stop();
-        }
-    }
-
     pub fn window_changed(app: &App, window_state: WindowState) {
         let resource = app.world().get_resource::<RendererResourceWrapper<P>>();
         if let Some(resource) = resource {
@@ -137,11 +133,26 @@ struct PreInitRendererResourceWrapper<P: Platform> {
 
 #[derive(Resource)]
 struct RendererResourceWrapper<P: Platform> {
-    sender: RendererSender,
+    sender: ManuallyDrop<RendererSender>,
     _p: PlatformPhantomData<P>,
 
     #[cfg(not(feature = "threading"))]
     renderer: SyncCell<Renderer<P>>,
+
+    #[cfg(feature = "threading")]
+    thread_handle: ManuallyDrop<JoinHandle<()>>,
+}
+
+impl<P: Platform> Drop for RendererResourceWrapper<P> {
+    fn drop(&mut self) {
+        unsafe { ManuallyDrop::drop(&mut self.sender); }
+
+        #[cfg(feature = "threading")]
+        {
+            let handle = unsafe { ManuallyDrop::take(&mut self.thread_handle) };
+            handle.join().unwrap();
+        }
+    }
 }
 
 #[cfg(not(feature = "threading"))]
@@ -165,12 +176,12 @@ fn install_renderer_systems<P: Platform>(
 fn insert_renderer_resource<P: Platform>(
     app: &mut App,
     renderer: Renderer<P>,
-    sender: RendererSender
+    sender: RendererSender,
 ) {
     let wrapper = RendererResourceWrapper {
         renderer: SyncCell::new(renderer),
         _p: PlatformPhantomData::default(),
-        sender
+        sender: ManuallyDrop::new(sender),
     };
     app.insert_resource(wrapper);
 }
@@ -210,33 +221,37 @@ fn insert_renderer_resource<P: Platform>(
     renderer: Renderer<P>,
     sender: RendererSender
 ) {
-    let wrapper = RendererResourceWrapper::<P> { sender, _p: PlatformPhantomData::default() };
-    app.insert_resource(wrapper);
+    let handle = start_render_thread(renderer);
 
-    start_render_thread(renderer);
+    let wrapper = RendererResourceWrapper::<P> {
+        sender: ManuallyDrop::new(sender),
+        _p: PlatformPhantomData::default(),
+        thread_handle: ManuallyDrop::new(handle),
+    };
+    app.insert_resource(wrapper);
 }
 
 #[cfg(feature = "threading")]
-fn start_render_thread<P: Platform>(mut renderer: Renderer<P>) {
+fn start_render_thread<P: Platform>(mut renderer: Renderer<P>) -> std::thread::JoinHandle<()> {
     std::thread::Builder::new()
         .name("RenderThread".to_string())
         .spawn(move || {
             log::trace!("Started renderer thread");
-            loop {
-                if !renderer.is_running() {
-                    break;
-                }
+            'renderer_loop: loop {
+                let mut result = EngineLoopFuncResult::Exit;
                 P::thread_memory_management_pool(|| {
-                    renderer.render();
+                    result = renderer.render();
                 });
+                if result == EngineLoopFuncResult::Exit {
+                    break 'renderer_loop;
+                }
             }
-            renderer.notify_stopped_running();
-            log::trace!("Stopped renderer thread");
         })
-        .unwrap();
+        .unwrap()
 }
 
 fn extract_camera<P: Platform>(
+    mut events: EventWriter<AppExit>,
     renderer: Res<RendererResourceWrapper<P>>,
     active_camera: Res<ActiveCamera>,
     camera_entities: Query<(&InterpolatedTransform, &Camera, &GlobalTransform)>,
@@ -247,31 +262,48 @@ fn extract_camera<P: Platform>(
 
     if let Ok((interpolated, camera, transform)) = camera_entities.get(active_camera.0) {
         if camera.interpolate_rotation {
-            renderer
+            let result = renderer
                 .sender
                 .update_camera_transform(interpolated.0, camera.fov);
+
+            if result.is_err() {
+                events.send(AppExit::from_code(1));
+            }
         } else {
             let mut combined_transform = transform.affine();
             combined_transform.translation = interpolated.0.translation;
-            renderer
+            let result = renderer
                 .sender
                 .update_camera_transform(combined_transform, camera.fov);
+
+            if result.is_err() {
+                events.send(AppExit::from_code(1));
+            }
         }
     }
 }
 
 fn extract_static_renderables<P: Platform>(
+    mut events: EventWriter<AppExit>,
     renderer: Res<RendererResourceWrapper<P>>,
     static_renderables: Query<(Entity, Ref<StaticRenderableComponent>, Ref<InterpolatedTransform>)>,
     mut removed_static_renderables: RemovedComponents<StaticRenderableComponent>,
 ) {
     for (entity, renderable, transform) in static_renderables.iter() {
         if renderable.is_added() || transform.is_added() {
-            renderer
+            let result = renderer
                 .sender
                 .register_static_renderable(entity, transform.as_ref(), renderable.as_ref());
+
+            if result.is_err() {
+                events.send(AppExit::from_code(1));
+            }
         } else if !renderer.sender.is_saturated() {
-            renderer.sender.update_transform(entity, transform.0);
+            let result = renderer.sender.update_transform(entity, transform.0);
+
+            if result.is_err() {
+                events.send(AppExit::from_code(1));
+            }
         }
     }
 
@@ -279,60 +311,101 @@ fn extract_static_renderables<P: Platform>(
         debug!("Removing {} static renderables", removed_static_renderables.len());
     }
     for entity in removed_static_renderables.read() {
-        renderer.sender.unregister_static_renderable(entity);
+        let result = renderer.sender.unregister_static_renderable(entity);
+
+        if result.is_err() {
+            events.send(AppExit::from_code(1));
+        }
     }
 }
 
 fn extract_point_lights<P: Platform>(
+    mut events: EventWriter<AppExit>,
     renderer: Res<RendererResourceWrapper<P>>,
     point_lights: Query<(Entity, Ref<PointLightComponent>, Ref<InterpolatedTransform>)>,
     mut removed_point_lights: RemovedComponents<PointLightComponent>,
 ) {
     for (entity, light, transform) in point_lights.iter() {
         if light.is_added() || transform.is_added() {
-            renderer
+            let result = renderer
                 .sender
                 .register_point_light(entity, transform.as_ref(), light.as_ref());
+
+            if result.is_err() {
+                events.send(AppExit::from_code(1));
+            }
         } else if !renderer.sender.is_saturated() {
-            renderer.sender.update_transform(entity, transform.0);
+            let result = renderer.sender.update_transform(entity, transform.0);
+
+            if result.is_err() {
+                events.send(AppExit::from_code(1));
+            }
         }
     }
 
     for entity in removed_point_lights.read() {
-        renderer.sender.unregister_point_light(entity);
+        let result = renderer.sender.unregister_point_light(entity);
+
+        if result.is_err() {
+            events.send(AppExit::from_code(1));
+        }
     }
 }
 
 fn extract_directional_lights<P: Platform>(
+    mut events: EventWriter<AppExit>,
     renderer: Res<RendererResourceWrapper<P>>,
     directional_lights: Query<(Entity, Ref<DirectionalLightComponent>, Ref<InterpolatedTransform>)>,
     mut removed_directional_lights: RemovedComponents<DirectionalLightComponent>,
 ) {
         for (entity, light, transform) in directional_lights.iter() {
         if light.is_added() || transform.is_added() {
-            renderer
+            let result = renderer
                 .sender
                 .register_directional_light(entity, transform.as_ref(), light.as_ref());
+
+            if result.is_err() {
+                events.send(AppExit::from_code(1));
+            }
         } else if !renderer.sender.is_saturated() {
-            renderer.sender.update_transform(entity, transform.0);
+            let result = renderer.sender.update_transform(entity, transform.0);
+
+            if result.is_err() {
+                events.send(AppExit::from_code(1));
+            }
         }
     }
 
     for entity in removed_directional_lights.read() {
-        renderer.sender.unregister_directional_light(entity);
+        let result = renderer.sender.unregister_directional_light(entity);
+
+        if result.is_err() {
+            events.send(AppExit::from_code(1));
+        }
     }
 }
 
 #[allow(unused_mut)]
-fn end_frame<P: Platform>(mut renderer: ResMut<RendererResourceWrapper<P>>) {
+fn end_frame<P: Platform>(
+    mut events: EventWriter<AppExit>,
+    mut renderer: ResMut<RendererResourceWrapper<P>>
+) {
     if renderer.sender.is_saturated() {
         return;
     }
 
-    renderer.sender.end_frame();
+    let result = renderer.sender.end_frame();
+    if result.is_err() {
+        events.send(AppExit::from_code(1));
+    }
 
     #[cfg(not(feature = "threading"))]
-    renderer.renderer.get().render();
+    {
+        let frame_result = renderer.renderer.get().render();
+        if frame_result == EngineLoopFuncResult::Exit {
+            events.send(AppExit::from_code(1));
+        }
+    }
 }
 
 #[allow(unused)]

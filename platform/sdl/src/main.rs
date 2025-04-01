@@ -2,7 +2,7 @@
 extern crate lazy_static;
 
 pub use sdl_platform::SDLPlatform;
-use sourcerenderer_engine::Engine;
+use sourcerenderer_engine::{Engine, EngineLoopFuncResult};
 
 mod sdl_platform;
 #[cfg(target_os = "macos")]
@@ -28,17 +28,15 @@ pub fn main() {
     let mut engine = Box::new(Engine::run(platform.as_ref(), GamePlugin::<SDLPlatform>::default()));
 
     'event_loop: loop {
-        if !engine.is_running() {
-            break;
-        }
-
         if !platform.poll_events(&mut engine) {
             break 'event_loop;
         }
 
         platform.update_mouse_lock(engine.is_mouse_locked());
 
-        engine.frame();
+        let result = engine.frame();
+        if result == EngineLoopFuncResult::Exit {
+            break 'event_loop;
+        }
     }
-    engine.stop::<SDLPlatform>();
 }

@@ -36,6 +36,5 @@ pub enum RendererCommand {
     SetLightmap(String),
     RenderUI(UIDrawData),
     EndFrame,
-    Quit,
     WindowChanged(WindowState)
 }

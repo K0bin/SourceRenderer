@@ -1,7 +1,7 @@
 use js_sys::Uint8Array;
 use log::info;
 use platform::WebPlatform;
-use sourcerenderer_engine::Engine as ActualEngine;
+use sourcerenderer_engine::{Engine as ActualEngine, EngineLoopFuncResult};
 use sourcerenderer_game::GamePlugin;
 use wasm_bindgen::{prelude::wasm_bindgen, JsValue};
 use web_sys::{Navigator, OffscreenCanvas};
@@ -13,13 +13,22 @@ mod utils;
 
 #[wasm_bindgen]
 pub struct Engine {
-    engine: ActualEngine
+    engine: Option<ActualEngine>,
 }
 
 #[wasm_bindgen]
 impl Engine {
     pub fn frame(&mut self) {
-        self.engine.frame();
+        let result: EngineLoopFuncResult;
+        if let Some(engine) = self.engine.as_mut() {
+          result = engine.frame();
+        } else {
+            log::error!("Engine has been stopped.");
+            return;
+        }
+        if result == EngineLoopFuncResult::Exit {
+            self.engine = None;
+        }
     }
 }
 
@@ -37,7 +46,7 @@ pub async fn start_engine(navigator: Navigator, canvas: OffscreenCanvas) -> Engi
   let engine = ActualEngine::run(&platform, GamePlugin::<WebPlatform>::default());
 
   let wrapper = Engine {
-    engine
+    engine: Some(engine),
   };
   wrapper
 }

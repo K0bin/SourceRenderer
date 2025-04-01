@@ -13,7 +13,7 @@ pub struct GPUSwapchainResource(pub Swapchain);
 
 pub(crate) fn initialize_graphics<P: Platform + GraphicsPlatform<active_gpu_backend::Backend> + WindowProvider<active_gpu_backend::Backend>>(platform: &P, app: &mut bevy_app::App) {
     let api_instance = platform
-        .create_instance(true)
+        .create_instance(false)
         .expect("Failed to initialize graphics");
     let gpu_instance = Instance::new(api_instance);
 

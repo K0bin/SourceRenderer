@@ -88,8 +88,7 @@ impl SDLPlatform {
         let mut event_opt = self.event_pump.poll_event();
         while let Some(event) = event_opt {
             match event {
-                SDLEvent::Quit { .. } => {
-                    engine.stop::<SDLPlatform>();
+                SDLEvent::Quit { .. } | SDLEvent::AppTerminating { .. } => {
                     return false;
                 }
                 SDLEvent::KeyUp {
@@ -141,7 +140,7 @@ impl SDLPlatform {
                         )));
                     }
                     WindowEvent::CloseRequested => {
-                        engine.stop::<SDLPlatform>();
+                        return false;
                     }
                     _ => {}
                 },

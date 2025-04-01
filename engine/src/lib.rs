@@ -3,7 +3,10 @@ pub use camera::{
     Camera,
 };
 
-pub use self::engine::Engine;
+pub use self::engine::{
+    Engine,
+    EngineLoopFuncResult,
+};
 pub use self::engine::WindowState;
 
 mod engine;

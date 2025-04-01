@@ -36,13 +36,24 @@ pub enum WindowState {
 
 pub const TICK_RATE: u32 = 5;
 
+#[derive(PartialEq, Eq)]
+pub enum EngineLoopFuncResult {
+    KeepRunning,
+    Exit,
+}
+
 
 #[cfg(all(feature = "threading", target_arch = "wasm32"))]
 compile_error!("Threads are not supported on WebAssembly.");
 
-pub struct Engine{
-    app: App,
-    is_running: bool
+pub struct Engine {
+    app: App
+}
+
+impl Drop for Engine {
+    fn drop(&mut self) {
+        log::info!("Stopping engine");
+    }
 }
 
 impl Engine {
@@ -56,10 +67,13 @@ impl Engine {
         app
             .add_plugins(PanicHandlerPlugin::default());
 
-            #[cfg(not(target_arch = "wasm32"))]
-            app.add_plugins(LogPlugin::default());
+        #[cfg(not(target_arch = "wasm32"))]
+        app.add_plugins(LogPlugin::default());
 
-            app.add_plugins(TaskPoolPlugin::default())
+        #[cfg(not(target_arch = "wasm32"))]
+        app.add_plugins(TerminalCtrlCHandlerPlugin::default());
+
+        app.add_plugins(TaskPoolPlugin::default())
             .add_plugins(TimePlugin::default())
             .insert_resource(Time::<Fixed>::from_hz(TICK_RATE as f64))
             .add_plugins(FrameCountPlugin::default())
@@ -79,16 +93,10 @@ impl Engine {
 
         Self {
             app,
-            is_running: true
         }
     }
 
-    pub fn frame(&mut self) {
-        if !self.is_running {
-            log::warn!("Frame called after engine was stopped.");
-            return;
-        }
-
+    pub fn frame(&mut self) -> EngineLoopFuncResult {
         let app = &mut self.app;
         let plugins_state = app.plugins_state();
         if plugins_state == PluginsState::Ready {
@@ -103,13 +111,15 @@ impl Engine {
                 std::thread::sleep(Duration::from_millis(16u64));
             }
 
-            return;
+            return EngineLoopFuncResult::KeepRunning;
         }
 
         app.update();
         if let Some(exit) = app.should_exit() {
             log::info!("Exiting because of app: {:?}", exit);
-            self.is_running = false;
+            EngineLoopFuncResult::Exit
+        } else {
+            EngineLoopFuncResult::KeepRunning
         }
     }
 
@@ -128,19 +138,6 @@ impl Engine {
 
     pub fn window_changed<P: Platform>(&mut self, window_state: WindowState) {
         RendererPlugin::<P>::window_changed(&self.app, window_state);
-    }
-
-    pub fn is_running(&self) -> bool {
-        self.is_running
-    }
-
-    pub fn stop<P: Platform>(&mut self) {
-        if !self.is_running {
-            return;
-        }
-        self.is_running = false;
-        log::info!("Stopping engine");
-        RendererPlugin::<P>::stop(&mut self.app);
     }
 
     pub fn debug_world(&self) {

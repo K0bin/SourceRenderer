@@ -1,7 +1,3 @@
-use std::sync::atomic::{
-    AtomicBool,
-    Ordering,
-};
 use std::sync::Arc;
 use crate::{Mutex, Condvar};
 
@@ -9,7 +5,7 @@ use web_time::{Duration, Instant};
 use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;
 use crossbeam_channel::{
-    unbounded, Receiver, Sender, TryRecvError
+    unbounded, Receiver, SendError, Sender, TryRecvError
 };
 use sourcerenderer_core::platform::Platform;
 use sourcerenderer_core::{
@@ -29,7 +25,7 @@ use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
 use super::{PointLight, StaticRenderableComponent};
 use crate::asset::{AssetManager, AssetType};
-use crate::engine::WindowState;
+use crate::engine::{EngineLoopFuncResult, WindowState};
 use crate::renderer::command::RendererCommand;
 use crate::transform::InterpolatedTransform;
 use crate::ui::UIDrawData;
@@ -40,13 +36,12 @@ use crate::graphics::*;
 
 struct RendererState {
     queued_frames_counter: Mutex<u32>, // we need the mutex for the condvar anyway
-    is_running: AtomicBool,
     cond_var: Condvar,
 }
 
 pub struct RendererSender {
-    sender: Sender<RendererCommand>,
-    state: Arc<RendererState>
+    sender: Option<Sender<RendererCommand>>,
+    state: Arc<RendererState>,
 }
 
 #[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
@@ -71,6 +66,14 @@ pub struct Renderer<P: Platform> {
     frame: u64
 }
 
+impl<P: Platform> Drop for Renderer<P> {
+    fn drop(&mut self) {
+        let mut counter_guard = self.state.queued_frames_counter.lock().unwrap();
+        *counter_guard = 0;
+        self.state.cond_var.notify_all();
+    }
+}
+
 impl<P: Platform> Renderer<P> {
     pub fn new(
         device: &Arc<Device>,
@@ -91,7 +94,6 @@ impl<P: Platform> Renderer<P> {
             device: device.clone(),
             state: Arc::new(RendererState {
                 queued_frames_counter: Mutex::new(0),
-                is_running: AtomicBool::new(true),
                 cond_var: Condvar::new(),
             }),
             receiver,
@@ -105,7 +107,7 @@ impl<P: Platform> Renderer<P> {
             frame: 0u64
         };
         let renderer_sender = RendererSender {
-            sender,
+            sender: Some(sender),
             state: renderer.state.clone()
         };
 
@@ -123,7 +125,7 @@ impl<P: Platform> Renderer<P> {
         &self.device
     }
 
-    pub fn render(&mut self) {
+    pub fn render(&mut self) -> EngineLoopFuncResult {
         self.asset_manager
             .flush_renderer_assets();
 
@@ -139,14 +141,13 @@ impl<P: Platform> Renderer<P> {
             message_receiving_result = self.receive_messages();
             if message_receiving_result == ReceiveMessagesResult::WaitForMessages {
                 log::warn!("No finished frame yet.");
-                return;
+                return EngineLoopFuncResult::Exit;
             }
         }
 
         if message_receiving_result == ReceiveMessagesResult::Quit {
             log::info!("Quitting renderer.");
-            self.notify_stopped_running();
-            return;
+            return EngineLoopFuncResult::Exit;
         }
 
         let delta = Instant::now().duration_since(self.last_frame);
@@ -220,6 +221,8 @@ impl<P: Platform> Renderer<P> {
         let mut counter_guard = self.state.queued_frames_counter.lock().unwrap();
         *counter_guard -= 1;
         self.state.cond_var.notify_all();
+
+        EngineLoopFuncResult::KeepRunning
     }
 
     fn receive_messages(&mut self) -> ReceiveMessagesResult {
@@ -228,11 +231,10 @@ impl<P: Platform> Renderer<P> {
         match message_res {
             Ok(message) => { message_opt = Some(message); },
             Err(err) => {
-                if err == TryRecvError::Disconnected {
-                    panic!("Rendering channel closed {:?}", err);
-                } else {
-                    return ReceiveMessagesResult::WaitForMessages;
-                }
+                return match err {
+                    TryRecvError::Disconnected => ReceiveMessagesResult::Quit,
+                    TryRecvError::Empty => ReceiveMessagesResult::WaitForMessages,
+                };
             }
         }
 
@@ -241,10 +243,6 @@ impl<P: Platform> Renderer<P> {
             match message {
                 RendererCommand::EndFrame => {
                     return ReceiveMessagesResult::FrameCompleted;
-                }
-
-                RendererCommand::Quit => {
-                    return ReceiveMessagesResult::Quit;
                 }
 
                 RendererCommand::UpdateCameraTransform {
@@ -362,14 +360,6 @@ impl<P: Platform> Renderer<P> {
         ReceiveMessagesResult::WaitForMessages
     }
 
-    pub fn is_running(&self) -> bool {
-        self.state.is_running.load(Ordering::Acquire)
-    }
-
-    pub fn notify_stopped_running(&self) {
-        self.state.is_running.store(false, Ordering::Release);
-    }
-
     pub fn set_render_path(&mut self, render_path: Box<dyn RenderPath<P>>) {
         self.render_path = render_path;
     }
@@ -385,25 +375,33 @@ impl RendererSender {
         entity: Entity,
         transform: &InterpolatedTransform,
         renderable: &StaticRenderableComponent,
-    ) {
-        let result = self.sender.send(RendererCommand::RegisterStatic {
+    ) -> Result<(), SendError<()>> {
+        let sender = if let Some(sender) = self.sender.as_ref() {
+            sender
+        } else {
+            return Err(SendError(()));
+        };
+
+        sender.send(RendererCommand::RegisterStatic {
             entity,
             transform: transform.0,
             model_path: renderable.model_path.to_string(),
             receive_shadows: renderable.receive_shadows,
             cast_shadows: renderable.cast_shadows,
             can_move: renderable.can_move,
-        });
-        if let Result::Err(err) = result {
-            panic!("Sending message to render thread failed {:?}", err);
-        }
+        })
+            .map_err(|_| SendError(()))
     }
 
-    pub fn unregister_static_renderable(&self, entity: Entity) {
-        let result = self.sender.send(RendererCommand::UnregisterStatic(entity));
-        if let Result::Err(err) = result {
-            panic!("Sending message to render thread failed {:?}", err);
-        }
+    pub fn unregister_static_renderable(&self, entity: Entity) -> Result<(), SendError<()>> {
+        let sender = if let Some(sender) = self.sender.as_ref() {
+            sender
+        } else {
+            return Err(SendError(()));
+        };
+
+        sender.send(RendererCommand::UnregisterStatic(entity))
+            .map_err(|_| SendError(()))
     }
 
     pub fn register_point_light(
@@ -411,24 +409,30 @@ impl RendererSender {
         entity: Entity,
         transform: &InterpolatedTransform,
         component: &PointLightComponent,
-    ) {
-        let result = self.sender.send(RendererCommand::RegisterPointLight {
+    ) -> Result<(), SendError<()>> {
+        let sender = if let Some(sender) = self.sender.as_ref() {
+            sender
+        } else {
+            return Err(SendError(()));
+        };
+
+        sender.send(RendererCommand::RegisterPointLight {
             entity,
             transform: transform.0,
             intensity: component.intensity,
-        });
-        if let Result::Err(err) = result {
-            panic!("Sending message to render thread failed {:?}", err);
-        }
+        })
+            .map_err(|_| SendError(()))
     }
 
-    pub fn unregister_point_light(&self, entity: Entity) {
-        let result = self
-            .sender
-            .send(RendererCommand::UnregisterPointLight(entity));
-        if let Result::Err(err) = result {
-            panic!("Sending message to render thread failed {:?}", err);
-        }
+    pub fn unregister_point_light(&self, entity: Entity) -> Result<(), SendError<()>> {
+        let sender = if let Some(sender) = self.sender.as_ref() {
+            sender
+        } else {
+            return Err(SendError(()));
+        };
+
+        sender.send(RendererCommand::UnregisterPointLight(entity))
+            .map_err(|_| SendError(()))
     }
 
     pub fn register_directional_light(
@@ -436,62 +440,82 @@ impl RendererSender {
         entity: Entity,
         transform: &InterpolatedTransform,
         component: &DirectionalLightComponent,
-    ) {
-        let result = self.sender.send(RendererCommand::RegisterDirectionalLight {
+    ) -> Result<(), SendError<()>> {
+        let sender = if let Some(sender) = self.sender.as_ref() {
+            sender
+        } else {
+            return Err(SendError(()));
+        };
+
+        sender.send(RendererCommand::RegisterDirectionalLight {
             entity,
             transform: transform.0,
             intensity: component.intensity,
-        });
-        if let Result::Err(err) = result {
-            panic!("Sending message to render thread failed {:?}", err);
-        }
+        })
+            .map_err(|_| SendError(()))
     }
 
-    pub fn unregister_directional_light(&self, entity: Entity) {
-        let result = self
-            .sender
-            .send(RendererCommand::UnregisterDirectionalLight(entity));
-        if let Result::Err(err) = result {
-            panic!("Sending message to render thread failed {:?}", err);
-        }
+    pub fn unregister_directional_light(&self, entity: Entity) -> Result<(), SendError<()>> {
+        let sender = if let Some(sender) = self.sender.as_ref() {
+            sender
+        } else {
+            return Err(SendError(()));
+        };
+
+        sender.send(RendererCommand::UnregisterDirectionalLight(entity))
+            .map_err(|_| SendError(()))
     }
 
-    pub fn update_camera_transform(&self, camera_transform: Affine3A, fov: f32) {
-        let result = self.sender.send(RendererCommand::UpdateCameraTransform {
+    pub fn update_camera_transform(&self, camera_transform: Affine3A, fov: f32) -> Result<(), SendError<()>> {
+        let sender = if let Some(sender) = self.sender.as_ref() {
+            sender
+        } else {
+            return Err(SendError(()));
+        };
+
+        sender.send(RendererCommand::UpdateCameraTransform {
             camera_transform,
             fov,
-        });
-        if let Result::Err(err) = result {
-            panic!("Sending message to render thread failed {:?}", err);
-        }
+        })
+            .map_err(|_| SendError(()))
     }
 
-    pub fn update_transform(&self, entity: Entity, transform: Affine3A) {
-        let result = self.sender.send(RendererCommand::UpdateTransform {
+    pub fn update_transform(&self, entity: Entity, transform: Affine3A) -> Result<(), SendError<()>> {
+        let sender = if let Some(sender) = self.sender.as_ref() {
+            sender
+        } else {
+            return Err(SendError(()));
+        };
+
+        sender.send(RendererCommand::UpdateTransform {
             entity,
             transform: transform,
-        });
-        if let Result::Err(err) = result {
-            panic!("Sending message to render thread failed {:?}", err);
-        }
+        })
+            .map_err(|_| SendError(()))
     }
 
-    pub fn end_frame(&self) {
+    pub fn end_frame(&self) -> Result<(), SendError<()>> {
+        let sender = if let Some(sender) = self.sender.as_ref() {
+            sender
+        } else {
+            return Err(SendError(()));
+        };
+
         let mut queued_guard = self.state.queued_frames_counter.lock().unwrap();
         *queued_guard += 1;
-        let result = self.sender.send(RendererCommand::EndFrame);
-        if let Result::Err(err) = result {
-            panic!("Sending message to render thread failed {:?}", err);
-        }
+        sender.send(RendererCommand::EndFrame)
+            .map_err(|_| SendError(()))
     }
 
-    pub fn update_lightmap(&self, path: &str) {
-        let result = self
-            .sender
-            .send(RendererCommand::SetLightmap(path.to_string()));
-        if let Result::Err(err) = result {
-            panic!("Sending message to render thread failed {:?}", err);
-        }
+    pub fn update_lightmap(&self, path: &str) -> Result<(), SendError<()>> {
+        let sender = if let Some(sender) = self.sender.as_ref() {
+            sender
+        } else {
+            return Err(SendError(()));
+        };
+
+        sender.send(RendererCommand::SetLightmap(path.to_string()))
+            .map_err(|_| SendError(()))
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -499,7 +523,7 @@ impl RendererSender {
         let queued_guard = self.state.queued_frames_counter.lock().unwrap();
         let _ = self.state.cond_var
             .wait_timeout_while(queued_guard, timeout, |queued| {
-                *queued > 1 || !self.state.is_running.load(Ordering::Acquire)
+                *queued > 1
             })
             .unwrap();
     }
@@ -513,42 +537,38 @@ impl RendererSender {
         *queued_guard > 1
     }
 
-    pub fn is_running(&self) -> bool {
-        self.state.is_running.load(Ordering::Acquire)
-    }
+    pub fn update_ui(&self, ui_data: UIDrawData) -> Result<(), SendError<()>> {
+        let sender = if let Some(sender) = self.sender.as_ref() {
+            sender
+        } else {
+            return Err(SendError(()));
+        };
 
-    pub fn update_ui(&self, ui_data: UIDrawData) {
-        let result = self.sender.send(RendererCommand::RenderUI(ui_data));
-        if let Result::Err(err) = result {
-            panic!("Sending message to render thread failed {:?}", err);
-        }
+        sender.send(RendererCommand::RenderUI(ui_data))
+            .map_err(|_| SendError(()))
     }
 
     pub fn unblock_game_thread(&self) {
         self.state.cond_var.notify_all();
     }
 
-    pub fn stop(&self) {
+    pub fn stop(&mut self) {
         log::trace!("Stopping renderer");
+        self.sender = None;
+
         if cfg!(feature = "threading") {
-            let was_running = self.state.is_running.swap(false, Ordering::Release);
-            if !was_running {
-                return;
-            }
-
-            let end_frame_res = self.sender.send(RendererCommand::Quit);
-            if end_frame_res.is_err() {
-                log::error!("Render thread crashed.");
-            }
-
             self.unblock_game_thread();
         }
     }
 
     pub fn window_changed(&self, window_state: WindowState) {
-        let result = self
-            .sender
-            .send(RendererCommand::WindowChanged(window_state));
+        let sender = if let Some(sender) = self.sender.as_ref() {
+            sender
+        } else {
+            return;
+        };
+
+        let result = sender.send(RendererCommand::WindowChanged(window_state));
         if let Result::Err(err) = result {
             panic!("Sending message to render thread failed {:?}", err);
         }
