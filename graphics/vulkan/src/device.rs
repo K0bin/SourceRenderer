@@ -321,10 +321,12 @@ impl gpu::Device<VkBackend> for VkDevice {
         if pinned.create_info.usage.contains(vk::ImageUsageFlags::HOST_TRANSFER_EXT)
             && self.device.host_image_copy.as_ref().unwrap().properties_host_image_copy.identical_memory_type_requirements == vk::FALSE {
 
+            // Analyze the memory types & heaps we'd get without HOST_TRANSFER
             pinned.create_info.usage |= vk::ImageUsageFlags::TRANSFER_DST;
             pinned.create_info.usage &= !vk::ImageUsageFlags::HOST_TRANSFER_EXT;
             self.device.get_device_image_memory_requirements(&image_requirements_info, &mut requirements);
 
+            // Out of all memory types, that the resource supports, find the largest DEVICE_LOCAL one.
             let mut memory_type_mask_without_host_image_copy = requirements.memory_requirements.memory_type_bits;
             let mut preferred_memory_type_index = Option::<usize>::None;
             while memory_type_mask_without_host_image_copy != 0 {
@@ -335,14 +337,22 @@ impl gpu::Device<VkBackend> for VkDevice {
 
                 if let Some(preferred_memory_type_index) = &mut preferred_memory_type_index {
                     let preferred_memory_type = &self.device.memory_properties.memory_types[*preferred_memory_type_index];
-                    let preferred_memory_heap = &self.device.memory_properties.memory_heaps[memory_type.heap_index as usize];
-                    if memory_heap.size > preferred_memory_heap.size {
+                    let preferred_memory_heap = &self.device.memory_properties.memory_heaps[preferred_memory_type.heap_index as usize];
+
+                    let memory_type_device_local = memory_type.property_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL);
+                    let preferred_memory_type_device_local = preferred_memory_type.property_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL);
+
+                    if memory_heap.size > preferred_memory_heap.size && preferred_memory_type_device_local == memory_type_device_local {
+                        // The heap of this memory type has the same "device locality" as the heap of the preferred memory type.
+                        // So prefer this one instead.
                         *preferred_memory_type_index = bit_pos as usize;
-                    } else if !preferred_memory_type.property_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL)
-                        && memory_type.property_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL) {
+                    } else if !preferred_memory_type_device_local && memory_type_device_local {
+                        // This memory type of the preferred heap is not DEVICE_LOCAL but this one is.
+                        // So prefer this one instead.
                         *preferred_memory_type_index = bit_pos as usize;
                     }
                 } else {
+                    // We don't have a preferred memory type yet, just pick this one.
                     preferred_memory_type_index = Some(bit_pos as usize)
                 };
 
@@ -350,22 +360,23 @@ impl gpu::Device<VkBackend> for VkDevice {
                 memory_type_mask_without_host_image_copy &= !bit_mask;
             }
 
+            let preferred_memory_type = &self.device.memory_properties.memory_types[preferred_memory_type_index.unwrap()];
+            let preferred_memory_heap = &self.device.memory_properties.memory_heaps[preferred_memory_type.heap_index as usize];
+            let preferred_memory_type_device_local = preferred_memory_type.property_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL);
             let mut memory_type_mask_with_host_image_copy = requirements.memory_requirements.memory_type_bits;
             let mut found_acceptable_heap = false;
+            // Find a memory type whose heap matches the size and "device locality" of the preferred memory types heap.
+            // This is meant to avoid the 256 MiB BAR heap on non ReBar systems.
             while memory_type_mask_with_host_image_copy != 0 {
                 let bit_pos = memory_type_mask_with_host_image_copy.trailing_zeros();
 
                 let memory_type = &self.device.memory_properties.memory_types[bit_pos as usize];
                 let memory_heap = &self.device.memory_properties.memory_heaps[memory_type.heap_index as usize];
 
-                let preferred_memory_type = &self.device.memory_properties.memory_types[preferred_memory_type_index.unwrap()];
-                let preferred_memory_heap = &self.device.memory_properties.memory_heaps[memory_type.heap_index as usize];
+                let memory_type_device_local = memory_type.property_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL);
 
-                if (!preferred_memory_type.property_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL)
-                    || memory_type.property_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL))
+                if (preferred_memory_type_device_local == memory_type_device_local)
                     && memory_heap.size >= preferred_memory_heap.size {
-                    // We found a heap that has a decent size. This is meant to avoid the 256 MiB BAR heap on non ReBar systems.
-                    // If the requirements without HOST_TRANSFER support a DEVICE_LOCAL memory type, the current memory type is device local too.
                     found_acceptable_heap = true;
                     break;
                 }
@@ -388,7 +399,8 @@ impl gpu::Device<VkBackend> for VkDevice {
                     size: requirements.memory_requirements.size
                 };
 
-                log::info!("Fitting memory types with HOST_TRANSFER are not acceptable. Assuming regular GPU copies.\nWith: {:?}\nWithout: {:?}", &result, &result_without_host_image_copy);
+                log::info!("Fitting memory types with HOST_TRANSFER are not acceptable. Falling back to regular GPU copies.\nWith HOST_TRANSFER: {:?}\nWithout HOST_TRANSFER: {:?}", &result, &result_without_host_image_copy);
+                return result_without_host_image_copy;
             }
         }
         result
