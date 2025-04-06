@@ -239,6 +239,10 @@ impl gpu::Device<MTLBackend> for MTLDevice {
         MTLGraphicsPipeline::new(&self.device, info, name)
     }
 
+    unsafe fn create_mesh_graphics_pipeline(&self, info: &gpu::MeshGraphicsPipelineInfo<MTLBackend>, name: Option<&str>) -> MTLGraphicsPipeline {
+        MTLGraphicsPipeline::new_mesh(&self.device, info, name)
+    }
+
     unsafe fn wait_for_idle(&self) {
         self.transfer_queue.wait_for_idle();
         self.compute_queue.wait_for_idle();
@@ -292,8 +296,16 @@ impl gpu::Device<MTLBackend> for MTLDevice {
         true
     }
 
-    fn supports_ray_tracing(&self) -> bool {
+    fn supports_ray_tracing_pipeline(&self) -> bool {
+        false // Could be implemented using linkable functions but that's a lot of work
+    }
+
+    fn supports_ray_tracing_query(&self) -> bool {
         self.device.supportsRaytracing()
+    }
+
+    fn supports_mesh_shader(&self) -> bool {
+        self.device.supportsFamily(objc2_metal::MTLGPUFamily::Mac2) || self.device.supportsFamily(objc2_metal::MTLGPUFamily::Apple7)
     }
 
     fn supports_indirect(&self) -> bool {

@@ -444,6 +444,154 @@ impl MTLGraphicsPipeline {
         }
     }
 
+
+    pub(crate) unsafe fn new_mesh(device: &ProtocolObject<dyn objc2_metal::MTLDevice>, info: &gpu::MeshGraphicsPipelineInfo<MTLBackend>, name: Option<&str>) -> Self {
+        let descriptor = objc2_metal::MTLMeshRenderPipelineDescriptor::new();
+
+        if let Some(name) = name {
+            descriptor.setLabel(Some(&NSString::from_str(name)));
+        }
+
+        descriptor.setMeshFunction(Some(info.ms.function_handle()));
+        descriptor.setObjectFunction(info.ts.map(|ts| ts.function_handle()));
+        descriptor.setFragmentFunction(info.fs.map(|fs| fs.function_handle()));
+
+        for (idx, blend) in info.blend.attachments.iter().enumerate() {
+            let attachment_desc = descriptor.colorAttachments().objectAtIndexedSubscript(idx as NSUInteger);
+            attachment_desc.setBlendingEnabled(blend.blend_enabled);
+            attachment_desc.setRgbBlendOperation(blend_op_to_mtl(blend.color_blend_op));
+            attachment_desc.setAlphaBlendOperation(blend_op_to_mtl(blend.alpha_blend_op));
+            attachment_desc.setSourceRGBBlendFactor(blend_factor_to_mtl(blend.src_color_blend_factor));
+            attachment_desc.setDestinationRGBBlendFactor(blend_factor_to_mtl(blend.dst_color_blend_factor));
+            attachment_desc.setSourceAlphaBlendFactor(blend_factor_to_mtl(blend.src_alpha_blend_factor));
+            attachment_desc.setDestinationAlphaBlendFactor(blend_factor_to_mtl(blend.dst_alpha_blend_factor));
+            attachment_desc.setWriteMask(color_components_to_mtl(blend.write_mask));
+        }
+        descriptor.setAlphaToCoverageEnabled(info.blend.alpha_to_coverage_enabled);
+
+
+        for (idx, &format) in info.render_target_formats.iter().enumerate() {
+            let attachment_desc = descriptor.colorAttachments().objectAtIndexedSubscript(idx as NSUInteger);
+            descriptor.setRasterSampleCount(samples_to_mtl(info.rasterizer.sample_count));
+            attachment_desc.setPixelFormat(format_to_mtl(format));
+        }
+
+        descriptor.setRasterizationEnabled(true);
+        descriptor.setDepthAttachmentPixelFormat(format_to_mtl(info.depth_stencil_format));
+
+        if let Some(name) = name {
+            descriptor.setLabel(Some(&NSString::from_str(name)));
+        }
+
+        let mut resource_map = PipelineResourceMap {
+            resources: HashMap::new(),
+            push_constants: HashMap::new(),
+            bindless_argument_buffer_binding: HashMap::new()
+        };
+        for ((set, binding), msl_binding) in &info.ms.resource_map.resources {
+            if let Some(buffer_binding) = msl_binding.buffer_binding {
+                descriptor.meshBuffers().objectAtIndexedSubscript(buffer_binding as NSUInteger).setMutability(if msl_binding.writable {
+                    objc2_metal::MTLMutability::Mutable
+                } else {
+                    objc2_metal::MTLMutability::Immutable
+                });
+            }
+            resource_map.resources.insert((gpu::ShaderType::MeshShader, *set, *binding), msl_binding.clone());
+        }
+        if let Some(bindless_binding) = info.ms.resource_map.bindless_argument_buffer_binding {
+            resource_map.bindless_argument_buffer_binding.insert(gpu::ShaderType::MeshShader, bindless_binding);
+        }
+
+        if let Some(ts) = info.ts.as_ref() {
+            for ((set, binding), msl_binding) in &ts.resource_map.resources {
+                if let Some(buffer_binding) = msl_binding.buffer_binding {
+                    descriptor.objectBuffers().objectAtIndexedSubscript(buffer_binding as NSUInteger).setMutability(if msl_binding.writable {
+                        objc2_metal::MTLMutability::Mutable
+                    } else {
+                        objc2_metal::MTLMutability::Immutable
+                    });
+                }
+                resource_map.resources.insert((gpu::ShaderType::TaskShader, *set, *binding), msl_binding.clone());
+            }
+            if let Some(push_constants) = ts.resource_map.push_constants.as_ref() {
+                resource_map.push_constants.insert(gpu::ShaderType::TaskShader, push_constants.clone());
+            }
+            if let Some(bindless_binding) = ts.resource_map.bindless_argument_buffer_binding {
+                resource_map.bindless_argument_buffer_binding.insert(gpu::ShaderType::TaskShader, bindless_binding);
+            }
+        }
+
+        if let Some(fs) = info.fs.as_ref() {
+            for ((set, binding), msl_binding) in &fs.resource_map.resources {
+                if let Some(buffer_binding) = msl_binding.buffer_binding {
+                    descriptor.fragmentBuffers().objectAtIndexedSubscript(buffer_binding as NSUInteger).setMutability(if msl_binding.writable {
+                        objc2_metal::MTLMutability::Mutable
+                    } else {
+                        objc2_metal::MTLMutability::Immutable
+                    });
+                }
+                resource_map.resources.insert((gpu::ShaderType::FragmentShader, *set, *binding), msl_binding.clone());
+            }
+            if let Some(push_constants) = fs.resource_map.push_constants.as_ref() {
+                resource_map.push_constants.insert(gpu::ShaderType::FragmentShader, push_constants.clone());
+            }
+            if let Some(bindless_binding) = fs.resource_map.bindless_argument_buffer_binding {
+                resource_map.bindless_argument_buffer_binding.insert(gpu::ShaderType::FragmentShader, bindless_binding);
+            }
+        }
+
+        let pipeline = device.newRenderPipelineStateWithMeshDescriptor_options_reflection_error(
+            &descriptor,
+            objc2_metal::MTLPipelineOption::None,
+            None
+        ).unwrap();
+
+        let rasterizer_state = MTLRasterizerInfo {
+            front_face: match info.rasterizer.front_face {
+                gpu::FrontFace::CounterClockwise => objc2_metal::MTLWinding::CounterClockwise,
+                gpu::FrontFace::Clockwise => objc2_metal::MTLWinding::Clockwise,
+            },
+            fill_mode: match info.rasterizer.fill_mode {
+                gpu::FillMode::Fill => objc2_metal::MTLTriangleFillMode::Fill,
+                gpu::FillMode::Line => objc2_metal::MTLTriangleFillMode::Lines,
+            },
+            cull_mode: match info.rasterizer.cull_mode {
+                gpu::CullMode::None => objc2_metal::MTLCullMode::None,
+                gpu::CullMode::Front => objc2_metal::MTLCullMode::Front,
+                gpu::CullMode::Back => objc2_metal::MTLCullMode::Back,
+            },
+        };
+
+        let depth_stencil_state_descriptor = objc2_metal::MTLDepthStencilDescriptor::new();
+        depth_stencil_state_descriptor.setDepthCompareFunction(if !info.depth_stencil.depth_test_enabled {
+            objc2_metal::MTLCompareFunction::Always
+        } else {
+            compare_func_to_mtl(info.depth_stencil.depth_func)
+        });
+        depth_stencil_state_descriptor.setDepthWriteEnabled(info.depth_stencil.depth_write_enabled);
+        depth_stencil_state_descriptor.setFrontFaceStencil(
+            Some(&stencil_info_to_mtl(&info.depth_stencil.stencil_front,
+                info.depth_stencil.stencil_enable,
+                info.depth_stencil.stencil_read_mask,
+                info.depth_stencil.stencil_write_mask
+        )));
+        depth_stencil_state_descriptor.setBackFaceStencil(
+            Some(&stencil_info_to_mtl(&info.depth_stencil.stencil_back,
+                info.depth_stencil.stencil_enable,
+                info.depth_stencil.stencil_read_mask,
+                info.depth_stencil.stencil_write_mask
+        )));
+        let depth_stencil_state = device.newDepthStencilStateWithDescriptor(&depth_stencil_state_descriptor).unwrap();
+
+        Self {
+            pipeline,
+            primitive_type: objc2_metal::MTLPrimitiveType::Triangle, // Not part of the pipeline with mesh shaders
+            resource_map: Arc::new(resource_map),
+            rasterizer_state,
+            depth_stencil_state
+        }
+    }
+
     pub(crate) fn handle(&self) -> &ProtocolObject<dyn objc2_metal::MTLRenderPipelineState> {
         &self.pipeline
     }

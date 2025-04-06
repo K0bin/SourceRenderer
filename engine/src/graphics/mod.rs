@@ -137,7 +137,7 @@ mod active_gpu_backend {
     pub use sourcerenderer_metal::MTLSurface as Surface;
     pub use sourcerenderer_metal::MTLBackbuffer as Backbuffer;
     pub use sourcerenderer_metal::MTLGraphicsPipeline as GraphicsPipeline;
-    pub use sourcerenderer_vulkan::MTLMeshGraphicsPipeline as MeshGraphicsPipeline;
+    pub use sourcerenderer_metal::MTLGraphicsPipeline as MeshGraphicsPipeline;
     pub use sourcerenderer_metal::MTLComputePipeline as ComputePipeline;
     pub use sourcerenderer_metal::MTLQueryPool as QueryPool;
     pub type RayTracingPipeline = ();

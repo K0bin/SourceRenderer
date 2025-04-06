@@ -23,6 +23,7 @@ impl gpu::GPUBackend for MTLBackend {
     type Heap = MTLHeap;
     type Shader = MTLShader;
     type GraphicsPipeline = MTLGraphicsPipeline;
+    type MeshGraphicsPipeline = MTLGraphicsPipeline;
     type ComputePipeline = MTLComputePipeline;
     type QueryPool = MTLQueryPool;
 
