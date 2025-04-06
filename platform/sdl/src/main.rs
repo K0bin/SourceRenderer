@@ -21,21 +21,33 @@ mod sdl_vulkan;
 pub(crate) use sdl_vulkan as sdl_gpu;
 use sourcerenderer_game::GamePlugin;
 
-pub fn main() {
-    //std::thread::sleep(instant::::Duration::from_secs(20));
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+fn autoreleasepool<T, F>(func: F) -> T
+    where
+        for<'pool> F: objc2::rc::AutoreleaseSafe + FnOnce() -> T {
+    objc2::rc::autoreleasepool(|_| func())
+}
 
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+fn autoreleasepool<T, F: FnOnce() -> T>(func: F) -> T {
+    func()
+}
+
+pub fn main() {
     let mut platform = SDLPlatform::new();
     let mut engine = Box::new(Engine::run(platform.as_ref(), GamePlugin::<SDLPlatform>::default()));
 
     'event_loop: loop {
-        if !platform.poll_events(&mut engine) {
-            break 'event_loop;
-        }
+        let engine_loop_result = autoreleasepool(|| {
+            if !platform.poll_events(&mut engine) {
+                return EngineLoopFuncResult::Exit;
+            }
 
-        platform.update_mouse_lock(engine.is_mouse_locked());
+            platform.update_mouse_lock(engine.is_mouse_locked());
 
-        let result = engine.frame();
-        if result == EngineLoopFuncResult::Exit {
+            engine.frame()
+        });
+        if engine_loop_result == EngineLoopFuncResult::Exit {
             break 'event_loop;
         }
     }
