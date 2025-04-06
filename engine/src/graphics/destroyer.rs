@@ -18,6 +18,7 @@ struct DeferredDestroyerInner {
     acceleration_structures: Vec<(u64, active_gpu_backend::AccelerationStructure)>,
     buffer_slice_refs: Vec<(u64, Arc<BufferSlice>)>,
     graphics_pipelines: Vec<(u64, active_gpu_backend::GraphicsPipeline)>,
+    mesh_graphics_pipelines: Vec<(u64, active_gpu_backend::MeshGraphicsPipeline)>,
     compute_pipelines: Vec<(u64, active_gpu_backend::ComputePipeline)>,
     raytracing_pipelines: Vec<(u64, active_gpu_backend::RayTracingPipeline)>,
     buffer_allocations: Vec<(u64, Allocation<BufferAndAllocation>)>,
@@ -41,6 +42,7 @@ impl DeferredDestroyer {
                     acceleration_structures: Vec::new(),
                     buffer_slice_refs: Vec::new(),
                     graphics_pipelines: Vec::new(),
+                    mesh_graphics_pipelines: Vec::new(),
                     compute_pipelines: Vec::new(),
                     raytracing_pipelines: Vec::new(),
                     buffer_allocations: Vec::new(),
@@ -98,6 +100,12 @@ impl DeferredDestroyer {
         guard.graphics_pipelines.push((frame, pipeline));
     }
 
+    pub(super) fn destroy_mesh_graphics_pipeline(&self, pipeline: active_gpu_backend::MeshGraphicsPipeline) {
+        let mut guard = self.inner.lock().unwrap();
+        let frame = guard.current_counter;
+        guard.mesh_graphics_pipelines.push((frame, pipeline));
+    }
+
     pub(super) fn destroy_compute_pipeline(&self, pipeline: active_gpu_backend::ComputePipeline) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
@@ -150,6 +158,7 @@ impl DeferredDestroyer {
         guard.fences.retain(|(resource_counter, _)| *resource_counter > counter);
         guard.allocations.retain(|(resource_counter, _)| *resource_counter > counter);
         guard.graphics_pipelines.retain(|(resource_counter, _)| *resource_counter > counter);
+        guard.mesh_graphics_pipelines.retain(|(resource_counter, _)| *resource_counter > counter);
         guard.compute_pipelines.retain(|(resource_counter, _)| *resource_counter > counter);
         guard.raytracing_pipelines.retain(|(resource_counter, _)| *resource_counter > counter);
         guard.query_pools.retain(|(resource_counter, _)| *resource_counter > counter);
@@ -169,6 +178,7 @@ impl Drop for DeferredDestroyer {
         assert!(guard.fences.is_empty());
         assert!(guard.allocations.is_empty());
         assert!(guard.graphics_pipelines.is_empty());
+        assert!(guard.mesh_graphics_pipelines.is_empty());
         assert!(guard.compute_pipelines.is_empty());
         assert!(guard.raytracing_pipelines.is_empty());
         assert!(guard.query_pools.is_empty());

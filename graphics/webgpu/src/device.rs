@@ -182,24 +182,32 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         false
     }
 
+    fn supports_mesh_shader(&self) -> bool {
+        false
+    }
+
     unsafe fn get_bottom_level_acceleration_structure_size(&self, _info: &gpu::BottomLevelAccelerationStructureInfo<WebGPUBackend>) -> gpu::AccelerationStructureSizes {
-        panic!("WebGPU does not support bindless")
+        panic!("WebGPU does not support ray tracing")
     }
 
     unsafe fn get_top_level_acceleration_structure_size(&self, _info: &gpu::TopLevelAccelerationStructureInfo<WebGPUBackend>) -> gpu::AccelerationStructureSizes {
-        panic!("WebGPU does not support bindless")
+        panic!("WebGPU does not support ray tracing")
     }
 
     fn get_top_level_instances_buffer_size(&self, _instances: &[gpu::AccelerationStructureInstance<WebGPUBackend>]) -> u64 {
-        panic!("WebGPU does not support bindless")
+        panic!("WebGPU does not support ray tracing")
     }
 
     unsafe fn get_raytracing_pipeline_sbt_buffer_size(&self, _info: &gpu::RayTracingPipelineInfo<WebGPUBackend>) -> u64 {
-        panic!("WebGPU does not support bindless")
+        panic!("WebGPU does not support ray tracing")
     }
 
     unsafe fn create_raytracing_pipeline(&self, _info: &gpu::RayTracingPipelineInfo<WebGPUBackend>, _sbt_buffer: &WebGPUBuffer, _sbt_buffer_offset: u64, _name: Option<&str>) -> () {
-        panic!("WebGPU does not support bindless")
+        panic!("WebGPU does not support ray tracing")
+    }
+
+    unsafe fn create_mesh_graphics_pipeline(&self, info: &gpu::MeshGraphicsPipelineInfo<WebGPUBackend>, name: Option<&str>) -> <WebGPUBackend as gpu::GPUBackend>::MeshGraphicsPipeline {
+        panic!("WebGPU does not support mesh shaders")
     }
 
     unsafe fn transition_texture(&self, _dst: &WebGPUTexture, _transition: &gpu::CPUTextureTransition<'_, WebGPUBackend>) {}

@@ -29,6 +29,7 @@ const RAY_QUERY_EXT_NAME: &str = "VK_KHR_ray_query";
 const PIPELINE_LIBRARY_EXT_NAME: &str = "VK_KHR_pipeline_library";
 const HOST_IMAGE_COPY_EXT_NAME: &str = "VK_EXT_host_image_copy";
 const BARYCENTRICS_EXT_NAME: &str = "VK_KHR_fragment_shader_barycentric";
+const MESH_SHADER_EXT_NAME: &str = "VK_EXT_msh_shader";
 
 bitflags! {
   #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -42,6 +43,7 @@ bitflags! {
     const RAY_QUERY                  = 0b10000000000;
     const PIPELINE_LIBRARY           = 0b100000000000;
     const HOST_IMAGE_COPY            = 0b1000000000000;
+    const MESH_SHADER                = 0b10000000000000;
     const BARYCENTRICS               = 0b1000000000000000000;
   }
 }
@@ -120,6 +122,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                 RAY_TRACING_PIPELINE_EXT_NAME => VkAdapterExtensionSupport::RAY_TRACING_PIPELINE,
                 DEFERRED_HOST_OPERATIONS_EXT_NAME => VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS,
                 BARYCENTRICS_EXT_NAME => VkAdapterExtensionSupport::BARYCENTRICS,
+                MESH_SHADER_EXT_NAME => VkAdapterExtensionSupport::MESH_SHADER,
                 HOST_IMAGE_COPY_EXT_NAME => VkAdapterExtensionSupport::HOST_IMAGE_COPY,
                 _ => VkAdapterExtensionSupport::NONE,
             };
@@ -255,6 +258,10 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV::default();
         let mut supported_features_host_image_copy =
             vk::PhysicalDeviceHostImageCopyFeaturesEXT::default();
+        let mut supported_features_mesh_shader =
+            vk::PhysicalDeviceMeshShaderFeaturesEXT::default();
+        let mut properties_mesh_shader =
+            vk::PhysicalDeviceMeshShaderPropertiesEXT::default();
 
         supported_features_11.p_next = std::mem::replace(
             &mut supported_features.p_next,
@@ -372,6 +379,23 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             );
         }
 
+        if extensions
+            .intersects(VkAdapterExtensionSupport::MESH_SHADER)
+        {
+            supported_features_mesh_shader.p_next = std::mem::replace(
+                &mut supported_features.p_next,
+                &mut supported_features_mesh_shader
+                    as *mut vk::PhysicalDeviceMeshShaderFeaturesEXT
+                    as *mut c_void,
+            );
+            properties_mesh_shader.p_next = std::mem::replace(
+                &mut properties.p_next,
+                &mut properties_mesh_shader
+                    as *mut vk::PhysicalDeviceMeshShaderPropertiesEXT
+                    as *mut c_void,
+            );
+        }
+
         self.instance
             .get_physical_device_features2(self.physical_device, &mut supported_features);
         self.instance
@@ -391,6 +415,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         let mut features_barycentrics =
             vk::PhysicalDeviceFragmentShaderBarycentricFeaturesKHR::default();
         let mut features_host_image_copy = vk::PhysicalDeviceHostImageCopyFeaturesEXT::default();
+        let mut features_mesh_shader = vk::PhysicalDeviceMeshShaderFeaturesEXT::default();
         let mut extension_names: Vec<&str> = vec![SWAPCHAIN_EXT_NAME];
 
         enabled_features.features.shader_storage_image_write_without_format = vk::TRUE;
@@ -540,7 +565,6 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         let supports_filter_min_max = supported_features_12.sampler_filter_minmax == vk::TRUE && properties_12.filter_minmax_single_component_formats == vk::TRUE;
         if supports_filter_min_max {
             enabled_features_12.sampler_filter_minmax = vk::TRUE;
-
         }
 
         if supported_features_13.synchronization2 != vk::TRUE
@@ -575,6 +599,19 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                 &mut enabled_features.p_next,
                 &mut features_host_image_copy
                     as *mut vk::PhysicalDeviceHostImageCopyFeaturesEXT
+                    as *mut c_void,
+            );
+        }
+
+        if supported_features_mesh_shader.mesh_shader == vk::TRUE
+            && supported_features_mesh_shader.task_shader == vk::TRUE {
+            extension_names.push(MESH_SHADER_EXT_NAME);
+            features_mesh_shader.mesh_shader = vk::TRUE;
+            features_mesh_shader.task_shader = vk::TRUE;
+            features_mesh_shader.p_next = std::mem::replace(
+                &mut enabled_features.p_next,
+                &mut features_mesh_shader
+                    as *mut vk::PhysicalDeviceMeshShaderFeaturesEXT
                     as *mut c_void,
             );
         }
@@ -690,13 +727,23 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         let debug_utils = self.instance.debug_utils.as_ref()
             .map(|_d| ash::ext::debug_utils::Device::new(&self.instance.instance, &vk_device));
 
-
         let mut host_image_copy = Option::<RawVkHostImageCopyEntries>::None;
         if features_host_image_copy.host_image_copy == vk::TRUE {
             host_image_copy = Some(
                 RawVkHostImageCopyEntries {
                     host_image_copy: ash::ext::host_image_copy::Device::new(&self.instance, &vk_device),
-                    properties_host_image_copy: std::mem::transmute(properties_host_image_copy)
+                    properties_host_image_copy: std::mem::transmute(properties_host_image_copy),
+                }
+            );
+        }
+
+        let mut mesh_shader = Option::<RawVkMeshShaderEntries>::None;
+        if features_mesh_shader.mesh_shader == vk::TRUE {
+            mesh_shader = Some(
+                RawVkMeshShaderEntries {
+                    mesh_shader: ash::ext::mesh_shader::Device::new(&self.instance, &vk_device),
+                    features_mesh_shader: std::mem::transmute(features_mesh_shader),
+                    properties_mesh_shader: std::mem::transmute(properties_mesh_shader),
                 }
             );
         }
@@ -734,6 +781,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             supported_pipeline_stages,
             supported_access_flags,
             host_image_copy,
+            mesh_shader,
         });
 
         VkDevice::new(

@@ -17,6 +17,7 @@ pub trait GPUBackend: 'static + Sized {
   type Buffer: Buffer + Send + Sync + PartialEq;
   type Shader: Shader + Hash + Eq + PartialEq + Send + Sync;
   type GraphicsPipeline: Send + Sync;
+  type MeshGraphicsPipeline: Send + Sync;
   type ComputePipeline: ComputePipeline + Send + Sync;
   type RayTracingPipeline: Send + Sync;
   type Fence : Fence + Send + Sync;

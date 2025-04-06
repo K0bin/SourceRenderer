@@ -326,7 +326,6 @@ fn read_metadata(
             spirv_cross_sys::SpvImageFormat__SpvImageFormatUnknown => gpu::Format::Unknown,
             _ => panic!("Unrecognized format")
         }
-
     }
 
     unsafe fn read_resources(
@@ -605,6 +604,22 @@ fn read_metadata(
     }
 }
 
+fn shader_type_to_spirv_cross(shader_type: gpu::ShaderType) -> spirv_cross_sys::SpvExecutionModel_ {
+    match shader_type {
+        gpu::ShaderType::VertexShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelVertex,
+        gpu::ShaderType::FragmentShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelFragment,
+        gpu::ShaderType::GeometryShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelGeometry,
+        gpu::ShaderType::TessellationControlShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelTessellationControl,
+        gpu::ShaderType::TessellationEvaluationShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelTessellationEvaluation,
+        gpu::ShaderType::ComputeShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelGLCompute,
+        gpu::ShaderType::RayGen => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelRayGenerationKHR,
+        gpu::ShaderType::RayMiss => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelMissKHR,
+        gpu::ShaderType::RayClosestHit => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelClosestHitKHR,
+        gpu::ShaderType::TaskShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelTaskEXT,
+        gpu::ShaderType::MeshShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelMeshEXT,
+    }
+}
+
 fn compile_shader_spirv_cross(
     spirv: &[u8],
     shader_name: &str,
@@ -764,17 +779,7 @@ fn compile_shader_spirv_cross(
             for set in &metadata.resources {
                 for resource in set.iter() {
                     let mut msl_binding = spirv_cross_sys::spvc_msl_resource_binding {
-                        stage: match shader_type {
-                            gpu::ShaderType::VertexShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelVertex,
-                            gpu::ShaderType::FragmentShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelFragment,
-                            gpu::ShaderType::GeometryShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelGeometry,
-                            gpu::ShaderType::TessellationControlShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelTessellationControl,
-                            gpu::ShaderType::TessellationEvaluationShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelTessellationEvaluation,
-                            gpu::ShaderType::ComputeShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelGLCompute,
-                            gpu::ShaderType::RayGen => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelRayGenerationKHR,
-                            gpu::ShaderType::RayMiss => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelMissKHR,
-                            gpu::ShaderType::RayClosestHit => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelClosestHitKHR,
-                        },
+                        stage: shader_type_to_spirv_cross(shader_type),
                         desc_set: resource.set,
                         binding: resource.binding,
                         msl_buffer: u32::MAX,
@@ -811,17 +816,7 @@ fn compile_shader_spirv_cross(
 
             if metadata.push_constant_size != 0 {
                 let msl_binding = spirv_cross_sys::spvc_msl_resource_binding {
-                    stage: match shader_type {
-                        gpu::ShaderType::VertexShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelVertex,
-                        gpu::ShaderType::FragmentShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelFragment,
-                        gpu::ShaderType::GeometryShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelGeometry,
-                        gpu::ShaderType::TessellationControlShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelTessellationControl,
-                        gpu::ShaderType::TessellationEvaluationShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelTessellationEvaluation,
-                        gpu::ShaderType::ComputeShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelGLCompute,
-                        gpu::ShaderType::RayGen => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelRayGenerationKHR,
-                        gpu::ShaderType::RayMiss => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelMissKHR,
-                        gpu::ShaderType::RayClosestHit => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelClosestHitKHR,
-                    },
+                    stage: shader_type_to_spirv_cross(shader_type),
                     desc_set: spirv_cross_sys::SPVC_MSL_PUSH_CONSTANT_DESC_SET as u32,
                     binding: spirv_cross_sys::SPVC_MSL_PUSH_CONSTANT_BINDING,
                     msl_buffer: buffer_count,
@@ -833,17 +828,7 @@ fn compile_shader_spirv_cross(
 
             if metadata.uses_bindless_texture_set {
                 let msl_binding = spirv_cross_sys::spvc_msl_resource_binding {
-                    stage: match shader_type {
-                        gpu::ShaderType::VertexShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelVertex,
-                        gpu::ShaderType::FragmentShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelFragment,
-                        gpu::ShaderType::GeometryShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelGeometry,
-                        gpu::ShaderType::TessellationControlShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelTessellationControl,
-                        gpu::ShaderType::TessellationEvaluationShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelTessellationEvaluation,
-                        gpu::ShaderType::ComputeShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelGLCompute,
-                        gpu::ShaderType::RayGen => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelRayGenerationKHR,
-                        gpu::ShaderType::RayMiss => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelMissKHR,
-                        gpu::ShaderType::RayClosestHit => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelClosestHitKHR,
-                    },
+                    stage: shader_type_to_spirv_cross(shader_type),
                     desc_set: gpu::BINDLESS_TEXTURE_SET_INDEX,
                     binding: 0, // the binding sets the [[id(n)]] attribute inside the argument buffer which impacts the offset
                     msl_buffer: u32::MAX,

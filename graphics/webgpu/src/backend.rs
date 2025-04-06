@@ -34,6 +34,7 @@ impl GPUBackend for WebGPUBackend {
     type GraphicsPipeline = WebGPUGraphicsPipeline;
     type ComputePipeline = WebGPUComputePipeline;
     type RayTracingPipeline = ();
+    type MeshGraphicsPipeline = ();
     type Fence = WebGPUFence;
     type Queue = WebGPUQueue;
     type Heap = WebGPUHeap;

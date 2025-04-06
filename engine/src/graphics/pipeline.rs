@@ -32,6 +32,35 @@ impl Drop for GraphicsPipeline {
     }
 }
 
+pub struct MeshGraphicsPipeline {
+    pipeline: ManuallyDrop<active_gpu_backend::MeshGraphicsPipeline>,
+    destroyer: Arc<DeferredDestroyer>
+}
+
+impl MeshGraphicsPipeline {
+    pub(super) fn new(device: &Arc<active_gpu_backend::Device>, destroyer: &Arc<DeferredDestroyer>, info: &active_gpu_backend::MeshGraphicsPipelineInfo, name: Option<&str>) -> Self {
+        let pipeline = unsafe {
+            device.create_mesh_graphics_pipeline(info, name)
+        };
+        Self {
+            pipeline: ManuallyDrop::new(pipeline),
+            destroyer: destroyer.clone()
+        }
+    }
+
+    #[inline(always)]
+    pub fn handle(&self) -> &active_gpu_backend::MeshGraphicsPipeline {
+        &*self.pipeline
+    }
+}
+
+impl Drop for MeshGraphicsPipeline {
+    fn drop(&mut self) {
+        let pipeline = unsafe { ManuallyDrop::take(&mut self.pipeline) };
+        self.destroyer.destroy_mesh_graphics_pipeline(pipeline);
+    }
+}
+
 pub struct ComputePipeline {
     pipeline: ManuallyDrop<active_gpu_backend::ComputePipeline>,
     destroyer: Arc<DeferredDestroyer>

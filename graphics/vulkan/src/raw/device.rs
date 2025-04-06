@@ -41,6 +41,7 @@ pub struct RawVkDevice {
     pub supported_pipeline_stages: vk::PipelineStageFlags2,
     pub supported_access_flags: vk::AccessFlags2,
     pub host_image_copy: Option<RawVkHostImageCopyEntries>,
+    pub mesh_shader: Option<RawVkMeshShaderEntries>,
 }
 
 unsafe impl Send for RawVkDevice {}
@@ -58,6 +59,12 @@ unsafe impl Sync for RawVkRTEntries {}
 pub struct RawVkHostImageCopyEntries {
     pub host_image_copy: ash::ext::host_image_copy::Device,
     pub properties_host_image_copy: vk::PhysicalDeviceHostImageCopyPropertiesEXT<'static>,
+}
+
+pub struct RawVkMeshShaderEntries {
+    pub mesh_shader: ash::ext::mesh_shader::Device,
+    pub features_mesh_shader: vk::PhysicalDeviceMeshShaderFeaturesEXT<'static>,
+    pub properties_mesh_shader: vk::PhysicalDeviceMeshShaderPropertiesEXT<'static>,
 }
 
 impl RawVkDevice {

@@ -16,6 +16,7 @@ impl gpu::GPUBackend for VkBackend {
     type Buffer = VkBuffer;
     type Shader = VkShader;
     type GraphicsPipeline = VkPipeline;
+    type MeshGraphicsPipeline = VkPipeline;
     type ComputePipeline = VkPipeline;
     type RayTracingPipeline = VkPipeline;
     type Swapchain = VkSwapchain;

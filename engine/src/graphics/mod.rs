@@ -65,6 +65,7 @@ mod active_gpu_backend {
     pub use sourcerenderer_vulkan::VkSurface as Surface;
     pub use sourcerenderer_vulkan::VkBackbufferIndices as Backbuffer;
     pub use sourcerenderer_vulkan::VkPipeline as GraphicsPipeline;
+    pub use sourcerenderer_vulkan::VkPipeline as MeshGraphicsPipeline;
     pub use sourcerenderer_vulkan::VkPipeline as ComputePipeline;
     pub use sourcerenderer_vulkan::VkPipeline as RayTracingPipeline;
     pub use sourcerenderer_vulkan::VkQueryPool as QueryPool;
@@ -75,12 +76,12 @@ mod active_gpu_backend {
     pub type FenceValuePairRef<'a> = sourcerenderer_core::gpu::FenceValuePairRef<'a, self::Backend>;
     pub type Submission<'a> = sourcerenderer_core::gpu::Submission<'a, self::Backend>;
     pub type GraphicsPipelineInfo<'a> = sourcerenderer_core::gpu::GraphicsPipelineInfo<'a, self::Backend>;
+    pub type MeshGraphicsPipelineInfo<'a> = sourcerenderer_core::gpu::MeshGraphicsPipelineInfo<'a, self::Backend>;
     pub type RayTracingPipelineInfo<'a> = sourcerenderer_core::gpu::RayTracingPipelineInfo<'a, self::Backend>;
 }
 
 #[cfg(target_arch = "wasm32")]
 mod active_gpu_backend {
-
     pub use sourcerenderer_webgpu::WebGPUBackend as Backend;
     pub use sourcerenderer_webgpu::WebGPUInstance as Instance;
     pub use sourcerenderer_webgpu::WebGPUAdapter as Adapter;
@@ -103,6 +104,7 @@ mod active_gpu_backend {
     pub use sourcerenderer_webgpu::WebGPUComputePipeline as ComputePipeline;
     pub use sourcerenderer_webgpu::WebGPUQueryPool as QueryPool;
     pub type RayTracingPipeline = <sourcerenderer_webgpu::WebGPUBackend as sourcerenderer_core::gpu::GPUBackend>::RayTracingPipeline;
+    pub type MeshGraphicsPipeline = <sourcerenderer_webgpu::WebGPUBackend as sourcerenderer_core::gpu::GPUBackend>::MeshGraphicsPipeline;
     pub use sourcerenderer_webgpu::WebGPUShader as Shader;
     pub type Barrier<'a> = sourcerenderer_core::gpu::Barrier<'a, self::Backend>;
     pub type RenderTarget<'a> = sourcerenderer_core::gpu::RenderTarget<'a, self::Backend>;
@@ -110,6 +112,7 @@ mod active_gpu_backend {
     pub type FenceValuePairRef<'a> = sourcerenderer_core::gpu::FenceValuePairRef<'a, self::Backend>;
     pub type Submission<'a> = sourcerenderer_core::gpu::Submission<'a, self::Backend>;
     pub type GraphicsPipelineInfo<'a> = sourcerenderer_core::gpu::GraphicsPipelineInfo<'a, self::Backend>;
+    pub type MeshGraphicsPipelineInfo<'a> = sourcerenderer_core::gpu::MeshGraphicsPipelineInfo<'a, self::Backend>;
     pub type RayTracingPipelineInfo<'a> = sourcerenderer_core::gpu::RayTracingPipelineInfo<'a, self::Backend>;
 }
 
@@ -134,6 +137,7 @@ mod active_gpu_backend {
     pub use sourcerenderer_metal::MTLSurface as Surface;
     pub use sourcerenderer_metal::MTLBackbuffer as Backbuffer;
     pub use sourcerenderer_metal::MTLGraphicsPipeline as GraphicsPipeline;
+    pub use sourcerenderer_vulkan::MTLMeshGraphicsPipeline as MeshGraphicsPipeline;
     pub use sourcerenderer_metal::MTLComputePipeline as ComputePipeline;
     pub use sourcerenderer_metal::MTLQueryPool as QueryPool;
     pub type RayTracingPipeline = ();
@@ -144,12 +148,14 @@ mod active_gpu_backend {
     pub type FenceValuePairRef<'a> = sourcerenderer_core::gpu::FenceValuePairRef<'a, self::Backend>;
     pub type Submission<'a> = sourcerenderer_core::gpu::Submission<'a, self::Backend>;
     pub type GraphicsPipelineInfo<'a> = sourcerenderer_core::gpu::GraphicsPipelineInfo<'a, self::Backend>;
+    pub type MeshGraphicsPipelineInfo<'a> = sourcerenderer_core::gpu::MeshGraphicsPipelineInfo<'a, self::Backend>;
     pub type RayTracingPipelineInfo<'a> = sourcerenderer_core::gpu::RayTracingPipelineInfo<'a, self::Backend>;
 }
 
 pub use active_gpu_backend::{
     Shader,
     GraphicsPipelineInfo,
+    MeshGraphicsPipelineInfo,
     RayTracingPipelineInfo,
     Backend as ActiveBackend,
     Texture as BackendTexture,

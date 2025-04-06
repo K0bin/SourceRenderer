@@ -321,7 +321,8 @@ pub enum ShaderType {
   RayGen,
   RayMiss,
   RayClosestHit,
-  // TODO add mesh shaders (?)
+  TaskShader,
+  MeshShader,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -335,6 +336,18 @@ pub enum PrimitiveType {
 
 pub trait Shader {
   fn shader_type(&self) -> ShaderType;
+}
+
+#[derive(Hash, Eq, PartialEq)]
+pub struct MeshGraphicsPipelineInfo<'a, B: GPUBackend> {
+  pub ts: Option<&'a B::Shader>,
+  pub ms: &'a B::Shader,
+  pub fs: Option<&'a B::Shader>,
+  pub rasterizer: RasterizerInfo,
+  pub depth_stencil: DepthStencilInfo,
+  pub blend: BlendInfo<'a>,
+  pub render_target_formats: &'a [Format],
+  pub depth_stencil_format: Format
 }
 
 #[derive(Hash, Eq, PartialEq)]

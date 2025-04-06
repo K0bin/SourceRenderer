@@ -139,6 +139,15 @@ impl gpu::Device<VkBackend> for VkDevice {
         VkPipeline::new_graphics(&self.device, info, shared, name)
     }
 
+    unsafe fn create_mesh_graphics_pipeline(
+        &self,
+        info: &gpu::MeshGraphicsPipelineInfo<VkBackend>,
+        name: Option<&str>,
+    ) -> VkPipeline {
+        let shared = &self.shared;
+        VkPipeline::new_mesh_graphics(&self.device, info, shared, name)
+    }
+
     unsafe fn create_fence(&self, _is_cpu_accessible: bool) -> VkTimelineSemaphore {
         VkTimelineSemaphore::new(&self.device)
     }
@@ -182,6 +191,10 @@ impl gpu::Device<VkBackend> for VkDevice {
 
     fn supports_barycentrics(&self) -> bool {
         self.device.features_barycentrics.fragment_shader_barycentric == vk::TRUE
+    }
+
+    fn supports_mesh_shader(&self) -> bool {
+        self.device.mesh_shader.is_some()
     }
 
     unsafe fn memory_infos(&self) -> Vec<gpu::MemoryInfo> {

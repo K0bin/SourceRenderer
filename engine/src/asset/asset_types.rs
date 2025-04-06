@@ -1,6 +1,6 @@
 use std::hash::Hash;
 
-use crate::renderer::asset::{RendererComputePipeline, RendererGraphicsPipeline, RendererMaterial, RendererMesh, RendererModel, RendererRayTracingPipeline, RendererShader, RendererTexture};
+use crate::renderer::asset::{RendererComputePipeline, RendererGraphicsPipeline, RendererMeshGraphicsPipeline, RendererMaterial, RendererMesh, RendererModel, RendererRayTracingPipeline, RendererShader, RendererTexture};
 
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
 pub struct TextureHandle(AssetHandle);
@@ -232,6 +232,7 @@ pub enum AssetType {
     Level,
     Shader,
     GraphicsPipeline,
+    MeshGraphicsPipeline,
     ComputePipeline,
     RayTracingPipeline,
 }
@@ -246,6 +247,7 @@ impl AssetType {
             AssetType::Material => true,
             AssetType::Shader => true,
             AssetType::GraphicsPipeline => true,
+            AssetType::MeshGraphicsPipeline => true,
             AssetType::ComputePipeline => true,
             AssetType::RayTracingPipeline => true,
             _ => false
@@ -259,6 +261,7 @@ pub enum AssetWithHandle {
     Model(AssetHandle, RendererModel),
     Mesh(AssetHandle, RendererMesh),
     Shader(AssetHandle, RendererShader),
+    MeshGraphicsPipeline(AssetHandle, RendererMeshGraphicsPipeline),
     GraphicsPipeline(AssetHandle, RendererGraphicsPipeline),
     ComputePipeline(AssetHandle, RendererComputePipeline),
     RayTracingPipeline(AssetHandle, RendererRayTracingPipeline),
@@ -274,6 +277,7 @@ impl AssetWithHandle {
             AssetWithHandle::Mesh(_,_) => true,
             AssetWithHandle::Material(_,_) => true,
             AssetWithHandle::Shader(_,_) => true,
+            AssetWithHandle::MeshGraphicsPipeline(_, _) => true,
             AssetWithHandle::GraphicsPipeline(_, _) => true,
             AssetWithHandle::ComputePipeline(_, _) => true,
             AssetWithHandle::RayTracingPipeline(_, _) => true,
@@ -290,6 +294,7 @@ impl AssetWithHandle {
             AssetWithHandle::Sound(_,_) => AssetType::Sound,
             AssetWithHandle::Material(_,_) => AssetType::Material,
             AssetWithHandle::Shader(_,_) => AssetType::Shader,
+            AssetWithHandle::MeshGraphicsPipeline(_, _) => AssetType::MeshGraphicsPipeline,
             AssetWithHandle::GraphicsPipeline(_, _) => AssetType::GraphicsPipeline,
             AssetWithHandle::ComputePipeline(_, _) => AssetType::ComputePipeline,
             AssetWithHandle::RayTracingPipeline(_, _) => AssetType::RayTracingPipeline,
@@ -305,6 +310,7 @@ impl AssetWithHandle {
             AssetWithHandle::Mesh(handle, _) => *handle,
             AssetWithHandle::Shader(handle, _) => *handle,
             AssetWithHandle::Sound(handle, _) => *handle,
+            AssetWithHandle::MeshGraphicsPipeline(handle, _) => *handle,
             AssetWithHandle::GraphicsPipeline(handle, _) => *handle,
             AssetWithHandle::ComputePipeline(handle, _) => *handle,
             AssetWithHandle::RayTracingPipeline(handle, _) => *handle,
@@ -320,6 +326,7 @@ impl AssetWithHandle {
             (handle, Asset::Model(asset)) => AssetWithHandle::Model(handle, asset),
             (handle, Asset::Mesh(asset)) => AssetWithHandle::Mesh(handle, asset),
             (handle, Asset::Shader(asset)) => AssetWithHandle::Shader(handle, asset),
+            (handle, Asset::MeshGraphicsPipeline(asset)) => AssetWithHandle::MeshGraphicsPipeline(handle, asset),
             (handle, Asset::GraphicsPipeline(asset)) => AssetWithHandle::GraphicsPipeline(handle, asset),
             (handle, Asset::ComputePipeline(asset)) => AssetWithHandle::ComputePipeline(handle, asset),
             (handle, Asset::RayTracingPipeline(asset)) => AssetWithHandle::RayTracingPipeline(handle, asset),
@@ -336,6 +343,7 @@ pub enum Asset {
     Shader(RendererShader),
     Sound(()),
     GraphicsPipeline(RendererGraphicsPipeline),
+    MeshGraphicsPipeline(RendererMeshGraphicsPipeline),
     ComputePipeline(RendererComputePipeline),
     RayTracingPipeline(RendererRayTracingPipeline),
 }
@@ -350,6 +358,7 @@ impl Asset {
             Asset::Material(_) => true,
             Asset::Shader(_) => true,
             Asset::GraphicsPipeline(_) => true,
+            Asset::MeshGraphicsPipeline(_) => true,
             Asset::ComputePipeline(_) => true,
             Asset::RayTracingPipeline(_) => true,
             _ => false
@@ -366,6 +375,7 @@ impl Asset {
             Asset::Material(_) => AssetType::Material,
             Asset::Shader(_) => AssetType::Shader,
             Asset::GraphicsPipeline(_) => AssetType::GraphicsPipeline,
+            Asset::MeshGraphicsPipeline(_) => AssetType::MeshGraphicsPipeline,
             Asset::ComputePipeline(_) => AssetType::ComputePipeline,
             Asset::RayTracingPipeline(_) => AssetType::RayTracingPipeline,
         }
@@ -379,6 +389,7 @@ pub enum AssetRef<'a> {
     Mesh(&'a RendererMesh),
     Shader(&'a RendererShader),
     GraphicsPipeline(&'a RendererGraphicsPipeline),
+    MeshGraphicsPipeline(&'a RendererMeshGraphicsPipeline),
     ComputePipeline(&'a RendererComputePipeline),
     RayTracingPipeline(&'a RendererRayTracingPipeline),
     Sound(()),
@@ -420,6 +431,12 @@ impl<'a> From<&'a RendererGraphicsPipeline> for AssetRef<'a> {
     }
 }
 
+impl<'a> From<&'a RendererMeshGraphicsPipeline> for AssetRef<'a> {
+    fn from(value: &'a RendererMeshGraphicsPipeline) -> Self {
+        Self::MeshGraphicsPipeline(value)
+    }
+}
+
 impl<'a> From<&'a RendererComputePipeline> for AssetRef<'a> {
     fn from(value: &'a RendererComputePipeline) -> Self {
         Self::ComputePipeline(value)
@@ -442,6 +459,7 @@ impl AssetRef<'_> {
             AssetRef::Material(_) => true,
             AssetRef::Shader(_) => true,
             AssetRef::GraphicsPipeline(_) => true,
+            AssetRef::MeshGraphicsPipeline(_) => true,
             AssetRef::ComputePipeline(_) => true,
             AssetRef::RayTracingPipeline(_) => true,
             _ => false
@@ -458,6 +476,7 @@ impl AssetRef<'_> {
             AssetRef::Material(_) => AssetType::Material,
             AssetRef::Shader(_) => AssetType::Shader,
             AssetRef::GraphicsPipeline(_) => AssetType::GraphicsPipeline,
+            AssetRef::MeshGraphicsPipeline(_) => AssetType::MeshGraphicsPipeline,
             AssetRef::ComputePipeline(_) => AssetType::ComputePipeline,
             AssetRef::RayTracingPipeline(_) => AssetType::RayTracingPipeline,
         }

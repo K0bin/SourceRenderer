@@ -107,6 +107,11 @@ impl Device {
     }
 
     #[inline(always)]
+    pub fn create_mesh_graphics_pipeline(&self, info: &active_gpu_backend::MeshGraphicsPipelineInfo, name: Option<&str>) -> Arc<super::MeshGraphicsPipeline> {
+        Arc::new(super::MeshGraphicsPipeline::new(&self.device, &self.destroyer, info, name))
+    }
+
+    #[inline(always)]
     pub fn create_compute_pipeline(&self, shader: &active_gpu_backend::Shader, name: Option<&str>) -> Arc<super::ComputePipeline> {
         Arc::new(super::ComputePipeline::new(&self.device, &self.destroyer, shader, name))
     }

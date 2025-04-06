@@ -76,6 +76,7 @@ getrandom = { version = "0.3", features = [ "wasm_js" ] }
 
 [features]
 default = [ "threading" ]
+# default = [ ]
 threading = [ "bevy_tasks/multi_threaded", "bevy_ecs/multi_threaded", "dep:parking_lot" ]
 web = [ ]
 profile = [ "profiling/profile-with-optick" ]

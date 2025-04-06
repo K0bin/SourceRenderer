@@ -213,6 +213,7 @@ impl RendererModel {
 
 pub type RendererShader = Arc<Shader>;
 pub type RendererGraphicsPipeline = CompiledPipeline<GraphicsCompileTask>;
+pub type RendererMeshGraphicsPipeline = CompiledPipeline<MeshGraphicsCompileTask>;
 pub type RendererComputePipeline = CompiledPipeline<ComputeCompileTask>;
 pub type RendererRayTracingPipeline = CompiledPipeline<StoredRayTracingPipelineInfo>;
 

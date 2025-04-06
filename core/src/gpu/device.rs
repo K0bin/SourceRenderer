@@ -50,6 +50,7 @@ pub trait Device<B: GPUBackend> {
   unsafe fn create_compute_pipeline(&self, shader: &B::Shader, name: Option<&str>) -> B::ComputePipeline;
   unsafe fn create_sampler(&self, info: &SamplerInfo) -> B::Sampler;
   unsafe fn create_graphics_pipeline(&self, info: &GraphicsPipelineInfo<B>, name: Option<&str>) -> B::GraphicsPipeline;
+  unsafe fn create_mesh_graphics_pipeline(&self, info: &MeshGraphicsPipelineInfo<B>, name: Option<&str>) -> B::MeshGraphicsPipeline;
   unsafe fn wait_for_idle(&self);
   unsafe fn create_fence(&self, is_cpu_accessible: bool) -> B::Fence;
   unsafe fn memory_infos(&self) -> Vec<MemoryInfo>;
@@ -67,7 +68,8 @@ pub trait Device<B: GPUBackend> {
   fn supports_ray_tracing(&self) -> bool;
   fn supports_indirect(&self) -> bool;
   fn supports_min_max_filter(&self) -> bool;
-  fn supports_barycentrics(&self) -> bool; // TODO turn into flags
+  fn supports_barycentrics(&self) -> bool;
+  fn supports_mesh_shader(&self) -> bool; // TODO turn into flags
   unsafe fn get_bottom_level_acceleration_structure_size(&self, info: &BottomLevelAccelerationStructureInfo<B>) -> AccelerationStructureSizes;
   unsafe fn get_top_level_acceleration_structure_size(&self, info: &TopLevelAccelerationStructureInfo<B>) -> AccelerationStructureSizes;
   fn get_top_level_instances_buffer_size(&self, instances: &[AccelerationStructureInstance<B>]) -> u64;
