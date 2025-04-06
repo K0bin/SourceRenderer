@@ -176,7 +176,6 @@ fn insert_renderer_resource(
 ) {
     let wrapper = RendererResourceWrapper {
         renderer: SyncCell::new(renderer),
-        _p: PlatformPhantomData::default(),
         sender: ManuallyDrop::new(sender),
     };
     app.insert_resource(wrapper);
