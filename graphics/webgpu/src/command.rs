@@ -330,54 +330,73 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         cmd_buffer.binding_manager.set_push_constant_data(data, visible_for_shader_stage);
     }
 
-    unsafe fn draw(&mut self, vertices: u32, offset: u32) {
+    unsafe fn draw(&mut self, vertex_count: u32, instance_count: u32, first_vertex: u32, first_instance: u32) {
         if !self.is_inner {
             let cmd_buffer = self.get_recording_mut();
             let render_pass_encoder = cmd_buffer.get_render_encoder();
-            assert_eq!(offset, 0);
-            render_pass_encoder.draw_with_instance_count_and_first_vertex(vertices, 1, offset);
+            render_pass_encoder.draw_with_instance_count_and_first_vertex_and_first_instance(vertex_count, instance_count, first_vertex, first_instance);
         } else {
             let render_bundle_encoder = self.get_encoder_inner();
-            assert_eq!(offset, 0);
-            render_bundle_encoder.draw_with_instance_count_and_first_vertex(vertices, 1, offset);
+            render_bundle_encoder.draw_with_instance_count_and_first_vertex_and_first_instance(vertex_count, instance_count, first_vertex, first_instance);
         }
     }
 
-    unsafe fn draw_indexed(&mut self, instances: u32, first_instance: u32, indices: u32, first_index: u32, vertex_offset: i32) {
+    unsafe fn draw_indexed(&mut self, index_count: u32, instance_count: u32, first_index: u32, vertex_offset: i32, first_instance: u32) {
         if !self.is_inner {
             let cmd_buffer = self.get_recording_mut();
             let render_pass_encoder = cmd_buffer.get_render_encoder();
-            render_pass_encoder.draw_indexed_with_instance_count_and_first_index_and_base_vertex_and_first_instance(indices, instances, first_index, vertex_offset, first_instance);
+            render_pass_encoder.draw_indexed_with_instance_count_and_first_index_and_base_vertex_and_first_instance(index_count, instance_count, first_index, vertex_offset, first_instance);
         } else {
             let render_bundle_encoder = self.get_encoder_inner();
-            render_bundle_encoder.draw_indexed_with_instance_count_and_first_index_and_base_vertex_and_first_instance(indices, instances, first_index, vertex_offset, first_instance);
+            render_bundle_encoder.draw_indexed_with_instance_count_and_first_index_and_base_vertex_and_first_instance(index_count, instance_count, first_index, vertex_offset, first_instance);
         }
     }
 
-    unsafe fn draw_indexed_indirect(&mut self, draw_buffer: &WebGPUBuffer, draw_buffer_offset: u32, _count_buffer: &WebGPUBuffer, _count_buffer_offset: u32, _max_draw_count: u32, _stride: u32) {
+    unsafe fn draw_indexed_indirect_count(&mut self, _draw_buffer: &WebGPUBuffer, _draw_buffer_offset: u64, _count_buffer: &WebGPUBuffer, _count_buffer_offset: u64, _max_draw_count: u32, _stride: u32) {
+        warn!("WebGPU does not support multi draw indirect");
+    }
+
+
+    unsafe fn draw_indirect(&mut self, draw_buffer: &WebGPUBuffer, draw_buffer_offset: u64, draw_count: u32, stride: u32) {
         if !self.is_inner {
             let cmd_buffer = self.get_recording_mut();
             let render_pass_encoder = cmd_buffer.get_render_encoder();
-            warn!("WebGPU does not support multi draw indirect");
-            render_pass_encoder.draw_indexed_indirect_with_u32(&draw_buffer.handle(), draw_buffer_offset);
+            for i in 0..draw_count {
+                render_pass_encoder.draw_indexed_indirect_with_u32(
+                    &draw_buffer.handle(),
+                    (draw_buffer_offset as u32) + i * stride);
+            }
         } else {
             let render_bundle_encoder = self.get_encoder_inner();
-            warn!("WebGPU does not support multi draw indirect");
-            render_bundle_encoder.draw_indexed_indirect_with_u32(&draw_buffer.handle(), draw_buffer_offset);
+            for i in 0..draw_count {
+                render_bundle_encoder.draw_indexed_indirect_with_u32(
+                    &draw_buffer.handle(),
+                    (draw_buffer_offset as u32) + i * stride);
+            }
         }
     }
 
-    unsafe fn draw_indirect(&mut self, draw_buffer: &WebGPUBuffer, draw_buffer_offset: u32, _count_buffer: &WebGPUBuffer, _count_buffer_offset: u32, _max_draw_count: u32, _stride: u32) {
+    unsafe fn draw_indexed_indirect(&mut self, draw_buffer: &WebGPUBuffer, draw_buffer_offset: u64, draw_count: u32, stride: u32) {
         if !self.is_inner {
             let cmd_buffer = self.get_recording_mut();
             let render_pass_encoder = cmd_buffer.get_render_encoder();
-            warn!("WebGPU does not support multi draw indirect");
-            render_pass_encoder.draw_indirect_with_u32(&draw_buffer.handle(), draw_buffer_offset);
+            for i in 0..draw_count {
+                render_pass_encoder.draw_indirect_with_u32(
+                    &draw_buffer.handle(),
+                    (draw_buffer_offset as u32) + i * stride);
+            }
         } else {
             let render_bundle_encoder = self.get_encoder_inner();
-            warn!("WebGPU does not support multi draw indirect");
-            render_bundle_encoder.draw_indirect_with_u32(&draw_buffer.handle(), draw_buffer_offset);
+            for i in 0..draw_count {
+                render_bundle_encoder.draw_indirect_with_u32(
+                    &draw_buffer.handle(),
+                    (draw_buffer_offset as u32) + i * stride);
+            }
         }
+    }
+
+    unsafe fn draw_indirect_count(&mut self, _draw_buffer: &WebGPUBuffer, _draw_buffer_offset: u64, _count_buffer: &WebGPUBuffer, _count_buffer_offset: u64, _max_draw_count: u32, _stride: u32) {
+        warn!("WebGPU does not support multi draw indirect");
     }
 
     unsafe fn bind_sampling_view(&mut self, frequency: gpu::BindingFrequency, binding: u32, texture: &WebGPUTextureView) {

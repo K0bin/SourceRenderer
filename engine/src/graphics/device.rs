@@ -251,8 +251,18 @@ impl Device {
     }
 
     #[inline(always)]
-    pub fn supports_indirect(&self) -> bool {
-        self.device.supports_indirect()
+    pub fn supports_indirect_first_instance(&self) -> bool {
+        self.device.supports_indirect_first_instance()
+    }
+
+    #[inline(always)]
+    pub fn supports_indirect_count(&self) -> bool {
+        self.device.supports_indirect_count()
+    }
+
+    #[inline(always)]
+    pub fn supports_indirect_count_mesh_shader(&self) -> bool {
+        self.device.supports_indirect_count_mesh_shader()
     }
 
     #[inline(always)]

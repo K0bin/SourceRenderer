@@ -9,7 +9,7 @@ pub struct WebGPUDevice {
     shared: WebGPUShared,
     memory_infos: [gpu::MemoryTypeInfo; 1],
     queue: WebGPUQueue,
-    _features: WebGPUFeatures,
+    features: WebGPUFeatures,
     limits: WebGPULimits
 }
 
@@ -43,7 +43,7 @@ impl WebGPUDevice {
             shared,
             memory_infos,
             queue,
-            _features: features.clone(),
+            features: features.clone(),
             limits: limits.clone(),
         }
     }
@@ -174,8 +174,16 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         false
     }
 
-    fn supports_indirect(&self) -> bool {
-        true
+    fn supports_indirect_count(&self) -> bool {
+        false
+    }
+
+    fn supports_indirect_first_instance(&self) -> bool {
+        self.features.contains(WebGPUFeatures::INDIRECT_FIRST_INSTANCE)
+    }
+
+    fn supports_indirect_count_mesh_shader(&self) -> bool {
+        false
     }
 
     fn supports_min_max_filter(&self) -> bool {

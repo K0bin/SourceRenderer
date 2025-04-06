@@ -114,10 +114,12 @@ pub trait CommandBuffer<B: GPUBackend> : Send {
   unsafe fn set_scissors(&mut self, scissors: &[ Scissor ]);
   unsafe fn set_push_constant_data<T>(&mut self, data: &[T], visible_for_shader_stage: ShaderType)
     where T: 'static + Send + Sync + Sized + Clone;
-  unsafe fn draw(&mut self, vertices: u32, offset: u32);
-  unsafe fn draw_indexed(&mut self, instances: u32, first_instance: u32, indices: u32, first_index: u32, vertex_offset: i32);
-  unsafe fn draw_indexed_indirect(&mut self, draw_buffer: &B::Buffer, draw_buffer_offset: u32, count_buffer: &B::Buffer, count_buffer_offset: u32, max_draw_count: u32, stride: u32);
-  unsafe fn draw_indirect(&mut self, draw_buffer: &B::Buffer, draw_buffer_offset: u32, count_buffer: &B::Buffer, count_buffer_offset: u32, max_draw_count: u32, stride: u32);
+  unsafe fn draw(&mut self, vertex_count: u32, instance_count: u32, first_vertex: u32, first_instance: u32);
+  unsafe fn draw_indirect(&mut self, draw_buffer: &B::Buffer, draw_buffer_offset: u64, draw_count: u32, stride: u32);
+  unsafe fn draw_indirect_count(&mut self, draw_buffer: &B::Buffer, draw_buffer_offset: u64, count_buffer: &B::Buffer, count_buffer_offset: u64, max_draw_count: u32, stride: u32);
+  unsafe fn draw_indexed(&mut self, index_count: u32, instance_count: u32, first_index: u32, vertex_offset: i32, first_instance: u32);
+  unsafe fn draw_indexed_indirect(&mut self, draw_buffer: &B::Buffer, draw_buffer_offset: u64, draw_count: u32, stride: u32);
+  unsafe fn draw_indexed_indirect_count(&mut self, draw_buffer: &B::Buffer, draw_buffer_offset: u64, count_buffer: &B::Buffer, count_buffer_offset: u64, max_draw_count: u32, stride: u32);
   unsafe fn bind_sampling_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &B::TextureView);
   unsafe fn bind_sampling_view_and_sampler(&mut self, frequency: BindingFrequency, binding: u32, texture: &B::TextureView, sampler: &B::Sampler);
   unsafe fn bind_sampling_view_and_sampler_array(&mut self, frequency: BindingFrequency, binding: u32, textures_and_samplers: &[(&B::TextureView, &B::Sampler)]);

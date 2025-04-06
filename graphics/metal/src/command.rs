@@ -289,7 +289,7 @@ impl MTLCommandBuffer {
         encoder.endEncoding();
     }
 
-    unsafe fn multi_draw_indirect(&mut self, indexed: bool, draw_buffer: &MTLBuffer, draw_buffer_offset: u32, count_buffer: &MTLBuffer, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
+    unsafe fn multi_draw_indirect(&mut self, indexed: bool, draw_buffer: &MTLBuffer, draw_buffer_offset: u64, count_buffer: &MTLBuffer, count_buffer_offset: u64, max_draw_count: u32, stride: u32) {
         {
             let render_encoder = self.get_render_pass_encoder();
             render_encoder.endEncoding();
@@ -435,43 +435,59 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         }
     }
 
-    unsafe fn draw(&mut self, vertices: u32, offset: u32) {
+    unsafe fn draw(&mut self, vertex_count: u32, instance_count: u32, first_vertex: u32, first_instance: u32) {
         self.get_render_pass_encoder()
-            .drawPrimitives_vertexStart_vertexCount(self.primitive_type, offset as NSUInteger, vertices as NSUInteger);
+            .drawPrimitives_vertexStart_vertexCount_instanceCount_baseInstance(self.primitive_type, first_vertex as NSUInteger, vertices as NSUInteger, instance_count, first_instance);
     }
 
-    unsafe fn draw_indexed(&mut self, instances: u32, first_instance: u32, indices: u32, first_index: u32, vertex_offset: i32) {
+    unsafe fn draw_indexed(&mut self, index_count: u32, instance_count: u32, first_index: u32, vertex_offset: i32, first_instance: u32) {
         let index_buffer = self.index_buffer.as_ref()
             .expect("No index buffer bound");
 
-        if instances != 1 || first_instance != 0 || vertex_offset != 0 {
-            self.get_render_pass_encoder()
-                .drawIndexedPrimitives_indexCount_indexType_indexBuffer_indexBufferOffset_instanceCount_baseVertex_baseInstance(
-                    self.primitive_type,
-                    indices as NSUInteger,
-                    index_format_to_mtl(index_buffer.format),
-                    &index_buffer.buffer,
-                    index_buffer.offset as NSUInteger + first_index as NSUInteger * index_format_size(index_buffer.format) as NSUInteger,
-                    instances as NSUInteger,
-                    vertex_offset as NSInteger,
-                    first_instance as NSUInteger);
-        } else {
-            self.get_render_pass_encoder()
-                .drawIndexedPrimitives_indexCount_indexType_indexBuffer_indexBufferOffset(
-                    self.primitive_type,
-                    indices as NSUInteger,
-                    index_format_to_mtl(index_buffer.format),
-                    &index_buffer.buffer,
-                    index_buffer.offset as NSUInteger + first_index as NSUInteger * index_format_size(index_buffer.format) as NSUInteger
-                );
+        self.get_render_pass_encoder()
+            .drawIndexedPrimitives_indexCount_indexType_indexBuffer_indexBufferOffset_instanceCount_baseVertex_baseInstance(
+                self.primitive_type,
+                index_count as NSUInteger,
+                index_format_to_mtl(index_buffer.format),
+                &index_buffer.buffer,
+                index_buffer.offset as NSUInteger + first_index as NSUInteger * index_format_size(index_buffer.format) as NSUInteger,
+                instance_count as NSUInteger,
+                vertex_offset as NSInteger,
+                first_instance as NSUInteger);
+    }
+
+    unsafe fn draw_indirect(&mut self, draw_buffer: &MTLBuffer, draw_buffer_offset: u64, draw_count: u32, stride: u32) {
+        let encoder = self.get_render_pass_encoder();
+
+        for i in 0..(draw_count as NSUInteger) {
+            encoder.drawPrimitives_indirectBuffer_indirectBufferOffset(
+                self.primitive_type,
+                draw_buffer.handle(),
+                (draw_buffer_offset as NSUInteger) + i * (stride as NSUInteger)
+            );
         }
     }
 
-    unsafe fn draw_indexed_indirect(&mut self, draw_buffer: &MTLBuffer, draw_buffer_offset: u32, count_buffer: &MTLBuffer, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
+    unsafe fn draw_indexed_indirect(&mut self, draw_buffer: &MTLBuffer, draw_buffer_offset: u64, draw_count: u32, stride: u32) {
+        let encoder = self.get_render_pass_encoder();
+
+        for i in 0..(draw_count as NSUInteger) {
+            encoder.drawIndexedPrimitives_indexType_indexBuffer_indexBufferOffset_indirectBuffer_indirectBufferOffset(
+                self.primitive_type,
+                index_format_to_mtl(index_buffer.format),
+                &index_buffer.buffer,
+                index_buffer.offset as NSUInteger,
+                draw_buffer.handle(),
+                (draw_buffer_offset as NSUInteger) + i * (stride as NSUInteger)
+            );
+        }
+    }
+
+    unsafe fn draw_indexed_indirect_count(&mut self, draw_buffer: &MTLBuffer, draw_buffer_offset: u64, count_buffer: &MTLBuffer, count_buffer_offset: u64, max_draw_count: u32, stride: u32) {
        self.multi_draw_indirect(true, draw_buffer, draw_buffer_offset, count_buffer, count_buffer_offset, max_draw_count, stride);
     }
 
-    unsafe fn draw_indirect(&mut self, draw_buffer: &MTLBuffer, draw_buffer_offset: u32, count_buffer: &MTLBuffer, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
+    unsafe fn draw_indirect_count(&mut self, draw_buffer: &MTLBuffer, draw_buffer_offset: u64, count_buffer: &MTLBuffer, count_buffer_offset: u64, max_draw_count: u32, stride: u32) {
         self.multi_draw_indirect(false, draw_buffer, draw_buffer_offset, count_buffer, count_buffer_offset, max_draw_count, stride);
     }
 

@@ -177,10 +177,18 @@ impl gpu::Device<VkBackend> for VkDevice {
         self.device.rt.as_ref().map(|rt| rt.rt_query).unwrap_or_default()
     }
 
-    fn supports_indirect(&self) -> bool {
+    fn supports_indirect_count(&self) -> bool {
         self.device.features.draw_indirect_first_instance == vk::TRUE
             && self.device.features.multi_draw_indirect == vk::TRUE
             && self.device.features_12.draw_indirect_count == vk::TRUE
+    }
+
+    fn supports_indirect_first_instance(&self) -> bool {
+        self.device.features.draw_indirect_first_instance == vk::TRUE
+    }
+
+    fn supports_indirect_count_mesh_shader(&self) -> bool {
+        self.supports_indirect_count()
     }
 
     fn supports_min_max_filter(&self) -> bool {

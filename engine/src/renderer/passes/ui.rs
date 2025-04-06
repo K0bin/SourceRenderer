@@ -156,7 +156,7 @@ impl UIPass {
                 }
 
                 command_buffer.finish_binding();
-                command_buffer.draw_indexed(1, 0, draw.index_count, draw.first_index, draw.vertex_offset as i32);
+                command_buffer.draw_indexed(draw.index_count, 1, draw.first_index, draw.vertex_offset as i32, 1);
             }
         }
         command_buffer.end_render_pass();

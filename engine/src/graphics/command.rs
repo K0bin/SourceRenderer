@@ -177,31 +177,45 @@ impl<'a> CommandBuffer<'a> {
         }
     }
 
-    pub fn draw(&mut self, vertices: u32, offset: u32) {
+    pub fn draw(&mut self, vertex_count: u32, instance_count: u32, first_vertex: u32, first_instance: u32) {
         unsafe {
-            self.cmd_buffer_handle.draw(vertices, offset);
+            self.cmd_buffer_handle.draw(vertex_count, instance_count, first_vertex, first_instance);
         }
     }
 
-    pub fn draw_indexed(&mut self, instances: u32, first_instance: u32, indices: u32, first_index: u32, vertex_offset: i32) {
+    pub fn draw_indexed(&mut self, index_count: u32, instance_count: u32, first_index: u32, vertex_offset: i32, first_instance: u32) {
         unsafe {
-            self.cmd_buffer_handle.draw_indexed(instances, first_instance, indices, first_index, vertex_offset);
+            self.cmd_buffer_handle.draw_indexed(index_count, instance_count, first_index, vertex_offset, first_instance);
         }
     }
 
-    pub fn draw_indexed_indirect(&mut self, draw_buffer: BufferRef, draw_buffer_offset: u32, count_buffer: BufferRef, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
+    pub fn draw_indexed_indirect(&mut self, draw_buffer: BufferRef, draw_buffer_offset: u64, draw_count: u32, stride: u32) {
+        let BufferHandleRef { handle: draw_buffer_handle, offset: _, length: _ } = draw_buffer.deconstruct(self.frame());
+        unsafe {
+            self.cmd_buffer_handle.draw_indexed_indirect(draw_buffer_handle, draw_buffer_offset, draw_count, stride);
+        }
+    }
+
+    pub fn draw_indirect(&mut self, draw_buffer: BufferRef, draw_buffer_offset: u64, draw_count: u32, stride: u32) {
+        let BufferHandleRef { handle: draw_buffer_handle, offset: _, length: _ } = draw_buffer.deconstruct(self.frame());
+        unsafe {
+            self.cmd_buffer_handle.draw_indirect(draw_buffer_handle, draw_buffer_offset, draw_count, stride);
+        }
+    }
+
+    pub fn draw_indexed_indirect_count(&mut self, draw_buffer: BufferRef, draw_buffer_offset: u64, count_buffer: BufferRef, count_buffer_offset: u64, max_draw_count: u32, stride: u32) {
         let BufferHandleRef { handle: draw_buffer_handle, offset: _, length: _ } = draw_buffer.deconstruct(self.frame());
         let BufferHandleRef { handle: count_buffer_handle, offset: _, length: _ } = count_buffer.deconstruct(self.frame());
         unsafe {
-            self.cmd_buffer_handle.draw_indexed_indirect(draw_buffer_handle, draw_buffer_offset, count_buffer_handle, count_buffer_offset, max_draw_count, stride);
+            self.cmd_buffer_handle.draw_indexed_indirect_count(draw_buffer_handle, draw_buffer_offset, count_buffer_handle, count_buffer_offset, max_draw_count, stride);
         }
     }
 
-    pub fn draw_indirect(&mut self, draw_buffer: BufferRef, draw_buffer_offset: u32, count_buffer: BufferRef, count_buffer_offset: u32, max_draw_count: u32, stride: u32) {
+    pub fn draw_indirect_count(&mut self, draw_buffer: BufferRef, draw_buffer_offset: u64, count_buffer: BufferRef, count_buffer_offset: u64, max_draw_count: u32, stride: u32) {
         let BufferHandleRef { handle: draw_buffer_handle, offset: _, length: _ } = draw_buffer.deconstruct(self.frame());
         let BufferHandleRef { handle: count_buffer_handle, offset: _, length: _ } = count_buffer.deconstruct(self.frame());
         unsafe {
-            self.cmd_buffer_handle.draw_indirect(draw_buffer_handle, draw_buffer_offset, count_buffer_handle, count_buffer_offset, max_draw_count, stride);
+            self.cmd_buffer_handle.draw_indirect_count(draw_buffer_handle, draw_buffer_offset, count_buffer_handle, count_buffer_offset, max_draw_count, stride);
         }
     }
 

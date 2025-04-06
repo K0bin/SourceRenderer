@@ -264,9 +264,9 @@ impl Prepass {
                 let range = &mesh.parts[part.part_index];
 
                 if mesh.indices.is_some() {
-                    command_buffer.draw_indexed(1, 0, range.count, range.start, 0);
+                    command_buffer.draw_indexed(range.count, 1, range.start, 0, 0);
                 } else {
-                    command_buffer.draw(range.count, range.start);
+                    command_buffer.draw(range.count, 1, range.start, 0);
                 }
                 if Self::DRAWABLE_LABELS {
                     command_buffer.end_label();

@@ -356,7 +356,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         }
     }
 
-    unsafe fn draw(&mut self, vertices: u32, offset: u32) {
+    unsafe fn draw(&mut self, vertex_count: u32, instance_count: u32, first_vertex: u32, first_instance: u32) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(self.pipeline.is_some());
         debug_assert!(
@@ -366,17 +366,17 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             self.is_in_render_pass || self.command_buffer_type == gpu::CommandBufferType::Secondary
         );
         unsafe {
-            self.device.cmd_draw(self.cmd_buffer, vertices, 1, offset, 0);
+            self.device.cmd_draw(self.cmd_buffer, vertex_count, instance_count, first_vertex, first_instance);
         }
     }
 
     unsafe fn draw_indexed(
         &mut self,
-        instances: u32,
-        first_instance: u32,
-        indices: u32,
+        index_count: u32,
+        instance_count: u32,
         first_index: u32,
         vertex_offset: i32,
+        first_instance: u32,
     ) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(self.pipeline.is_some());
@@ -389,8 +389,8 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         unsafe {
             self.device.cmd_draw_indexed(
                 self.cmd_buffer,
-                indices,
-                instances,
+                index_count,
+                instance_count,
                 first_index,
                 vertex_offset,
                 first_instance,
@@ -1151,9 +1151,49 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
     unsafe fn draw_indexed_indirect(
         &mut self,
         draw_buffer: &VkBuffer,
-        draw_buffer_offset: u32,
+        draw_buffer_offset: u64,
+        draw_count: u32,
+        stride: u32,
+    ) {
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
+        debug_assert!(self.pipeline.is_some());
+        debug_assert!(
+            if let BoundPipeline::Graphics { .. } = self.pipeline.as_ref().unwrap() { true } else { false }
+        );
+        debug_assert!(
+            self.is_in_render_pass || self.command_buffer_type == gpu::CommandBufferType::Secondary
+        );
+        unsafe {
+            if self.device.features.multi_draw_indirect == vk::TRUE {
+                self.device
+                    .cmd_draw_indexed_indirect(
+                        self.cmd_buffer,
+                        draw_buffer.handle(),
+                        draw_buffer_offset as u64,
+                        draw_count,
+                        stride,
+                    );
+            } else {
+                for i in 0..(draw_count as u64) {
+                    self.device
+                        .cmd_draw_indexed_indirect(
+                            self.cmd_buffer,
+                            draw_buffer.handle(),
+                            draw_buffer_offset + (stride as u64) * i,
+                            1,
+                            stride,
+                        );
+                }
+            }
+        }
+    }
+
+    unsafe fn draw_indexed_indirect_count(
+        &mut self,
+        draw_buffer: &VkBuffer,
+        draw_buffer_offset: u64,
         count_buffer: &VkBuffer,
-        count_buffer_offset: u32,
+        count_buffer_offset: u64,
         max_draw_count: u32,
         stride: u32,
     ) {
@@ -1165,6 +1205,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         debug_assert!(
             self.is_in_render_pass || self.command_buffer_type == gpu::CommandBufferType::Secondary
         );
+        debug_assert!(self.device.features_12.draw_indirect_count == vk::TRUE);
         unsafe {
             self.device
                 .cmd_draw_indexed_indirect_count(
@@ -1182,10 +1223,8 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
     unsafe fn draw_indirect(
         &mut self,
         draw_buffer: &VkBuffer,
-        draw_buffer_offset: u32,
-        count_buffer: &VkBuffer,
-        count_buffer_offset: u32,
-        max_draw_count: u32,
+        draw_buffer_offset: u64,
+        draw_count: u32,
         stride: u32,
     ) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
@@ -1197,13 +1236,56 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             self.is_in_render_pass || self.command_buffer_type == gpu::CommandBufferType::Secondary
         );
         unsafe {
+            if self.device.features.multi_draw_indirect == vk::TRUE {
+                self.device
+                    .cmd_draw_indirect(
+                        self.cmd_buffer,
+                        draw_buffer.handle(),
+                        draw_buffer_offset as u64,
+                        draw_count,
+                        stride,
+                    );
+            } else {
+                for i in 0..(draw_count as u64) {
+                    self.device
+                        .cmd_draw_indirect(
+                            self.cmd_buffer,
+                            draw_buffer.handle(),
+                            draw_buffer_offset + (stride as u64) * i,
+                            1,
+                            stride,
+                        );
+                }
+            }
+        }
+    }
+
+    unsafe fn draw_indirect_count(
+        &mut self,
+        draw_buffer: &VkBuffer,
+        draw_buffer_offset: u64,
+        count_buffer: &VkBuffer,
+        count_buffer_offset: u64,
+        max_draw_count: u32,
+        stride: u32,
+    ) {
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
+        debug_assert!(self.pipeline.is_some());
+        debug_assert!(
+            if let BoundPipeline::Graphics { .. } = self.pipeline.as_ref().unwrap() { true } else { false }
+        );
+        debug_assert!(
+            self.is_in_render_pass || self.command_buffer_type == gpu::CommandBufferType::Secondary
+        );
+        debug_assert!(self.device.features_12.draw_indirect_count == vk::TRUE);
+        unsafe {
             self.device
                 .cmd_draw_indirect_count(
                     self.cmd_buffer,
                     draw_buffer.handle(),
-                    draw_buffer_offset as u64,
+                    draw_buffer_offset,
                     count_buffer.handle(),
-                    count_buffer_offset as u64,
+                    count_buffer_offset,
                     max_draw_count,
                     stride,
                 );

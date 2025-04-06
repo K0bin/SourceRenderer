@@ -273,9 +273,9 @@ impl GeometryPass {
                     indices.offset() as u64,
                     IndexFormat::U32,
                 );
-                cmd_buffer.draw_indexed(1, 0, range.count, range.start, 0);
+                cmd_buffer.draw_indexed(range.count, 1, range.start, 0, 0);
             } else {
-                cmd_buffer.draw(range.count, range.start);
+                cmd_buffer.draw(range.count, 1, range.start, 1);
             }
         }
         cmd_buffer.end_render_pass();

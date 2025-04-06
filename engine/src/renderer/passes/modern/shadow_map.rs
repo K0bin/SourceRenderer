@@ -329,7 +329,7 @@ impl ShadowMapPass {
             cmd_buffer.set_push_constant_data(&[cascade.view_proj], ShaderType::VertexShader);
 
             cmd_buffer.finish_binding();
-            cmd_buffer.draw_indexed_indirect(BufferRef::Regular(&draw_buffer), 4, BufferRef::Regular(&draw_buffer), 0, DRAW_CAPACITY, 20);
+            cmd_buffer.draw_indexed_indirect_count(BufferRef::Regular(&draw_buffer), 4, BufferRef::Regular(&draw_buffer), 0, DRAW_CAPACITY, 20);
 
             cmd_buffer.end_render_pass();
 

@@ -487,11 +487,6 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
 
         let supports_bda = supported_features_12.buffer_device_address == vk::TRUE;
 
-        let supports_indirect = supported_features.features.draw_indirect_first_instance == vk::TRUE
-            && supported_features.features.multi_draw_indirect == vk::TRUE
-            && supported_features_12.draw_indirect_count == vk::TRUE
-            && supports_bda;
-
         let supports_rt_pipeline = extensions.contains(
             VkAdapterExtensionSupport::ACCELERATION_STRUCTURE
                 | VkAdapterExtensionSupport::RAY_TRACING_PIPELINE
@@ -564,12 +559,9 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             );
         }
 
-        if supports_indirect {
-            println!("GPU driven rendering supported.");
-            enabled_features.features.draw_indirect_first_instance = vk::TRUE;
-            enabled_features.features.multi_draw_indirect = vk::TRUE;
-            enabled_features_12.draw_indirect_count = vk::TRUE;
-        }
+        enabled_features.features.draw_indirect_first_instance = supported_features.features.draw_indirect_first_instance;
+        enabled_features.features.multi_draw_indirect = supported_features.features.multi_draw_indirect;
+        enabled_features_12.draw_indirect_count = supported_features_12.draw_indirect_count;
 
         let supports_filter_min_max = supported_features_12.sampler_filter_minmax == vk::TRUE && properties_12.filter_minmax_single_component_formats == vk::TRUE;
         if supports_filter_min_max {

@@ -308,8 +308,16 @@ impl gpu::Device<MTLBackend> for MTLDevice {
         self.device.supportsFamily(objc2_metal::MTLGPUFamily::Mac2) || self.device.supportsFamily(objc2_metal::MTLGPUFamily::Apple7)
     }
 
-    fn supports_indirect(&self) -> bool {
+    fn supports_indirect_count(&self) -> bool {
         true
+    }
+
+    fn supports_indirect_first_instance(&self) -> bool {
+        true
+    }
+
+    fn supports_indirect_count_mesh_shader(&self) -> bool {
+        false
     }
 
     fn supports_min_max_filter(&self) -> bool {

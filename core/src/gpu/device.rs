@@ -67,7 +67,9 @@ pub trait Device<B: GPUBackend> {
   fn supports_bindless(&self) -> bool;
   fn supports_ray_tracing_pipeline(&self) -> bool;
   fn supports_ray_tracing_query(&self) -> bool;
-  fn supports_indirect(&self) -> bool;
+  fn supports_indirect_first_instance(&self) -> bool;
+  fn supports_indirect_count(&self) -> bool;
+  fn supports_indirect_count_mesh_shader(&self) -> bool;
   fn supports_min_max_filter(&self) -> bool;
   fn supports_barycentrics(&self) -> bool;
   fn supports_mesh_shader(&self) -> bool; // TODO turn into flags
