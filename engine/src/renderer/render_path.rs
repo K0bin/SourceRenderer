@@ -1,8 +1,6 @@
 use std::sync::Arc;
 use web_time::Duration;
 
-use sourcerenderer_core::Platform;
-
 use super::asset::{RendererAssetsReadOnly, RendererTexture};
 use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
@@ -36,7 +34,7 @@ pub struct RenderPathResult {
     pub backbuffer: Option<Arc<Backbuffer>>
 }
 
-pub trait RenderPath<P: Platform> : Send {
+pub trait RenderPath : Send {
     fn is_gpu_driven(&self) -> bool;
     fn write_occlusion_culling_results(&self, frame: u64, bitset: &mut Vec<u32>);
     fn on_swapchain_changed(&mut self, swapchain: &Swapchain);
@@ -55,7 +53,7 @@ pub trait RenderPath<P: Platform> : Send {
 
 pub struct NoOpRenderPath;
 
-impl<P: Platform> RenderPath<P> for NoOpRenderPath {
+impl RenderPath for NoOpRenderPath {
     fn is_gpu_driven(&self) -> bool {
         false
     }

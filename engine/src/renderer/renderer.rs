@@ -7,7 +7,6 @@ use bevy_math::Affine3A;
 use crossbeam_channel::{
     unbounded, Receiver, SendError, Sender, TryRecvError
 };
-use sourcerenderer_core::platform::Platform;
 use sourcerenderer_core::{
     console::Console, Vec3
 };
@@ -51,7 +50,7 @@ enum ReceiveMessagesResult {
     WaitForMessages
 }
 
-pub struct Renderer<P: Platform> {
+pub struct Renderer {
     device: Arc<Device>,
     state: Arc<RendererState>,
     receiver: Receiver<RendererCommand>,
@@ -60,13 +59,13 @@ pub struct Renderer<P: Platform> {
     scene: RendererScene,
     context: GraphicsContext,
     swapchain: Arc<Mutex<Swapchain>>,
-    render_path: Box<dyn RenderPath<P>>,
+    render_path: Box<dyn RenderPath>,
 
     last_frame: Instant,
     frame: u64
 }
 
-impl<P: Platform> Drop for Renderer<P> {
+impl Drop for Renderer {
     fn drop(&mut self) {
         let mut counter_guard = self.state.queued_frames_counter.lock().unwrap();
         *counter_guard = 0;
@@ -74,7 +73,7 @@ impl<P: Platform> Drop for Renderer<P> {
     }
 }
 
-impl<P: Platform> Renderer<P> {
+impl Renderer {
     pub fn new(
         device: &Arc<Device>,
         swapchain: Swapchain,
@@ -365,7 +364,7 @@ impl<P: Platform> Renderer<P> {
         ReceiveMessagesResult::WaitForMessages
     }
 
-    pub fn set_render_path(&mut self, render_path: Box<dyn RenderPath<P>>) {
+    pub fn set_render_path(&mut self, render_path: Box<dyn RenderPath>) {
         self.render_path = render_path;
     }
 

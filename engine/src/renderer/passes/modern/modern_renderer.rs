@@ -6,7 +6,6 @@ use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, 
 use crate::renderer::asset::RendererAssetsReadOnly;
 use sourcerenderer_core::{
     Matrix4,
-    Platform,
     Vec2,
     Vec2UI,
     Vec3, Vec3UI, Vec4,
@@ -321,7 +320,7 @@ impl ModernRenderer {
     }
 }
 
-impl<P: Platform> RenderPath<P> for ModernRenderer {
+impl RenderPath for ModernRenderer {
     fn is_gpu_driven(&self) -> bool {
         true
     }

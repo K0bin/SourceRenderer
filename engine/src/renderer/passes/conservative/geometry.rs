@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use smallvec::SmallVec;
 use sourcerenderer_core::{
-    Matrix4, Platform, Vec2, Vec2I, Vec2UI, Vec3UI, Vec4
+    Matrix4, Vec2, Vec2I, Vec2UI, Vec3UI, Vec4
 };
 
 use super::desktop_renderer::FrameBindings;
@@ -175,7 +175,7 @@ impl GeometryPass {
     }
 
     #[profiling::function]
-    pub(super) fn execute<'a, P: Platform>(
+    pub(super) fn execute<'a>(
         &mut self,
         context: &'a GraphicsContext,
         cmd_buffer: &mut crate::graphics::CommandBuffer<'a>,

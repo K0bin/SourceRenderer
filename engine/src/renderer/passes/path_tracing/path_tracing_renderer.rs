@@ -7,7 +7,7 @@ use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, 
 use crate::renderer::asset::RendererAssetsReadOnly;
 use crate::renderer::passes::blit::BlitPass;
 use sourcerenderer_core::{
-    Matrix4, Platform, Vec2, Vec2UI, Vec3, Vec3UI
+    Matrix4, Vec2, Vec2UI, Vec3, Vec3UI
 };
 
 use crate::renderer::passes::modern::acceleration_structure_update::AccelerationStructureUpdatePass;
@@ -215,7 +215,7 @@ impl PathTracingRenderer {
     }
 }
 
-impl<P: Platform> RenderPath<P> for PathTracingRenderer {
+impl RenderPath for PathTracingRenderer {
     fn is_gpu_driven(&self) -> bool {
         true
     }

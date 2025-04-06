@@ -61,8 +61,6 @@ struct WindowSizeChangedEvent {
 struct WindowMinimized {}
 
 pub struct RendererPlugin<P: Platform>(PlatformPhantomData<P>);
-unsafe impl<P: Platform> Send for RendererPlugin<P> {}
-unsafe impl<P: Platform> Sync for RendererPlugin<P> {}
 
 impl<P: Platform> Plugin for RendererPlugin<P> {
     fn build(&self, app: &mut App) {
@@ -75,7 +73,7 @@ impl<P: Platform> Plugin for RendererPlugin<P> {
         let console_resource = app.world().resource::<ConsoleResource>();
         let asset_manager_resource = app.world().resource::<AssetManagerECSResource<P>>();
 
-        let (renderer, sender) = Renderer::<P>::new(
+        let (renderer, sender) = Renderer::new(
             &gpu_resources.0,
             swapchain,
             &asset_manager_resource.0,
@@ -90,7 +88,7 @@ impl<P: Platform> Plugin for RendererPlugin<P> {
     }
 
     fn ready(&self, app: &App) -> bool {
-        let pre_init_res = app.world().resource::<PreInitRendererResourceWrapper<P>>();
+        let pre_init_res = app.world().resource::<PreInitRendererResourceWrapper>();
         let mut renderer_borrow = pre_init_res.renderer.borrow_mut();
         let renderer = renderer_borrow.get();
 
@@ -102,12 +100,12 @@ impl<P: Platform> Plugin for RendererPlugin<P> {
     }
 
     fn finish(&self, app: &mut App) {
-        let pre_init_wrapper = app.world_mut().remove_resource::<PreInitRendererResourceWrapper<P>>().unwrap();
+        let pre_init_wrapper = app.world_mut().remove_resource::<PreInitRendererResourceWrapper>().unwrap();
 
         let PreInitRendererResourceWrapper { renderer: renderer_cell, sender } = pre_init_wrapper;
         let renderer = SyncCell::to_inner(AtomicRefCell::into_inner(renderer_cell));
-        insert_renderer_resource::<P>(app, renderer, sender);
-        install_renderer_systems::<P>(app);
+        insert_renderer_resource(app, renderer, sender);
+        install_renderer_systems(app);
     }
 }
 
@@ -115,9 +113,8 @@ impl<P: Platform> RendererPlugin<P> {
     pub fn new() -> Self {
         Self(PlatformPhantomData::default())
     }
-
     pub fn window_changed(app: &App, window_state: WindowState) {
-        let resource = app.world().get_resource::<RendererResourceWrapper<P>>();
+        let resource = app.world().get_resource::<RendererResourceWrapper>();
         if let Some(resource) = resource {
             // It might not be finished initializing yet.
             resource.sender.window_changed(window_state);
@@ -126,24 +123,23 @@ impl<P: Platform> RendererPlugin<P> {
 }
 
 #[derive(Resource)]
-struct PreInitRendererResourceWrapper<P: Platform> {
-    renderer: AtomicRefCell<SyncCell<Renderer<P>>>,
+struct PreInitRendererResourceWrapper {
+    renderer: AtomicRefCell<SyncCell<Renderer>>,
     sender: RendererSender,
 }
 
 #[derive(Resource)]
-struct RendererResourceWrapper<P: Platform> {
+struct RendererResourceWrapper {
     sender: ManuallyDrop<RendererSender>,
-    _p: PlatformPhantomData<P>,
 
     #[cfg(not(feature = "threading"))]
-    renderer: SyncCell<Renderer<P>>,
+    renderer: SyncCell<Renderer>,
 
     #[cfg(feature = "threading")]
     thread_handle: ManuallyDrop<JoinHandle<()>>,
 }
 
-impl<P: Platform> Drop for RendererResourceWrapper<P> {
+impl Drop for RendererResourceWrapper {
     fn drop(&mut self) {
         unsafe { ManuallyDrop::drop(&mut self.sender); }
 
@@ -156,26 +152,26 @@ impl<P: Platform> Drop for RendererResourceWrapper<P> {
 }
 
 #[cfg(not(feature = "threading"))]
-fn install_renderer_systems<P: Platform>(
+fn install_renderer_systems(
     app: &mut App,
 ) {
     app.add_systems(
         Last,
         (
-            extract_camera::<P>,
-            extract_static_renderables::<P>,
-            extract_point_lights::<P>,
-            extract_directional_lights::<P>,
+            extract_camera,
+            extract_static_renderables,
+            extract_point_lights,
+            extract_directional_lights,
         )
             .in_set(ExtractSet),
     );
-    app.add_systems(Last, end_frame::<P>.after(ExtractSet));
+    app.add_systems(Last, end_frame.after(ExtractSet));
 }
 
 #[cfg(not(feature = "threading"))]
-fn insert_renderer_resource<P: Platform>(
+fn insert_renderer_resource(
     app: &mut App,
-    renderer: Renderer<P>,
+    renderer: Renderer,
     sender: RendererSender,
 ) {
     let wrapper = RendererResourceWrapper {
@@ -194,45 +190,44 @@ struct SyncSet;
 struct ExtractSet;
 
 #[cfg(feature = "threading")]
-fn install_renderer_systems<P: Platform>(
+fn install_renderer_systems(
     app: &mut App,
 ) {
     app.add_systems(
         Last,
-        (begin_frame::<P>).in_set(SyncSet)
+        (begin_frame).in_set(SyncSet)
     );
     app.add_systems(
         Last,
         (
-            extract_camera::<P>,
-            extract_static_renderables::<P>,
-            extract_point_lights::<P>,
-            extract_directional_lights::<P>,
+            extract_camera,
+            extract_static_renderables,
+            extract_point_lights,
+            extract_directional_lights,
         )
             .in_set(ExtractSet)
             .after(SyncSet),
     );
-    app.add_systems(Last, end_frame::<P>.after(ExtractSet));
+    app.add_systems(Last, end_frame.after(ExtractSet));
 }
 
 #[cfg(feature = "threading")]
-fn insert_renderer_resource<P: Platform>(
+fn insert_renderer_resource(
     app: &mut App,
-    renderer: Renderer<P>,
+    renderer: Renderer,
     sender: RendererSender
 ) {
     let handle = start_render_thread(renderer);
 
-    let wrapper = RendererResourceWrapper::<P> {
+    let wrapper = RendererResourceWrapper {
         sender: ManuallyDrop::new(sender),
-        _p: PlatformPhantomData::default(),
         thread_handle: ManuallyDrop::new(handle),
     };
     app.insert_resource(wrapper);
 }
 
 #[cfg(feature = "threading")]
-fn start_render_thread<P: Platform>(mut renderer: Renderer<P>) -> std::thread::JoinHandle<()> {
+fn start_render_thread(mut renderer: Renderer) -> std::thread::JoinHandle<()> {
     std::thread::Builder::new()
         .name("RenderThread".to_string())
         .spawn(move || {
@@ -250,9 +245,9 @@ fn start_render_thread<P: Platform>(mut renderer: Renderer<P>) -> std::thread::J
         .unwrap()
 }
 
-fn extract_camera<P: Platform>(
+fn extract_camera(
     mut events: EventWriter<AppExit>,
-    renderer: Res<RendererResourceWrapper<P>>,
+    renderer: Res<RendererResourceWrapper>,
     active_camera: Res<ActiveCamera>,
     camera_entities: Query<(&InterpolatedTransform, &Camera, &GlobalTransform)>,
 ) {
@@ -283,9 +278,9 @@ fn extract_camera<P: Platform>(
     }
 }
 
-fn extract_static_renderables<P: Platform>(
+fn extract_static_renderables(
     mut events: EventWriter<AppExit>,
-    renderer: Res<RendererResourceWrapper<P>>,
+    renderer: Res<RendererResourceWrapper>,
     static_renderables: Query<(Entity, Ref<StaticRenderableComponent>, Ref<InterpolatedTransform>)>,
     mut removed_static_renderables: RemovedComponents<StaticRenderableComponent>,
 ) {
@@ -319,9 +314,9 @@ fn extract_static_renderables<P: Platform>(
     }
 }
 
-fn extract_point_lights<P: Platform>(
+fn extract_point_lights(
     mut events: EventWriter<AppExit>,
-    renderer: Res<RendererResourceWrapper<P>>,
+    renderer: Res<RendererResourceWrapper>,
     point_lights: Query<(Entity, Ref<PointLightComponent>, Ref<InterpolatedTransform>)>,
     mut removed_point_lights: RemovedComponents<PointLightComponent>,
 ) {
@@ -352,9 +347,9 @@ fn extract_point_lights<P: Platform>(
     }
 }
 
-fn extract_directional_lights<P: Platform>(
+fn extract_directional_lights(
     mut events: EventWriter<AppExit>,
-    renderer: Res<RendererResourceWrapper<P>>,
+    renderer: Res<RendererResourceWrapper>,
     directional_lights: Query<(Entity, Ref<DirectionalLightComponent>, Ref<InterpolatedTransform>)>,
     mut removed_directional_lights: RemovedComponents<DirectionalLightComponent>,
 ) {
@@ -386,9 +381,9 @@ fn extract_directional_lights<P: Platform>(
 }
 
 #[allow(unused_mut)]
-fn end_frame<P: Platform>(
+fn end_frame(
     mut events: EventWriter<AppExit>,
-    mut renderer: ResMut<RendererResourceWrapper<P>>
+    mut renderer: ResMut<RendererResourceWrapper>
 ) {
     if renderer.sender.is_saturated() {
         return;
@@ -409,7 +404,7 @@ fn end_frame<P: Platform>(
 }
 
 #[allow(unused)]
-fn begin_frame<P: Platform>(renderer: ResMut<RendererResourceWrapper<P>>) {
+fn begin_frame(renderer: ResMut<RendererResourceWrapper>) {
     // Unblock regularly so the fixed time systems can run.
     // All rendering systems check if the renderer is saturated before sending new commands.
     renderer.sender.wait_until_available(Duration::from_micros(1000000u64 / 4u64 / (TICK_RATE as u64)));

@@ -3,7 +3,6 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 use sourcerenderer_core::{
     Matrix4,
-    Platform,
     Vec2,
     Vec2UI,
     Vec3, Vec3UI, Vec4,
@@ -238,7 +237,7 @@ impl ConservativeRenderer {
     }
 }
 
-impl<P: Platform> RenderPath<P> for ConservativeRenderer {
+impl RenderPath for ConservativeRenderer {
     fn is_gpu_driven(&self) -> bool {
         false
     }
@@ -391,7 +390,7 @@ impl<P: Platform> RenderPath<P> for ConservativeRenderer {
                 &self.blue_noise.sampler(),
             );
         }
-        self.geometry.execute::<P>(
+        self.geometry.execute(
             context,
             &mut cmd_buf,
             &params,

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::{Platform, Vec4, Matrix4};
+use sourcerenderer_core::{Vec4, Matrix4};
 
 use crate::asset::AssetManager;
 use crate::graphics::GraphicsContext;
@@ -74,7 +74,7 @@ impl WebRenderer {
     }
 }
 
-impl<P: Platform> RenderPath<P> for WebRenderer {
+impl RenderPath for WebRenderer {
     fn is_gpu_driven(&self) -> bool {
         false
     }
