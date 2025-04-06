@@ -189,6 +189,7 @@ pub(super) fn shader_type_to_vk(shader_type: gpu::ShaderType) -> vk::ShaderStage
         gpu::ShaderType::ComputeShader => vk::ShaderStageFlags::COMPUTE,
         gpu::ShaderType::RayClosestHit => vk::ShaderStageFlags::CLOSEST_HIT_KHR,
         gpu::ShaderType::RayGen => vk::ShaderStageFlags::RAYGEN_KHR,
+        gpu::ShaderType::RayAnyHit => vk::ShaderStageFlags::ANY_HIT_KHR,
         gpu::ShaderType::RayMiss => vk::ShaderStageFlags::MISS_KHR,
         gpu::ShaderType::TaskShader => vk::ShaderStageFlags::TASK_EXT,
         gpu::ShaderType::MeshShader => vk::ShaderStageFlags::MESH_EXT,
@@ -394,9 +395,7 @@ fn add_bindless_set_if_used(device: &Arc<RawVkDevice>, context: &mut DescriptorS
     let mut bindless_bindings = SmallVec::<[VkDescriptorSetEntryInfo; gpu::PER_SET_BINDINGS as usize]>::new();
     bindless_bindings.push(VkDescriptorSetEntryInfo {
         name: "bindless_textures".to_string(),
-        shader_stage: vk::ShaderStageFlags::VERTEX
-            | vk::ShaderStageFlags::FRAGMENT
-            | vk::ShaderStageFlags::COMPUTE,
+        shader_stage: device.supported_shader_stages,
         index: 0,
         descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
         count: BINDLESS_TEXTURE_COUNT,
@@ -1090,10 +1089,10 @@ impl VkPipeline {
         let shader_count = 1 + info.closest_hit_shaders.len() + info.miss_shaders.len();
 
         let rt = device.rt.as_ref().unwrap();
-        let handle_size = rt.properties_rt.shader_group_handle_size;
-        let handle_alignment = rt.properties_rt.shader_group_handle_alignment;
+        let handle_size = rt.properties_rt_pipeline.shader_group_handle_size;
+        let handle_alignment = rt.properties_rt_pipeline.shader_group_handle_alignment;
         let handle_stride = align_up_32(handle_size, handle_alignment);
-        let group_alignment = rt.properties_rt.shader_group_base_alignment as u64;
+        let group_alignment = rt.properties_rt_pipeline.shader_group_base_alignment as u64;
 
         align_up_32(handle_stride, group_alignment as u32) as u64 * shader_count as u64
     }
@@ -1107,6 +1106,7 @@ impl VkPipeline {
         name: Option<&str>
     ) -> Self {
         let rt = device.rt.as_ref().unwrap();
+        let rt_device = rt.rt_pipelines.as_ref().unwrap();
         let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
 
         let mut stages = SmallVec::<[vk::PipelineShaderStageCreateInfo; 4]>::new();
@@ -1150,6 +1150,28 @@ impl VkPipeline {
                 general_shader: vk::SHADER_UNUSED_KHR,
                 closest_hit_shader: stages.len() as u32,
                 any_hit_shader: vk::SHADER_UNUSED_KHR,
+                intersection_shader: vk::SHADER_UNUSED_KHR,
+                p_shader_group_capture_replay_handle: std::ptr::null(),
+                ..Default::default()
+            };
+            stages.push(stage_info);
+            groups.push(group_info);
+            add_shader_to_descriptor_set_layout_setup(device, shader, &mut context);
+        }
+
+        for shader in info.any_hit_shaders.iter() {
+            let stage_info = vk::PipelineShaderStageCreateInfo {
+                flags: vk::PipelineShaderStageCreateFlags::empty(),
+                stage: vk::ShaderStageFlags::ANY_HIT_KHR,
+                module: shader.shader_module(),
+                p_name: entry_point.as_ptr() as *const c_char,
+                ..Default::default()
+            };
+            let group_info = vk::RayTracingShaderGroupCreateInfoKHR {
+                ty: vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP,
+                general_shader: vk::SHADER_UNUSED_KHR,
+                closest_hit_shader: vk::SHADER_UNUSED_KHR,
+                any_hit_shader: stages.len() as u32,
                 intersection_shader: vk::SHADER_UNUSED_KHR,
                 p_shader_group_capture_replay_handle: std::ptr::null(),
                 ..Default::default()
@@ -1203,7 +1225,7 @@ impl VkPipeline {
             ..Default::default()
         };
         let pipeline = unsafe {
-            rt.rt_pipelines.create_ray_tracing_pipelines(
+            rt_device.create_ray_tracing_pipelines(
                 vk::DeferredOperationKHR::null(),
                 vk::PipelineCache::null(),
                 &[vk_info],
@@ -1233,16 +1255,16 @@ impl VkPipeline {
         }
 
         // SBT
-        let handle_size = rt.properties_rt.shader_group_handle_size;
-        let handle_alignment = rt.properties_rt.shader_group_handle_alignment;
+        let handle_size = rt.properties_rt_pipeline.shader_group_handle_size;
+        let handle_alignment = rt.properties_rt_pipeline.shader_group_handle_alignment;
         let handle_stride = align_up_32(handle_size, handle_alignment);
-        let group_alignment = rt.properties_rt.shader_group_base_alignment as u64;
+        let group_alignment = rt.properties_rt_pipeline.shader_group_base_alignment as u64;
 
         let size = Self::ray_tracing_buffer_size(device, info, shared);
         assert!(buffer.info().size - buffer_offset >= size);
 
         let handles = unsafe {
-            rt.rt_pipelines.get_ray_tracing_shader_group_handles(
+            rt_device.get_ray_tracing_shader_group_handles(
                 pipeline,
                 0,
                 groups.len() as u32,

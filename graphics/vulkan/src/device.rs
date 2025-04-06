@@ -169,8 +169,12 @@ impl gpu::Device<VkBackend> for VkDevice {
             .features_12.descriptor_indexing == vk::TRUE
     }
 
-    fn supports_ray_tracing(&self) -> bool {
-        self.device.acceleration_structure.is_some()
+    fn supports_ray_tracing_pipeline(&self) -> bool {
+        self.device.rt.as_ref().map(|rt| rt.rt_pipelines.is_some()).unwrap_or_default()
+    }
+
+    fn supports_ray_tracing_query(&self) -> bool {
+        self.device.rt.as_ref().map(|rt| rt.rt_query).unwrap_or_default()
     }
 
     fn supports_indirect(&self) -> bool {
@@ -259,7 +263,7 @@ impl gpu::Device<VkBackend> for VkDevice {
             size: info.size as u64,
             usage: buffer_usage_to_vk(
                 info.usage,
-                self.device.acceleration_structure.is_some(),
+                self.device.rt.is_some(),
             ),
             sharing_mode,
             p_queue_family_indices: queue_families.as_ptr(),

@@ -166,7 +166,11 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         false
     }
 
-    fn supports_ray_tracing(&self) -> bool {
+    fn supports_ray_tracing_pipeline(&self) -> bool {
+        false
+    }
+
+    fn supports_ray_tracing_query(&self) -> bool {
         false
     }
 

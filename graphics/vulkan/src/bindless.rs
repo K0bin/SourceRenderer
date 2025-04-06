@@ -32,9 +32,7 @@ impl VkBindlessDescriptorSet {
         let mut bindings = SmallVec::<[VkDescriptorSetEntryInfo; gpu::PER_SET_BINDINGS as usize]>::new();
         bindings.push(VkDescriptorSetEntryInfo {
             name: "bindless_textures".to_string(),
-            shader_stage: vk::ShaderStageFlags::VERTEX
-                | vk::ShaderStageFlags::FRAGMENT
-                | vk::ShaderStageFlags::COMPUTE,
+            shader_stage: device.supported_shader_stages,
             index: 0,
             descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
             count: BINDLESS_TEXTURE_COUNT,

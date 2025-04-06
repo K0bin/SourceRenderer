@@ -48,7 +48,7 @@ impl PathTracingRenderer {
 
         let blue_noise = BlueNoise::new(device);
 
-        if !device.supports_ray_tracing() {
+        if !device.supports_ray_tracing_query() {
             panic!("Need ray tracing support to run the path tracer");
         }
         let acceleration_structure_update = AccelerationStructureUpdatePass::new(

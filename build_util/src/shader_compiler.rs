@@ -613,6 +613,7 @@ fn shader_type_to_spirv_cross(shader_type: gpu::ShaderType) -> spirv_cross_sys::
         gpu::ShaderType::TessellationEvaluationShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelTessellationEvaluation,
         gpu::ShaderType::ComputeShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelGLCompute,
         gpu::ShaderType::RayGen => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelRayGenerationKHR,
+        gpu::ShaderType::RayAnyHit => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelAnyHitKHR,
         gpu::ShaderType::RayMiss => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelMissKHR,
         gpu::ShaderType::RayClosestHit => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelClosestHitKHR,
         gpu::ShaderType::TaskShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelTaskEXT,

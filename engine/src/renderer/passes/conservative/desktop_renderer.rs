@@ -102,7 +102,7 @@ impl ConservativeRenderer {
         let sharpen = SharpenPass::new(resolution, resources, asset_manager);
         let ssao = SsaoPass::new(device, resolution, resources, asset_manager, false);
         //let occlusion = OcclusionPass::new(device, shader_manager);
-        let rt_passes = device.supports_ray_tracing().then(|| RTPasses {
+        let rt_passes = device.supports_ray_tracing_pipeline().then(|| RTPasses {
             acceleration_structure_update: AccelerationStructureUpdatePass::new(
                 device,
                 &mut init_cmd_buffer,

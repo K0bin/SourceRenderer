@@ -68,7 +68,7 @@ impl VkAccelerationStructure {
         device: &Arc<RawVkDevice>,
         info: &gpu::TopLevelAccelerationStructureInfo<VkBackend>,
     ) -> gpu::AccelerationStructureSizes {
-        let acceleration_structure_funcs = device.acceleration_structure.as_ref().unwrap();
+        let acceleration_structure_funcs = &device.rt.as_ref().unwrap().acceleration_structure;
 
         let instances_data = vk::AccelerationStructureGeometryInstancesDataKHR {
             array_of_pointers: vk::FALSE,
@@ -131,7 +131,7 @@ impl VkAccelerationStructure {
         scratch_buffer_offset: u64,
         cmd_buffer: &vk::CommandBuffer,
     ) -> Self {
-        let acceleration_structure_funcs = device.acceleration_structure.as_ref().unwrap();
+        let acceleration_structure_funcs = &device.rt.as_ref().unwrap().acceleration_structure;
 
         let acceleration_structure = unsafe {
             acceleration_structure_funcs.create_acceleration_structure(
@@ -215,7 +215,7 @@ impl VkAccelerationStructure {
         device: &Arc<RawVkDevice>,
         info: &gpu::BottomLevelAccelerationStructureInfo<VkBackend>,
     ) -> gpu::AccelerationStructureSizes {
-        let acceleration_structure_funcs = device.acceleration_structure.as_ref().unwrap();
+        let acceleration_structure_funcs = &device.rt.as_ref().unwrap().acceleration_structure;
 
         let geometry_data = vk::AccelerationStructureGeometryTrianglesDataKHR {
             vertex_format: format_to_vk(info.vertex_format, false),
@@ -320,7 +320,7 @@ impl VkAccelerationStructure {
         scratch_buffer_offset: u64,
         cmd_buffer: &vk::CommandBuffer,
     ) -> Self {
-        let acceleration_structure_funcs = device.acceleration_structure.as_ref().unwrap();
+        let acceleration_structure_funcs = &device.rt.as_ref().unwrap().acceleration_structure;
 
         let acceleration_structure = unsafe {
             acceleration_structure_funcs.create_acceleration_structure(
@@ -467,7 +467,7 @@ impl Hash for VkAccelerationStructure {
 
 impl Drop for VkAccelerationStructure {
     fn drop(&mut self) {
-        let acceleration_structure_funcs = self.device.acceleration_structure.as_ref().unwrap();
+        let acceleration_structure_funcs = &self.device.rt.as_ref().unwrap().acceleration_structure;
         unsafe {
             acceleration_structure_funcs
                 .destroy_acceleration_structure(self.acceleration_structure, None);

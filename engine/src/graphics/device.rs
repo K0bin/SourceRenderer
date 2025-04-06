@@ -266,8 +266,13 @@ impl Device {
     }
 
     #[inline(always)]
-    pub fn supports_ray_tracing(&self) -> bool {
-        self.device.supports_ray_tracing()
+    pub fn supports_ray_tracing_pipeline(&self) -> bool {
+        self.device.supports_ray_tracing_pipeline()
+    }
+
+    #[inline(always)]
+    pub fn supports_ray_tracing_query(&self) -> bool {
+        self.device.supports_ray_tracing_query()
     }
 
     #[inline(always)]

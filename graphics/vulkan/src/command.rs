@@ -1085,8 +1085,9 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         };
 
         let rt = self.device.rt.as_ref().unwrap();
+        let rt_pipelines_device = rt.rt_pipelines.as_ref().unwrap();
         unsafe {
-            rt.rt_pipelines.cmd_trace_rays(
+            rt_pipelines_device.cmd_trace_rays(
                 self.cmd_buffer,
                 raygen_sbt_region,
                 miss_sbt_region,

@@ -319,6 +319,7 @@ pub enum ShaderType {
   TessellationEvaluationShader,
   ComputeShader,
   RayGen,
+  RayAnyHit,
   RayMiss,
   RayClosestHit,
   TaskShader,

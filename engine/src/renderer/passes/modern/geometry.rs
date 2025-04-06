@@ -322,7 +322,7 @@ impl GeometryPass {
         let light_bitmask_buffer = &*light_bitmask_buffer_ref;
 
         let rt_shadows: Ref<Arc<TextureView>>;
-        let shadows = if device.supports_ray_tracing() {
+        let shadows = if device.supports_ray_tracing_pipeline() {
             rt_shadows = barriers.access_view(
                 cmd_buffer,
                 RTShadowPass::SHADOWS_TEXTURE_NAME,

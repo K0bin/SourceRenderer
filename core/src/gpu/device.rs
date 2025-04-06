@@ -65,7 +65,8 @@ pub trait Device<B: GPUBackend> {
   fn compute_queue(&self) -> Option<&B::Queue>;
   fn transfer_queue(&self) -> Option<&B::Queue>;
   fn supports_bindless(&self) -> bool;
-  fn supports_ray_tracing(&self) -> bool;
+  fn supports_ray_tracing_pipeline(&self) -> bool;
+  fn supports_ray_tracing_query(&self) -> bool;
   fn supports_indirect(&self) -> bool;
   fn supports_min_max_filter(&self) -> bool;
   fn supports_barycentrics(&self) -> bool;

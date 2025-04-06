@@ -46,6 +46,7 @@ impl RTShadowPass {
         let pipeline = asset_manager.request_ray_tracing_pipeline(&RayTracingPipelineInfo {
             ray_gen_shader: "shaders/shadows.rgen.json",
             closest_hit_shaders: &["shaders/shadows.rchit.json"],
+            any_hit_shaders: &[],
             miss_shaders: &["shaders/shadows.rmiss.json"],
         });
 

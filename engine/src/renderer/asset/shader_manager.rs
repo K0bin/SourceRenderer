@@ -529,6 +529,7 @@ impl PipelineCompileTask for ComputeCompileTask {
 pub struct RayTracingPipelineInfo<'a> {
     pub ray_gen_shader: &'a str,
     pub closest_hit_shaders: &'a [&'a str],
+    pub any_hit_shaders: &'a [&'a str],
     pub miss_shaders: &'a [&'a str],
 }
 
@@ -536,6 +537,7 @@ pub struct RayTracingPipelineInfo<'a> {
 pub struct StoredRayTracingPipelineInfo {
     ray_gen_shader: ShaderHandle,
     closest_hit_shaders: SmallVec<[ShaderHandle; 4]>,
+    any_hit_shaders: SmallVec<[ShaderHandle; 4]>,
     miss_shaders: SmallVec<[ShaderHandle; 1]>,
     is_async: bool,
     _p: PhantomData<Device>,
@@ -546,6 +548,7 @@ impl Clone for StoredRayTracingPipelineInfo {
         Self {
             ray_gen_shader: self.ray_gen_shader.clone(),
             closest_hit_shaders: self.closest_hit_shaders.clone(),
+            any_hit_shaders: self.any_hit_shaders.clone(),
             miss_shaders: self.miss_shaders.clone(),
             is_async: self.is_async,
             _p: PhantomData
@@ -571,6 +574,7 @@ impl Into<AssetHandle> for RayTracingPipelineHandle {
 pub struct RayTracingShaders {
     pub ray_gen_shader: Arc<Shader>,
     pub closest_hit_shaders: SmallVec<[Arc<Shader>; 4]>,
+    pub any_hit_shaders: SmallVec<[Arc<Shader>; 4]>,
     pub miss_shaders: SmallVec<[Arc<Shader>; 4]>,
 }
 
@@ -622,6 +626,9 @@ impl PipelineCompileTask for StoredRayTracingPipelineInfo {
         for shader in &self.closest_hit_shaders {
             asset_manager.request_asset_refresh_by_handle(*shader, AssetLoadPriority::High);
         }
+        for shader in &self.any_hit_shaders {
+            asset_manager.request_asset_refresh_by_handle(*shader, AssetLoadPriority::High);
+        }
         for shader in &self.miss_shaders {
             asset_manager.request_asset_refresh_by_handle(*shader, AssetLoadPriority::High);
         }
@@ -641,6 +648,11 @@ impl PipelineCompileTask for StoredRayTracingPipelineInfo {
                 return false;
             }
         }
+        for shader in &self.any_hit_shaders {
+            if !loaded_shader_handle.map_or(false, |s| s == *shader) && !renderer_assets_read.get_shader(*shader).is_some() {
+                return false;
+            }
+        }
         for shader in &self.miss_shaders {
             if !loaded_shader_handle.map_or(false, |s| s == *shader) && !renderer_assets_read.get_shader(*shader).is_some() {
                 return false;
@@ -655,12 +667,13 @@ impl PipelineCompileTask for StoredRayTracingPipelineInfo {
     ) -> Self::TShaders {
         Self::TShaders {
             ray_gen_shader: renderer_assets_read.get_shader(self.ray_gen_shader).cloned().unwrap(),
-            closest_hit_shaders: self.closest_hit_shaders
-                .iter()
+            closest_hit_shaders: self.closest_hit_shaders.iter()
                 .map(|shader| renderer_assets_read.get_shader(*shader).cloned().unwrap())
                 .collect(),
-            miss_shaders: self.miss_shaders
-                .iter()
+            any_hit_shaders: self.any_hit_shaders.iter()
+                .map(|shader| renderer_assets_read.get_shader(*shader).cloned().unwrap())
+                .collect(),
+            miss_shaders: self.miss_shaders.iter()
                 .map(|shader| renderer_assets_read.get_shader(*shader).cloned().unwrap())
                 .collect(),
         }
@@ -673,11 +686,14 @@ impl PipelineCompileTask for StoredRayTracingPipelineInfo {
     ) -> Arc<Self::TPipeline> {
         let closest_hit_shader_refs: SmallVec<[&Shader; 4]> =
             shaders.closest_hit_shaders.iter().map(|s| s.as_ref()).collect();
+        let any_hit_shader_refs: SmallVec<[&Shader; 4]> =
+            shaders.any_hit_shaders.iter().map(|s| s.as_ref()).collect();
         let miss_shaders_refs: SmallVec<[&Shader; 1]> =
             shaders.miss_shaders.iter().map(|s| s.as_ref()).collect();
         let info = ActualRayTracingPipelineInfo {
             ray_gen_shader: &shaders.ray_gen_shader,
             closest_hit_shaders: &closest_hit_shader_refs[..],
+            any_hit_shaders: &any_hit_shader_refs[..],
             miss_shaders: &miss_shaders_refs[..],
         };
         device.create_raytracing_pipeline(&info, self.name().as_ref().map(|n| n as &str)).unwrap()
@@ -841,9 +857,10 @@ impl ShaderManager {
             asset_manager,
             &self.rt,
             StoredRayTracingPipelineInfo {
-                closest_hit_shaders: info
-                    .closest_hit_shaders
-                    .iter()
+                closest_hit_shaders: info.closest_hit_shaders.iter()
+                    .map(|path| asset_manager.request_asset(path, AssetType::Shader, AssetLoadPriority::Normal).0.into())
+                    .collect(),
+                any_hit_shaders: info.any_hit_shaders.iter()
                     .map(|path| asset_manager.request_asset(path, AssetType::Shader, AssetLoadPriority::Normal).0.into())
                     .collect(),
                 miss_shaders: info.miss_shaders.iter().map(|path| asset_manager.request_asset(path, AssetType::Shader, AssetLoadPriority::Normal).0.into()).collect(),
@@ -998,20 +1015,17 @@ impl ShaderManager {
     pub fn has_remaining_mandatory_compilations(&self) -> bool {
         let has_graphics_compiles = {
             let graphics_remaining = self.graphics.remaining_compilations.lock().unwrap();
-            graphics_remaining
-                .iter()
+            graphics_remaining.iter()
                 .any(|(_, t)| !t.is_async)
         };
         let has_mesh_graphics_compiles = {
             let mesh_graphics_remaining = self.mesh_graphics.remaining_compilations.lock().unwrap();
-            mesh_graphics_remaining
-                .iter()
+            mesh_graphics_remaining.iter()
                 .any(|(_, t)| !t.is_async)
         };
         let has_compute_compiles = {
             let compute_remaining = self.compute.remaining_compilations.lock().unwrap();
-            compute_remaining
-                .iter()
+            compute_remaining.iter()
                 .any(|(_, t)| !t.is_async)
         };
         let has_rt_compiles = {

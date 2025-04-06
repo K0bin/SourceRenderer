@@ -25,7 +25,6 @@ pub struct RawVkDevice {
     pub compute_queue: Option<ReentrantMutex<vk::Queue>>,
     pub transfer_queue: Option<ReentrantMutex<vk::Queue>>,
     pub rt: Option<RawVkRTEntries>,
-    pub acceleration_structure: Option<khr::acceleration_structure::Device>,
     pub supports_d24: bool,
     pub properties: vk::PhysicalDeviceProperties,
     pub properties_11: vk::PhysicalDeviceVulkan11Properties<'static>,
@@ -38,6 +37,7 @@ pub struct RawVkDevice {
     pub memory_properties: vk::PhysicalDeviceMemoryProperties,
     pub features_barycentrics: vk::PhysicalDeviceFragmentShaderBarycentricFeaturesKHR<'static>,
     pub feature_memory_budget: bool,
+    pub supported_shader_stages: vk::ShaderStageFlags,
     pub supported_pipeline_stages: vk::PipelineStageFlags2,
     pub supported_access_flags: vk::AccessFlags2,
     pub host_image_copy: Option<RawVkHostImageCopyEntries>,
@@ -48,9 +48,14 @@ unsafe impl Send for RawVkDevice {}
 unsafe impl Sync for RawVkDevice {}
 
 pub struct RawVkRTEntries {
-    pub rt_pipelines: khr::ray_tracing_pipeline::Device,
-    pub deferred_operations: khr::deferred_host_operations::Device,
-    pub properties_rt: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR<'static>,
+    pub acceleration_structure: khr::acceleration_structure::Device,
+    pub rt_pipelines: Option<khr::ray_tracing_pipeline::Device>,
+    pub deferred_operations: Option<khr::deferred_host_operations::Device>,
+    pub properties_acceleration_structure: vk::PhysicalDeviceAccelerationStructurePropertiesKHR<'static>,
+    pub features_acceleration_structure: vk::PhysicalDeviceAccelerationStructureFeaturesKHR<'static>,
+    pub properties_rt_pipeline: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR<'static>,
+    pub features_rt_pipeline: vk::PhysicalDeviceRayTracingPipelineFeaturesKHR<'static>,
+    pub rt_query: bool,
 }
 
 unsafe impl Send for RawVkRTEntries {}

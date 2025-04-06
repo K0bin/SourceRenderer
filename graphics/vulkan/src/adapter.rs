@@ -244,12 +244,14 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         let mut properties_11: vk::PhysicalDeviceVulkan11Properties = Default::default();
         let mut properties_12: vk::PhysicalDeviceVulkan12Properties = Default::default();
         let mut properties_13: vk::PhysicalDeviceVulkan13Properties = Default::default();
-        let mut properties_rt =
+        let mut properties_rt_pipeline =
             vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
         let mut properties_host_image_copy =
             vk::PhysicalDeviceHostImageCopyPropertiesEXT::default();
         let mut supported_features_acceleration_structure =
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
+        let mut properties_acceleration_structure =
+            vk::PhysicalDeviceAccelerationStructurePropertiesKHR::default();
         let mut supported_features_rt_pipeline =
             vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
         let mut supported_features_rt_query =
@@ -302,6 +304,13 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         if extensions
             .intersects(VkAdapterExtensionSupport::ACCELERATION_STRUCTURE)
         {
+            properties_acceleration_structure.p_next = std::mem::replace(
+                &mut properties.p_next,
+                &mut properties_acceleration_structure
+                    as *mut vk::PhysicalDeviceAccelerationStructurePropertiesKHR
+                    as *mut c_void,
+            );
+
             supported_features_acceleration_structure.p_next = std::mem::replace(
                 &mut supported_features.p_next,
                 &mut supported_features_acceleration_structure
@@ -312,9 +321,9 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         if extensions
             .intersects(VkAdapterExtensionSupport::RAY_TRACING_PIPELINE)
         {
-            properties_rt.p_next = std::mem::replace(
+            properties_rt_pipeline.p_next = std::mem::replace(
                 &mut properties.p_next,
-                &mut properties_rt
+                &mut properties_rt_pipeline
                     as *mut vk::PhysicalDeviceRayTracingPipelinePropertiesKHR
                     as *mut c_void,
             );
@@ -483,18 +492,16 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             && supported_features_12.draw_indirect_count == vk::TRUE
             && supports_bda;
 
-        let supports_rt_pipelines = supports_descriptor_indexing
-            && extensions.contains(
-                VkAdapterExtensionSupport::ACCELERATION_STRUCTURE
-                    | VkAdapterExtensionSupport::RAY_TRACING_PIPELINE
-                    | VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS
-                    | VkAdapterExtensionSupport::PIPELINE_LIBRARY
+        let supports_rt_pipeline = extensions.contains(
+            VkAdapterExtensionSupport::ACCELERATION_STRUCTURE
+                | VkAdapterExtensionSupport::RAY_TRACING_PIPELINE
+                | VkAdapterExtensionSupport::PIPELINE_LIBRARY
             )
             && supported_features_acceleration_structure.acceleration_structure == vk::TRUE
             && supported_features_rt_pipeline.ray_tracing_pipeline == vk::TRUE
             && supports_bda;
 
-        let supports_rt_queries = supports_descriptor_indexing
+        let supports_rt_query = supports_descriptor_indexing
             && extensions.contains(
                 VkAdapterExtensionSupport::ACCELERATION_STRUCTURE
                     | VkAdapterExtensionSupport::RAY_QUERY
@@ -517,7 +524,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             enabled_features_12.descriptor_indexing = vk::TRUE;
         }
 
-        if supports_rt_pipelines || supports_rt_queries {
+        if supports_rt_pipeline || supports_rt_query {
             extension_names.push(ACCELERATION_STRUCTURE_EXT_NAME);
             enabled_features_12.buffer_device_address = vk::TRUE;
             features_acceleration_structure.acceleration_structure = vk::TRUE;
@@ -529,10 +536,12 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             );
         }
 
-        if supports_rt_pipelines {
+        if supports_rt_pipeline {
             println!("Ray tracing pipelines supported.");
             extension_names.push(RAY_TRACING_PIPELINE_EXT_NAME);
-            extension_names.push(DEFERRED_HOST_OPERATIONS_EXT_NAME);
+            if extensions.contains(VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS) {
+                extension_names.push(DEFERRED_HOST_OPERATIONS_EXT_NAME);
+            }
             extension_names.push(PIPELINE_LIBRARY_EXT_NAME);
             features_rt_pipeline.ray_tracing_pipeline = vk::TRUE;
             features_rt_pipeline.p_next = std::mem::replace(
@@ -543,7 +552,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             );
         }
 
-        if supports_rt_queries {
+        if supports_rt_query {
             println!("Ray tracing queries supported.");
             extension_names.push(RAY_QUERY_EXT_NAME);
             features_rt_query.ray_query = vk::TRUE;
@@ -670,6 +679,10 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         let mut memory_properties = vk::PhysicalDeviceMemoryProperties2::default();
         self.instance.get_physical_device_memory_properties2(self.physical_device, &mut memory_properties);
 
+        let mut supported_shader_stages = vk::ShaderStageFlags::COMPUTE
+            | vk::ShaderStageFlags::VERTEX
+            | vk::ShaderStageFlags::FRAGMENT;
+
         let mut supported_pipeline_stages = vk::PipelineStageFlags2::VERTEX_INPUT
             | vk::PipelineStageFlags2::VERTEX_SHADER
             | vk::PipelineStageFlags2::FRAGMENT_SHADER
@@ -704,7 +717,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             | vk::AccessFlags2::HOST_WRITE
             | vk::AccessFlags2::SHADER_SAMPLED_READ;
 
-        if supports_rt_pipelines || supports_rt_queries {
+        if supports_rt_pipeline || supports_rt_query {
             supported_pipeline_stages |= vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR
                 | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR;
 
@@ -712,15 +725,39 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                 | vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR;
         }
 
-        if supports_rt_pipelines {
+        if supports_rt_pipeline {
+            supported_shader_stages |= vk::ShaderStageFlags::RAYGEN_KHR
+                | vk::ShaderStageFlags::INTERSECTION_KHR
+                | vk::ShaderStageFlags::ANY_HIT_KHR
+                | vk::ShaderStageFlags::CLOSEST_HIT_KHR
+                | vk::ShaderStageFlags::MISS_KHR;
             supported_pipeline_stages |= vk::PipelineStageFlags2::RAY_TRACING_SHADER_KHR;
         }
 
-        let rt = if supports_rt_pipelines {
+        if features_mesh_shader.mesh_shader == vk::TRUE {
+            supported_shader_stages |= vk::ShaderStageFlags::MESH_EXT;
+            supported_pipeline_stages |= vk::PipelineStageFlags2::MESH_SHADER_EXT;
+        }
+
+        if features_mesh_shader.task_shader == vk::TRUE {
+            supported_shader_stages |= vk::ShaderStageFlags::TASK_EXT;
+            supported_pipeline_stages |= vk::PipelineStageFlags2::TASK_SHADER_EXT;
+        }
+
+        let rt = if supports_rt_pipeline || supports_rt_query {
             Some(RawVkRTEntries {
-                rt_pipelines: ash::khr::ray_tracing_pipeline::Device::new(&self.instance, &vk_device),
-                deferred_operations: ash::khr::deferred_host_operations::Device::new(&self.instance, &vk_device),
-                properties_rt: std::mem::transmute(properties_rt),
+                rt_pipelines: if supports_rt_pipeline {
+                    Some(ash::khr::ray_tracing_pipeline::Device::new(&self.instance, &vk_device))
+                } else { None },
+                deferred_operations: if extensions.contains(VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS) {
+                    Some(ash::khr::deferred_host_operations::Device::new(&self.instance, &vk_device))
+                } else { None },
+                acceleration_structure: ash::khr::acceleration_structure::Device::new(&self.instance, &vk_device),
+                features_acceleration_structure:  std::mem::transmute(features_acceleration_structure),
+                properties_acceleration_structure:  std::mem::transmute(properties_acceleration_structure),
+                properties_rt_pipeline: std::mem::transmute(properties_rt_pipeline),
+                features_rt_pipeline: std::mem::transmute(features_rt_pipeline),
+                rt_query: supports_rt_query
             })
         } else { None };
 
@@ -748,10 +785,6 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             );
         }
 
-        let acceleration_structure = if supports_rt_queries || supports_rt_pipelines {
-            Some(ash::khr::acceleration_structure::Device::new(&self.instance, &vk_device))
-        } else { None };
-
         let raw = Arc::new(RawVkDevice {
             device: vk_device,
             physical_device: self.physical_device,
@@ -765,7 +798,6 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             compute_queue: compute_queue.map(|queue| ReentrantMutex::new(queue)),
             transfer_queue: transfer_queue.map(|queue| ReentrantMutex::new(queue)),
             rt,
-            acceleration_structure,
             supports_d24,
             properties: properties.properties,
             properties_11,
@@ -778,6 +810,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             features_13: enabled_features_13,
             memory_properties: memory_properties.memory_properties,
             feature_memory_budget: extensions.intersects(VkAdapterExtensionSupport::MEMORY_BUDGET),
+            supported_shader_stages,
             supported_pipeline_stages,
             supported_access_flags,
             host_image_copy,
