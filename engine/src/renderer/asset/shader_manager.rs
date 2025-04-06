@@ -726,25 +726,27 @@ impl ShaderManager {
             c_manager.cond_var.notify_all();
             let task_pool = bevy_tasks::ComputeTaskPool::get();
             let task = task_pool.spawn(async move {
-                for handle in ready_handles.drain(..) {
-                    let task: T;
-                    let shaders: T::TShaders;
+                crate::autoreleasepool(|| {
+                    for handle in ready_handles.drain(..) {
+                        let task: T;
+                        let shaders: T::TShaders;
 
-                    let assets_read = c_asset_manager.read_renderer_assets();
-                    {
-                        let mut remaining_compilations = c_manager.remaining_compilations.lock().unwrap();
-                        let task_opt = remaining_compilations.remove(&handle);
-                        if task_opt.is_none() {
-                            continue;
-                        }
-                        task = task_opt.unwrap();
-                        shaders = task.collect_shaders_for_compilation(assets_read);
-                    };
-                    let pipeline: Arc<<T as PipelineCompileTask>::TPipeline> = task.compile(shaders, &c_device);
-                    let generic_handle: AssetHandle = handle.into();
-                    c_asset_manager.add_asset_with_handle(AssetWithHandle::combine(generic_handle, T::pipeline_into_asset(task, pipeline)));
-                }
-                c_manager.cond_var.notify_all();
+                        let assets_read = c_asset_manager.read_renderer_assets();
+                        {
+                            let mut remaining_compilations = c_manager.remaining_compilations.lock().unwrap();
+                            let task_opt = remaining_compilations.remove(&handle);
+                            if task_opt.is_none() {
+                                continue;
+                            }
+                            task = task_opt.unwrap();
+                            shaders = task.collect_shaders_for_compilation(assets_read);
+                        };
+                        let pipeline: Arc<<T as PipelineCompileTask>::TPipeline> = task.compile(shaders, &c_device);
+                        let generic_handle: AssetHandle = handle.into();
+                        c_asset_manager.add_asset_with_handle(AssetWithHandle::combine(generic_handle, T::pipeline_into_asset(task, pipeline)));
+                    }
+                    c_manager.cond_var.notify_all();
+                })
             });
             task.detach();
             true

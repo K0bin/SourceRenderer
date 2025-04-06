@@ -97,30 +97,32 @@ impl Engine {
     }
 
     pub fn frame(&mut self) -> EngineLoopFuncResult {
-        let app = &mut self.app;
-        let plugins_state = app.plugins_state();
-        if plugins_state == PluginsState::Ready {
-            app.finish();
-            app.cleanup();
-            assert_eq!(app.plugins_state(), PluginsState::Cleaned);
-        } else if plugins_state != PluginsState::Cleaned {
-            #[cfg(not(target_arch = "wasm32"))] {
-                // We only need to call it manually before the app is ready.
-                // After that the TaskPoolPlugin takes care of it.
-                bevy_tasks::tick_global_task_pools_on_main_thread();
-                std::thread::sleep(Duration::from_millis(16u64));
+        crate::autoreleasepool(|| {
+            let app = &mut self.app;
+            let plugins_state = app.plugins_state();
+            if plugins_state == PluginsState::Ready {
+                app.finish();
+                app.cleanup();
+                assert_eq!(app.plugins_state(), PluginsState::Cleaned);
+            } else if plugins_state != PluginsState::Cleaned {
+                #[cfg(not(target_arch = "wasm32"))] {
+                    // We only need to call it manually before the app is ready.
+                    // After that the TaskPoolPlugin takes care of it.
+                    bevy_tasks::tick_global_task_pools_on_main_thread();
+                    std::thread::sleep(Duration::from_millis(16u64));
+                }
+
+                return EngineLoopFuncResult::KeepRunning;
             }
 
-            return EngineLoopFuncResult::KeepRunning;
-        }
-
-        app.update();
-        if let Some(exit) = app.should_exit() {
-            log::info!("Exiting because of app: {:?}", exit);
-            EngineLoopFuncResult::Exit
-        } else {
-            EngineLoopFuncResult::KeepRunning
-        }
+            app.update();
+            if let Some(exit) = app.should_exit() {
+                log::info!("Exiting because of app: {:?}", exit);
+                EngineLoopFuncResult::Exit
+            } else {
+                EngineLoopFuncResult::KeepRunning
+            }
+        })
     }
 
     pub fn is_mouse_locked(&self) -> bool {

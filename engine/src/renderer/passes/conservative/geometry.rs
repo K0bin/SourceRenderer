@@ -286,7 +286,7 @@ impl GeometryPass {
             }),
             query_range: None,
         }, &view.drawable_parts, chunk_size, |command_buffer, _chunk_index, _chunk_size, chunk| {
-            P::thread_memory_management_pool(|| {
+            crate::autoreleasepool(|| {
                 command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
                 command_buffer.set_viewports(&[Viewport {
                     position: Vec2::new(0.0f32, 0.0f32),

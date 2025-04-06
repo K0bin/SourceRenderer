@@ -239,7 +239,7 @@ fn start_render_thread<P: Platform>(mut renderer: Renderer<P>) -> std::thread::J
             log::trace!("Started renderer thread");
             'renderer_loop: loop {
                 let mut result = EngineLoopFuncResult::Exit;
-                P::thread_memory_management_pool(|| {
+                crate::autoreleasepool(|| {
                     result = renderer.render();
                 });
                 if result == EngineLoopFuncResult::Exit {

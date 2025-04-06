@@ -23,11 +23,6 @@ impl WebPlatform {
 impl Platform for WebPlatform {
     type IO = WebIO;
     type ThreadHandle = NoThreadsThreadHandle;
-
-    fn thread_memory_management_pool<F, T>(callback: F) -> T
-        where F: FnOnce() -> T {
-        callback()
-    }
 }
 
 impl GraphicsPlatform<WebGPUBackend> for WebPlatform {

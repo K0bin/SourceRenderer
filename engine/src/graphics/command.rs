@@ -809,10 +809,12 @@ impl<'a> CommandBuffer<'a> {
                         let c_inheritance_ref = &inheritance;
                         let c_func_ref = &thread_func;
                         scope.spawn(async move {
-                            let mut inner_cmd_buffer = global_context.get_inner_command_buffer(c_inheritance_ref);
-                            c_func_ref(&mut inner_cmd_buffer, i, task_count);
-                            let finished_inner_cmd_buffer = inner_cmd_buffer.finish();
-                            finished_inner_cmd_buffer.handle
+                            crate::autoreleasepool(|| {
+                                let mut inner_cmd_buffer = global_context.get_inner_command_buffer(c_inheritance_ref);
+                                c_func_ref(&mut inner_cmd_buffer, i, task_count);
+                                let finished_inner_cmd_buffer = inner_cmd_buffer.finish();
+                                finished_inner_cmd_buffer.handle
+                            })
                         });
                     }
                 }

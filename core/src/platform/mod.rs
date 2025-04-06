@@ -29,9 +29,6 @@ pub trait ThreadHandle : Send + Sync {
 pub trait Platform: 'static + Sized {
   type IO: io::IO;
   type ThreadHandle: ThreadHandle;
-
-  fn thread_memory_management_pool<F, T>(callback: F) -> T
-    where F: FnOnce() -> T;
 }
 
 pub trait GraphicsPlatform<B: GPUBackend> {

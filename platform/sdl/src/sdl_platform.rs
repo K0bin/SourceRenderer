@@ -187,18 +187,6 @@ impl SDLWindow {
 impl Platform for SDLPlatform {
     type IO = StdIO;
     type ThreadHandle = StdThreadHandle;
-
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    fn thread_memory_management_pool<F, T>(callback: F) -> T
-        where F: FnOnce() -> T {
-            objc2::rc::autoreleasepool(|_| callback())
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-    fn thread_memory_management_pool<F, T>(callback: F) -> T
-        where F: FnOnce() -> T {
-        callback()
-    }
 }
 
 impl WindowProvider<SDLGPUBackend> for SDLPlatform {

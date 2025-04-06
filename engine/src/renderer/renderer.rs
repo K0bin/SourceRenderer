@@ -208,7 +208,9 @@ impl<P: Platform> Renderer<P> {
         std::mem::drop(assets); // TODO: The asset manager needs a bit of an overhaul to avoid this dead lock scenario. (Spawning on a task pool in single thread mode while holding the RW lock)
 
         bevy_tasks::ComputeTaskPool::get().spawn(async move {
-            c_device.flush(QueueType::Graphics)
+            crate::autoreleasepool(|| {
+                c_device.flush(QueueType::Graphics);
+            });
         }).detach();
 
         // The WASM task pool will only run it after the function returns.
