@@ -33,7 +33,6 @@ impl Platform for AndroidPlatform {
   type GraphicsBackend = VkBackend;
   type Window = AndroidWindow;
   type IO = AndroidIO;
-  type ThreadHandle = StdThreadHandle;
 
   fn window(&self) -> &Self::Window {
     &self.window
@@ -41,16 +40,6 @@ impl Platform for AndroidPlatform {
 
   fn create_graphics(&self, debug_layers: bool) -> Result<Arc<VkInstance>, Box<dyn Error>> {
     Ok(Arc::new(VkInstance::new(&["VK_KHR_surface", "VK_KHR_android_surface"], debug_layers)))
-  }
-
-  fn start_thread<F>(&self, name: &str, callback: F) -> Self::ThreadHandle
-  where
-        F: FnOnce(),
-        F: Send + 'static {
-    StdThreadHandle(std::thread::Builder::new()
-      .name(name.to_string())
-      .spawn(callback)
-      .unwrap())
   }
 }
 
@@ -119,12 +108,5 @@ impl Window<AndroidPlatform> for AndroidWindow {
     unsafe {
       ANativeWindow_getHeight(self.native_window.ptr().as_ptr()) as u32
     }
-  }
-}
-
-pub struct StdThreadHandle(std::thread::JoinHandle<()>);
-impl ThreadHandle for StdThreadHandle {
-  fn join(self) -> Result<(), Box<dyn std::any::Any + Send + 'static>> {
-      self.0.join()
   }
 }

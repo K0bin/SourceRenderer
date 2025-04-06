@@ -22,7 +22,7 @@ use sdl3::{
     VideoSubsystem,
 };
 use sourcerenderer_core::platform::{
-    FileWatcher, Platform, ThreadHandle, Window, WindowProvider, IO
+    FileWatcher, Platform, Window, WindowProvider, IO
 };
 use sourcerenderer_core::{
     Vec2I,
@@ -186,7 +186,6 @@ impl SDLWindow {
 
 impl Platform for SDLPlatform {
     type IO = StdIO;
-    type ThreadHandle = StdThreadHandle;
 }
 
 impl WindowProvider<SDLGPUBackend> for SDLPlatform {
@@ -292,10 +291,3 @@ impl FileWatcher for NotifyFileWatcher {
 }
 
 unsafe impl Send for NotifyFileWatcher {} // I'll just assume that the backends are Send even if the interface is not.
-
-pub struct StdThreadHandle(std::thread::JoinHandle<()>);
-impl ThreadHandle for StdThreadHandle {
-    fn join(self) -> Result<(), Box<dyn std::any::Any + Send + 'static>> {
-        self.0.join()
-    }
-}

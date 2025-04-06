@@ -1,4 +1,4 @@
-use sourcerenderer_core::{platform::{GraphicsPlatform, ThreadHandle, WindowProvider}, Platform};
+use sourcerenderer_core::{platform::{GraphicsPlatform, WindowProvider}, Platform};
 use sourcerenderer_webgpu::{WebGPUBackend, WebGPUInstance, WebGPUInstanceAsyncInitResult, WebGPUInstanceInitError};
 use web_sys::{Navigator, OffscreenCanvas};
 
@@ -22,7 +22,6 @@ impl WebPlatform {
 
 impl Platform for WebPlatform {
     type IO = WebIO;
-    type ThreadHandle = NoThreadsThreadHandle;
 }
 
 impl GraphicsPlatform<WebGPUBackend> for WebPlatform {
@@ -41,9 +40,4 @@ impl WindowProvider<WebGPUBackend> for WebPlatform {
     fn window(&self) -> &Self::Window {
         &self.window
     }
-}
-
-pub struct NoThreadsThreadHandle {}
-impl ThreadHandle for NoThreadsThreadHandle {
-    fn join(self) -> Result<(), Box<dyn std::any::Any + Send + 'static>> {Ok(())}
 }

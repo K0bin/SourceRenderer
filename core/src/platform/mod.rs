@@ -22,13 +22,8 @@ pub enum GraphicsApi {
   Vulkan
 }
 
-pub trait ThreadHandle : Send + Sync {
-  fn join(self) -> Result<(), Box<dyn std::any::Any + Send + 'static>>;
-}
-
 pub trait Platform: 'static + Sized {
   type IO: io::IO;
-  type ThreadHandle: ThreadHandle;
 }
 
 pub trait GraphicsPlatform<B: GPUBackend> {
