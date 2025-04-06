@@ -14,7 +14,7 @@ use bevy_time::{Fixed, Time, TimePlugin};
 use bevy_transform::TransformPlugin;
 use bevy_hierarchy::HierarchyPlugin;
 
-use sourcerenderer_core::platform::{GraphicsPlatform, Platform, WindowProvider};
+use sourcerenderer_core::platform::{GraphicsPlatform, IOPlatform, WindowProvider};
 use sourcerenderer_core::{
     console::Console,
     Vec2UI,
@@ -57,7 +57,7 @@ impl Drop for Engine {
 }
 
 impl Engine {
-    pub fn run<P: Platform + GraphicsPlatform<ActiveBackend> + WindowProvider<ActiveBackend>, M>(platform: &P, game_plugins: impl Plugins<M>) -> Self {
+    pub fn run<P: IOPlatform + GraphicsPlatform<ActiveBackend> + WindowProvider<ActiveBackend>, M>(platform: &P, game_plugins: impl Plugins<M>) -> Self {
         let console = Arc::new(Console::new());
         let console_resource = ConsoleResource(console);
 
@@ -138,7 +138,7 @@ impl Engine {
         self.app.world_mut().send_event(motion);
     }
 
-    pub fn window_changed<P: Platform>(&mut self, window_state: WindowState) {
+    pub fn window_changed(&mut self, window_state: WindowState) {
         RendererPlugin::<P>::window_changed(&self.app, window_state);
     }
 
@@ -154,7 +154,7 @@ impl Engine {
         }
     }
 
-    pub fn get_asset_manager<P: Platform>(app: &App) -> &Arc<AssetManager> {
+    pub fn get_asset_manager<P: IOPlatform>(app: &App) -> &Arc<AssetManager> {
         &app.world().resource::<AssetManagerECSResource<P>>().0
     }
 }

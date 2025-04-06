@@ -5,7 +5,6 @@ use crate::{Vec2, Vec2I, Vec2UI, gpu::GPUBackend};
 use crate::input::Key;
 
 mod io;
-pub use io::IO;
 pub use io::FileWatcher;
 
 #[derive(PartialEq)]
@@ -22,10 +21,6 @@ pub enum GraphicsApi {
   Vulkan
 }
 
-pub trait Platform: 'static + Sized {
-  type IO: io::IO;
-}
-
 pub trait GraphicsPlatform<B: GPUBackend> {
   fn create_instance(&self, debug_layers: bool) -> Result<B::Instance, Box<dyn Error>>;
 }
@@ -36,7 +31,7 @@ pub trait WindowProvider<B: GPUBackend> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
-pub struct PlatformPhantomData<P: Platform>(PhantomData<P>);
+pub struct SafePhantomData<P: Platform>(PhantomData<P>);
 unsafe impl<P: Platform> Send for PlatformPhantomData<P> {}
 unsafe impl<P: Platform> Sync for PlatformPhantomData<P> {}
 impl<P: Platform> Default for PlatformPhantomData<P> { fn default() -> Self { Self(PhantomData) } }

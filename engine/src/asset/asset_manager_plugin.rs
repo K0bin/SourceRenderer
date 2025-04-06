@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bevy_app::{Plugin, PreUpdate};
 use bevy_ecs::system::Resource;
 use bevy_ecs::world::World;
-use sourcerenderer_core::{Platform, PlatformPhantomData};
+use sourcerenderer_core::{platform::IOPlatform, PlatformPhantomData};
 
 use crate::graphics::GPUDeviceResource;
 use crate::asset::*;
@@ -12,7 +12,7 @@ use crate::asset::loaders::*;
 use super::AssetManager;
 
 #[derive(Resource)]
-pub struct AssetManagerECSResource<P: Platform>(pub Arc<AssetManager>, PlatformPhantomData<P>);
+pub struct AssetManagerECSResource<IO: IOPlatform>(pub Arc<AssetManager>, PlatformPhantomData<P>);
 
 pub struct AssetManagerPlugin<P: Platform>(PlatformPhantomData<P>);
 

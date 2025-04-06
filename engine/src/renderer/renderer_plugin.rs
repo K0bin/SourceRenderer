@@ -28,7 +28,7 @@ use bevy_transform::components::GlobalTransform;
 use bevy_utils::synccell::SyncCell;
 use log::{debug, info};
 use sourcerenderer_core::{
-    Platform, PlatformPhantomData, Vec2UI
+    platform::IOPlatform, PlatformPhantomData, Vec2UI
 };
 
 use super::renderer::RendererSender;
@@ -60,7 +60,7 @@ struct WindowSizeChangedEvent {
 #[derive(Event)]
 struct WindowMinimized {}
 
-pub struct RendererPlugin<P: Platform>(PlatformPhantomData<P>);
+pub struct RendererPlugin<IO: IOPlatform>(PlatformPhantomData<P>);
 
 impl<P: Platform> Plugin for RendererPlugin<P> {
     fn build(&self, app: &mut App) {
