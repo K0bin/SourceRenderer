@@ -55,6 +55,7 @@ impl VkShader {
     ) -> Self {
         assert_ne!(shader.shader_spirv.len(), 0);
 
+        // TODO: Handle VK_SHADER_CREATE_NO_TASK_SHADER_BIT_EXT
         let create_info = vk::ShaderModuleCreateInfo {
             code_size: shader.shader_spirv.len(),
             p_code: shader.shader_spirv.as_ptr() as *const u32,

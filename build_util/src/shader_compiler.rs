@@ -598,7 +598,7 @@ fn read_metadata(
         stage_input_count,
         max_stage_input,
         uses_bindless_texture_set,
-        workgroup_size: Vec3UI::new(8,8,8), // TODO
+        workgroup_size: Vec3UI::new(8,8,8), // TODO get workgroup sizes from SPIRV-CROSS
         shader_spirv: Box::new([]),
         shader_air: Box::new([]),
         shader_dxil: Box::new([]),
