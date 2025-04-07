@@ -8,7 +8,7 @@ use objc2::runtime::ProtocolObject;
 use objc2_foundation::{NSString, NSUInteger, NSURL};
 use objc2_metal::{self, MTLDevice as _, MTLLibrary as _};
 
-use sourcerenderer_core::gpu;
+use sourcerenderer_core::{gpu, Vec3UI};
 
 use super::*;
 
@@ -43,6 +43,7 @@ pub struct MTLShader {
     library: Retained<ProtocolObject<dyn objc2_metal::MTLLibrary>>,
     function: Retained<ProtocolObject<dyn objc2_metal::MTLFunction>>,
     resource_map: ShaderResourceMap,
+    workgroup_size: Vec3UI,
 }
 
 unsafe impl Send for MTLShader {}
@@ -130,7 +131,8 @@ impl MTLShader {
             shader_type: shader.shader_type,
             library,
             resource_map,
-            function
+            function,
+            workgroup_size: shader.workgroup_size,
         }
     }
 
@@ -271,6 +273,8 @@ pub struct MTLGraphicsPipeline {
     resource_map: Arc<PipelineResourceMap>,
     rasterizer_state: MTLRasterizerInfo,
     depth_stencil_state: Retained<ProtocolObject<dyn objc2_metal::MTLDepthStencilState>>,
+    ms_workgroup_size: Vec3UI,
+    ts_workgroup_size: Vec3UI,
 }
 
 unsafe impl Send for MTLGraphicsPipeline {}
@@ -440,7 +444,9 @@ impl MTLGraphicsPipeline {
             primitive_type,
             resource_map: Arc::new(resource_map),
             rasterizer_state,
-            depth_stencil_state
+            depth_stencil_state,
+            ms_workgroup_size: Vec3UI::default(),
+            ts_workgroup_size: Vec3UI::default(),
         }
     }
 
@@ -588,7 +594,9 @@ impl MTLGraphicsPipeline {
             primitive_type: objc2_metal::MTLPrimitiveType::Triangle, // Not part of the pipeline with mesh shaders
             resource_map: Arc::new(resource_map),
             rasterizer_state,
-            depth_stencil_state
+            depth_stencil_state,
+            ms_workgroup_size: info.ms.workgroup_size,
+            ts_workgroup_size: info.ts.map(|ts| ts.workgroup_size).unwrap_or(Vec3UI::default()),
         }
     }
 
@@ -611,11 +619,20 @@ impl MTLGraphicsPipeline {
     pub(crate) fn resource_map(&self) -> &Arc<PipelineResourceMap> {
         &self.resource_map
     }
+
+    pub(crate) fn ms_workgroup_size(&self) -> Vec3UI {
+        self.ms_workgroup_size
+    }
+
+    pub(crate) fn ts_workgroup_size(&self) -> Vec3UI {
+        self.ts_workgroup_size
+    }
 }
 
 pub struct MTLComputePipeline {
     pipeline: Retained<ProtocolObject<dyn objc2_metal::MTLComputePipelineState>>,
-    resource_map: Arc<PipelineResourceMap>
+    resource_map: Arc<PipelineResourceMap>,
+    workgroup_size: Vec3UI,
 }
 
 unsafe impl Send for MTLComputePipeline {}
@@ -654,7 +671,8 @@ impl MTLComputePipeline {
         }
         Self {
             pipeline,
-            resource_map: Arc::new(resource_map)
+            resource_map: Arc::new(resource_map),
+            workgroup_size: shader.workgroup_size,
         }
     }
 
@@ -664,6 +682,10 @@ impl MTLComputePipeline {
 
     pub(crate) fn resource_map(&self) -> &Arc<PipelineResourceMap> {
         &self.resource_map
+    }
+
+    pub(crate) fn workgroup_size(&self) -> Vec3UI {
+        self.workgroup_size
     }
 }
 

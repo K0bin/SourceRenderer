@@ -218,7 +218,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         panic!("WebGPU does not support ray tracing")
     }
 
-    unsafe fn create_mesh_graphics_pipeline(&self, info: &gpu::MeshGraphicsPipelineInfo<WebGPUBackend>, name: Option<&str>) -> <WebGPUBackend as gpu::GPUBackend>::MeshGraphicsPipeline {
+    unsafe fn create_mesh_graphics_pipeline(&self, _info: &gpu::MeshGraphicsPipelineInfo<WebGPUBackend>, _name: Option<&str>) -> <WebGPUBackend as gpu::GPUBackend>::MeshGraphicsPipeline {
         panic!("WebGPU does not support mesh shaders")
     }
 

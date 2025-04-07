@@ -30,6 +30,7 @@ pub enum CommandBufferType {
 #[derive(Clone)]
 pub enum PipelineBinding<'a, B: GPUBackend> {
   Graphics(&'a B::GraphicsPipeline),
+  MeshGraphics(&'a B::MeshGraphicsPipeline),
   Compute(&'a B::ComputePipeline),
   RayTracing(&'a B::RayTracingPipeline),
 }
@@ -120,6 +121,9 @@ pub trait CommandBuffer<B: GPUBackend> : Send {
   unsafe fn draw_indexed(&mut self, index_count: u32, instance_count: u32, first_index: u32, vertex_offset: i32, first_instance: u32);
   unsafe fn draw_indexed_indirect(&mut self, draw_buffer: &B::Buffer, draw_buffer_offset: u64, draw_count: u32, stride: u32);
   unsafe fn draw_indexed_indirect_count(&mut self, draw_buffer: &B::Buffer, draw_buffer_offset: u64, count_buffer: &B::Buffer, count_buffer_offset: u64, max_draw_count: u32, stride: u32);
+  unsafe fn draw_mesh_tasks(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32);
+  unsafe fn draw_mesh_tasks_indirect(&mut self, draw_buffer: &B::Buffer, draw_buffer_offset: u64, draw_count: u32, stride: u32);
+  unsafe fn draw_mesh_tasks_indirect_count(&mut self, draw_buffer: &B::Buffer, draw_buffer_offset: u64, count_buffer: &B::Buffer, count_buffer_offset: u64, max_draw_count: u32, stride: u32);
   unsafe fn bind_sampling_view(&mut self, frequency: BindingFrequency, binding: u32, texture: &B::TextureView);
   unsafe fn bind_sampling_view_and_sampler(&mut self, frequency: BindingFrequency, binding: u32, texture: &B::TextureView, sampler: &B::Sampler);
   unsafe fn bind_sampling_view_and_sampler_array(&mut self, frequency: BindingFrequency, binding: u32, textures_and_samplers: &[(&B::TextureView, &B::Sampler)]);
@@ -133,6 +137,7 @@ pub trait CommandBuffer<B: GPUBackend> : Send {
   unsafe fn begin_label(&mut self, label: &str);
   unsafe fn end_label(&mut self);
   unsafe fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32);
+  unsafe fn dispatch_indirect(&mut self, buffer: &B::Buffer, offset: u64);
   unsafe fn blit(&mut self, src_texture: &B::Texture, src_array_layer: u32, src_mip_level: u32, dst_texture: &B::Texture, dst_array_layer: u32, dst_mip_level: u32);
 
   unsafe fn begin(&mut self, frame: u64, inheritance: Option<&Self::CommandBufferInheritance>);

@@ -14,7 +14,7 @@ use naga::front::spv::Options;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 use spirv_cross_sys;
 
-use sourcerenderer_core::gpu;
+use sourcerenderer_core::{gpu, Vec3UI};
 
 use super::spirv_transformer::*;
 
@@ -200,6 +200,7 @@ fn read_metadata(
     let mut ir: spirv_cross_sys::spvc_parsed_ir = std::ptr::null_mut();
     let mut compiler: spirv_cross_sys::spvc_compiler = std::ptr::null_mut();
     let mut spv_resources: spirv_cross_sys::spvc_resources = std::ptr::null_mut();
+    //let mut entry_point: spirv_cross_sys::spvc_entry_point =
 
     unsafe {
         assert_eq!(
@@ -597,6 +598,7 @@ fn read_metadata(
         stage_input_count,
         max_stage_input,
         uses_bindless_texture_set,
+        workgroup_size: Vec3UI::new(8,8,8), // TODO
         shader_spirv: Box::new([]),
         shader_air: Box::new([]),
         shader_dxil: Box::new([]),

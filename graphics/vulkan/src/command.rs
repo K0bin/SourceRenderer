@@ -91,8 +91,12 @@ pub struct VkSecondaryCommandBufferInheritance {
     pub(crate) query_pool: Option<vk::QueryPool>,
 }
 
-pub(crate) enum BoundPipeline {
+enum VkBoundPipeline {
     Graphics {
+        pipeline_layout: Arc<VkPipelineLayout>,
+        uses_bindless: bool
+    },
+    MeshGraphics {
         pipeline_layout: Arc<VkPipelineLayout>,
         uses_bindless: bool
     },
@@ -106,6 +110,42 @@ pub(crate) enum BoundPipeline {
         closest_hit_sbt_region: vk::StridedDeviceAddressRegionKHR,
         miss_sbt_region: vk::StridedDeviceAddressRegionKHR,
         uses_bindless: bool
+    },
+    None,
+}
+
+impl VkBoundPipeline {
+    #[inline(always)]
+    fn is_graphics(&self) -> bool {
+        if let VkBoundPipeline::Graphics {..} = self {
+            true
+        } else { false }
+    }
+    #[inline(always)]
+    fn is_mesh_graphics(&self) -> bool {
+        if let VkBoundPipeline::MeshGraphics {..} = self {
+            true
+        } else { false }
+    }
+    #[inline(always)]
+    fn is_compute(&self) -> bool {
+        if let VkBoundPipeline::Compute {..} = self {
+            true
+        } else { false }
+    }
+    #[allow(unused)]
+    #[inline(always)]
+    fn is_ray_tracing(&self) -> bool {
+        if let VkBoundPipeline::RayTracing {..} = self {
+            true
+        } else { false }
+    }
+    #[allow(unused)]
+    #[inline(always)]
+    fn is_none(&self) -> bool {
+        if let VkBoundPipeline::None = self {
+            true
+        } else { false }
     }
 }
 
@@ -116,7 +156,7 @@ pub struct VkCommandBuffer {
     state: AtomicCell<VkCommandBufferState>,
     command_buffer_type: gpu::CommandBufferType,
     shared: Arc<VkShared>,
-    pipeline: Option<BoundPipeline>,
+    pipeline: VkBoundPipeline,
     descriptor_manager: VkBindingManager,
     frame: u64,
     reset_individually: bool,
@@ -149,7 +189,7 @@ impl VkCommandBuffer {
             _pool: pool.clone(),
             device: device.clone(),
             command_buffer_type,
-            pipeline: None,
+            pipeline: VkBoundPipeline::None,
             shared: shared.clone(),
             state: AtomicCell::new(VkCommandBufferState::Ready),
             descriptor_manager: VkBindingManager::new(device),
@@ -207,10 +247,34 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                     );
                 }
 
-                self.pipeline = Some(BoundPipeline::Graphics {
+                self.pipeline = VkBoundPipeline::Graphics {
                     pipeline_layout: graphics_pipeline.layout().clone(),
                     uses_bindless: graphics_pipeline.uses_bindless_texture_set()
-                });
+                };
+
+                if graphics_pipeline.uses_bindless_texture_set()
+                    && !self
+                        .device
+                        .features_12
+                        .descriptor_indexing == vk::TRUE
+                {
+                    panic!("Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this.");
+                }
+            }
+            gpu::PipelineBinding::MeshGraphics(graphics_pipeline) => {
+                let vk_pipeline = graphics_pipeline.handle();
+                unsafe {
+                    self.device.cmd_bind_pipeline(
+                        self.cmd_buffer,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        vk_pipeline,
+                    );
+                }
+
+                self.pipeline = VkBoundPipeline::MeshGraphics {
+                    pipeline_layout: graphics_pipeline.layout().clone(),
+                    uses_bindless: graphics_pipeline.uses_bindless_texture_set()
+                };
 
                 if graphics_pipeline.uses_bindless_texture_set()
                     && !self
@@ -231,10 +295,10 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                     );
                 }
 
-                self.pipeline = Some(BoundPipeline::Compute {
+                self.pipeline = VkBoundPipeline::Compute {
                     pipeline_layout: compute_pipeline.layout().clone(),
                     uses_bindless: compute_pipeline.uses_bindless_texture_set()
-                });
+                };
 
                 if compute_pipeline.uses_bindless_texture_set()
                     && !self
@@ -255,13 +319,13 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                     );
                 }
 
-                self.pipeline = Some(BoundPipeline::RayTracing {
+                self.pipeline = VkBoundPipeline::RayTracing {
                     pipeline_layout: rt_pipeline.layout().clone(),
                     miss_sbt_region: rt_pipeline.miss_sbt_region().clone(),
                     closest_hit_sbt_region: rt_pipeline.closest_hit_sbt_region().clone(),
                     raygen_sbt_region: rt_pipeline.raygen_sbt_region().clone(),
                     uses_bindless: rt_pipeline.uses_bindless_texture_set()
-                });
+                };
 
                 if rt_pipeline.uses_bindless_texture_set()
                     && !self
@@ -281,6 +345,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         debug_assert!(
             self.is_in_render_pass || self.command_buffer_type == gpu::CommandBufferType::Secondary
         );
+        self.pipeline = VkBoundPipeline::None;
         unsafe {
             self.device.cmd_end_rendering(self.cmd_buffer);
         }
@@ -358,10 +423,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
 
     unsafe fn draw(&mut self, vertex_count: u32, instance_count: u32, first_vertex: u32, first_instance: u32) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        debug_assert!(self.pipeline.is_some());
-        debug_assert!(
-            if let BoundPipeline::Graphics { .. } = self.pipeline.as_ref().unwrap() { true } else { false }
-        );
+        debug_assert!(self.pipeline.is_graphics());
         debug_assert!(
             self.is_in_render_pass || self.command_buffer_type == gpu::CommandBufferType::Secondary
         );
@@ -379,10 +441,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         first_instance: u32,
     ) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        debug_assert!(self.pipeline.is_some());
-        debug_assert!(
-            if let BoundPipeline::Graphics { .. } = self.pipeline.as_ref().unwrap() { true } else { false }
-        );
+        debug_assert!(self.pipeline.is_graphics());
         debug_assert!(
             self.is_in_render_pass || self.command_buffer_type == gpu::CommandBufferType::Secondary
         );
@@ -507,18 +566,18 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
 
     unsafe fn finish_binding(&mut self) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        debug_assert!(self.pipeline.is_some());
 
         let mut offsets = SmallVec::<[u32; 16]>::new();
         let mut descriptor_sets =
             SmallVec::<[vk::DescriptorSet; gpu::TOTAL_SET_COUNT as usize]>::new();
         let mut base_index = 0;
 
-        let pipeline = self.pipeline.as_ref().expect("No pipeline bound");
-        let (pipeline_layout, bind_point, uses_bindless) = match pipeline {
-            BoundPipeline::Graphics { pipeline_layout, uses_bindless, .. } => (pipeline_layout, vk::PipelineBindPoint::GRAPHICS, *uses_bindless),
-            BoundPipeline::Compute { pipeline_layout, uses_bindless, .. } => (pipeline_layout, vk::PipelineBindPoint::COMPUTE, *uses_bindless),
-            BoundPipeline::RayTracing { pipeline_layout, uses_bindless, .. } => (pipeline_layout, vk::PipelineBindPoint::RAY_TRACING_KHR, *uses_bindless),
+        let (pipeline_layout, bind_point, uses_bindless) = match &self.pipeline {
+            VkBoundPipeline::Graphics { pipeline_layout, uses_bindless, .. } => (pipeline_layout, vk::PipelineBindPoint::GRAPHICS, *uses_bindless),
+            VkBoundPipeline::MeshGraphics { pipeline_layout, uses_bindless, .. } => (pipeline_layout, vk::PipelineBindPoint::GRAPHICS, *uses_bindless),
+            VkBoundPipeline::Compute { pipeline_layout, uses_bindless, .. } => (pipeline_layout, vk::PipelineBindPoint::COMPUTE, *uses_bindless),
+            VkBoundPipeline::RayTracing { pipeline_layout, uses_bindless, .. } => (pipeline_layout, vk::PipelineBindPoint::RAY_TRACING_KHR, *uses_bindless),
+            VkBoundPipeline::None => panic!("finish_binding must not be called without a bound pipeline.")
         };
 
         let finished_sets = self.descriptor_manager.finish(self.frame, pipeline_layout);
@@ -637,13 +696,20 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
     unsafe fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(!self.is_in_render_pass);
-        debug_assert!(self.pipeline.is_some());
-        debug_assert!(
-            if let BoundPipeline::Compute { .. } = self.pipeline.as_ref().unwrap() { true } else { false }
-        );
+        debug_assert!(self.pipeline.is_compute());
         unsafe {
             self.device
                 .cmd_dispatch(self.cmd_buffer, group_count_x, group_count_y, group_count_z);
+        }
+    }
+
+    unsafe fn dispatch_indirect(&mut self, buffer: &VkBuffer, offset: u64) {
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
+        debug_assert!(!self.is_in_render_pass);
+        debug_assert!(self.pipeline.is_compute());
+        unsafe {
+            self.device
+                .cmd_dispatch_indirect(self.cmd_buffer, buffer.handle(), offset);
         }
     }
 
@@ -980,6 +1046,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         recording_mode: gpu::RenderpassRecordingMode,
     ) -> Option<Self::CommandBufferInheritance> {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
+        self.pipeline = VkBoundPipeline::None;
 
         begin_render_pass(self.device.as_ref(), self.cmd_buffer, renderpass_begin_info, recording_mode);
         self.is_in_render_pass = true;
@@ -1076,10 +1143,20 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(!self.is_in_render_pass);
 
-        let (raygen_sbt_region, miss_sbt_region, closest_hit_sbt_region) = if let BoundPipeline::RayTracing {
-            raygen_sbt_region, closest_hit_sbt_region, miss_sbt_region, ..
-        } = self.pipeline.as_ref().unwrap() {
-            (raygen_sbt_region, miss_sbt_region, closest_hit_sbt_region)
+
+        let raygen_sbt_region: &vk::StridedDeviceAddressRegionKHR;
+        let miss_sbt_region: &vk::StridedDeviceAddressRegionKHR;
+        let closest_hit_sbt_region: &vk::StridedDeviceAddressRegionKHR;
+
+        if let VkBoundPipeline::RayTracing {
+            raygen_sbt_region: pipeline_raygen_sbt_region,
+            closest_hit_sbt_region: pipeline_closest_hit_sbt_region,
+            miss_sbt_region: pipeline_miss_sbt_region,
+            ..
+        } = &self.pipeline {
+            raygen_sbt_region = pipeline_raygen_sbt_region;
+            miss_sbt_region = pipeline_miss_sbt_region;
+            closest_hit_sbt_region = pipeline_closest_hit_sbt_region;
         } else {
             panic!("No RT pipeline bound.");
         };
@@ -1156,33 +1233,28 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         stride: u32,
     ) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        debug_assert!(self.pipeline.is_some());
-        debug_assert!(
-            if let BoundPipeline::Graphics { .. } = self.pipeline.as_ref().unwrap() { true } else { false }
-        );
+        debug_assert!(self.pipeline.is_graphics());
         debug_assert!(
             self.is_in_render_pass || self.command_buffer_type == gpu::CommandBufferType::Secondary
         );
         unsafe {
             if self.device.features.multi_draw_indirect == vk::TRUE {
-                self.device
-                    .cmd_draw_indexed_indirect(
-                        self.cmd_buffer,
-                        draw_buffer.handle(),
-                        draw_buffer_offset as u64,
-                        draw_count,
-                        stride,
-                    );
+                self.device.cmd_draw_indexed_indirect(
+                    self.cmd_buffer,
+                    draw_buffer.handle(),
+                    draw_buffer_offset as u64,
+                    draw_count,
+                    stride,
+                );
             } else {
                 for i in 0..(draw_count as u64) {
-                    self.device
-                        .cmd_draw_indexed_indirect(
-                            self.cmd_buffer,
-                            draw_buffer.handle(),
-                            draw_buffer_offset + (stride as u64) * i,
-                            1,
-                            stride,
-                        );
+                    self.device.cmd_draw_indexed_indirect(
+                        self.cmd_buffer,
+                        draw_buffer.handle(),
+                        draw_buffer_offset + (stride as u64) * i,
+                        1,
+                        stride,
+                    );
                 }
             }
         }
@@ -1198,25 +1270,21 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         stride: u32,
     ) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        debug_assert!(self.pipeline.is_some());
-        debug_assert!(
-            if let BoundPipeline::Graphics { .. } = self.pipeline.as_ref().unwrap() { true } else { false }
-        );
+        debug_assert!(self.pipeline.is_graphics());
         debug_assert!(
             self.is_in_render_pass || self.command_buffer_type == gpu::CommandBufferType::Secondary
         );
         debug_assert!(self.device.features_12.draw_indirect_count == vk::TRUE);
         unsafe {
-            self.device
-                .cmd_draw_indexed_indirect_count(
-                    self.cmd_buffer,
-                    draw_buffer.handle(),
-                    draw_buffer_offset as u64,
-                    count_buffer.handle(),
-                    count_buffer_offset as u64,
-                    max_draw_count,
-                    stride,
-                );
+            self.device.cmd_draw_indexed_indirect_count(
+                self.cmd_buffer,
+                draw_buffer.handle(),
+                draw_buffer_offset as u64,
+                count_buffer.handle(),
+                count_buffer_offset as u64,
+                max_draw_count,
+                stride,
+            );
         }
     }
 
@@ -1228,33 +1296,28 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         stride: u32,
     ) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        debug_assert!(self.pipeline.is_some());
-        debug_assert!(
-            if let BoundPipeline::Graphics { .. } = self.pipeline.as_ref().unwrap() { true } else { false }
-        );
+        debug_assert!(self.pipeline.is_graphics());
         debug_assert!(
             self.is_in_render_pass || self.command_buffer_type == gpu::CommandBufferType::Secondary
         );
         unsafe {
             if self.device.features.multi_draw_indirect == vk::TRUE {
-                self.device
-                    .cmd_draw_indirect(
-                        self.cmd_buffer,
-                        draw_buffer.handle(),
-                        draw_buffer_offset as u64,
-                        draw_count,
-                        stride,
-                    );
+                self.device.cmd_draw_indirect(
+                    self.cmd_buffer,
+                    draw_buffer.handle(),
+                    draw_buffer_offset as u64,
+                    draw_count,
+                    stride,
+                );
             } else {
                 for i in 0..(draw_count as u64) {
-                    self.device
-                        .cmd_draw_indirect(
-                            self.cmd_buffer,
-                            draw_buffer.handle(),
-                            draw_buffer_offset + (stride as u64) * i,
-                            1,
-                            stride,
-                        );
+                    self.device.cmd_draw_indirect(
+                        self.cmd_buffer,
+                        draw_buffer.handle(),
+                        draw_buffer_offset + (stride as u64) * i,
+                        1,
+                        stride,
+                    );
                 }
             }
         }
@@ -1270,25 +1333,82 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         stride: u32,
     ) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        debug_assert!(self.pipeline.is_some());
-        debug_assert!(
-            if let BoundPipeline::Graphics { .. } = self.pipeline.as_ref().unwrap() { true } else { false }
-        );
+        debug_assert!(self.pipeline.is_graphics());
         debug_assert!(
             self.is_in_render_pass || self.command_buffer_type == gpu::CommandBufferType::Secondary
         );
         debug_assert!(self.device.features_12.draw_indirect_count == vk::TRUE);
         unsafe {
-            self.device
-                .cmd_draw_indirect_count(
+            self.device.cmd_draw_indirect_count(
+                self.cmd_buffer,
+                draw_buffer.handle(),
+                draw_buffer_offset,
+                count_buffer.handle(),
+                count_buffer_offset,
+                max_draw_count,
+                stride,
+            );
+        }
+    }
+
+    unsafe fn draw_mesh_tasks(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
+        debug_assert!(self.pipeline.is_mesh_graphics());
+        debug_assert!(
+            self.is_in_render_pass || self.command_buffer_type == gpu::CommandBufferType::Secondary
+        );
+        let mesh_shader_device = &self.device.mesh_shader.as_ref().unwrap().mesh_shader;
+        mesh_shader_device.cmd_draw_mesh_tasks(self.cmd_buffer, group_count_x, group_count_y, group_count_z);
+    }
+
+    unsafe fn draw_mesh_tasks_indirect(&mut self, draw_buffer: &VkBuffer, draw_buffer_offset: u64, draw_count: u32, stride: u32) {
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
+        debug_assert!(self.pipeline.is_mesh_graphics());
+        debug_assert!(
+            self.is_in_render_pass || self.command_buffer_type == gpu::CommandBufferType::Secondary
+        );
+        let mesh_shader_device = &self.device.mesh_shader.as_ref().unwrap().mesh_shader;
+        unsafe {
+            if self.device.features.multi_draw_indirect == vk::TRUE {
+                mesh_shader_device.cmd_draw_mesh_tasks_indirect(
                     self.cmd_buffer,
                     draw_buffer.handle(),
-                    draw_buffer_offset,
-                    count_buffer.handle(),
-                    count_buffer_offset,
-                    max_draw_count,
+                    draw_buffer_offset as u64,
+                    draw_count,
                     stride,
                 );
+            } else {
+                for i in 0..(draw_count as u64) {
+                    mesh_shader_device.cmd_draw_mesh_tasks_indirect(
+                        self.cmd_buffer,
+                        draw_buffer.handle(),
+                        draw_buffer_offset + (stride as u64) * i,
+                        1,
+                        stride,
+                    );
+                }
+            }
+        }
+    }
+
+    unsafe fn draw_mesh_tasks_indirect_count(&mut self, draw_buffer: &VkBuffer, draw_buffer_offset: u64, count_buffer: &VkBuffer, count_buffer_offset: u64, max_draw_count: u32, stride: u32) {
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
+        debug_assert!(self.pipeline.is_mesh_graphics());
+        debug_assert!(
+            self.is_in_render_pass || self.command_buffer_type == gpu::CommandBufferType::Secondary
+        );
+        debug_assert!(self.device.features_12.draw_indirect_count == vk::TRUE);
+        let mesh_shader_device = &self.device.mesh_shader.as_ref().unwrap().mesh_shader;
+        unsafe {
+            mesh_shader_device.cmd_draw_mesh_tasks_indirect_count(
+                self.cmd_buffer,
+                draw_buffer.handle(),
+                draw_buffer_offset,
+                count_buffer.handle(),
+                count_buffer_offset,
+                max_draw_count,
+                stride,
+            );
         }
     }
 
@@ -1297,10 +1417,12 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         T: 'static + Send + Sync + Sized + Clone,
     {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        let pipeline_layout = match self.pipeline.as_ref().unwrap() {
-            BoundPipeline::Graphics { pipeline_layout, .. } => pipeline_layout,
-            BoundPipeline::Compute { pipeline_layout, .. } => pipeline_layout,
-            BoundPipeline::RayTracing { pipeline_layout, .. } => pipeline_layout,
+        let pipeline_layout = match &self.pipeline {
+            VkBoundPipeline::Graphics { pipeline_layout, .. } => pipeline_layout,
+            VkBoundPipeline::MeshGraphics { pipeline_layout, .. } => pipeline_layout,
+            VkBoundPipeline::Compute { pipeline_layout, .. } => pipeline_layout,
+            VkBoundPipeline::RayTracing { pipeline_layout, .. } => pipeline_layout,
+            VkBoundPipeline::None => panic!("Must not call set_push_constant_data without any pipeline bound"),
         };
         let range = pipeline_layout
             .push_constant_range(visible_for_shader_type)
