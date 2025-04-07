@@ -540,7 +540,6 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         };
         binding_manager.bind(frequency, binding, WebGPUBoundResourceRef::Sampler(WebGPUHashableSampler::from(sampler)));
     }
-    debug_assert!(cmd_buffer.bound_pipeline.is_graphics());
 
     unsafe fn bind_acceleration_structure(&mut self, _frequency: gpu::BindingFrequency, _binding: u32, _acceleration_structure: &WebGPUAccelerationStructure) {
         panic!("WebGPU does not support ray tracing");
