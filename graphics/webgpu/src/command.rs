@@ -984,11 +984,11 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         let recording = self.get_recording_mut();
         recording.bound_pipeline = WebGPUBoundPipeline::None;
         recording.binding_manager.mark_all_dirty();
-        match &recording.pass_encoder {
-            WebGPUPassEncoder::Render(render) => render.end(),
+        let previous_encoder = std::mem::replace(&mut recording.pass_encoder, WebGPUPassEncoder::None);
+        match &previous_encoder {
+            WebGPUPassEncoder::Render(_) => {},
             _ => panic!("No active render pass.")
         };
-        recording.pass_encoder = WebGPUPassEncoder::None;
     }
 
     unsafe fn barrier(&mut self, _barriers: &[gpu::Barrier<WebGPUBackend>]) {
