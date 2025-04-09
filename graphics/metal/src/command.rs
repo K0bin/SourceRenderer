@@ -129,7 +129,10 @@ struct MTLMDIParams {
 }
 
 enum MTLEncoder {
-    RenderPass(Retained<ProtocolObject<dyn objc2_metal::MTLRenderCommandEncoder>>),
+    RenderPass {
+        encoder: Retained<ProtocolObject<dyn objc2_metal::MTLRenderCommandEncoder>>,
+        descriptor: Option<Retained<objc2_metal::MTLRenderPassDescriptor>>,
+    },
     Parallel(Retained<ProtocolObject<dyn objc2_metal::MTLParallelRenderCommandEncoder>>),
     Compute(Retained<ProtocolObject<dyn objc2_metal::MTLComputeCommandEncoder>>),
     Blit(Retained<ProtocolObject<dyn objc2_metal::MTLBlitCommandEncoder>>),
@@ -140,7 +143,7 @@ enum MTLEncoder {
 impl Drop for MTLEncoder {
     fn drop(&mut self) {
         match self {
-            MTLEncoder::RenderPass(encoder) => { encoder.endEncoding(); },
+            MTLEncoder::RenderPass { encoder, .. } => { encoder.endEncoding(); },
             MTLEncoder::Parallel(encoder) => { encoder.endEncoding(); },
             MTLEncoder::Compute (encoder) => { encoder.endEncoding(); },
             MTLEncoder::Blit(encoder) => { encoder.endEncoding(); },
@@ -298,14 +301,14 @@ impl MTLCommandBuffer {
 
     fn get_render_pass_encoder_opt(&self) -> Option<&ProtocolObject<dyn objc2_metal::MTLRenderCommandEncoder>> {
         match &self.encoder {
-            MTLEncoder::RenderPass(encoder) => Some(encoder),
+            MTLEncoder::RenderPass { encoder, .. } => Some(encoder),
             _ => None
         }
     }
 
     fn end_non_rendering_encoders(&mut self) {
         match std::mem::replace(&mut self.encoder, MTLEncoder::None) {
-            MTLEncoder::RenderPass(_) | MTLEncoder::Parallel(_) => { panic!("Rendering encoders need to be ended manually using end_render_pass.") }
+            MTLEncoder::RenderPass { .. } | MTLEncoder::Parallel(_) => { panic!("Rendering encoders need to be ended manually using end_render_pass.") }
             MTLEncoder::Compute(_) => {
                 self.bound_pipeline = MTLBoundPipeline::None;
                 self.binding.mark_all_dirty();
@@ -324,6 +327,7 @@ impl MTLCommandBuffer {
         attachment.setLevel(dst_mip_level as NSUInteger);
         attachment.setSlice(dst_array_layer as NSUInteger);
         attachment.setTexture(Some(dst_texture.handle()));
+        self.end_non_rendering_encoders();
         let encoder = command_buffer.renderCommandEncoderWithDescriptor(&descriptor).unwrap();
         encoder.setRenderPipelineState(shared.blit_pipeline.handle());
         if src_array_layer == 0 && src_mip_level == 0 {
@@ -342,10 +346,13 @@ impl MTLCommandBuffer {
     }
 
     unsafe fn multi_draw_indirect(&mut self, indexed: bool, draw_buffer: &MTLBuffer, draw_buffer_offset: u64, count_buffer: &MTLBuffer, count_buffer_offset: u64, max_draw_count: u32, stride: u32) {
-        {
-            let render_encoder = self.get_render_pass_encoder();
-            render_encoder.endEncoding();
-        }
+        let previous_encoder = std::mem::replace(&mut self.encoder, MTLEncoder::None);
+        let renderpass_descriptor = match previous_encoder {
+            MTLEncoder::RenderPass { descriptor, .. } => { descriptor },
+            MTLEncoder::Parallel { .. } => panic!("Cannot use draw indirect inside of a parallel render pass"),
+            _ => panic!("Cannot use draw indirect outside of a render pass"),
+        };
+
         let descriptor = objc2_metal::MTLIndirectCommandBufferDescriptor::new();
         descriptor.setInheritBuffers(true);
         descriptor.setInheritPipelineState(true);
@@ -367,15 +374,9 @@ impl MTLCommandBuffer {
             compute_encoder.dispatchThreads_threadsPerThreadgroup(objc2_metal::MTLSize { width: max_draw_count as NSUInteger, height: 1, depth: 1 }, objc2_metal::MTLSize { width: 32, height: 1, depth: 1 });
         }
         {
-            match &mut self.encoder {
-                MTLEncoder::RenderPass(encoder) => {
-                    *encoder = self.command_buffer.as_ref().unwrap().renderCommandEncoderWithDescriptor(render_pass).unwrap();
-                    Self::render_encoder_use_all_heaps(encoder, &self.shared);
-                    encoder.executeCommandsInBuffer_withRange(&icb, NSRange { location: 0, length: max_draw_count as NSUInteger});
-                },
-                MTLEncoder::Parallel { .. } => panic!("Cannot use draw indirect inside of a parallel render pass"),
-                _ => panic!("Cannot use draw indirect outside of a render pass"),
-            }
+            self.encoder = self.command_buffer.as_ref().unwrap().renderCommandEncoderWithDescriptor(renderpass_descriptor).unwrap();
+            Self::render_encoder_use_all_heaps(encoder, &self.shared);
+            encoder.executeCommandsInBuffer_withRange(&icb, NSRange { location: 0, length: max_draw_count as NSUInteger});
         }
     }
 
@@ -655,7 +656,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
 
     unsafe fn finish_binding(&mut self) {
         match &mut self.encoder {
-            MTLEncoder::RenderPass(encoder) => {
+            MTLEncoder::RenderPass { encoder, .. } => {
                 self.binding.finish(MTLEncoderRef::Graphics(rp), self.resource_map.as_ref().expect("Need to bind a shader before finishing binding."));
                 let bindless_map = &self.resource_map.as_ref().unwrap().bindless_argument_buffer_binding;
                 if let Some(bindless_binding) = bindless_map.get(&gpu::ShaderType::VertexShader) {
@@ -737,7 +738,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         if let Some(inheritance) = inheritance {
             let mut guard = inheritance.lock().unwrap();
             let encoder = guard.encoders.pop().expect("Ran out of inner encoders.");
-            self.encoder = MTLEncoder::RenderPass(encoder);
+            self.encoder = MTLEncoder::RenderPass { encoder, descriptor: None };
         }
     }
 
@@ -822,22 +823,12 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         } else {
             let encoder = self.handle().renderCommandEncoderWithDescriptor(&descriptor).unwrap();
             Self::render_encoder_use_all_heaps(&encoder, &self.shared);
-            self.encoder = MTLEncoder::RenderPass(encoder);
+            self.encoder = MTLEncoder::RenderPass { encoder, descriptor: Some(descriptor) };
             None
         }
     }
 
     unsafe fn end_render_pass(&mut self) {
-        match &self.encoder {
-            MTLEncoder::RenderPass(encoder) => {
-                encoder.endEncoding();
-            },
-            MTLEncoder::Parallel(encoder) => {
-                encoder.endEncoding();
-            },
-            _ => {}
-        }
-
         self.encoder = MTLEncoder::None;
         self.binding.mark_all_dirty();
     }
@@ -850,12 +841,10 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
 
     unsafe fn execute_inner(&mut self, _submission: &[&MTLCommandBuffer], inheritance: Self::CommandBufferInheritance) {
         let mut inheritance_guard = inheritance.lock().unwrap();
-        for encoder in inheritance_guard.encoders.iter() {
-            encoder.endEncoding();
-        }
         inheritance_guard.encoders.clear();
 
         // They are automatically appended to the command buffer when we call endEncoding.
+        // endEncoding is automatically called in the destructor.
     }
 
     unsafe fn reset(&mut self, _frame: u64) {
