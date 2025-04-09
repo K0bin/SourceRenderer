@@ -1,25 +1,21 @@
 import wasm from "vite-plugin-wasm";
 
-/**
- * @type {import('vite').UserConfig}
- */
-const config = {
+/** @type {import('vite').UserConfig} */
+export default {
     build: {
         outDir: "dist",
         target: "esnext"
     },
     worker: {
         format: "es",
-        plugins: () => {
-            return [
-                wasm(),
-            ];
-        }
     },
-    plugins: [
-        wasm(),
-    ],
-    appType: "mpa"
-  }
-
-export default config
+    server: {
+        fs: {
+            strict: false,
+            allow: [
+                '../lib/pkg',
+            ],
+        },
+    },
+    appType: "spa",
+};
