@@ -59,34 +59,6 @@ enum MTLBoundPipeline {
     None,
 }
 
-impl MTLBoundPipeline {
-    #[inline(always)]
-    fn is_graphics(&self) -> bool {
-        if let BoundPipeline::Graphics {..} = self {
-            true
-        } else { false }
-    }
-    #[inline(always)]
-    fn is_mesh_graphics(&self) -> bool {
-        if let BoundPipeline::MeshGraphics {..} = self {
-            true
-        } else { false }
-    }
-    #[inline(always)]
-    fn is_compute(&self) -> bool {
-        if let BoundPipeline::Compute {..} = self {
-            true
-        } else { false }
-    }
-    #[allow(unused)]
-    #[inline(always)]
-    fn is_none(&self) -> bool {
-        if let BoundPipeline::None = self {
-            true
-        } else { false }
-    }
-}
-
 struct IndexBufferBinding {
     buffer: Retained<ProtocolObject<dyn objc2_metal::MTLBuffer>>,
     offset: u64,
@@ -131,7 +103,7 @@ struct MTLMDIParams {
 enum MTLEncoder {
     RenderPass {
         encoder: Retained<ProtocolObject<dyn objc2_metal::MTLRenderCommandEncoder>>,
-        descriptor: Option<Retained<objc2_metal::MTLRenderPassDescriptor>>,
+        descriptor: Retained<objc2_metal::MTLRenderPassDescriptor>,
     },
     Parallel(Retained<ProtocolObject<dyn objc2_metal::MTLParallelRenderCommandEncoder>>),
     Compute(Retained<ProtocolObject<dyn objc2_metal::MTLComputeCommandEncoder>>),
@@ -191,7 +163,7 @@ impl MTLCommandBuffer {
             pre_event: queue.device().newEvent().unwrap(),
             post_event: queue.device().newEvent().unwrap(),
             index_buffer: None,
-            bound_pipeline: None,
+            bound_pipeline: MTLBoundPipeline::None,
             binding: MTLBindingManager::new(),
             shared: shared.clone()
         }
@@ -205,7 +177,7 @@ impl MTLCommandBuffer {
             pre_event: queue.device().newEvent().unwrap(),
             post_event: queue.device().newEvent().unwrap(),
             index_buffer: None,
-            bound_pipeline: None,
+            bound_pipeline: MTLBoundPipeline::None,
             binding: MTLBindingManager::new(),
             shared: shared.clone()
         }
@@ -327,7 +299,6 @@ impl MTLCommandBuffer {
         attachment.setLevel(dst_mip_level as NSUInteger);
         attachment.setSlice(dst_array_layer as NSUInteger);
         attachment.setTexture(Some(dst_texture.handle()));
-        self.end_non_rendering_encoders();
         let encoder = command_buffer.renderCommandEncoderWithDescriptor(&descriptor).unwrap();
         encoder.setRenderPipelineState(shared.blit_pipeline.handle());
         if src_array_layer == 0 && src_mip_level == 0 {
@@ -346,11 +317,18 @@ impl MTLCommandBuffer {
     }
 
     unsafe fn multi_draw_indirect(&mut self, indexed: bool, draw_buffer: &MTLBuffer, draw_buffer_offset: u64, count_buffer: &MTLBuffer, count_buffer_offset: u64, max_draw_count: u32, stride: u32) {
+        let primitive_type = if let MTLBoundPipeline::Graphics { primitive_type, .. } = &self.bound_pipeline {
+            *primitive_type
+        } else {
+            panic!("Cannot draw without a graphics pipeline bound.");
+        };
         let previous_encoder = std::mem::replace(&mut self.encoder, MTLEncoder::None);
-        let renderpass_descriptor = match previous_encoder {
-            MTLEncoder::RenderPass { descriptor, .. } => { descriptor },
-            MTLEncoder::Parallel { .. } => panic!("Cannot use draw indirect inside of a parallel render pass"),
-            _ => panic!("Cannot use draw indirect outside of a render pass"),
+        let renderpass_descriptor = {
+            match &previous_encoder {
+                MTLEncoder::RenderPass { descriptor, .. } => { descriptor.clone() },
+                MTLEncoder::Parallel { .. } => panic!("Cannot use draw indirect inside of a parallel render pass"),
+                _ => panic!("Cannot use draw indirect outside of a render pass"),
+            }
         };
 
         let descriptor = objc2_metal::MTLIndirectCommandBufferDescriptor::new();
@@ -368,15 +346,16 @@ impl MTLCommandBuffer {
                 draw_buffer: draw_buffer.handle().gpuAddress() + draw_buffer_offset as u64,
                 count_buffer: count_buffer.handle().gpuAddress() + count_buffer_offset as u64,
                 stride: stride as usize,
-                primitive_type: self.primitive_type
+                primitive_type: primitive_type
             };
             compute_encoder.setBytes_length_atIndex(NonNull::new_unchecked(std::mem::transmute::<*const MTLMDIParams, *mut c_void>(&params as *const MTLMDIParams)), std::mem::size_of_val(&params) as NSUInteger, 0);
             compute_encoder.dispatchThreads_threadsPerThreadgroup(objc2_metal::MTLSize { width: max_draw_count as NSUInteger, height: 1, depth: 1 }, objc2_metal::MTLSize { width: 32, height: 1, depth: 1 });
         }
         {
-            self.encoder = self.command_buffer.as_ref().unwrap().renderCommandEncoderWithDescriptor(renderpass_descriptor).unwrap();
-            Self::render_encoder_use_all_heaps(encoder, &self.shared);
-            encoder.executeCommandsInBuffer_withRange(&icb, NSRange { location: 0, length: max_draw_count as NSUInteger});
+            let new_encoder = self.command_buffer.as_ref().unwrap().renderCommandEncoderWithDescriptor(&renderpass_descriptor).unwrap();
+            Self::render_encoder_use_all_heaps(&new_encoder, &self.shared);
+            new_encoder.executeCommandsInBuffer_withRange(&icb, NSRange { location: 0, length: max_draw_count as NSUInteger});
+            self.encoder = MTLEncoder::RenderPass { encoder: new_encoder, descriptor: renderpass_descriptor };
         }
     }
 
@@ -403,7 +382,6 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         self.binding.mark_all_dirty();
         match pipeline {
             gpu::PipelineBinding::Graphics(pipeline) => {
-                self.primitive_type = pipeline.primitive_type();
                 let encoder = self.get_render_pass_encoder();
                 encoder.setRenderPipelineState(pipeline.handle());
                 encoder.setCullMode(pipeline.rasterizer_state().cull_mode);
@@ -415,8 +393,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
                     resource_map: pipeline.resource_map().clone(),
                 };
             },
-            gpu::PipelineBinding::Graphics(pipeline) => {
-                self.primitive_type = pipeline.primitive_type();
+            gpu::PipelineBinding::MeshGraphics(pipeline) => {
                 let encoder = self.get_render_pass_encoder();
                 encoder.setRenderPipelineState(pipeline.handle());
                 encoder.setCullMode(pipeline.rasterizer_state().cull_mode);
@@ -485,7 +462,13 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     unsafe fn set_push_constant_data<T>(&mut self, data: &[T], visible_for_shader_stage: gpu::ShaderType)
         where T: 'static + Send + Sync + Sized + Clone {
         if let Some(encoder) = self.get_render_pass_encoder_opt() {
-            let resource_map = self.resource_map.as_ref().expect("Cannot set push constant data before binding a shader");
+            let resource_map = if let MTLBoundPipeline::Graphics { resource_map, .. } = &self.bound_pipeline {
+                resource_map
+            } else if let MTLBoundPipeline::MeshGraphics { resource_map, .. } = &self.bound_pipeline {
+                resource_map
+            } else if let MTLBoundPipeline::None = &self.bound_pipeline { panic!("Cannot set graphics push constants while a compute pipeline is set.");
+            } else { panic!("Cannot set push constant data before setting a pipeline."); };
+
             let push_constant_info = resource_map.push_constants.get(&visible_for_shader_stage).expect("Shader does not have push constants");
             let data_size = std::mem::size_of_val(data);
             assert!(data_size <= push_constant_info.size as usize);
@@ -493,11 +476,19 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
                 encoder.setVertexBytes_length_atIndex(NonNull::new_unchecked(std::mem::transmute::<*const T, *mut c_void>(data.as_ptr())), data_size as NSUInteger, push_constant_info.binding as NSUInteger);
             } else if visible_for_shader_stage == gpu::ShaderType::FragmentShader {
                 encoder.setFragmentBytes_length_atIndex(NonNull::new_unchecked(std::mem::transmute::<*const T, *mut c_void>(data.as_ptr())), data_size as NSUInteger, push_constant_info.binding as NSUInteger);
+            } else if visible_for_shader_stage == gpu::ShaderType::MeshShader {
+                encoder.setMeshBytes_length_atIndex(NonNull::new_unchecked(std::mem::transmute::<*const T, *mut c_void>(data.as_ptr())), data_size as NSUInteger, push_constant_info.binding as NSUInteger);
+            } else if visible_for_shader_stage == gpu::ShaderType::TaskShader {
+                encoder.setObjectBytes_length_atIndex(NonNull::new_unchecked(std::mem::transmute::<*const T, *mut c_void>(data.as_ptr())), data_size as NSUInteger, push_constant_info.binding as NSUInteger);
             } else {
                 panic!("Can only set vertex or fragment push constant data while in a render pass");
             }
         } else if visible_for_shader_stage == gpu::ShaderType::ComputeShader {
-            let resource_map = self.resource_map.as_ref().expect("Cannot set push constant data before binding a shader");
+            let resource_map = if let MTLBoundPipeline::Compute { resource_map, .. } = &self.bound_pipeline {
+                resource_map
+            } else if let MTLBoundPipeline::None = &self.bound_pipeline { panic!("Cannot set push constant data before setting a pipeline."); }
+            else { panic!("Cannot set compute push constants while a graphics pipeline is set") };
+
             let push_constant_info = resource_map.push_constants.get(&visible_for_shader_stage).expect("Shader does not have push constants").clone();
             let encoder = self.get_compute_encoder();
             let data_size = std::mem::size_of_val(data);
@@ -509,19 +500,27 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn draw(&mut self, vertex_count: u32, instance_count: u32, first_vertex: u32, first_instance: u32) {
-        debug_assert!(self.bound_pipeline.is_graphics());
+        let primitive_type = if let MTLBoundPipeline::Graphics { primitive_type, .. } = &self.bound_pipeline {
+            *primitive_type
+        } else {
+            panic!("Cannot draw without a graphics pipeline bound.");
+        };
         self.get_render_pass_encoder()
-            .drawPrimitives_vertexStart_vertexCount_instanceCount_baseInstance(self.primitive_type, first_vertex as NSUInteger, vertices as NSUInteger, instance_count, first_instance);
+            .drawPrimitives_vertexStart_vertexCount_instanceCount_baseInstance(primitive_type, first_vertex as NSUInteger, vertex_count as NSUInteger, instance_count as NSUInteger, first_instance as NSUInteger);
     }
 
     unsafe fn draw_indexed(&mut self, index_count: u32, instance_count: u32, first_index: u32, vertex_offset: i32, first_instance: u32) {
-        debug_assert!(self.bound_pipeline.is_graphics());
+        let primitive_type = if let MTLBoundPipeline::Graphics { primitive_type, .. } = &self.bound_pipeline {
+            *primitive_type
+        } else {
+            panic!("Cannot draw without a graphics pipeline bound.");
+        };
         let index_buffer = self.index_buffer.as_ref()
             .expect("No index buffer bound");
 
         self.get_render_pass_encoder()
             .drawIndexedPrimitives_indexCount_indexType_indexBuffer_indexBufferOffset_instanceCount_baseVertex_baseInstance(
-                self.primitive_type,
+                primitive_type,
                 index_count as NSUInteger,
                 index_format_to_mtl(index_buffer.format),
                 &index_buffer.buffer,
@@ -532,12 +531,16 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn draw_indirect(&mut self, draw_buffer: &MTLBuffer, draw_buffer_offset: u64, draw_count: u32, stride: u32) {
-        debug_assert!(self.bound_pipeline.is_graphics());
+        let primitive_type = if let MTLBoundPipeline::Graphics { primitive_type, .. } = &self.bound_pipeline {
+            *primitive_type
+        } else {
+            panic!("Cannot draw without a graphics pipeline bound.");
+        };
         let encoder = self.get_render_pass_encoder();
 
         for i in 0..(draw_count as NSUInteger) {
             encoder.drawPrimitives_indirectBuffer_indirectBufferOffset(
-                self.primitive_type,
+                primitive_type,
                 draw_buffer.handle(),
                 (draw_buffer_offset as NSUInteger) + i * (stride as NSUInteger)
             );
@@ -545,12 +548,18 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn draw_indexed_indirect(&mut self, draw_buffer: &MTLBuffer, draw_buffer_offset: u64, draw_count: u32, stride: u32) {
-        debug_assert!(self.bound_pipeline.is_graphics());
+        let primitive_type = if let MTLBoundPipeline::Graphics { primitive_type, .. } = &self.bound_pipeline {
+            *primitive_type
+        } else {
+            panic!("Cannot draw without a graphics pipeline bound.");
+        };
+        let index_buffer = self.index_buffer.as_ref()
+            .expect("No index buffer bound");
         let encoder = self.get_render_pass_encoder();
 
         for i in 0..(draw_count as NSUInteger) {
             encoder.drawIndexedPrimitives_indexType_indexBuffer_indexBufferOffset_indirectBuffer_indirectBufferOffset(
-                self.primitive_type,
+                primitive_type,
                 index_format_to_mtl(index_buffer.format),
                 &index_buffer.buffer,
                 index_buffer.offset as NSUInteger,
@@ -561,12 +570,10 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     }
 
     unsafe fn draw_indexed_indirect_count(&mut self, draw_buffer: &MTLBuffer, draw_buffer_offset: u64, count_buffer: &MTLBuffer, count_buffer_offset: u64, max_draw_count: u32, stride: u32) {
-        debug_assert!(self.bound_pipeline.is_graphics());
         self.multi_draw_indirect(true, draw_buffer, draw_buffer_offset, count_buffer, count_buffer_offset, max_draw_count, stride);
     }
 
     unsafe fn draw_indirect_count(&mut self, draw_buffer: &MTLBuffer, draw_buffer_offset: u64, count_buffer: &MTLBuffer, count_buffer_offset: u64, max_draw_count: u32, stride: u32) {
-        debug_assert!(self.bound_pipeline.is_graphics());
         self.multi_draw_indirect(false, draw_buffer, draw_buffer_offset, count_buffer, count_buffer_offset, max_draw_count, stride);
     }
 
@@ -578,9 +585,9 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
 
         let encoder = self.get_render_pass_encoder();
         encoder.drawMeshThreadgroups_threadsPerObjectThreadgroup_threadsPerMeshThreadgroup(
-            objc2_metal::MTLSize { width: group_count_x, height: group_count_y, depth: group_count_z },
-            objc2_metal::MTLSize { width: ts_workgroup_size.x, height: ts_workgroup_size.y, depth: ts_workgroup_size.z },
-            objc2_metal::MTLSize { width: ms_workgroup_size.x, height: ms_workgroup_size.y, depth: ms_workgroup_size.z },
+            objc2_metal::MTLSize { width: group_count_x as NSUInteger, height: group_count_y as NSUInteger, depth: group_count_z as NSUInteger },
+            objc2_metal::MTLSize { width: ts_workgroup_size.x as NSUInteger, height: ts_workgroup_size.y as NSUInteger, depth: ts_workgroup_size.z as NSUInteger },
+            objc2_metal::MTLSize { width: ms_workgroup_size.x as NSUInteger, height: ms_workgroup_size.y as NSUInteger, depth: ms_workgroup_size.z as NSUInteger },
         );
     }
 
@@ -592,12 +599,12 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
 
         let encoder = self.get_render_pass_encoder();
 
-        for i in 0..(draw_count as NSUInteger) {
+        for i in 0..draw_count {
             encoder.drawMeshThreadgroupsWithIndirectBuffer_indirectBufferOffset_threadsPerObjectThreadgroup_threadsPerMeshThreadgroup(
-                &index_buffer.buffer,
-                index_buffer.offset as NSUInteger,
-                objc2_metal::MTLSize { width: ts_workgroup_size.x, height: ts_workgroup_size.y, depth: ts_workgroup_size.z },
-                objc2_metal::MTLSize { width: ms_workgroup_size.x, height: ms_workgroup_size.y, depth: ms_workgroup_size.z },
+                &draw_buffer.handle(),
+                draw_buffer_offset as NSUInteger + ((i * stride) as NSUInteger),
+                objc2_metal::MTLSize { width: ts_workgroup_size.x as NSUInteger, height: ts_workgroup_size.y as NSUInteger, depth: ts_workgroup_size.z as NSUInteger },
+                objc2_metal::MTLSize { width: ms_workgroup_size.x as NSUInteger, height: ms_workgroup_size.y as NSUInteger, depth: ms_workgroup_size.z as NSUInteger },
             );
         }
     }
@@ -657,18 +664,30 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
     unsafe fn finish_binding(&mut self) {
         match &mut self.encoder {
             MTLEncoder::RenderPass { encoder, .. } => {
-                self.binding.finish(MTLEncoderRef::Graphics(rp), self.resource_map.as_ref().expect("Need to bind a shader before finishing binding."));
-                let bindless_map = &self.resource_map.as_ref().unwrap().bindless_argument_buffer_binding;
+                let resource_map = if let MTLBoundPipeline::Graphics { resource_map, .. } = &self.bound_pipeline {
+                    resource_map
+                } else if let MTLBoundPipeline::MeshGraphics { resource_map, .. } = &self.bound_pipeline {
+                    resource_map
+                } else if let MTLBoundPipeline::None = &self.bound_pipeline { panic!("Finish binding without a pipeline bound is invalid.");
+                } else { panic!("Finish binding in a render pass is invalid while there's a compute pipeline bound."); };
+
+                self.binding.finish(MTLEncoderRef::Graphics(encoder), &resource_map);
+                let bindless_map = &resource_map.bindless_argument_buffer_binding;
                 if let Some(bindless_binding) = bindless_map.get(&gpu::ShaderType::VertexShader) {
-                    rp.setVertexBuffer_offset_atIndex(Some(self.shared.bindless.handle()), *bindless_binding as NSUInteger, 0);
+                    encoder.setVertexBuffer_offset_atIndex(Some(self.shared.bindless.handle()), *bindless_binding as NSUInteger, 0);
                 }
                 if let Some(bindless_binding) = bindless_map.get(&gpu::ShaderType::FragmentShader) {
-                    rp.setVertexBuffer_offset_atIndex(Some(self.shared.bindless.handle()), *bindless_binding as NSUInteger, 0);
+                    encoder.setVertexBuffer_offset_atIndex(Some(self.shared.bindless.handle()), *bindless_binding as NSUInteger, 0);
                 }
             }
             MTLEncoder::Compute(encoder) => {
-                self.binding.finish(MTLEncoderRef::Compute(encoder), self.resource_map.as_ref().expect("Need to bind a shader before finishing binding."));
-                let bindless_map = &self.resource_map.as_ref().unwrap().bindless_argument_buffer_binding;
+                let resource_map = if let MTLBoundPipeline::Compute { resource_map, .. } = &self.bound_pipeline {
+                    resource_map
+                } else if let MTLBoundPipeline::None = &self.bound_pipeline { panic!("Finish binding without a pipeline bound is invalid."); }
+                else { panic!("Finish binding in a compute pass is invalid while there's a compute pipeline bound") };
+
+                self.binding.finish(MTLEncoderRef::Compute(encoder), resource_map);
+                let bindless_map = &resource_map.bindless_argument_buffer_binding;
                 if let Some(bindless_binding) = bindless_map.get(&gpu::ShaderType::ComputeShader) {
                     encoder.setBuffer_offset_atIndex(Some(self.shared.bindless.handle()), 0, *bindless_binding as NSUInteger);
                 }
@@ -687,19 +706,19 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
 
     unsafe fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
         let workgroup_size = match &self.bound_pipeline {
-            MTLBoundPipeline::Compute { workgroup_size, .. } => workgroup_size,
+            MTLBoundPipeline::Compute { workgroup_size, .. } => *workgroup_size,
             _ => panic!("Need to bind compute shader to do dispatch")
         };
 
         let compute_encoder = self.get_compute_encoder();
         compute_encoder.dispatchThreadgroups_threadsPerThreadgroup(objc2_metal::MTLSize {
             width: group_count_x as NSUInteger, height: group_count_y as NSUInteger, depth: group_count_z as NSUInteger
-        }, objc2_metal::MTLSize { width: workgroup_size.x, height: workgroup_size.y, depth: workgroup_size.z });
+        }, objc2_metal::MTLSize { width: workgroup_size.x as NSUInteger, height: workgroup_size.y as NSUInteger, depth: workgroup_size.z as NSUInteger });
     }
 
     unsafe fn dispatch_indirect(&mut self, buffer: &MTLBuffer, offset: u64) {
         let workgroup_size = match &self.bound_pipeline {
-            MTLBoundPipeline::Compute { workgroup_size, .. } => workgroup_size,
+            MTLBoundPipeline::Compute { workgroup_size, .. } => *workgroup_size,
             _ => panic!("Need to bind compute shader to do dispatch")
         };
 
@@ -707,7 +726,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         compute_encoder.dispatchThreadgroupsWithIndirectBuffer_indirectBufferOffset_threadsPerThreadgroup(
             buffer.handle(),
             offset as NSUInteger,
-            objc2_metal::MTLSize { width: workgroup_size.x, height: workgroup_size.y, depth: workgroup_size.z }
+            objc2_metal::MTLSize { width: workgroup_size.x as NSUInteger, height: workgroup_size.y as NSUInteger, depth: workgroup_size.z as NSUInteger }
         );
     }
 
@@ -726,6 +745,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
                 objc2_metal::MTLOrigin { x: 0, y: 0, z: 0 }
             );
         } else if dst_texture.info().usage.contains(gpu::TextureUsage::RENDER_TARGET) {
+            self.end_non_rendering_encoders();
             Self::blit_rp(self.command_buffer.as_ref().unwrap(), &self.shared, src_texture, src_array_layer, src_mip_level, dst_texture, dst_array_layer, dst_mip_level);
         }
     }
@@ -738,7 +758,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         if let Some(inheritance) = inheritance {
             let mut guard = inheritance.lock().unwrap();
             let encoder = guard.encoders.pop().expect("Ran out of inner encoders.");
-            self.encoder = MTLEncoder::RenderPass { encoder, descriptor: None };
+            self.encoder = MTLEncoder::RenderPass { encoder, descriptor: guard.descriptor.clone() };
         }
     }
 
@@ -823,7 +843,7 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
         } else {
             let encoder = self.handle().renderCommandEncoderWithDescriptor(&descriptor).unwrap();
             Self::render_encoder_use_all_heaps(&encoder, &self.shared);
-            self.encoder = MTLEncoder::RenderPass { encoder, descriptor: Some(descriptor) };
+            self.encoder = MTLEncoder::RenderPass { encoder, descriptor: descriptor };
             None
         }
     }
