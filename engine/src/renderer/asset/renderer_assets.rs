@@ -237,6 +237,11 @@ impl RendererAssetsReadOnly<'_> {
                     handles.push((*handle).into());
                 }
             },
+            AssetType::MeshGraphicsPipeline => {
+                for handle in self.maps.compute_pipelines.keys() {
+                    handles.push((*handle).into());
+                }
+            },
             AssetType::ComputePipeline => {
                 for handle in self.maps.compute_pipelines.keys() {
                     handles.push((*handle).into());
