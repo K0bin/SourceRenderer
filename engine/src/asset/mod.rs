@@ -21,6 +21,7 @@ pub use asset_manager::{
     AssetLoaderProgress,
     AssetManager,
     AssetContainer,
+    LoadedAssetData,
 };
 pub use self::asset_types::*;
 pub use self::asset_data::*;

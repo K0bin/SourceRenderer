@@ -5,8 +5,7 @@ use sourcerenderer_core::{
     Matrix4, Vec2, Vec2I, Vec2UI
 };
 
-use crate::asset::AssetManager;
-use crate::renderer::asset::{RendererAssetsReadOnly, RendererMaterial, RendererMaterialValue};
+use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly, RendererMaterial, RendererMaterialValue};
 use crate::renderer::drawable::View;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
@@ -27,7 +26,7 @@ impl GeometryPass {
 
     pub(super) fn new(
         device: &Arc<crate::graphics::Device>,
-        asset_manager: &Arc<AssetManager>,
+        assets: &RendererAssets,
         swapchain: &crate::graphics::Swapchain,
         _init_cmd_buffer: &mut crate::graphics::CommandBuffer,
         resources: &mut RendererResources,
@@ -137,7 +136,7 @@ impl GeometryPass {
             render_target_formats: &[swapchain.format()],
             depth_stencil_format: Format::D32
         };
-        let pipeline = asset_manager.request_graphics_pipeline(&pipeline_info);
+        let pipeline = assets.request_graphics_pipeline(&pipeline_info);
 
         Self { pipeline, sampler: Arc::new(sampler) }
     }

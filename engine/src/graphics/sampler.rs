@@ -1,7 +1,5 @@
 use std::{sync::Arc, mem::ManuallyDrop};
 
-use super::gpu::*;
-
 use super::*;
 
 pub struct Sampler {

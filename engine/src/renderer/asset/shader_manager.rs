@@ -1,6 +1,6 @@
+use std::collections::hash_map::Iter;
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::marker::PhantomData;
 use std::sync::Arc;
 use crate::{Mutex, Condvar};
 
@@ -9,7 +9,7 @@ use smallvec::SmallVec;
 use crate::graphics::gpu::Shader as _;
 
 use crate::asset::{
-    Asset, AssetHandle, AssetLoadPriority, AssetManager, AssetRef, AssetType, AssetWithHandle, ShaderHandle
+    AssetHandle, AssetLoadPriority, AssetManager, AssetType, ShaderHandle
 };
 use crate::graphics::*;
 use crate::graphics::GraphicsPipelineInfo as ActualGraphicsPipelineInfo;
@@ -23,17 +23,19 @@ use super::{RendererAssetsReadOnly, RendererShader};
 //
 
 pub trait PipelineCompileTask: Clone {
-    type TShaders;
+    type TShaders : Send;
+    type TPipelineHandle: Hash + PartialEq + Eq + Clone + Copy + From<AssetHandle> + Into<AssetHandle> + Send + Sync;
+    #[cfg(not(target_arch = "wasm32"))]
+    type TPipeline : Send + Sync;
+    #[cfg(target_arch = "wasm32")]
     type TPipeline;
 
     fn asset_type() -> AssetType;
-    fn pipeline_from_asset_ref<'a>(asset: AssetRef<'a>) -> &'a CompiledPipeline<Self>;
-    fn pipeline_into_asset(self, pipeline: Arc<Self::TPipeline>) -> Asset;
-    fn get_task(pipeline: &CompiledPipeline<Self>) -> &Self {
-        &pipeline.task
-    }
+
+    fn finished_pipelines<'a>(assets: &'a RendererAssetsReadOnly) -> Iter<'a, Self::TPipelineHandle, CompiledPipeline<Self>>;
 
     fn name(&self) -> Option<String>;
+    fn handle(&self) -> Self::TPipelineHandle;
     fn contains_shader(&self, handle: ShaderHandle) -> Option<ShaderType>;
     fn request_shader_refresh(&self, asset_manager: &Arc<AssetManager>);
     fn can_compile(
@@ -43,7 +45,7 @@ pub trait PipelineCompileTask: Clone {
     ) -> bool;
     fn collect_shaders_for_compilation(
         &self,
-        renderer_assets_read: RendererAssetsReadOnly<'_>
+        renderer_assets_read: &RendererAssetsReadOnly<'_>
     ) -> Self::TShaders;
     fn compile(
         &self,
@@ -77,9 +79,9 @@ impl Into<AssetHandle> for GraphicsPipelineHandle {
 }
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone)]
-struct StoredVertexLayoutInfo {
-    pub shader_inputs: SmallVec<[ShaderInputElement; 4]>,
-    pub input_assembler: SmallVec<[InputAssemblerElement; 4]>,
+pub(super) struct StoredVertexLayoutInfo {
+    pub(super) shader_inputs: SmallVec<[ShaderInputElement; 4]>,
+    pub(super) input_assembler: SmallVec<[InputAssemblerElement; 4]>,
 }
 
 impl<'a> PartialEq<VertexLayoutInfo<'a>> for StoredVertexLayoutInfo {
@@ -90,12 +92,12 @@ impl<'a> PartialEq<VertexLayoutInfo<'a>> for StoredVertexLayoutInfo {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct StoredBlendInfo {
-    pub alpha_to_coverage_enabled: bool,
-    pub logic_op_enabled: bool,
-    pub logic_op: LogicOp,
-    pub attachments: SmallVec<[AttachmentBlendInfo; 4]>,
-    pub constants: [f32; 4],
+pub(super) struct StoredBlendInfo {
+    pub(super) alpha_to_coverage_enabled: bool,
+    pub(super) logic_op_enabled: bool,
+    pub(super) logic_op: LogicOp,
+    pub(super) attachments: SmallVec<[AttachmentBlendInfo; 4]>,
+    pub(super) constants: [f32; 4],
 }
 
 impl<'a> PartialEq<BlendInfo<'a>> for StoredBlendInfo {
@@ -106,19 +108,6 @@ impl<'a> PartialEq<BlendInfo<'a>> for StoredBlendInfo {
             && &self.attachments[..] == other.attachments
             && self.constants == other.constants
     }
-}
-
-#[derive(Debug, Clone)]
-struct StoredGraphicsPipelineInfo {
-    pub vs: ShaderHandle,
-    pub fs: Option<ShaderHandle>,
-    pub vertex_layout: StoredVertexLayoutInfo,
-    pub rasterizer: RasterizerInfo,
-    pub depth_stencil: DepthStencilInfo,
-    pub blend: StoredBlendInfo,
-    pub primitive_type: PrimitiveType,
-    pub render_target_formats: SmallVec<[Format; 8]>,
-    pub depth_stencil_format: Format
 }
 
 #[derive(Debug, Clone)]
@@ -134,21 +123,19 @@ pub struct GraphicsPipelineInfo<'a> {
     pub depth_stencil_format: Format
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GraphicsCompileTask {
-    info: StoredGraphicsPipelineInfo,
+    vs: ShaderHandle,
+    fs: Option<ShaderHandle>,
+    vertex_layout: StoredVertexLayoutInfo,
+    rasterizer: RasterizerInfo,
+    depth_stencil: DepthStencilInfo,
+    blend: StoredBlendInfo,
+    primitive_type: PrimitiveType,
+    render_target_formats: SmallVec<[Format; 8]>,
+    depth_stencil_format: Format,
+    handle: GraphicsPipelineHandle,
     is_async: bool,
-    _p: PhantomData<Device>,
-}
-
-impl Clone for GraphicsCompileTask {
-    fn clone(&self) -> Self {
-        Self {
-            info: self.info.clone(),
-            is_async: self.is_async,
-            _p: PhantomData
-        }
-    }
 }
 
 pub struct GraphicsShaders {
@@ -159,30 +146,24 @@ pub struct GraphicsShaders {
 impl PipelineCompileTask for GraphicsCompileTask {
     type TShaders = GraphicsShaders;
     type TPipeline = crate::graphics::GraphicsPipeline;
+    type TPipelineHandle = GraphicsPipelineHandle;
 
     fn asset_type() -> AssetType {
         AssetType::GraphicsPipeline
     }
-    fn pipeline_from_asset_ref<'a>(asset: AssetRef<'a>) -> &'a CompiledPipeline<Self> {
-        if let AssetRef::GraphicsPipeline(pipeline) = asset {
-            pipeline
-        } else {
-            panic!("Asset has wrong type")
-        }
-    }
 
     fn name(&self) -> Option<String> {
-        Some(format!("GraphicsPipeline: VS: {:?}, FS: {:?}", &self.info.vs, self.info.fs.as_ref()))
+        Some(format!("GraphicsPipeline: VS: {:?}, FS: {:?}", &self.vs, self.fs.as_ref()))
     }
 
-    fn pipeline_into_asset(self, pipeline: Arc<Self::TPipeline>) -> Asset {
-        Asset::GraphicsPipeline(CompiledPipeline { task: self, pipeline })
+    fn handle(&self) -> Self::TPipelineHandle {
+        self.handle
     }
 
     fn contains_shader(&self, handle: ShaderHandle) -> Option<ShaderType> {
-        if self.info.vs == handle {
+        if self.vs == handle {
             Some(ShaderType::VertexShader)
-        } else if self.info.fs
+        } else if self.fs
             .map(|fs| fs == handle)
             .unwrap_or(false)
         {
@@ -197,28 +178,32 @@ impl PipelineCompileTask for GraphicsCompileTask {
         renderer_assets_read: &RendererAssetsReadOnly<'_>,
         loaded_shader_handle: Option<ShaderHandle>,
     ) -> bool {
-        (loaded_shader_handle.map_or(false, |s| s == self.info.vs) || renderer_assets_read.get_shader(self.info.vs).is_some())
-            && self.info.fs
+        (loaded_shader_handle.map_or(false, |s| s == self.vs) || renderer_assets_read.get_shader(self.vs).is_some())
+            && self.fs
                 .map(|fs| loaded_shader_handle.map_or(false, |s| s == fs) || renderer_assets_read.get_shader(fs).is_some())
                 .unwrap_or(true)
     }
 
     fn request_shader_refresh(&self, asset_manager: &Arc<AssetManager>) {
-        asset_manager.request_asset_refresh_by_handle(self.info.vs, AssetLoadPriority::High);
-        if let Some(fs) = self.info.fs {
+        asset_manager.request_asset_refresh_by_handle(self.vs, AssetLoadPriority::High);
+        if let Some(fs) = self.fs {
             asset_manager.request_asset_refresh_by_handle(fs, AssetLoadPriority::High);
         }
     }
 
     fn collect_shaders_for_compilation(
         &self,
-        renderer_assets_read: RendererAssetsReadOnly<'_>
+        renderer_assets_read: &RendererAssetsReadOnly<'_>
     ) -> Self::TShaders {
         GraphicsShaders {
-            vs: renderer_assets_read.get_shader(self.info.vs).cloned().unwrap(),
-            fs: self.info.fs
+            vs: renderer_assets_read.get_shader(self.vs).cloned().unwrap(),
+            fs: self.fs
                 .map(|fs| renderer_assets_read.get_shader(fs).cloned().unwrap()),
         }
+    }
+
+    fn finished_pipelines<'a>(assets: &'a RendererAssetsReadOnly) -> Iter<'a, Self::TPipelineHandle, CompiledPipeline<Self>> {
+        assets.all_graphics_pipelines()
     }
 
     fn compile(
@@ -227,28 +212,28 @@ impl PipelineCompileTask for GraphicsCompileTask {
         device: &Arc<Device>,
     ) -> Arc<Self::TPipeline> {
         let input_layout = VertexLayoutInfo {
-            shader_inputs: &self.info.vertex_layout.shader_inputs[..],
-            input_assembler: &self.info.vertex_layout.input_assembler[..],
+            shader_inputs: &self.vertex_layout.shader_inputs[..],
+            input_assembler: &self.vertex_layout.input_assembler[..],
         };
 
         let blend_info = BlendInfo {
-            alpha_to_coverage_enabled: self.info.blend.alpha_to_coverage_enabled,
-            logic_op_enabled: self.info.blend.logic_op_enabled,
-            logic_op: self.info.blend.logic_op,
-            attachments: &self.info.blend.attachments[..],
-            constants: self.info.blend.constants,
+            alpha_to_coverage_enabled: self.blend.alpha_to_coverage_enabled,
+            logic_op_enabled: self.blend.logic_op_enabled,
+            logic_op: self.blend.logic_op,
+            attachments: &self.blend.attachments[..],
+            constants: self.blend.constants,
         };
 
         let info = ActualGraphicsPipelineInfo {
             vs: shaders.vs.as_ref(),
             fs: shaders.fs.as_ref().map(|s| s.as_ref()),
             vertex_layout: input_layout,
-            rasterizer: self.info.rasterizer.clone(),
-            depth_stencil: self.info.depth_stencil.clone(),
+            rasterizer: self.rasterizer.clone(),
+            depth_stencil: self.depth_stencil.clone(),
             blend: blend_info,
-            primitive_type: self.info.primitive_type,
-            render_target_formats: &self.info.render_target_formats,
-            depth_stencil_format: self.info.depth_stencil_format
+            primitive_type: self.primitive_type,
+            render_target_formats: &self.render_target_formats,
+            depth_stencil_format: self.depth_stencil_format
         };
 
         device.create_graphics_pipeline(&info, self.name().as_ref().map(|n| n as &str))
@@ -275,18 +260,6 @@ impl Into<AssetHandle> for MeshGraphicsPipelineHandle {
 }
 
 #[derive(Debug, Clone)]
-struct StoredMeshGraphicsPipelineInfo {
-    pub ts: Option<ShaderHandle>,
-    pub ms: ShaderHandle,
-    pub fs: Option<ShaderHandle>,
-    pub rasterizer: RasterizerInfo,
-    pub depth_stencil: DepthStencilInfo,
-    pub blend: StoredBlendInfo,
-    pub render_target_formats: SmallVec<[Format; 8]>,
-    pub depth_stencil_format: Format
-}
-
-#[derive(Debug, Clone)]
 pub struct MeshGraphicsPipelineInfo<'a> {
     pub ts: Option<&'a str>,
     pub ms: &'a str,
@@ -298,21 +271,18 @@ pub struct MeshGraphicsPipelineInfo<'a> {
     pub depth_stencil_format: Format
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MeshGraphicsCompileTask {
-    info: StoredMeshGraphicsPipelineInfo,
+    ts: Option<ShaderHandle>,
+    ms: ShaderHandle,
+    fs: Option<ShaderHandle>,
+    rasterizer: RasterizerInfo,
+    depth_stencil: DepthStencilInfo,
+    blend: StoredBlendInfo,
+    render_target_formats: SmallVec<[Format; 8]>,
+    depth_stencil_format: Format,
     is_async: bool,
-    _p: PhantomData<Device>,
-}
-
-impl Clone for MeshGraphicsCompileTask {
-    fn clone(&self) -> Self {
-        Self {
-            info: self.info.clone(),
-            is_async: self.is_async,
-            _p: PhantomData
-        }
-    }
+    handle: MeshGraphicsPipelineHandle,
 }
 
 pub struct MeshGraphicsShaders {
@@ -324,35 +294,29 @@ pub struct MeshGraphicsShaders {
 impl PipelineCompileTask for MeshGraphicsCompileTask {
     type TShaders = MeshGraphicsShaders;
     type TPipeline = crate::graphics::MeshGraphicsPipeline;
+    type TPipelineHandle = MeshGraphicsPipelineHandle;
 
     fn asset_type() -> AssetType {
         AssetType::MeshGraphicsPipeline
     }
-    fn pipeline_from_asset_ref<'a>(asset: AssetRef<'a>) -> &'a CompiledPipeline<Self> {
-        if let AssetRef::MeshGraphicsPipeline(pipeline) = asset {
-            pipeline
-        } else {
-            panic!("Asset has wrong type")
-        }
-    }
 
     fn name(&self) -> Option<String> {
-        Some(format!("GraphicsPipeline: TS: {:?}, MS: {:?}, FS: {:?}", self.info.ts.as_ref(), &self.info.ms, self.info.fs.as_ref()))
+        Some(format!("GraphicsPipeline: TS: {:?}, MS: {:?}, FS: {:?}", self.ts.as_ref(), &self.ms, self.fs.as_ref()))
     }
 
-    fn pipeline_into_asset(self, pipeline: Arc<Self::TPipeline>) -> Asset {
-        Asset::MeshGraphicsPipeline(CompiledPipeline { task: self, pipeline })
+    fn handle(&self) -> Self::TPipelineHandle {
+        self.handle
     }
 
     fn contains_shader(&self, handle: ShaderHandle) -> Option<ShaderType> {
-        if self.info.ms == handle {
+        if self.ms == handle {
             Some(ShaderType::MeshShader)
-        } else if self.info.fs
+        } else if self.fs
             .map(|fs| fs == handle)
             .unwrap_or(false)
         {
             Some(ShaderType::FragmentShader)
-        } else if self.info.ts
+        } else if self.ts
             .map(|ts| ts == handle)
             .unwrap_or(false)
         {
@@ -367,36 +331,40 @@ impl PipelineCompileTask for MeshGraphicsCompileTask {
         renderer_assets_read: &RendererAssetsReadOnly<'_>,
         loaded_shader_handle: Option<ShaderHandle>,
     ) -> bool {
-        (loaded_shader_handle.map_or(false, |s| s == self.info.ms) || renderer_assets_read.get_shader(self.info.ms).is_some())
-            && self.info.ts
+        (loaded_shader_handle.map_or(false, |s| s == self.ms) || renderer_assets_read.get_shader(self.ms).is_some())
+            && self.ts
                 .map(|ts| loaded_shader_handle.map_or(false, |s| s == ts) || renderer_assets_read.get_shader(ts).is_some())
                 .unwrap_or(true)
-            && self.info.fs
+            && self.fs
                 .map(|fs| loaded_shader_handle.map_or(false, |s| s == fs) || renderer_assets_read.get_shader(fs).is_some())
                 .unwrap_or(true)
     }
 
     fn request_shader_refresh(&self, asset_manager: &Arc<AssetManager>) {
-        asset_manager.request_asset_refresh_by_handle(self.info.ms, AssetLoadPriority::High);
-        if let Some(ts) = self.info.ts {
+        asset_manager.request_asset_refresh_by_handle(self.ms, AssetLoadPriority::High);
+        if let Some(ts) = self.ts {
             asset_manager.request_asset_refresh_by_handle(ts, AssetLoadPriority::High);
         }
-        if let Some(fs) = self.info.fs {
+        if let Some(fs) = self.fs {
             asset_manager.request_asset_refresh_by_handle(fs, AssetLoadPriority::High);
         }
     }
 
     fn collect_shaders_for_compilation(
         &self,
-        renderer_assets_read: RendererAssetsReadOnly<'_>
+        renderer_assets_read: &RendererAssetsReadOnly<'_>
     ) -> Self::TShaders {
         MeshGraphicsShaders {
-            ts: self.info.ts
+            ts: self.ts
                 .map(|ts| renderer_assets_read.get_shader(ts).cloned().unwrap()),
-            ms: renderer_assets_read.get_shader(self.info.ms).cloned().unwrap(),
-            fs: self.info.fs
+            ms: renderer_assets_read.get_shader(self.ms).cloned().unwrap(),
+            fs: self.fs
                 .map(|fs| renderer_assets_read.get_shader(fs).cloned().unwrap()),
         }
+    }
+
+    fn finished_pipelines<'a>(assets: &'a RendererAssetsReadOnly) -> Iter<'a, Self::TPipelineHandle, CompiledPipeline<Self>> {
+        assets.all_mesh_graphics_pipelines()
     }
 
     fn compile(
@@ -405,22 +373,22 @@ impl PipelineCompileTask for MeshGraphicsCompileTask {
         device: &Arc<Device>,
     ) -> Arc<Self::TPipeline> {
         let blend_info = BlendInfo {
-            alpha_to_coverage_enabled: self.info.blend.alpha_to_coverage_enabled,
-            logic_op_enabled: self.info.blend.logic_op_enabled,
-            logic_op: self.info.blend.logic_op,
-            attachments: &self.info.blend.attachments[..],
-            constants: self.info.blend.constants,
+            alpha_to_coverage_enabled: self.blend.alpha_to_coverage_enabled,
+            logic_op_enabled: self.blend.logic_op_enabled,
+            logic_op: self.blend.logic_op,
+            attachments: &self.blend.attachments[..],
+            constants: self.blend.constants,
         };
 
         let info = ActualMeshGraphicsPipelineInfo {
             ts: shaders.ts.as_ref().map(|s| s.as_ref()),
             ms: shaders.ms.as_ref(),
             fs: shaders.fs.as_ref().map(|s| s.as_ref()),
-            rasterizer: self.info.rasterizer.clone(),
-            depth_stencil: self.info.depth_stencil.clone(),
+            rasterizer: self.rasterizer.clone(),
+            depth_stencil: self.depth_stencil.clone(),
             blend: blend_info,
-            render_target_formats: &self.info.render_target_formats,
-            depth_stencil_format: self.info.depth_stencil_format
+            render_target_formats: &self.render_target_formats,
+            depth_stencil_format: self.depth_stencil_format
         };
 
         device.create_mesh_graphics_pipeline(&info, self.name().as_ref().map(|n| n as &str))
@@ -431,20 +399,11 @@ impl PipelineCompileTask for MeshGraphicsCompileTask {
 // COMPUTE
 //
 
+#[derive(Debug, Clone)]
 pub struct ComputeCompileTask {
-    handle: ShaderHandle,
+    shader_handle: ShaderHandle,
     is_async: bool,
-    _p: PhantomData<Device>,
-}
-
-impl Clone for ComputeCompileTask {
-    fn clone(&self) -> Self {
-        Self {
-            handle: self.handle,
-            is_async: self.is_async,
-            _p: PhantomData
-        }
-    }
+    handle: ComputePipelineHandle,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -465,28 +424,22 @@ impl Into<AssetHandle> for ComputePipelineHandle {
 impl PipelineCompileTask for ComputeCompileTask {
     type TShaders = Arc<Shader>;
     type TPipeline = crate::graphics::ComputePipeline;
+    type TPipelineHandle = ComputePipelineHandle;
 
     fn asset_type() -> AssetType {
         AssetType::ComputePipeline
     }
-    fn pipeline_from_asset_ref<'a>(asset: AssetRef<'a>) -> &'a CompiledPipeline<Self> {
-        if let AssetRef::ComputePipeline(pipeline) = asset {
-            pipeline
-        } else {
-            panic!("Asset has wrong type")
-        }
-    }
-
-    fn pipeline_into_asset(self, pipeline: Arc<Self::TPipeline>) -> Asset {
-        Asset::ComputePipeline(CompiledPipeline { task: self, pipeline })
-    }
 
     fn name(&self) -> Option<String> {
-        Some(format!("ComputePipeline: {:?}", self.handle))
+        Some(format!("ComputePipeline: {:?}", self.shader_handle))
     }
 
-    fn contains_shader(&self, handle: ShaderHandle) -> Option<ShaderType> {
-        if self.handle == handle {
+    fn handle(&self) -> Self::TPipelineHandle {
+        self.handle
+    }
+
+    fn contains_shader(&self, shader_handle: ShaderHandle) -> Option<ShaderType> {
+        if self.shader_handle == shader_handle {
             Some(ShaderType::ComputeShader)
         } else {
             None
@@ -494,7 +447,7 @@ impl PipelineCompileTask for ComputeCompileTask {
     }
 
     fn request_shader_refresh(&self, asset_manager: &Arc<AssetManager>) {
-        asset_manager.request_asset_refresh_by_handle(self.handle, AssetLoadPriority::High);
+        asset_manager.request_asset_refresh_by_handle(self.shader_handle, AssetLoadPriority::High);
     }
 
     fn can_compile(
@@ -502,14 +455,18 @@ impl PipelineCompileTask for ComputeCompileTask {
         renderer_assets_read: &RendererAssetsReadOnly<'_>,
         loaded_shader_handle: Option<ShaderHandle>,
     ) -> bool {
-        loaded_shader_handle.map_or(false, |s| s == self.handle) || renderer_assets_read.get(self.handle).is_some()
+        loaded_shader_handle.map_or(false, |s| s == self.shader_handle) || renderer_assets_read.get_shader(self.shader_handle).is_some()
     }
 
     fn collect_shaders_for_compilation(
         &self,
-        renderer_assets_read: RendererAssetsReadOnly<'_>
+        renderer_assets_read: &RendererAssetsReadOnly<'_>
     ) -> Self::TShaders {
-        renderer_assets_read.get_shader(self.handle).cloned().unwrap()
+        renderer_assets_read.get_shader(self.shader_handle).cloned().unwrap()
+    }
+
+    fn finished_pipelines<'a>(assets: &'a RendererAssetsReadOnly) -> Iter<'a, Self::TPipelineHandle, CompiledPipeline<Self>> {
+        assets.all_compute_pipelines()
     }
 
     fn compile(
@@ -533,27 +490,14 @@ pub struct RayTracingPipelineInfo<'a> {
     pub miss_shaders: &'a [&'a str],
 }
 
-#[derive(Debug)]
-pub struct StoredRayTracingPipelineInfo {
+#[derive(Debug, Clone)]
+pub struct RayTracingCompileTask {
     ray_gen_shader: ShaderHandle,
     closest_hit_shaders: SmallVec<[ShaderHandle; 4]>,
     any_hit_shaders: SmallVec<[ShaderHandle; 4]>,
     miss_shaders: SmallVec<[ShaderHandle; 1]>,
     is_async: bool,
-    _p: PhantomData<Device>,
-}
-
-impl Clone for StoredRayTracingPipelineInfo {
-    fn clone(&self) -> Self {
-        Self {
-            ray_gen_shader: self.ray_gen_shader.clone(),
-            closest_hit_shaders: self.closest_hit_shaders.clone(),
-            any_hit_shaders: self.any_hit_shaders.clone(),
-            miss_shaders: self.miss_shaders.clone(),
-            is_async: self.is_async,
-            _p: PhantomData
-        }
-    }
+    handle: RayTracingPipelineHandle,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -572,33 +516,27 @@ impl Into<AssetHandle> for RayTracingPipelineHandle {
 }
 
 pub struct RayTracingShaders {
-    pub ray_gen_shader: Arc<Shader>,
-    pub closest_hit_shaders: SmallVec<[Arc<Shader>; 4]>,
-    pub any_hit_shaders: SmallVec<[Arc<Shader>; 4]>,
-    pub miss_shaders: SmallVec<[Arc<Shader>; 4]>,
+    ray_gen_shader: Arc<Shader>,
+    closest_hit_shaders: SmallVec<[Arc<Shader>; 4]>,
+    any_hit_shaders: SmallVec<[Arc<Shader>; 4]>,
+    miss_shaders: SmallVec<[Arc<Shader>; 4]>,
 }
 
-impl PipelineCompileTask for StoredRayTracingPipelineInfo {
+impl PipelineCompileTask for RayTracingCompileTask {
     type TShaders = RayTracingShaders;
     type TPipeline = crate::graphics::RayTracingPipeline;
+    type TPipelineHandle = RayTracingPipelineHandle;
 
     fn asset_type() -> AssetType {
         AssetType::RayTracingPipeline
     }
-    fn pipeline_from_asset_ref<'a>(asset: AssetRef<'a>) -> &'a CompiledPipeline<Self> {
-        if let AssetRef::RayTracingPipeline(pipeline) = asset {
-            pipeline
-        } else {
-            panic!("Asset has wrong type")
-        }
-    }
-
-    fn pipeline_into_asset(self, pipeline: Arc<Self::TPipeline>) -> Asset {
-        Asset::RayTracingPipeline(CompiledPipeline { task: self, pipeline })
-    }
 
     fn name(&self) -> Option<String> {
         None
+    }
+
+    fn handle(&self) -> Self::TPipelineHandle {
+        self.handle
     }
 
     fn contains_shader(&self, handle: ShaderHandle) -> Option<ShaderType> {
@@ -639,7 +577,7 @@ impl PipelineCompileTask for StoredRayTracingPipelineInfo {
         renderer_assets_read: &RendererAssetsReadOnly<'_>,
         loaded_shader_handle: Option<ShaderHandle>,
     ) -> bool {
-        if !loaded_shader_handle.map_or(false, |s| s == self.ray_gen_shader) && !renderer_assets_read.get(self.ray_gen_shader).is_some()
+        if !loaded_shader_handle.map_or(false, |s| s == self.ray_gen_shader) && !renderer_assets_read.get_shader(self.ray_gen_shader).is_some()
         {
             return false;
         }
@@ -663,7 +601,7 @@ impl PipelineCompileTask for StoredRayTracingPipelineInfo {
 
     fn collect_shaders_for_compilation(
         &self,
-        renderer_assets_read: RendererAssetsReadOnly<'_>
+        renderer_assets_read: &RendererAssetsReadOnly<'_>
     ) -> Self::TShaders {
         Self::TShaders {
             ray_gen_shader: renderer_assets_read.get_shader(self.ray_gen_shader).cloned().unwrap(),
@@ -677,6 +615,10 @@ impl PipelineCompileTask for StoredRayTracingPipelineInfo {
                 .map(|shader| renderer_assets_read.get_shader(*shader).cloned().unwrap())
                 .collect(),
         }
+    }
+
+    fn finished_pipelines<'a>(assets: &'a RendererAssetsReadOnly) -> Iter<'a, Self::TPipelineHandle, CompiledPipeline<Self>> {
+        assets.all_ray_tracing_pipelines()
     }
 
     fn compile(
@@ -706,31 +648,29 @@ impl PipelineCompileTask for StoredRayTracingPipelineInfo {
 
 pub struct ShaderManager {
     device: Arc<Device>,
-    graphics: Arc<PipelineTypeManager<GraphicsPipelineHandle, GraphicsCompileTask>>,
-    mesh_graphics: Arc<PipelineTypeManager<MeshGraphicsPipelineHandle, MeshGraphicsCompileTask>>,
-    compute: Arc<PipelineTypeManager<ComputePipelineHandle, ComputeCompileTask>>,
-    rt: Arc<
-        PipelineTypeManager<RayTracingPipelineHandle, StoredRayTracingPipelineInfo>,
-    >
+    graphics: Arc<PipelineTypeManager<GraphicsCompileTask>>,
+    mesh_graphics: Arc<PipelineTypeManager<MeshGraphicsCompileTask>>,
+    compute: Arc<PipelineTypeManager<ComputeCompileTask>>,
+    rt: Arc<PipelineTypeManager<RayTracingCompileTask>>,
 }
 
-struct PipelineTypeManager<THandle, T>
+struct PipelineTypeManager<T>
 where
-    THandle: Hash + PartialEq + Eq + Clone + Copy + From<AssetHandle>,
     T: PipelineCompileTask,
 {
-    remaining_compilations: Mutex<HashMap<THandle, T>>,
+    remaining_compilations: Mutex<HashMap<T::TPipelineHandle, T>>,
     cond_var: Condvar,
+    compiled_unpulled_pipelines: Arc<Mutex<Vec<(T::TPipelineHandle, Arc<T::TPipeline>)>>>,
 }
 
-impl<THandle, T> PipelineTypeManager<THandle, T>
+impl<T> PipelineTypeManager<T>
 where
-    THandle: Hash + PartialEq + Eq + Clone + Copy + From<AssetHandle>,
     T: PipelineCompileTask,
 {
     fn new() -> Self {
         Self {
             remaining_compilations: Mutex::new(HashMap::new()),
+            compiled_unpulled_pipelines: Arc::new(Mutex::new(Vec::new())),
             cond_var: Condvar::new(),
         }
     }
@@ -770,7 +710,9 @@ impl ShaderManager {
         let (vs_handle, _) = asset_manager.request_asset(&info.vs, AssetType::Shader, AssetLoadPriority::Normal);
         let fs_handle = info.fs.as_ref().map(|fs| asset_manager.request_asset(fs, AssetType::Shader, AssetLoadPriority::Normal).0.into());
 
-        let stored = StoredGraphicsPipelineInfo {
+        let handle: GraphicsPipelineHandle = asset_manager.reserve_handle_without_path(AssetType::GraphicsPipeline).into();
+        let mut remaining = self.graphics.remaining_compilations.lock().unwrap();
+        remaining.insert(handle, GraphicsCompileTask {
             vs: vs_handle.into(),
             fs: fs_handle,
             vertex_layout: stored_input_layout,
@@ -779,18 +721,11 @@ impl ShaderManager {
             blend: stored_blend,
             primitive_type: info.primitive_type,
             render_target_formats: info.render_target_formats.iter().copied().collect(),
-            depth_stencil_format: info.depth_stencil_format
-        };
-
-        self.request_pipeline_internal(
-            asset_manager,
-            &self.graphics,
-            GraphicsCompileTask {
-                info: stored,
-                is_async: false,
-                _p: PhantomData,
-            },
-        )
+            depth_stencil_format: info.depth_stencil_format,
+            is_async: false,
+            handle,
+        });
+        handle
     }
 
     pub fn request_mesh_graphics_pipeline(
@@ -810,7 +745,9 @@ impl ShaderManager {
         let (ms_handle, _) = asset_manager.request_asset(&info.ms, AssetType::Shader, AssetLoadPriority::Normal);
         let fs_handle = info.fs.as_ref().map(|fs| asset_manager.request_asset(fs, AssetType::Shader, AssetLoadPriority::Normal).0.into());
 
-        let stored = StoredMeshGraphicsPipelineInfo {
+        let handle: MeshGraphicsPipelineHandle = asset_manager.reserve_handle_without_path(AssetType::MeshGraphicsPipeline).into();
+        let mut remaining = self.mesh_graphics.remaining_compilations.lock().unwrap();
+        remaining.insert(handle, MeshGraphicsCompileTask {
             ts: ts_handle,
             ms: ms_handle.into(),
             fs: fs_handle,
@@ -818,18 +755,11 @@ impl ShaderManager {
             depth_stencil: info.depth_stencil.clone(),
             blend: stored_blend,
             render_target_formats: info.render_target_formats.iter().copied().collect(),
-            depth_stencil_format: info.depth_stencil_format
-        };
-
-        self.request_pipeline_internal(
-            asset_manager,
-            &self.mesh_graphics,
-            MeshGraphicsCompileTask {
-                info: stored,
-                is_async: false,
-                _p: PhantomData,
-            },
-        )
+            depth_stencil_format: info.depth_stencil_format,
+            is_async: false,
+            handle,
+        });
+        handle
     }
 
     pub fn request_compute_pipeline(
@@ -837,15 +767,15 @@ impl ShaderManager {
         asset_manager: &Arc<AssetManager>,
         path: &str) -> ComputePipelineHandle {
         let (shader_handle, _) = asset_manager.request_asset(path, AssetType::Shader, AssetLoadPriority::Normal);
-        self.request_pipeline_internal(
-            asset_manager,
-            &self.compute,
-            ComputeCompileTask {
-                handle: shader_handle.into(),
-                is_async: false,
-                _p: PhantomData,
-            },
-        )
+
+        let handle: ComputePipelineHandle = asset_manager.reserve_handle_without_path(AssetType::ComputePipeline).into();
+        let mut remaining = self.compute.remaining_compilations.lock().unwrap();
+        remaining.insert(handle, ComputeCompileTask {
+            shader_handle: shader_handle.into(),
+            is_async: false,
+            handle,
+        });
+        handle
     }
 
     pub fn request_ray_tracing_pipeline(
@@ -853,74 +783,53 @@ impl ShaderManager {
         asset_manager: &Arc<AssetManager>,
         info: &RayTracingPipelineInfo,
     ) -> RayTracingPipelineHandle {
-        self.request_pipeline_internal(
-            asset_manager,
-            &self.rt,
-            StoredRayTracingPipelineInfo {
-                closest_hit_shaders: info.closest_hit_shaders.iter()
-                    .map(|path| asset_manager.request_asset(path, AssetType::Shader, AssetLoadPriority::Normal).0.into())
-                    .collect(),
-                any_hit_shaders: info.any_hit_shaders.iter()
-                    .map(|path| asset_manager.request_asset(path, AssetType::Shader, AssetLoadPriority::Normal).0.into())
-                    .collect(),
-                miss_shaders: info.miss_shaders.iter().map(|path| asset_manager.request_asset(path, AssetType::Shader, AssetLoadPriority::Normal).0.into()).collect(),
-                ray_gen_shader: asset_manager.request_asset(&info.ray_gen_shader, AssetType::Shader, AssetLoadPriority::Normal).0.into(),
-                is_async: false,
-                _p: PhantomData,
-            },
-        )
-    }
-
-    fn request_pipeline_internal<T, THandle>(
-        &self,
-        asset_manager: &Arc<AssetManager>,
-        pipeline_type_manager: &Arc<PipelineTypeManager<THandle, T>>,
-        task: T,
-    ) -> THandle
-    where
-        THandle: Hash + PartialEq + Eq + Clone + Copy + From<AssetHandle>,
-        T: PipelineCompileTask,
-    {
-        let handle: THandle = asset_manager.reserve_handle_without_path(T::asset_type()).into();
-        let mut remaining = pipeline_type_manager.remaining_compilations.lock().unwrap();
-        remaining.insert(handle, task);
+        let handle: RayTracingPipelineHandle = asset_manager.reserve_handle_without_path(AssetType::RayTracingPipeline).into();
+        let mut remaining = self.rt.remaining_compilations.lock().unwrap();
+        remaining.insert(handle, RayTracingCompileTask {
+            closest_hit_shaders: info.closest_hit_shaders.iter()
+                .map(|path| asset_manager.request_asset(path, AssetType::Shader, AssetLoadPriority::Normal).0.into())
+                .collect(),
+            any_hit_shaders: info.any_hit_shaders.iter()
+                .map(|path| asset_manager.request_asset(path, AssetType::Shader, AssetLoadPriority::Normal).0.into())
+                .collect(),
+            miss_shaders: info.miss_shaders.iter().map(|path| asset_manager.request_asset(path, AssetType::Shader, AssetLoadPriority::Normal).0.into()).collect(),
+            ray_gen_shader: asset_manager.request_asset(&info.ray_gen_shader, AssetType::Shader, AssetLoadPriority::Normal).0.into(),
+            is_async: false,
+            handle,
+        });
         handle
     }
 
-    fn collect_ready_pipeline_handles_for_new_shader_handle<THandle, T>(
+    fn collect_ready_pipeline_handles_for_new_shader_handle<T>(
         &self,
-        asset_manager: &Arc<AssetManager>,
-        pipeline_type_manager: &Arc<PipelineTypeManager<THandle, T>>,
+        assets_read: &RendererAssetsReadOnly,
+        pipeline_type_manager: &Arc<PipelineTypeManager<T>>,
         handle: ShaderHandle,
         shader: &RendererShader
-    ) -> SmallVec::<[THandle; 1]>
+    ) -> SmallVec::<[T; 1]>
     where
-        THandle: Hash + PartialEq + Eq + Clone + Copy + From<AssetHandle> + Into<AssetHandle> + 'static,
         T: PipelineCompileTask + 'static,
     {
         trace!("Integrating shader {:?} {:?}", shader.shader_type(), handle);
-        let mut ready_handles = SmallVec::<[THandle; 1]>::new();
+        let mut ready_handles = SmallVec::<[T::TPipelineHandle; 1]>::new();
+
         // Find all pipelines that use this shader and queue new compile tasks for those.
         // This is done because add_shader will get called when a shader has changed on disk, so we need to load
         // all remaining shaders of a pipeline and recompile it.
-
-        let assets_read = asset_manager.read_renderer_assets();
-        let mut remaining_compilations: crate::MutexGuard<'_, HashMap<THandle, T>> = pipeline_type_manager.remaining_compilations.lock().unwrap();
-        let compiled_pipeline_handles = assets_read.all_pipeline_handles(T::asset_type());
-        for pipeline_handle in compiled_pipeline_handles {
-            let asset_ref = assets_read.get(pipeline_handle).unwrap();
-            let pipeline: &CompiledPipeline<T> = T::pipeline_from_asset_ref(asset_ref);
+        let mut remaining_compilations: crate::MutexGuard<'_, HashMap<T::TPipelineHandle, T>> = pipeline_type_manager.remaining_compilations.lock().unwrap();
+        let finished_pipelines = T::finished_pipelines(assets_read);
+        for (pipeline_handle, pipeline) in finished_pipelines {
             let existing_pipeline_match = pipeline.task.contains_shader(handle);
             if let Some(shader_type) = existing_pipeline_match {
                 assert!(shader_type == shader.shader_type());
-                let typed_handle: THandle = pipeline_handle.into();
-                if !remaining_compilations.contains_key(&typed_handle) {
+                if !remaining_compilations.contains_key(&pipeline_handle) {
                     let task: T = pipeline.task.clone();
-                    remaining_compilations.insert(typed_handle, task);
+                    remaining_compilations.insert(*pipeline_handle, task);
                 }
             }
         }
 
+        // Go over all pipelines that can be compiled now.
         for (pipeline_handle, task) in remaining_compilations.iter() {
             let remaining_compile_match = task.contains_shader(handle);
             if let Some(shader_type) = remaining_compile_match {
@@ -932,148 +841,117 @@ impl ShaderManager {
                 }
             }
         }
-        ready_handles
+
+        let ready_tasks: SmallVec<[T; 1]> = ready_handles.iter()
+            .flat_map(|handle| remaining_compilations.remove(handle))
+            .collect();
+
+        ready_tasks
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    fn add_shader_type<THandle, T>(
+    fn add_shader_type<T>(
         &self,
-        asset_manager: &Arc<AssetManager>,
-        pipeline_type_manager: &Arc<PipelineTypeManager<THandle, T>>,
+        assets: &RendererAssetsReadOnly,
+        pipeline_type_manager: &Arc<PipelineTypeManager<T>>,
         handle: ShaderHandle,
         shader: &RendererShader
     ) -> bool
     where
-        THandle: Hash + PartialEq + Eq + Clone + Copy + Send + From<AssetHandle> + Into<AssetHandle> + 'static,
         T: PipelineCompileTask + Send + 'static,
     {
         trace!("Integrating shader {:?} {:?}", shader.shader_type(), handle);
-        let mut ready_handles = self.collect_ready_pipeline_handles_for_new_shader_handle(asset_manager, pipeline_type_manager, handle, shader);
+        let ready_tasks = self.collect_ready_pipeline_handles_for_new_shader_handle(assets, pipeline_type_manager, handle, shader);
 
-        if ready_handles.is_empty() {
+        if ready_tasks.is_empty() {
             trace!("Nothing to do with shader {:?} {:?}", shader.shader_type(), handle);
             return true;
         }
 
         trace!("Queuing compile tasks for pipelines with {:?} {:?}", shader.shader_type(), handle);
-        self.spawn_compile_task(ready_handles, asset_manager, pipeline_type_manager);
-
-        true
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    fn add_shader_type<THandle, T>(
-        &self,
-        asset_manager: &Arc<AssetManager>,
-        pipeline_type_manager: &Arc<PipelineTypeManager<THandle, T>>,
-        handle: ShaderHandle,
-        shader: &RendererShader
-    ) -> bool
-    where
-        THandle: Hash + PartialEq + Eq + Clone + Copy + From<AssetHandle> + Into<AssetHandle> + 'static,
-        T: PipelineCompileTask + 'static,
-    {
-        trace!("Integrating shader {:?} {:?}", shader.shader_type(), handle);
-        let mut ready_handles = self.collect_ready_pipeline_handles_for_new_shader_handle(asset_manager, pipeline_type_manager, handle, shader);
-
-        if ready_handles.is_empty() {
-            trace!("Nothing to do with shader {:?} {:?}", shader.shader_type(), handle);
-            return true;
-        }
-
-        trace!("Queuing compile tasks for pipelines with {:?} {:?}", shader.shader_type(), handle);
+        #[cfg(not(target_arch = "wasm32"))]
+        self.spawn_compile_task(ready_tasks, assets, pipeline_type_manager);
+        #[cfg(target_arch = "wasm32")]
         self.spawn_local_compile_task(ready_handles, asset_manager, pipeline_type_manager);
 
         true
     }
 
-    fn spawn_compile_task<THandle, T>(&self, mut ready_handles: SmallVec<[THandle; 1]>, asset_manager: &Arc<AssetManager>, pipeline_type_manager: &Arc<PipelineTypeManager<THandle, T>>)
-        where THandle: Hash + PartialEq + Eq + Clone + Copy + Send + From<AssetHandle> + Into<AssetHandle> + 'static,
-        T: PipelineCompileTask + Send + 'static {
-
-        let c_device = self.device.clone();
-        let c_manager: Arc<PipelineTypeManager<THandle, T>> = pipeline_type_manager.clone();
-        let c_asset_manager = asset_manager.clone();
-
+    #[allow(unused)]
+    fn spawn_compile_task<T>(
+        &self,
+        mut ready_tasks: SmallVec<[T; 1]>,
+        assets: &RendererAssetsReadOnly,
+        pipeline_type_manager: &Arc<PipelineTypeManager<T>>
+    )
+        where T: PipelineCompileTask + Send + 'static
+    {
         let task_pool = bevy_tasks::ComputeTaskPool::get();
-        let task = task_pool.spawn(async move {
-            crate::autoreleasepool(|| {
-                for handle in ready_handles.drain(..) {
-                    let task: T;
-                    let shaders: T::TShaders;
+        for task in ready_tasks.drain(..) {
+            let c_device = self.device.clone();
+            let c_manager: Arc<PipelineTypeManager<T>> = pipeline_type_manager.clone();
+            let c_delayed_pipeline = pipeline_type_manager.compiled_unpulled_pipelines.clone();
+            let shaders = task.collect_shaders_for_compilation(assets);
+            let handle = task.handle();
 
-                    let assets_read = c_asset_manager.read_renderer_assets();
-                    {
-                        let mut remaining_compilations = c_manager.remaining_compilations.lock().unwrap();
-                        let task_opt = remaining_compilations.remove(&handle);
-                        if task_opt.is_none() {
-                            continue;
-                        }
-                        task = task_opt.unwrap();
-                        shaders = task.collect_shaders_for_compilation(assets_read);
-                    };
-                    let pipeline: Arc<<T as PipelineCompileTask>::TPipeline> = task.compile(shaders, &c_device);
-                    let generic_handle: AssetHandle = handle.into();
-                    c_asset_manager.add_asset_with_handle(AssetWithHandle::combine(generic_handle, T::pipeline_into_asset(task, pipeline)));
-                }
-                c_manager.cond_var.notify_all();
-            })
-        });
-        task.detach();
+            let async_task = task_pool.spawn(async move {
+                crate::autoreleasepool(|| {
+                    let pipeline = task.compile(shaders, &c_device);
+                    let mut delayed_pipelines = c_delayed_pipeline.lock().unwrap();
+                    delayed_pipelines.push((handle, pipeline));
+                    c_manager.cond_var.notify_all();
+                })
+            });
+            async_task.detach();
+        }
     }
 
-    fn spawn_local_compile_task<THandle, T>(&self, mut ready_handles: SmallVec<[THandle; 1]>, asset_manager: &Arc<AssetManager>, pipeline_type_manager: &Arc<PipelineTypeManager<THandle, T>>)
-        where THandle: Hash + PartialEq + Eq + Clone + Copy + From<AssetHandle> + Into<AssetHandle> + 'static,
-        T: PipelineCompileTask + 'static {
 
-        let c_device = self.device.clone();
-        let c_manager: Arc<PipelineTypeManager<THandle, T>> = pipeline_type_manager.clone();
-        let c_asset_manager = asset_manager.clone();
-
+    #[allow(unused)]
+    fn spawn_local_compile_task<T>(
+        &self,
+        mut ready_tasks: SmallVec<[T; 1]>,
+        assets: &RendererAssetsReadOnly,
+        pipeline_type_manager: &Arc<PipelineTypeManager<T>>
+    )
+        where T: PipelineCompileTask + Send + 'static,
+    {
         let task_pool = bevy_tasks::ComputeTaskPool::get();
-        let task = task_pool.spawn_local(async move {
-            crate::autoreleasepool(|| {
-                for handle in ready_handles.drain(..) {
-                    let task: T;
-                    let shaders: T::TShaders;
+        for task in ready_tasks.drain(..) {
+            let c_device = self.device.clone();
+            let c_manager: Arc<PipelineTypeManager<T>> = pipeline_type_manager.clone();
+            let c_delayed_pipeline = pipeline_type_manager.compiled_unpulled_pipelines.clone();
+            let shaders = task.collect_shaders_for_compilation(assets);
+            let handle = task.handle();
 
-                    let assets_read = c_asset_manager.read_renderer_assets();
-                    {
-                        let mut remaining_compilations = c_manager.remaining_compilations.lock().unwrap();
-                        let task_opt = remaining_compilations.remove(&handle);
-                        if task_opt.is_none() {
-                            continue;
-                        }
-                        task = task_opt.unwrap();
-                        shaders = task.collect_shaders_for_compilation(assets_read);
-                    };
-                    let pipeline: Arc<<T as PipelineCompileTask>::TPipeline> = task.compile(shaders, &c_device);
-                    let generic_handle: AssetHandle = handle.into();
-                    c_asset_manager.add_asset_with_handle(AssetWithHandle::combine(generic_handle, T::pipeline_into_asset(task, pipeline)));
-                }
-                c_manager.cond_var.notify_all();
-            })
-        });
-        task.detach();
+            let async_task = task_pool.spawn_local(async move {
+                crate::autoreleasepool(|| {
+                    let pipeline = task.compile(shaders, &c_device);
+                    let mut delayed_pipelines = c_delayed_pipeline.lock().unwrap();
+                    delayed_pipelines.push((handle, pipeline));
+                    c_manager.cond_var.notify_all();
+                })
+            });
+            async_task.detach();
+        }
     }
 
-    pub fn add_shader(&self, asset_manager: &Arc<AssetManager>, handle: ShaderHandle, shader: &RendererShader) {
+    pub fn add_shader(&self, assets: &RendererAssetsReadOnly, handle: ShaderHandle, shader: &RendererShader) {
         let shader_type = shader.shader_type();
         if shader_type == ShaderType::ComputeShader {
-            self.add_shader_type(asset_manager, &self.compute, handle, shader);
+            self.add_shader_type(assets, &self.compute, handle, shader);
             return;
         }
 
         if shader_type == ShaderType::RayGen
             || shader_type == ShaderType::RayClosestHit
             || shader_type == ShaderType::RayMiss {
-            self.add_shader_type(asset_manager, &self.rt, handle, shader);
+            self.add_shader_type(assets, &self.rt, handle, shader);
             return;
         }
 
         if shader_type == ShaderType::FragmentShader {
-            self.add_shader_type(asset_manager, &self.graphics, handle, shader);
-            self.add_shader_type(asset_manager, &self.mesh_graphics, handle, shader);
+            self.add_shader_type(assets, &self.graphics, handle, shader);
+            self.add_shader_type(assets, &self.mesh_graphics, handle, shader);
             return;
         }
 
@@ -1081,13 +959,13 @@ impl ShaderManager {
             || shader_type == ShaderType::GeometryShader
             || shader_type == ShaderType::TessellationControlShader
             || shader_type == ShaderType::TessellationEvaluationShader {
-            self.add_shader_type(asset_manager, &self.graphics, handle, shader);
+            self.add_shader_type(assets, &self.graphics, handle, shader);
             return;
         }
 
         if shader_type == ShaderType::MeshShader
             || shader_type == ShaderType::TaskShader {
-            self.add_shader_type(asset_manager, &self.mesh_graphics, handle, shader);
+            self.add_shader_type(assets, &self.mesh_graphics, handle, shader);
             return;
         }
 

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use bevy_math::Affine3A;
 use sourcerenderer_core::{
     Matrix4,
@@ -7,10 +5,9 @@ use sourcerenderer_core::{
     Vec2I,
     Vec2UI,
 };
-use crate::asset::AssetManager;
 use crate::graphics::CommandBuffer;
 
-use crate::renderer::asset::{GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssetsReadOnly};
+use crate::renderer::asset::{GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::passes::taa::scaled_halton_point;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
@@ -51,7 +48,7 @@ impl Prepass {
     #[allow(unused)]
     pub fn new(
         resources: &mut RendererResources,
-        asset_manager: &Arc<AssetManager>,
+        assets: &RendererAssets,
         resolution: Vec2UI,
     ) -> Self {
         let depth_info = TextureInfo {
@@ -128,7 +125,7 @@ impl Prepass {
             ],
             depth_stencil_format: Format::D24S8
         };
-        let pipeline = asset_manager.request_graphics_pipeline(&pipeline_info);
+        let pipeline = assets.request_graphics_pipeline(&pipeline_info);
 
         Self { pipeline }
     }

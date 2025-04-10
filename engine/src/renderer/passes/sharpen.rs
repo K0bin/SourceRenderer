@@ -1,9 +1,6 @@
-use std::sync::Arc;
-
 use sourcerenderer_core::Vec2UI;
 
 use super::taa::TAAPass;
-use crate::asset::AssetManager;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
@@ -25,9 +22,9 @@ impl SharpenPass {
     pub fn new(
         resolution: Vec2UI,
         resources: &mut RendererResources,
-        asset_manager: &Arc<AssetManager>
+        assets: &RendererAssets,
     ) -> Self {
-        let pipeline = asset_manager.request_compute_pipeline(if !USE_CAS {
+        let pipeline = assets.request_compute_pipeline(if !USE_CAS {
             "shaders/sharpen.comp.json"
         } else {
             "shaders/cas.comp.json"

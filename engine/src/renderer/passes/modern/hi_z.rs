@@ -3,13 +3,12 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 use sourcerenderer_core::Vec2;
 
-use crate::asset::AssetManager;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::asset::{ComputePipelineHandle, RendererAssetsReadOnly};
+use crate::renderer::asset::{ComputePipelineHandle, RendererAssets, RendererAssetsReadOnly};
 use crate::graphics::*;
 
 pub struct HierarchicalZPass {
@@ -26,7 +25,7 @@ impl HierarchicalZPass {
     pub fn new(
         device: &Arc<Device>,
         resources: &mut RendererResources,
-        asset_manager: &Arc<AssetManager>,
+        assets: &RendererAssets,
         init_cmd_buffer: &mut CommandBuffer,
         depth_name: &str,
     ) -> Self {
@@ -39,8 +38,8 @@ impl HierarchicalZPass {
         resources.create_texture(Self::HI_Z_BUFFER_NAME, &texture_info, false);
 
         let ffx_pipeline =
-            asset_manager.request_compute_pipeline("shaders/ffx_downsampler.comp.json");
-        let copy_pipeline = asset_manager.request_compute_pipeline("shaders/hi_z_copy.comp.json");
+            assets.request_compute_pipeline("shaders/ffx_downsampler.comp.json");
+        let copy_pipeline = assets.request_compute_pipeline("shaders/hi_z_copy.comp.json");
 
         let sampler = if device.supports_min_max_filter() {
             Arc::new(device.create_sampler(&SamplerInfo {

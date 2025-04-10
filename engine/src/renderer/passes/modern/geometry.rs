@@ -18,7 +18,6 @@ use crate::renderer::passes::light_binning;
 use crate::renderer::passes::ssao::SsaoPass;
 use crate::renderer::passes::taa::scaled_halton_point;
 use crate::renderer::asset::*;
-use crate::asset::*;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
@@ -65,7 +64,7 @@ impl GeometryPass {
         device: &Arc<Device>,
         swapchain: &Swapchain,
         resources: &mut RendererResources,
-        asset_manager: &Arc<AssetManager>,
+        assets: &RendererAssets,
     ) -> Self {
         let texture_info = TextureInfo {
             dimension: TextureDimension::Dim2D,
@@ -212,7 +211,7 @@ impl GeometryPass {
             depth_stencil_format: Format::D24S8
         };
 
-        let pipeline = asset_manager.request_graphics_pipeline(&pipeline_info);
+        let pipeline = assets.request_graphics_pipeline(&pipeline_info);
 
         Self {
             sampler,

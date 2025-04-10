@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use sourcerenderer_core::Vec2UI;
 
-use crate::asset::AssetManager;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
@@ -24,7 +23,7 @@ impl PathTracerPass {
         device: &Device,
         resolution: Vec2UI,
         resources: &mut RendererResources,
-        asset_manager: &Arc<AssetManager>,
+        assets: &RendererAssets,
         _init_cmd_buffer: &mut CommandBuffer,
     ) -> Self {
         resources.create_texture(
@@ -44,7 +43,7 @@ impl PathTracerPass {
             true,
         );
 
-        let pipeline = asset_manager.request_compute_pipeline("shaders/path_tracer.comp.json");
+        let pipeline = assets.request_compute_pipeline("shaders/path_tracer.comp.json");
 
         let sampler = device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Linear,

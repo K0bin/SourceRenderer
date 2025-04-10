@@ -36,8 +36,8 @@ impl<P: Platform> Plugin for AssetManagerPlugin<P> {
 fn load_level_system(world: &mut World) {
     let asset_manager_res = world.get_resource::<AssetManagerECSResource>().unwrap();
     let asset_manager = &asset_manager_res.0;
-    let level_opt = asset_manager.take_any_unintegrated_asset_data_of_type(AssetType::Level);
-    if let Some(AssetData::Level(level)) = level_opt {
+    let level_opt = asset_manager.receive_asset_data(AssetTypeGroup::Level);
+    if let Some(LoadedAssetData { data: AssetData::Level(level), .. }) = level_opt {
         level.import_into_world(world);
     }
 }

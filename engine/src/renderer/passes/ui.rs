@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use sourcerenderer_core::Vec2;
 
-use crate::{asset::AssetManager, renderer::{asset::{GraphicsPipelineHandle, RendererAssetsReadOnly}, render_path::RenderPassParameters, renderer_resources::HistoryResourceEntry}, ui::UIDrawData};
+use crate::{renderer::{asset::{GraphicsPipelineHandle, RendererAssets, RendererAssetsReadOnly}, render_path::RenderPassParameters, renderer_resources::HistoryResourceEntry}, ui::UIDrawData};
 use crate::graphics::*;
 use crate::renderer::asset::GraphicsPipelineInfo;
 
@@ -12,8 +12,8 @@ pub struct UIPass {
 
 impl UIPass {
     #[allow(unused)]
-    pub fn new(device: &Arc<Device>, asset_manager: &Arc<AssetManager>) -> Self {
-        let pipeline = asset_manager.request_graphics_pipeline(&GraphicsPipelineInfo {
+    pub fn new(device: &Arc<Device>, assets: &RendererAssets) -> Self {
+        let pipeline = assets.request_graphics_pipeline(&GraphicsPipelineInfo {
             vs: "shaders/dear_imgui.vert.json",
             fs: Some("shaders/dear_imgui.frag.json"),
             vertex_layout: VertexLayoutInfo {

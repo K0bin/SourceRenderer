@@ -1,8 +1,6 @@
-use std::sync::Arc;
-
 use sourcerenderer_core::{Vec2, Vec2I, Vec2UI};
 
-use crate::{asset::AssetManager, graphics::*, renderer::{asset::{GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssetsReadOnly}, renderer_resources::RendererResources}};
+use crate::{graphics::*, renderer::{asset::{GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssets, RendererAssetsReadOnly}, renderer_resources::RendererResources}};
 
 pub struct BlitPass {
     pipeline_handle: GraphicsPipelineHandle
@@ -12,10 +10,10 @@ impl BlitPass {
     #[allow(unused)]
     pub fn new(
         _barriers: &mut RendererResources,
-        asset_manager: &Arc<AssetManager>,
+        assets: &RendererAssets,
         dst_format: Format
     ) -> Self {
-        let pipeline = asset_manager.request_graphics_pipeline(
+        let pipeline = assets.request_graphics_pipeline(
             &GraphicsPipelineInfo {
                 vs: "shaders/fullscreen_quad.vert.json",
                 fs: Some("shaders/blit.frag.json"),

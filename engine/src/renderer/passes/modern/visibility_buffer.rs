@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use sourcerenderer_core::{
     Vec2,
     Vec2I,
@@ -8,15 +6,13 @@ use sourcerenderer_core::{
 
 use super::draw_prep::DrawPrepPass;
 use super::gpu_scene::DRAW_CAPACITY;
-use crate::asset::AssetManager;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
 use crate::renderer::asset::{
-    GraphicsPipelineHandle,
-    GraphicsPipelineInfo, RendererAssetsReadOnly
+    GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssets, RendererAssetsReadOnly
 };
 
 use crate::graphics::*;
@@ -33,7 +29,7 @@ impl VisibilityBufferPass {
     pub fn new(
         resolution: Vec2UI,
         resources: &mut RendererResources,
-        asset_manager: &Arc<AssetManager>,
+        assets: &RendererAssets,
     ) -> Self {
         let barycentrics_texture_info = TextureInfo {
             dimension: TextureDimension::Dim2D,
@@ -139,7 +135,7 @@ impl VisibilityBufferPass {
             render_target_formats: &[primitive_id_texture_info.format, barycentrics_texture_info.format],
             depth_stencil_format: depth_texture_info.format
         };
-        let pipeline = asset_manager.request_graphics_pipeline(&pipeline_info);
+        let pipeline = assets.request_graphics_pipeline(&pipeline_info);
 
         Self { pipeline }
     }

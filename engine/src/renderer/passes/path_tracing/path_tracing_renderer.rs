@@ -2,9 +2,8 @@ use std::sync::Arc;
 
 use smallvec::SmallVec;
 use crate::graphics::gpu::TextureViewInfo;
-use crate::asset::AssetManager;
 use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, Device, MemoryUsage, QueueSubmission, QueueType, Swapchain, SwapchainError, TextureLayout, WHOLE_BUFFER};
-use crate::renderer::asset::RendererAssetsReadOnly;
+use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::passes::blit::BlitPass;
 use sourcerenderer_core::{
     Matrix4, Vec2, Vec2UI, Vec3, Vec3UI
@@ -41,7 +40,7 @@ impl PathTracingRenderer {
         swapchain: &crate::graphics::Swapchain,
         context: &mut GraphicsContext,
         resources: &mut RendererResources,
-        asset_manager: &Arc<AssetManager>,
+        assets: &RendererAssets,
     ) -> Self {
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
         let resolution = Vec2UI::new(swapchain.width() * 2, swapchain.height() * 2);
@@ -55,8 +54,8 @@ impl PathTracingRenderer {
             device,
             &mut init_cmd_buffer,
         );
-        let blit_pass = BlitPass::new(resources, asset_manager, swapchain.format());
-        let path_tracer_pass = PathTracerPass::new(device, resolution, resources, asset_manager, &mut init_cmd_buffer);
+        let blit_pass = BlitPass::new(resources, assets, swapchain.format());
+        let path_tracer_pass = PathTracerPass::new(device, resolution, resources, assets, &mut init_cmd_buffer);
 
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
@@ -229,8 +228,7 @@ impl RenderPath for PathTracingRenderer {
         // TODO: resize render targets
     }
 
-    fn is_ready(&self, asset_manager: &Arc<AssetManager>) -> bool {
-        let assets = asset_manager.read_renderer_assets();
+    fn is_ready(&self, assets: &RendererAssetsReadOnly) -> bool {
         self.path_tracer.is_ready(&assets)
     }
 

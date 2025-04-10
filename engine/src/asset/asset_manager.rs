@@ -18,14 +18,15 @@ use std::task::{Poll, Waker};
 use bevy_tasks::futures_lite::io::{Cursor, AsyncAsSync};
 use bevy_tasks::futures_lite::AsyncSeekExt;
 use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use futures_io::{AsyncRead, AsyncSeek};
 use sourcerenderer_core::Vec4;
+use strum::VariantArray as _;
 
 use crate::math::BoundingBox;
-use crate::graphics::{GraphicsContext, TextureInfo};
-use crate::renderer::asset::{ComputePipelineHandle, GraphicsPipelineHandle, GraphicsPipelineInfo, RayTracingPipelineHandle, RayTracingPipelineInfo, RendererAssets, RendererAssetsReadOnly};
+use crate::graphics::TextureInfo;
 
-use super::{Asset, AssetData, AssetHandle, AssetType, AssetWithHandle, MaterialData, MeshData, MeshRange, ModelData, TextureData};
+use super::{AssetData, AssetHandle, AssetType, AssetTypeGroup, MaterialData, MeshData, MeshRange, ModelData, TextureData};
 
 pub struct AssetLoadRequest {
     pub path: String,
@@ -220,6 +221,13 @@ impl AsyncCounter {
 
 const LOAD_PRIORITY_THRESHOLD: u32 = 4;
 
+pub struct LoadedAssetData {
+    pub handle: AssetHandle,
+    pub data: AssetData,
+    pub priority: AssetLoadPriority,
+}
+
+
 pub struct AssetManager {
     device: Arc<crate::graphics::Device>,
     containers: async_rwlock::RwLock<Vec<Box<dyn ErasedAssetContainer>>>,
@@ -231,20 +239,23 @@ pub struct AssetManager {
     path_map: Mutex<HashMap<String, AssetHandle>>,
     next_asset_handle: AtomicU64,
     requested_assets: Mutex<HashSet<AssetHandle>>,
-    unintegrated_assets: Mutex<HashMap<AssetHandle, AssetData>>,
-    renderer: RendererAssets,
+    channels: HashMap<AssetTypeGroup, (Sender<LoadedAssetData>, Receiver<LoadedAssetData>)>,
 }
 
 impl AssetManager {
     pub fn new(
         device: &Arc<crate::graphics::Device>,
     ) -> Arc<Self> {
+        let mut channels = HashMap::<AssetTypeGroup, (Sender<LoadedAssetData>, Receiver<LoadedAssetData>)>::new();
+        for group in AssetTypeGroup::VARIANTS {
+            let channel = unbounded();
+            channels.insert(*group, channel);
+        }
+
         let manager = Arc::new(Self {
             device: device.clone(),
             loaders: async_rwlock::RwLock::new(Vec::new()),
             containers: async_rwlock::RwLock::new(Vec::new()),
-            unintegrated_assets: Mutex::new(HashMap::new()),
-            renderer: RendererAssets::new(device),
             path_map: Mutex::new(HashMap::new()),
             next_asset_handle: AtomicU64::new(1),
             requested_assets: Mutex::new(HashSet::new()),
@@ -252,6 +263,7 @@ impl AssetManager {
             pending_loaders: AsyncCounter::new(0),
             pending_high_priority_loads: AsyncCounter::new(LOAD_PRIORITY_THRESHOLD),
             pending_normal_priority_loads: AsyncCounter::new(LOAD_PRIORITY_THRESHOLD),
+            channels,
         });
 
         manager
@@ -312,18 +324,6 @@ impl AssetManager {
             }),
             AssetLoadPriority::Normal,
         );
-    }
-
-    pub fn request_graphics_pipeline(self: &Arc<Self>, info: &GraphicsPipelineInfo) -> GraphicsPipelineHandle {
-        self.renderer.request_graphics_pipeline(self, info)
-    }
-
-    pub fn request_compute_pipeline(self: &Arc<Self>, shader_path: &str) -> ComputePipelineHandle {
-        self.renderer.request_compute_pipeline(self, shader_path)
-    }
-
-    pub fn request_ray_tracing_pipeline(self: &Arc<Self>, info: &RayTracingPipelineInfo) -> RayTracingPipelineHandle {
-        self.renderer.request_ray_tracing_pipeline(self, info)
     }
 
     pub fn add_container_async(
@@ -400,21 +400,17 @@ impl AssetManager {
     ) {
         let handle = self.get_or_reserve_handle(path, asset_data.asset_type());
         log::trace!("Adding asset data for path: {:?} {} to handle: {:?}", asset_data.asset_type(), path, handle);
-        let integrated = if asset_data.is_renderer_asset() {
-            self.renderer.integrate(self, handle, &asset_data, priority);
-            true
-        } else if let AssetData::Level(_level) = &asset_data {
-            // Remove unintegrated level before loading a new one
-            let _ = self.take_any_unintegrated_asset_data_of_type(AssetType::Level);
-            false
-        } else {
-            unimplemented!()
-        };
 
-        if !integrated {
-            let mut unintegrated_list = self.unintegrated_assets.lock().unwrap();
-            unintegrated_list.insert(handle, asset_data);
-        }
+        let asset_type = asset_data.asset_type();
+        let group = asset_type.group();
+        let (sender, _) = self.channels.get(&group).unwrap();
+
+        sender.send(LoadedAssetData {
+            handle,
+            data: asset_data,
+            priority,
+        }).unwrap();
+
         if let Some(progress) = progress {
             progress.finished.fetch_add(1, Ordering::SeqCst);
         }
@@ -445,28 +441,6 @@ impl AssetManager {
         AssetHandle::new(self.next_asset_handle.fetch_add(1, Ordering::AcqRel), asset_type)
     }
 
-    pub fn add_asset(
-        &self,
-        path: &str,
-        asset: Asset
-    ) {
-        log::trace!("Adding asset of type {:?} with path {}", asset.asset_type(), path);
-        let handle = self.get_or_reserve_handle(path, asset.asset_type());
-        self.add_asset_with_handle(AssetWithHandle::combine(handle, asset));
-    }
-
-    pub fn add_asset_with_handle(
-        &self,
-        asset: AssetWithHandle
-    ) {
-        log::trace!("Adding asset of type {:?} with handle {:?}", asset.asset_type(), asset.handle());
-        if asset.is_renderer_asset() {
-            self.renderer.add_asset(asset);
-        } else {
-            unimplemented!();
-        }
-    }
-
     pub fn request_asset_update(self: &Arc<Self>, path: &str) {
         let handle = {
             let path_map = self.path_map.lock().unwrap();
@@ -477,10 +451,8 @@ impl AssetManager {
             handle_opt.unwrap()
         };
 
-        if self.is_loaded(handle) {
-            log::info!("Reloading: {}", path);
-            self.request_asset_internal(path, handle.asset_type(), AssetLoadPriority::Low, None, true);
-        }
+        log::info!("Reloading: {}", path);
+        self.request_asset_internal(path, handle.asset_type(), AssetLoadPriority::Low, None);
     }
 
     pub fn request_asset(
@@ -489,7 +461,7 @@ impl AssetManager {
         asset_type: AssetType,
         priority: AssetLoadPriority,
     ) -> (AssetHandle, Arc<AssetLoaderProgress>) {
-        self.request_asset_internal(path, asset_type, priority, None, false)
+        self.request_asset_internal(path, asset_type, priority, None)
     }
 
     pub fn request_asset_refresh_by_handle<T: Into<AssetHandle>>(
@@ -515,7 +487,7 @@ impl AssetManager {
                 return (handle, Arc::new(AssetLoaderProgress { expected: AtomicU32::new(1), finished: AtomicU32::new(1) }));
             }
         }
-        self.request_asset_internal(&path, handle.asset_type(), priority, None, false)
+        self.request_asset_internal(&path, handle.asset_type(), priority, None)
     }
 
     pub fn request_asset_with_progress(
@@ -525,7 +497,7 @@ impl AssetManager {
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> (AssetHandle, Arc<AssetLoaderProgress>) {
-        self.request_asset_internal(path, asset_type, priority, Some(progress), false)
+        self.request_asset_internal(path, asset_type, priority, Some(progress))
     }
 
     fn request_asset_internal(
@@ -534,7 +506,6 @@ impl AssetManager {
         asset_type: AssetType,
         priority: AssetLoadPriority,
         progress: Option<&Arc<AssetLoaderProgress>>,
-        refresh: bool,
     ) -> (AssetHandle, Arc<AssetLoaderProgress>) {
         let progress = progress.map_or_else(
             || {
@@ -546,11 +517,6 @@ impl AssetManager {
             |p| p.clone(),
         );
         progress.expected.fetch_add(1, Ordering::SeqCst);
-
-        if asset_type == AssetType::Level {
-            // Remove unintegrated level before loading a new one
-            let _ = self.take_any_unintegrated_asset_data_of_type(AssetType::Level);
-        }
 
         let handle = self.get_or_reserve_handle(path, asset_type);
 
@@ -565,24 +531,6 @@ impl AssetManager {
                 }
             }
         };
-
-        let already_loaded = self.is_loaded(handle);
-        if already_loaded {
-            if handle.asset_type() != asset_type {
-                log::error!("Requested an asset with the same path as a previously loaded asset but with a different asset type. Path: {}, requested asset type: {:?}, previously loaded asset type: {:?}.", path, asset_type, handle.asset_type());
-                progress.finished.fetch_add(1, Ordering::SeqCst);
-                return (handle, progress);
-            }
-            if !refresh {
-                log::trace!("Skipping asset request because it is already loaded and request did not specify that it should be refreshed. Path: {}, asset type: {:?}.", path, asset_type);
-                progress.finished.fetch_add(1, Ordering::SeqCst);
-                return (handle, progress);
-            }
-        } else if refresh {
-            log::trace!("Skipping asset request because it is a refresh request on an asset that isn't loaded. Path: {}, asset type: {:?}.", path, asset_type);
-            progress.finished.fetch_add(1, Ordering::SeqCst);
-            return (handle, progress);
-        }
 
         let load_request = AssetLoadRequest {
             path: path.to_owned(),
@@ -634,10 +582,14 @@ impl AssetManager {
         (handle, progress)
     }
 
-    pub(crate) fn take_any_unintegrated_asset_data_of_type(self: &Arc<Self>, asset_type: AssetType) -> Option<AssetData> {
-        let mut unintegrated = self.unintegrated_assets.lock().unwrap();
-        let path = unintegrated.iter().find_map(|(path, asset)| (asset.asset_type() == asset_type).then(|| path.clone()));
-        path.and_then(|path| unintegrated.remove(&path))
+    pub fn receive_asset_data_blocking(&self, asset_group: AssetTypeGroup) -> LoadedAssetData {
+        let (_, receiver) = self.channels.get(&asset_group).unwrap();
+        receiver.recv().unwrap()
+    }
+
+    pub fn receive_asset_data(&self, asset_group: AssetTypeGroup) -> Option<LoadedAssetData> {
+        let (_, receiver) = self.channels.get(&asset_group).unwrap();
+        receiver.try_recv().ok()
     }
 
     pub async fn load_file(self: &Arc<Self>, path: &str) -> Option<AssetFile> {
@@ -722,50 +674,7 @@ impl AssetManager {
             log::error!("Could not load file: {:?}", &path);
             return Err(());
         }
-        if let Some(existing_asset_type) = self.contains(&path) {
-            if existing_asset_type != handle.asset_type() {
-                log::error!("Loader did load the wrong asset type from file: {:?}", &path);
-                return Err(());
-            }
-        }
         Ok(())
-    }
-
-    pub fn contains(&self, path: &str) -> Option<AssetType> {
-        let handle = {
-            let path_map = self.path_map.lock().unwrap();
-            path_map.get(path).copied()?
-        };
-
-        if handle.asset_type().is_renderer_asset() && self.renderer.contains(handle) {
-            return Some(handle.asset_type());
-        }
-
-        {
-            let unintegrated = self.unintegrated_assets.lock().unwrap();
-            if let Some(asset) = unintegrated.get(&handle) {
-                return Some(asset.asset_type());
-            }
-        }
-
-        None
-    }
-
-    pub fn is_loaded<T: Into<AssetHandle>>(&self, handle: T) -> bool {
-        let handle: AssetHandle = handle.into();
-        if handle.asset_type().is_renderer_asset() {
-            return self.renderer.contains(handle);
-        }
-
-        {
-            let unintegrated = self.unintegrated_assets.lock().unwrap();
-            if let Some(asset) = unintegrated.get(&handle) {
-                assert_eq!(asset.asset_type(), handle.asset_type());
-                return true;
-            }
-        }
-
-        false
     }
 
     pub fn get_or_reserve_handle(&self, path: &str, asset_type: AssetType) -> AssetHandle {
@@ -780,18 +689,5 @@ impl AssetManager {
         }
 
         self.reserve_handle(path, asset_type)
-    }
-
-    pub(crate) fn read_renderer_assets(&self) -> RendererAssetsReadOnly {
-        self.renderer.read()
-    }
-
-    pub(crate) fn flush_renderer_assets(self: &Arc<Self>) {
-        self.renderer.flush(self);
-    }
-
-    #[inline(always)]
-    pub(crate) fn bump_frame(&self, context: &GraphicsContext) {
-        self.renderer.bump_frame(context);
     }
 }

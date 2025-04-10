@@ -2,7 +2,6 @@ use std::cell::Ref;
 use std::sync::Arc;
 
 use rand::random;
-use crate::asset::AssetManager;
 use crate::graphics::*;
 use sourcerenderer_core::{
     Vec2UI,
@@ -35,7 +34,7 @@ impl SsaoPass {
         device: &Arc<Device>,
         resolution: Vec2UI,
         resources: &mut RendererResources,
-        asset_manager: &Arc<AssetManager>,
+        assets: &RendererAssets,
         visibility_buffer: bool,
     ) -> Self {
         resources.create_texture(
@@ -72,13 +71,13 @@ impl SsaoPass {
             true,
         );
 
-        let pipeline = asset_manager.request_compute_pipeline("shaders/ssao.comp.json");
+        let pipeline = assets.request_compute_pipeline("shaders/ssao.comp.json");
 
         // TODO: Clear history texture
 
         let kernel = Self::create_hemisphere(device, 64);
 
-        let blur_pipeline = asset_manager.request_compute_pipeline(if !visibility_buffer {
+        let blur_pipeline = assets.request_compute_pipeline(if !visibility_buffer {
             "shaders/ssao_blur.comp.json"
         } else {
             "shaders/ssao_blur_vis_buf.comp.json"

@@ -6,8 +6,7 @@ use sourcerenderer_core::{
     Vec2UI,
 };
 
-use crate::asset::AssetManager;
-use crate::renderer::asset::{ComputePipelineHandle, RendererAssetsReadOnly};
+use crate::renderer::asset::{ComputePipelineHandle, RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
@@ -55,10 +54,10 @@ impl TAAPass {
     pub fn new(
         resolution: Vec2UI,
         resources: &mut RendererResources,
-        asset_manager: &Arc<AssetManager>,
+        assets: &RendererAssets,
         visibility_buffer: bool,
     ) -> Self {
-        let pipeline = asset_manager.request_compute_pipeline(if !visibility_buffer {
+        let pipeline = assets.request_compute_pipeline(if !visibility_buffer {
             "shaders/taa.comp.json"
         } else {
             "shaders/taa_vis_buf.comp.json"

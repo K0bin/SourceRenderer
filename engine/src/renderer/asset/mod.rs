@@ -11,4 +11,11 @@ pub use asset_placeholders::*;
 pub use asset_types::*;
 pub use renderer_assets::*;
 use shader_manager::*;
-pub use shader_manager::{ComputePipelineHandle, GraphicsPipelineHandle, RayTracingPipelineHandle, GraphicsPipelineInfo, RayTracingPipelineInfo};
+pub use shader_manager::{
+    ComputePipelineHandle,
+    MeshGraphicsPipelineHandle,
+    GraphicsPipelineHandle,
+    RayTracingPipelineHandle,
+    GraphicsPipelineInfo,
+    RayTracingPipelineInfo
+};

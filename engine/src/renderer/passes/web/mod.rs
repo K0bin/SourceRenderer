@@ -2,9 +2,8 @@ use std::sync::Arc;
 
 use sourcerenderer_core::{Vec4, Matrix4};
 
-use crate::asset::AssetManager;
 use crate::graphics::GraphicsContext;
-use crate::renderer::asset::RendererAssetsReadOnly;
+use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::render_path::{
     FrameInfo, RenderPath, RenderPathResult, SceneInfo
 };
@@ -43,12 +42,12 @@ impl WebRenderer {
         swapchain: &Swapchain,
         context: &mut GraphicsContext,
         resources: &mut RendererResources,
-        asset_manager: &Arc<AssetManager>
+        assets: &RendererAssets,
     ) -> Self {
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
         let geometry_pass = GeometryPass::new(
             device,
-            asset_manager,
+            assets,
             swapchain,
             &mut init_cmd_buffer,
             resources,
@@ -89,8 +88,7 @@ impl RenderPath for WebRenderer {
     ) {
     }
 
-    fn is_ready(&self, asset_manager: &Arc<AssetManager>) -> bool {
-        let assets = asset_manager.read_renderer_assets();
+    fn is_ready(&self, assets: &RendererAssetsReadOnly) -> bool {
         self.geometry.is_ready(&assets)
     }
 

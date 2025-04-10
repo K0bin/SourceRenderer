@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
 use smallvec::SmallVec;
-use crate::asset::AssetManager;
 use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, Device, QueueSubmission, QueueType, Swapchain, SwapchainError, TextureInfo, TextureLayout, WHOLE_BUFFER};
-use crate::renderer::asset::RendererAssetsReadOnly;
+use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
 use sourcerenderer_core::{
     Matrix4,
     Vec2,
@@ -94,54 +93,54 @@ impl ModernRenderer {
         swapchain: &crate::graphics::Swapchain,
         context: &mut GraphicsContext,
         resources: &mut RendererResources,
-        asset_manager: &Arc<AssetManager>
+        assets: &RendererAssets,
     ) -> Self {
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
         let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
 
         let blue_noise = BlueNoise::new(device);
 
-        let clustering = ClusteringPass::new(resources, asset_manager);
-        let light_binning = LightBinningPass::new(resources, asset_manager);
-        let ssao = SsaoPass::new(device, resolution, resources, asset_manager, true);
+        let clustering = ClusteringPass::new(resources, assets);
+        let light_binning = LightBinningPass::new(resources, assets);
+        let ssao = SsaoPass::new(device, resolution, resources, assets, true);
         let rt_passes = (device.supports_ray_tracing_pipeline() && false).then(|| RTPasses {
             acceleration_structure_update: AccelerationStructureUpdatePass::new(
                 device,
                 &mut init_cmd_buffer,
             ),
-            shadows: RTShadowPass::new(resolution, resources, asset_manager),
+            shadows: RTShadowPass::new(resolution, resources, assets),
         });
         let visibility_buffer =
-            VisibilityBufferPass::new(resolution, resources, asset_manager);
-        let draw_prep = DrawPrepPass::new(resources, asset_manager);
+            VisibilityBufferPass::new(resolution, resources, assets);
+        let draw_prep = DrawPrepPass::new(resources, assets);
         let hi_z_pass = HierarchicalZPass::new(
             device,
             resources,
-            asset_manager,
+            assets,
             &mut init_cmd_buffer,
             VisibilityBufferPass::DEPTH_TEXTURE_NAME,
         );
-        let ssr_pass = SsrPass::new(resolution, resources, asset_manager, true);
+        let ssr_pass = SsrPass::new(resolution, resources, assets, true);
         let shading_pass = ShadingPass::new(
             device,
             resolution,
             resources,
-            asset_manager,
+            assets,
             &mut init_cmd_buffer,
         );
-        let compositing_pass = CompositingPass::new(resolution, resources, asset_manager);
+        let compositing_pass = CompositingPass::new(resolution, resources, assets);
         let motion_vector_pass =
-            MotionVectorPass::new(resources, resolution, asset_manager);
+            MotionVectorPass::new(resources, resolution, assets);
 
         let anti_aliasing = {
-            let taa = TAAPass::new(resolution, resources, asset_manager, true);
-            let sharpen = SharpenPass::new(resolution, resources, asset_manager);
+            let taa = TAAPass::new(resolution, resources, assets, true);
+            let sharpen = SharpenPass::new(resolution, resources, assets);
             AntiAliasing::TAA { taa, sharpen }
         };
 
-        let shadow_map = ShadowMapPass::new(device, resources, &mut init_cmd_buffer, asset_manager);
+        let shadow_map = ShadowMapPass::new(device, resources, &mut init_cmd_buffer, assets);
 
-        let ui_pass = UIPass::new(device, asset_manager);
+        let ui_pass = UIPass::new(device, assets);
 
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
@@ -334,8 +333,7 @@ impl RenderPath for ModernRenderer {
         // TODO: resize render targets
     }
 
-    fn is_ready(&self, asset_manager: &Arc<AssetManager>) -> bool {
-        let assets = asset_manager.read_renderer_assets();
+    fn is_ready(&self, assets: &RendererAssetsReadOnly) -> bool {
         self.clustering_pass.is_ready(&assets)
         && self.light_binning_pass.is_ready(&assets)
         && self.geometry_draw_prep.is_ready(&assets)

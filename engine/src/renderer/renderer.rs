@@ -11,6 +11,7 @@ use sourcerenderer_core::{
     console::Console, Vec3
 };
 
+use super::asset::RendererAssets;
 use super::drawable::{make_camera_proj, make_camera_view, RendererStaticDrawable};
 use super::ecs::{
     DirectionalLightComponent,
@@ -54,13 +55,12 @@ pub struct Renderer {
     device: Arc<Device>,
     state: Arc<RendererState>,
     receiver: Receiver<RendererCommand>,
-    asset_manager: Arc<AssetManager>,
     resources: RendererResources,
     scene: RendererScene,
     context: GraphicsContext,
     swapchain: Arc<Mutex<Swapchain>>,
     render_path: Box<dyn RenderPath>,
-
+    assets: RendererAssets,
     last_frame: Instant,
     frame: u64
 }
@@ -87,8 +87,10 @@ impl Renderer {
 
         let mut resources = RendererResources::new(device);
 
+        let assets = RendererAssets::new(device, asset_manager);
+
         log::trace!("Initializing render path");
-        let render_path = Box::new(WebRenderer::new(device, &swapchain, &mut context, &mut resources, asset_manager));
+        let render_path = Box::new(WebRenderer::new(device, &swapchain, &mut context, &mut resources, &assets));
         //let render_path: Box<dyn RenderPath> = Box::new(NoOpRenderPath);
 
         let renderer = Self {
@@ -98,14 +100,14 @@ impl Renderer {
                 cond_var: Condvar::new(),
             }),
             receiver,
-            asset_manager: asset_manager.clone(),
             resources,
             scene: RendererScene::new(),
             swapchain: Arc::new(Mutex::new(swapchain)),
             context,
             render_path,
+            assets,
             last_frame: Instant::now(),
-            frame: 0u64
+            frame: 0u64,
         };
         let renderer_sender = RendererSender {
             sender: Some(sender),
@@ -127,8 +129,7 @@ impl Renderer {
     }
 
     pub fn render(&mut self) -> EngineLoopFuncResult {
-        self.asset_manager
-            .flush_renderer_assets();
+        self.assets.receive_assets();
 
         // Flush all submissions from the last frame in case this hasn't happened yet.
         self.device.flush_all();
@@ -159,20 +160,25 @@ impl Renderer {
             delta: delta,
         };
 
-        update_visibility(&mut self.scene, &self.asset_manager);
+        // Read assets again in case something came in while we were processing messages
+        self.assets.receive_assets();
+        // Flush all submissions from the last frame in case this hasn't happened yet.
+        self.device.flush_all();
 
-        let assets = self.asset_manager.read_renderer_assets();
+        let read_assets = self.assets.read();
+        update_visibility(&mut self.scene, &read_assets);
+
         let scene_info = SceneInfo {
             scene: &self.scene,
             active_view_index: 0,
-            vertex_buffer: BufferRef::Regular(assets.vertex_buffer()),
-            index_buffer: BufferRef::Regular(assets.index_buffer()),
+            vertex_buffer: BufferRef::Regular(self.assets.vertex_buffer()),
+            index_buffer: BufferRef::Regular(self.assets.index_buffer()),
             lightmap: None,
         };
 
         let mut swapchain_guard = self.swapchain.lock().unwrap();
         let _ = self.context.begin_frame();
-        self.asset_manager.bump_frame(&self.context);
+        self.assets.bump_frame(&self.context);
 
         let render_path_result = self.render_path.render(
             &mut self.context,
@@ -180,7 +186,7 @@ impl Renderer {
             &scene_info,
             &frame_info,
             &mut self.resources,
-            &assets
+            &read_assets
         );
         let frame_end_signal = self.context.end_frame();
 
@@ -204,7 +210,7 @@ impl Renderer {
         std::mem::drop(swapchain_guard);
 
         let c_device = self.device.clone();
-        std::mem::drop(assets); // TODO: The asset manager needs a bit of an overhaul to avoid this dead lock scenario. (Spawning on a task pool in single thread mode while holding the RW lock)
+        std::mem::drop(read_assets); // TODO: The asset manager needs a bit of an overhaul to avoid this dead lock scenario. (Spawning on a task pool in single thread mode while holding the RW lock)
 
         bevy_tasks::ComputeTaskPool::get().spawn(async move {
             crate::autoreleasepool(|| {
@@ -284,7 +290,7 @@ impl Renderer {
                     cast_shadows,
                     can_move,
                 } => {
-                    let model_handle = self.asset_manager.get_or_reserve_handle(&model_path, AssetType::Model);
+                    let model_handle = self.assets.asset_manager().get_or_reserve_handle(&model_path, AssetType::Model);
                     self.scene.add_static_drawable(
                         entity,
                         RendererStaticDrawable {
@@ -339,7 +345,7 @@ impl Renderer {
                     self.scene.remove_directional_light(&entity);
                 }
                 RendererCommand::SetLightmap(path) => {
-                    let handle = self.asset_manager.get_or_reserve_handle(&path, AssetType::Texture);
+                    let handle = self.assets.asset_manager().get_or_reserve_handle(&path, AssetType::Texture);
                     self.scene.set_lightmap(Some(handle.into()));
                 }
                 RendererCommand::RenderUI(data) => { self.render_path.set_ui_data(data); },
@@ -369,7 +375,8 @@ impl Renderer {
     }
 
     pub fn is_ready(&self) -> bool {
-        self.render_path.is_ready(&self.asset_manager)
+        let assets = self.assets.read();
+        self.render_path.is_ready(&assets)
     }
 }
 

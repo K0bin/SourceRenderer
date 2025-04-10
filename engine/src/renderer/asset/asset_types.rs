@@ -215,7 +215,7 @@ pub type RendererShader = Arc<Shader>;
 pub type RendererGraphicsPipeline = CompiledPipeline<GraphicsCompileTask>;
 pub type RendererMeshGraphicsPipeline = CompiledPipeline<MeshGraphicsCompileTask>;
 pub type RendererComputePipeline = CompiledPipeline<ComputeCompileTask>;
-pub type RendererRayTracingPipeline = CompiledPipeline<StoredRayTracingPipelineInfo>;
+pub type RendererRayTracingPipeline = CompiledPipeline<RayTracingCompileTask>;
 
 pub struct RendererMesh< > {
     pub vertices: AssetBufferSlice,
