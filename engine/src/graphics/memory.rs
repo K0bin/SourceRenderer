@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 use crate::Mutex;
 
 use log::trace;
-use sourcerenderer_core::gpu::*;
+use super::gpu;
 
 use super::*;
 
@@ -50,7 +50,7 @@ pub(super) enum MemoryTypeMatchingStrictness {
 impl MemoryAllocator {
     pub(super) fn new(device: &Arc<active_gpu_backend::Device>) -> Self {
         let memory_types = unsafe { device.memory_type_infos() };
-        let is_uma = memory_types.iter().all(|memory_type| memory_type.memory_kind == MemoryKind::VRAM);
+        let is_uma = memory_types.iter().all(|memory_type| memory_type.memory_kind == gpu::MemoryKind::VRAM);
 
         Self {
             device: device.clone(),
@@ -86,7 +86,7 @@ impl MemoryAllocator {
         })
     }
 
-    pub(super) fn allocate(&self, usage: MemoryUsage, requirements: &ResourceHeapInfo) -> Result<MemoryAllocation<active_gpu_backend::Heap>, OutOfMemoryError> {
+    pub(super) fn allocate(&self, usage: MemoryUsage, requirements: &gpu::ResourceHeapInfo) -> Result<MemoryAllocation<active_gpu_backend::Heap>, OutOfMemoryError> {
         let mut mask: u32;
 
         if usage != MemoryUsage::GPUMemory {
@@ -133,7 +133,7 @@ impl MemoryAllocator {
         let mut mask = 0u32;
         for i in 0..memory_types.len() {
             let memory_type = &memory_types[i];
-            let memory_kind = if !self.is_uma() && (usage == MemoryUsage::GPUMemory || usage == MemoryUsage::MappableGPUMemory) { MemoryKind::VRAM } else { MemoryKind::RAM };
+            let memory_kind = if !self.is_uma() && (usage == MemoryUsage::GPUMemory || usage == MemoryUsage::MappableGPUMemory) { gpu::MemoryKind::VRAM } else { gpu::MemoryKind::RAM };
             let cpu_accessible = usage != MemoryUsage::GPUMemory;
             let cached = usage == MemoryUsage::MainMemoryCached;
 
@@ -165,7 +165,7 @@ impl MemoryAllocator {
     }
 
     #[inline(always)]
-    pub(super) fn memory_type_info(&self, memory_type_index: u32) -> &MemoryTypeInfo {
+    pub(super) fn memory_type_info(&self, memory_type_index: u32) -> &gpu::MemoryTypeInfo {
         let memory_types = unsafe { self.device.memory_type_infos() };
         &memory_types[(memory_type_index as usize).min(memory_types.len() - 1)]
     }
@@ -175,7 +175,7 @@ impl MemoryAllocator {
         if memory_type_info.is_cpu_accessible {
             if memory_type_info.is_cached {
                 MemoryUsage::MainMemoryCached
-            } else if memory_type_info.memory_kind == MemoryKind::VRAM {
+            } else if memory_type_info.memory_kind == gpu::MemoryKind::VRAM {
                 MemoryUsage::MappableGPUMemory
             } else {
                 MemoryUsage::MainMemoryWriteCombined

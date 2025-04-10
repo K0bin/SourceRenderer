@@ -44,6 +44,8 @@ mod util;
 mod graphics_plugin;
 mod query;
 
+pub use sourcerenderer_core::gpu;
+
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "android", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd"))]
 mod active_gpu_backend {
     pub use sourcerenderer_vulkan::VkBackend as Backend;
@@ -70,14 +72,14 @@ mod active_gpu_backend {
     pub use sourcerenderer_vulkan::VkPipeline as RayTracingPipeline;
     pub use sourcerenderer_vulkan::VkQueryPool as QueryPool;
     pub use sourcerenderer_vulkan::VkShader as Shader;
-    pub type Barrier<'a> = sourcerenderer_core::gpu::Barrier<'a, self::Backend>;
-    pub type RenderTarget<'a> = sourcerenderer_core::gpu::RenderTarget<'a, self::Backend>;
-    pub type AccelerationStructureInstance<'a> = sourcerenderer_core::gpu::AccelerationStructureInstance<'a, self::Backend>;
-    pub type FenceValuePairRef<'a> = sourcerenderer_core::gpu::FenceValuePairRef<'a, self::Backend>;
-    pub type Submission<'a> = sourcerenderer_core::gpu::Submission<'a, self::Backend>;
-    pub type GraphicsPipelineInfo<'a> = sourcerenderer_core::gpu::GraphicsPipelineInfo<'a, self::Backend>;
-    pub type MeshGraphicsPipelineInfo<'a> = sourcerenderer_core::gpu::MeshGraphicsPipelineInfo<'a, self::Backend>;
-    pub type RayTracingPipelineInfo<'a> = sourcerenderer_core::gpu::RayTracingPipelineInfo<'a, self::Backend>;
+    pub type Barrier<'a> = super::gpu::Barrier<'a, self::Backend>;
+    pub type RenderTarget<'a> = super::gpu::RenderTarget<'a, self::Backend>;
+    pub type AccelerationStructureInstance<'a> = super::gpu::AccelerationStructureInstance<'a, self::Backend>;
+    pub type FenceValuePairRef<'a> = super::gpu::FenceValuePairRef<'a, self::Backend>;
+    pub type Submission<'a> = super::gpu::Submission<'a, self::Backend>;
+    pub type GraphicsPipelineInfo<'a> = super::gpu::GraphicsPipelineInfo<'a, self::Backend>;
+    pub type MeshGraphicsPipelineInfo<'a> = super::gpu::MeshGraphicsPipelineInfo<'a, self::Backend>;
+    pub type RayTracingPipelineInfo<'a> = super::gpu::RayTracingPipelineInfo<'a, self::Backend>;
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -103,17 +105,17 @@ mod active_gpu_backend {
     pub use sourcerenderer_webgpu::WebGPUGraphicsPipeline as GraphicsPipeline;
     pub use sourcerenderer_webgpu::WebGPUComputePipeline as ComputePipeline;
     pub use sourcerenderer_webgpu::WebGPUQueryPool as QueryPool;
-    pub type RayTracingPipeline = <sourcerenderer_webgpu::WebGPUBackend as sourcerenderer_core::gpu::GPUBackend>::RayTracingPipeline;
-    pub type MeshGraphicsPipeline = <sourcerenderer_webgpu::WebGPUBackend as sourcerenderer_core::gpu::GPUBackend>::MeshGraphicsPipeline;
+    pub type RayTracingPipeline = <sourcerenderer_webgpu::WebGPUBackend as super::gpu::GPUBackend>::RayTracingPipeline;
+    pub type MeshGraphicsPipeline = <sourcerenderer_webgpu::WebGPUBackend as super::gpu::GPUBackend>::MeshGraphicsPipeline;
     pub use sourcerenderer_webgpu::WebGPUShader as Shader;
-    pub type Barrier<'a> = sourcerenderer_core::gpu::Barrier<'a, self::Backend>;
-    pub type RenderTarget<'a> = sourcerenderer_core::gpu::RenderTarget<'a, self::Backend>;
-    pub type AccelerationStructureInstance<'a> = sourcerenderer_core::gpu::AccelerationStructureInstance<'a, self::Backend>;
-    pub type FenceValuePairRef<'a> = sourcerenderer_core::gpu::FenceValuePairRef<'a, self::Backend>;
-    pub type Submission<'a> = sourcerenderer_core::gpu::Submission<'a, self::Backend>;
-    pub type GraphicsPipelineInfo<'a> = sourcerenderer_core::gpu::GraphicsPipelineInfo<'a, self::Backend>;
-    pub type MeshGraphicsPipelineInfo<'a> = sourcerenderer_core::gpu::MeshGraphicsPipelineInfo<'a, self::Backend>;
-    pub type RayTracingPipelineInfo<'a> = sourcerenderer_core::gpu::RayTracingPipelineInfo<'a, self::Backend>;
+    pub type Barrier<'a> = super::gpu::Barrier<'a, self::Backend>;
+    pub type RenderTarget<'a> = super::gpu::RenderTarget<'a, self::Backend>;
+    pub type AccelerationStructureInstance<'a> = super::gpu::AccelerationStructureInstance<'a, self::Backend>;
+    pub type FenceValuePairRef<'a> = super::gpu::FenceValuePairRef<'a, self::Backend>;
+    pub type Submission<'a> = super::gpu::Submission<'a, self::Backend>;
+    pub type GraphicsPipelineInfo<'a> = super::gpu::GraphicsPipelineInfo<'a, self::Backend>;
+    pub type MeshGraphicsPipelineInfo<'a> = super::gpu::MeshGraphicsPipelineInfo<'a, self::Backend>;
+    pub type RayTracingPipelineInfo<'a> = super::gpu::RayTracingPipelineInfo<'a, self::Backend>;
 }
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -142,14 +144,14 @@ mod active_gpu_backend {
     pub use sourcerenderer_metal::MTLQueryPool as QueryPool;
     pub type RayTracingPipeline = ();
     pub use sourcerenderer_metal::MTLShader as Shader;
-    pub type Barrier<'a> = sourcerenderer_core::gpu::Barrier<'a, self::Backend>;
-    pub type RenderTarget<'a> = sourcerenderer_core::gpu::RenderTarget<'a, self::Backend>;
-    pub type AccelerationStructureInstance<'a> = sourcerenderer_core::gpu::AccelerationStructureInstance<'a, self::Backend>;
-    pub type FenceValuePairRef<'a> = sourcerenderer_core::gpu::FenceValuePairRef<'a, self::Backend>;
-    pub type Submission<'a> = sourcerenderer_core::gpu::Submission<'a, self::Backend>;
-    pub type GraphicsPipelineInfo<'a> = sourcerenderer_core::gpu::GraphicsPipelineInfo<'a, self::Backend>;
-    pub type MeshGraphicsPipelineInfo<'a> = sourcerenderer_core::gpu::MeshGraphicsPipelineInfo<'a, self::Backend>;
-    pub type RayTracingPipelineInfo<'a> = sourcerenderer_core::gpu::RayTracingPipelineInfo<'a, self::Backend>;
+    pub type Barrier<'a> = super::gpu::singl::Barrier<'a, self::Backend>;
+    pub type RenderTarget<'a> = super::gpu::RenderTarget<'a, self::Backend>;
+    pub type AccelerationStructureInstance<'a> = super::gpu::AccelerationStructureInstance<'a, self::Backend>;
+    pub type FenceValuePairRef<'a> = super::gpu::FenceValuePairRef<'a, self::Backend>;
+    pub type Submission<'a> = super::gpu::Submission<'a, self::Backend>;
+    pub type GraphicsPipelineInfo<'a> = super::gpu::GraphicsPipelineInfo<'a, self::Backend>;
+    pub type MeshGraphicsPipelineInfo<'a> = super::gpu::MeshGraphicsPipelineInfo<'a, self::Backend>;
+    pub type RayTracingPipelineInfo<'a> = super::gpu::RayTracingPipelineInfo<'a, self::Backend>;
 }
 
 pub use active_gpu_backend::{
@@ -163,7 +165,7 @@ pub use active_gpu_backend::{
 };
 
 #[allow(unused)]
-pub(crate) use sourcerenderer_core::gpu::{
+pub(crate) use self::gpu::{
     BINDLESS_TEXTURE_COUNT,
     AdapterType,
     LoadOpColor,
@@ -217,9 +219,7 @@ pub(crate) use sourcerenderer_core::gpu::{
     DedicatedAllocationPreference,
 };
 
-
-
-pub use sourcerenderer_core::gpu::{
+pub use self::gpu::{
     BufferUsage,
     TextureUsage,
     BufferInfo,

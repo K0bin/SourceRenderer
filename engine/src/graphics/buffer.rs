@@ -6,8 +6,8 @@ use std::ffi::c_void;
 use std::mem::ManuallyDrop;
 
 use log::trace;
-use sourcerenderer_core::gpu::Buffer as _;
-use sourcerenderer_core::gpu::Heap as _;
+use super::gpu::Buffer as _;
+use super::gpu::Heap as _;
 
 use super::*;
 

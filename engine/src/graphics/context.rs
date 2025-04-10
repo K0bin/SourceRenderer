@@ -5,7 +5,7 @@ use crossbeam_channel::{Sender, Receiver};
 use smallvec::SmallVec;
 use thread_local::ThreadLocal;
 
-use sourcerenderer_core::gpu::{self, CommandBuffer as _, CommandPool as _, Queue as _};
+use super::gpu::{self, CommandBuffer as _, CommandPool as _, Queue as _};
 use atomic_refcell::{AtomicRefCell, AtomicRefMut};
 
 use super::*;

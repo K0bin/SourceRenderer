@@ -1,6 +1,6 @@
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
-use sourcerenderer_core::gpu::ComputePipeline as _;
+use super::gpu::ComputePipeline as _;
 use super::*;
 
 pub struct GraphicsPipeline {

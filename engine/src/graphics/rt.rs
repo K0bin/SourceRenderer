@@ -29,7 +29,7 @@ pub struct AccelerationStructureInstance<'a> {
     pub id: u32
 }
 
-pub use sourcerenderer_core::gpu::AccelerationStructureMeshRange;
+pub use super::gpu::AccelerationStructureMeshRange;
 
 pub struct AccelerationStructure {
     acceleration_structure: ManuallyDrop<active_gpu_backend::AccelerationStructure>,

@@ -3,7 +3,7 @@ use crate::{Mutex, MutexGuard, Condvar};
 
 use crossbeam_channel::Sender;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, Queue as GPUQueue};
+use super::gpu::{self, Queue as GPUQueue};
 
 use super::*;
 
@@ -158,7 +158,7 @@ impl Queue {
             }
             let wait_fences_start = holder.fences.len();
             for fence in wait_fences {
-                holder.fences.push(sourcerenderer_core::gpu::FenceValuePairRef::<'static> {
+                holder.fences.push(super::gpu::FenceValuePairRef::<'static> {
                     fence: unsafe { std::mem::transmute(fence.fence.handle()) },
                     value: fence.value,
                     sync_before: fence.sync_before
@@ -166,7 +166,7 @@ impl Queue {
             }
             let signal_fences_start = holder.fences.len();
             for fence in signal_fences {
-                holder.fences.push(sourcerenderer_core::gpu::FenceValuePairRef::<'a> {
+                holder.fences.push(super::gpu::FenceValuePairRef::<'a> {
                     fence: fence.fence.handle(),
                     value: fence.value,
                     sync_before: fence.sync_before

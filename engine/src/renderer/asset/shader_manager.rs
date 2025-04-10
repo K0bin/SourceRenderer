@@ -6,7 +6,7 @@ use crate::{Mutex, Condvar};
 
 use log::trace;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::Shader as _;
+use crate::graphics::gpu::Shader as _;
 
 use crate::asset::{
     Asset, AssetHandle, AssetLoadPriority, AssetManager, AssetRef, AssetType, AssetWithHandle, ShaderHandle

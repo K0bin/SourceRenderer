@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::fmt::{Debug, Formatter, Error as FmtError};
 use std::mem::ManuallyDrop;
 use sourcerenderer_core::extend_lifetime;
-use sourcerenderer_core::gpu::QueryPool as _;
+use super::gpu::QueryPool as _;
 
 use super::*;
 

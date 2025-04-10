@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::TextureViewInfo;
+use crate::graphics::gpu::TextureViewInfo;
 use crate::asset::AssetManager;
 use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, Device, MemoryUsage, QueueSubmission, QueueType, Swapchain, SwapchainError, TextureLayout, WHOLE_BUFFER};
 use crate::renderer::asset::RendererAssetsReadOnly;

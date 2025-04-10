@@ -1,7 +1,7 @@
 use std::sync::{Arc, Weak};
 
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{Instance as _, Adapter as _};
+use super::gpu::{Instance as _, Adapter as _};
 
 use super::*;
 
