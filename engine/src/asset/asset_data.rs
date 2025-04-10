@@ -88,17 +88,6 @@ pub enum AssetData {
 }
 
 impl AssetData {
-    pub fn is_renderer_asset(&self) -> bool {
-        match self {
-            AssetData::Texture(_) => true,
-            AssetData::Mesh(_) => true,
-            AssetData::Model(_) => true,
-            AssetData::Material(_) => true,
-            AssetData::Shader(_) => true,
-            _ => false
-        }
-    }
-
     pub fn asset_type(&self) -> AssetType {
         match self {
             AssetData::Texture(_) => AssetType::Texture,

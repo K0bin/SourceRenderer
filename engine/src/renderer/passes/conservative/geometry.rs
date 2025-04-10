@@ -14,7 +14,6 @@ use crate::renderer::passes::rt_shadows::RTShadowPass;
 use crate::renderer::passes::ssao::SsaoPass;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::asset::*;
-use crate::asset::*;
 use crate::renderer::asset::GraphicsPipelineInfo;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
@@ -53,7 +52,7 @@ impl GeometryPass {
         device: &Arc<Device>,
         resolution: Vec2UI,
         barriers: &mut RendererResources,
-        asset_manager: &Arc<AssetManager>
+        assets: &RendererAssets,
     ) -> Self {
         let texture_info = TextureInfo {
             dimension: TextureDimension::Dim2D,
@@ -165,7 +164,7 @@ impl GeometryPass {
             render_target_formats: &[texture_info.format],
             depth_stencil_format: Format::D24S8
         };
-        let pipeline = asset_manager.request_graphics_pipeline(&pipeline_info);
+        let pipeline = assets.request_graphics_pipeline(&pipeline_info);
 
         Self { sampler, pipeline }
     }

@@ -6,14 +6,13 @@ use sourcerenderer_core::Vec2UI;
 use super::rt_shadows::RTShadowPass;
 use super::shadow_map::ShadowMapPass;
 use super::visibility_buffer::VisibilityBufferPass;
-use crate::asset::AssetManager;
 use crate::renderer::passes::ssao::SsaoPass;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::asset::{ComputePipelineHandle, RendererAssetsReadOnly};
+use crate::renderer::asset::{ComputePipelineHandle, RendererAssets, RendererAssetsReadOnly};
 use crate::graphics::*;
 
 pub struct ShadingPass {
@@ -29,10 +28,10 @@ impl ShadingPass {
         device: &Arc<crate::graphics::Device>,
         resolution: Vec2UI,
         resources: &mut RendererResources,
-        asset_manager: &Arc<AssetManager>,
+        assets: &RendererAssets,
         _init_cmd_buffer: &mut CommandBuffer,
     ) -> Self {
-        let pipeline = asset_manager.request_compute_pipeline("shaders/shading.comp.json");
+        let pipeline = assets.request_compute_pipeline("shaders/shading.comp.json");
 
         let sampler = Arc::new(device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Linear,

@@ -1,10 +1,7 @@
-use std::sync::Arc;
-
 use sourcerenderer_core::Vec2UI;
 
 use super::ssr::SsrPass;
-use crate::asset::AssetManager;
-use crate::renderer::asset::{ComputePipelineHandle, RendererAssetsReadOnly};
+use crate::renderer::asset::{ComputePipelineHandle, RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
@@ -24,9 +21,9 @@ impl CompositingPass {
     pub fn new(
         resolution: Vec2UI,
         resources: &mut RendererResources,
-        asset_manager: &Arc<AssetManager>,
+        assets: &RendererAssets,
     ) -> Self {
-        let pipeline = asset_manager.request_compute_pipeline("shaders/compositing.comp.json");
+        let pipeline = assets.request_compute_pipeline("shaders/compositing.comp.json");
 
         resources.create_texture(
             Self::COMPOSITION_TEXTURE_NAME,

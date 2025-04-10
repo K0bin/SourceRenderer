@@ -4,12 +4,11 @@ use bevy_math::Vec4Swizzles as _;
 use smallvec::SmallVec;
 use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
 
-use crate::asset::AssetManager;
 use crate::renderer::light::RendererDirectionalLight;
 use crate::renderer::passes::modern::gpu_scene::{DRAWABLE_CAPACITY, DRAW_CAPACITY, PART_CAPACITY};
 use crate::renderer::render_path::{RenderPassParameters, SceneInfo};
 use crate::renderer::asset::{
-    ComputePipelineHandle, GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssetsReadOnly,
+    ComputePipelineHandle, GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssets, RendererAssetsReadOnly
 };
 use crate::renderer::{
     renderer_resources::{HistoryResourceEntry, RendererResources},
@@ -51,7 +50,7 @@ impl ShadowMapPass {
         _device: &Arc<Device>,
         resources: &mut RendererResources,
         _init_cmd_buffer: &mut CommandBuffer,
-        asset_manager: &Arc<AssetManager>,
+        assets: &RendererAssets,
     ) -> Self {
         let shadow_map_res = 4096;
         let cascades_count = 5;
@@ -96,7 +95,7 @@ impl ShadowMapPass {
         );
 
         let vs_path = Path::new("shaders").join(Path::new("shadow_map_bindless.vert.json"));
-        let pipeline = asset_manager.request_graphics_pipeline(
+        let pipeline = assets.request_graphics_pipeline(
             &GraphicsPipelineInfo {
                 vs: vs_path.to_str().unwrap(),
                 fs: None,
@@ -144,7 +143,7 @@ impl ShadowMapPass {
             }
         );
 
-        let prep_pipeline = asset_manager.request_compute_pipeline("shaders/draw_prep.comp.json");
+        let prep_pipeline = assets.request_compute_pipeline("shaders/draw_prep.comp.json");
 
         let mut cascades = SmallVec::<[ShadowMapCascade; 5]>::with_capacity(cascades_count as usize);
         cascades.resize_with(cascades_count as usize, || ShadowMapCascade::default());

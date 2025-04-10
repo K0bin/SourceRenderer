@@ -4,7 +4,6 @@ use web_time::Duration;
 use super::asset::{RendererAssetsReadOnly, RendererTexture};
 use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
-use crate::asset::AssetManager;
 use crate::graphics::{BufferRef, GraphicsContext, Backbuffer};
 use crate::ui::UIDrawData;
 use crate::graphics::*;
@@ -39,7 +38,7 @@ pub trait RenderPath : Send {
     fn write_occlusion_culling_results(&self, frame: u64, bitset: &mut Vec<u32>);
     fn on_swapchain_changed(&mut self, swapchain: &Swapchain);
     fn set_ui_data(&mut self, data: UIDrawData);
-    fn is_ready(&self, asset_manager: &Arc<AssetManager>) -> bool;
+    fn is_ready(&self, assets: &RendererAssetsReadOnly) -> bool;
     fn render(
         &mut self,
         context: &mut GraphicsContext,
@@ -60,7 +59,7 @@ impl RenderPath for NoOpRenderPath {
     fn write_occlusion_culling_results(&self, _frame: u64, _bitset: &mut Vec<u32>) {}
     fn on_swapchain_changed(&mut self, _swapchain: &Swapchain) {}
     fn set_ui_data(&mut self, _data: UIDrawData) {}
-    fn is_ready(&self, _asset_manager: &Arc<AssetManager>) -> bool { true }
+    fn is_ready(&self, _asset_manager: &RendererAssetsReadOnly) -> bool { true }
     fn render(
         &mut self,
         context: &mut GraphicsContext,

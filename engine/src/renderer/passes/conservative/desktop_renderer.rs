@@ -18,8 +18,7 @@ use super::rt_shadows::RTShadowPass;
 use super::sharpen::SharpenPass;
 use super::ssao::SsaoPass;
 use super::taa::TAAPass;
-use crate::asset::AssetManager;
-use crate::renderer::asset::RendererAssetsReadOnly;
+use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::passes::blit::BlitPass;
 use crate::renderer::passes::blue_noise::BlueNoise;
 use crate::renderer::passes::modern::gpu_scene::{BufferBinding, SceneBuffers};
@@ -87,29 +86,29 @@ impl ConservativeRenderer {
         swapchain: &crate::graphics::Swapchain,
         context: &mut GraphicsContext,
         resources: &mut RendererResources,
-        asset_manager: &Arc<AssetManager>,
+        assets: &RendererAssets,
     ) -> Self {
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
         let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
 
         let blue_noise = BlueNoise::new(device);
 
-        let clustering = ClusteringPass::new(resources, asset_manager);
-        let light_binning = LightBinningPass::new(resources, asset_manager);
-        let prepass = Prepass::new(resources, asset_manager, resolution);
-        let geometry = GeometryPass::new(device, resolution, resources, asset_manager);
-        let taa = TAAPass::new(resolution, resources, asset_manager, false);
-        let sharpen = SharpenPass::new(resolution, resources, asset_manager);
-        let ssao = SsaoPass::new(device, resolution, resources, asset_manager, false);
+        let clustering = ClusteringPass::new(resources, assets);
+        let light_binning = LightBinningPass::new(resources, assets);
+        let prepass = Prepass::new(resources, assets, resolution);
+        let geometry = GeometryPass::new(device, resolution, resources, assets);
+        let taa = TAAPass::new(resolution, resources, assets, false);
+        let sharpen = SharpenPass::new(resolution, resources, assets);
+        let ssao = SsaoPass::new(device, resolution, resources, assets, false);
         //let occlusion = OcclusionPass::new(device, shader_manager);
         let rt_passes = device.supports_ray_tracing_pipeline().then(|| RTPasses {
             acceleration_structure_update: AccelerationStructureUpdatePass::new(
                 device,
                 &mut init_cmd_buffer,
             ),
-            shadows: RTShadowPass::new(resolution, resources, asset_manager),
+            shadows: RTShadowPass::new(resolution, resources, assets),
         });
-        let blit = BlitPass::new(resources, asset_manager, swapchain.format());
+        let blit = BlitPass::new(resources, assets, swapchain.format());
 
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
@@ -253,8 +252,7 @@ impl RenderPath for ConservativeRenderer {
         // TODO: resize render targets
     }
 
-    fn is_ready(&self, asset_manager: &Arc<AssetManager>) -> bool {
-        let assets = asset_manager.read_renderer_assets();
+    fn is_ready(&self, assets: &RendererAssetsReadOnly) -> bool {
         self.clustering_pass.is_ready(&assets)
         && self.light_binning_pass.is_ready(&assets)
         && self.prepass.is_ready(&assets)

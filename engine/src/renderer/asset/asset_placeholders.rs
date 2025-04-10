@@ -27,13 +27,13 @@ impl AssetPlaceholders {
                 usage: TextureUsage::SAMPLED | TextureUsage::INITIAL_COPY,
                 supports_srgb: false,
             },
-            Some("AssetManagerZeroTexture"),
+            Some("AssetZeroTexture"),
         ).unwrap();
         device.init_texture(&zero_data, &zero_texture, 0, 0).unwrap();
         let zero_view = device.create_texture_view(
             &zero_texture,
             &TextureViewInfo::default(),
-            Some("AssetManagerZeroTextureView"),
+            Some("AssetZeroTextureView"),
         );
         let zero_index = if device.supports_bindless() {
             device.insert_texture_into_bindless_heap(&zero_view)
@@ -59,13 +59,13 @@ impl AssetPlaceholders {
                 usage: TextureUsage::SAMPLED | TextureUsage::COPY_DST,
                 supports_srgb: false,
             },
-            Some("AssetManagerZeroTextureBlack"),
+            Some("AssetZeroTextureBlack"),
         ).unwrap();
         device.init_texture(&zero_data, &zero_texture_black, 0, 0).unwrap();
         let zero_view_black = device.create_texture_view(
             &zero_texture_black,
             &TextureViewInfo::default(),
-            Some("AssetManagerZeroTextureBlackView"),
+            Some("AssetZeroTextureBlackView"),
         );
         let zero_black_index = if device.supports_bindless() {
             device.insert_texture_into_bindless_heap(&zero_view_black)

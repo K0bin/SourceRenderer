@@ -2,15 +2,13 @@ use std::sync::Arc;
 
 use sourcerenderer_core::Vec2UI;
 
-use crate::asset::AssetManager;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
 use crate::renderer::asset::{
-    RayTracingPipelineHandle,
-    RayTracingPipelineInfo, RendererAssetsReadOnly
+    RayTracingPipelineHandle, RayTracingPipelineInfo, RendererAssets, RendererAssetsReadOnly
 };
 use crate::graphics::*;
 
@@ -24,7 +22,7 @@ impl RTShadowPass {
     pub fn new(
         resolution: Vec2UI,
         resources: &mut RendererResources,
-        asset_manager: &Arc<AssetManager>
+        assets: &RendererAssets,
     ) -> Self {
         resources.create_texture(
             Self::SHADOWS_TEXTURE_NAME,
@@ -43,7 +41,7 @@ impl RTShadowPass {
             false,
         );
 
-        let pipeline = asset_manager.request_ray_tracing_pipeline(&RayTracingPipelineInfo {
+        let pipeline = assets.request_ray_tracing_pipeline(&RayTracingPipelineInfo {
             ray_gen_shader: "shaders/shadows.rgen.json",
             closest_hit_shaders: &["shaders/shadows.rchit.json"],
             any_hit_shaders: &[],

@@ -1,6 +1,6 @@
 use std::hash::Hash;
 
-use crate::renderer::asset::{RendererComputePipeline, RendererGraphicsPipeline, RendererMeshGraphicsPipeline, RendererMaterial, RendererMesh, RendererModel, RendererRayTracingPipeline, RendererShader, RendererTexture};
+use strum_macros::VariantArray;
 
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
 pub struct TextureHandle(AssetHandle);
@@ -238,247 +238,26 @@ pub enum AssetType {
 }
 
 impl AssetType {
-    #[inline]
-    pub fn is_renderer_asset(self) -> bool {
+    pub fn group(self) -> AssetTypeGroup {
         match self {
-            AssetType::Texture => true,
-            AssetType::Model => true,
-            AssetType::Mesh => true,
-            AssetType::Material => true,
-            AssetType::Shader => true,
-            AssetType::GraphicsPipeline => true,
-            AssetType::MeshGraphicsPipeline => true,
-            AssetType::ComputePipeline => true,
-            AssetType::RayTracingPipeline => true,
-            _ => false
+            AssetType::Texture => AssetTypeGroup::Rendering,
+            AssetType::Model => AssetTypeGroup::Rendering,
+            AssetType::Mesh => AssetTypeGroup::Rendering,
+            AssetType::Material => AssetTypeGroup::Rendering,
+            AssetType::Shader => AssetTypeGroup::Rendering,
+            AssetType::GraphicsPipeline => AssetTypeGroup::Rendering,
+            AssetType::MeshGraphicsPipeline => AssetTypeGroup::Rendering,
+            AssetType::ComputePipeline => AssetTypeGroup::Rendering,
+            AssetType::RayTracingPipeline => AssetTypeGroup::Rendering,
+            AssetType::Level => AssetTypeGroup::Level,
+            AssetType::Sound => AssetTypeGroup::Audio,
         }
     }
 }
 
-pub enum AssetWithHandle {
-    Texture(AssetHandle, RendererTexture),
-    Material(AssetHandle, RendererMaterial),
-    Model(AssetHandle, RendererModel),
-    Mesh(AssetHandle, RendererMesh),
-    Shader(AssetHandle, RendererShader),
-    MeshGraphicsPipeline(AssetHandle, RendererMeshGraphicsPipeline),
-    GraphicsPipeline(AssetHandle, RendererGraphicsPipeline),
-    ComputePipeline(AssetHandle, RendererComputePipeline),
-    RayTracingPipeline(AssetHandle, RendererRayTracingPipeline),
-    Sound(AssetHandle, ())
-}
-
-impl AssetWithHandle {
-    #[inline]
-    pub fn is_renderer_asset(&self) -> bool {
-        match self {
-            AssetWithHandle::Texture(_,_) => true,
-            AssetWithHandle::Model(_,_) => true,
-            AssetWithHandle::Mesh(_,_) => true,
-            AssetWithHandle::Material(_,_) => true,
-            AssetWithHandle::Shader(_,_) => true,
-            AssetWithHandle::MeshGraphicsPipeline(_, _) => true,
-            AssetWithHandle::GraphicsPipeline(_, _) => true,
-            AssetWithHandle::ComputePipeline(_, _) => true,
-            AssetWithHandle::RayTracingPipeline(_, _) => true,
-            _ => false
-        }
-    }
-
-    #[inline]
-    pub fn asset_type(&self) -> AssetType {
-        match self {
-            AssetWithHandle::Texture(_,_) => AssetType::Texture,
-            AssetWithHandle::Mesh(_,_) => AssetType::Mesh,
-            AssetWithHandle::Model(_,_) => AssetType::Model,
-            AssetWithHandle::Sound(_,_) => AssetType::Sound,
-            AssetWithHandle::Material(_,_) => AssetType::Material,
-            AssetWithHandle::Shader(_,_) => AssetType::Shader,
-            AssetWithHandle::MeshGraphicsPipeline(_, _) => AssetType::MeshGraphicsPipeline,
-            AssetWithHandle::GraphicsPipeline(_, _) => AssetType::GraphicsPipeline,
-            AssetWithHandle::ComputePipeline(_, _) => AssetType::ComputePipeline,
-            AssetWithHandle::RayTracingPipeline(_, _) => AssetType::RayTracingPipeline,
-        }
-    }
-
-    #[inline]
-    pub fn handle(&self) -> AssetHandle {
-        match self {
-            AssetWithHandle::Texture(handle, _) => *handle,
-            AssetWithHandle::Material(handle, _) => *handle,
-            AssetWithHandle::Model(handle, _) => *handle,
-            AssetWithHandle::Mesh(handle, _) => *handle,
-            AssetWithHandle::Shader(handle, _) => *handle,
-            AssetWithHandle::Sound(handle, _) => *handle,
-            AssetWithHandle::MeshGraphicsPipeline(handle, _) => *handle,
-            AssetWithHandle::GraphicsPipeline(handle, _) => *handle,
-            AssetWithHandle::ComputePipeline(handle, _) => *handle,
-            AssetWithHandle::RayTracingPipeline(handle, _) => *handle,
-        }
-    }
-
-    #[inline]
-    pub fn combine(handle: AssetHandle, asset: Asset) -> AssetWithHandle {
-        assert_eq!(handle.asset_type(), asset.asset_type());
-        match (handle, asset) {
-            (handle, Asset::Texture(texture)) => AssetWithHandle::Texture(handle, texture),
-            (handle, Asset::Material(asset)) => AssetWithHandle::Material(handle, asset),
-            (handle, Asset::Model(asset)) => AssetWithHandle::Model(handle, asset),
-            (handle, Asset::Mesh(asset)) => AssetWithHandle::Mesh(handle, asset),
-            (handle, Asset::Shader(asset)) => AssetWithHandle::Shader(handle, asset),
-            (handle, Asset::MeshGraphicsPipeline(asset)) => AssetWithHandle::MeshGraphicsPipeline(handle, asset),
-            (handle, Asset::GraphicsPipeline(asset)) => AssetWithHandle::GraphicsPipeline(handle, asset),
-            (handle, Asset::ComputePipeline(asset)) => AssetWithHandle::ComputePipeline(handle, asset),
-            (handle, Asset::RayTracingPipeline(asset)) => AssetWithHandle::RayTracingPipeline(handle, asset),
-            (handle, Asset::Sound(asset)) => AssetWithHandle::Sound(handle, asset)
-        }
-    }
-}
-
-pub enum Asset {
-    Texture(RendererTexture),
-    Material(RendererMaterial),
-    Model(RendererModel),
-    Mesh(RendererMesh),
-    Shader(RendererShader),
-    Sound(()),
-    GraphicsPipeline(RendererGraphicsPipeline),
-    MeshGraphicsPipeline(RendererMeshGraphicsPipeline),
-    ComputePipeline(RendererComputePipeline),
-    RayTracingPipeline(RendererRayTracingPipeline),
-}
-
-impl Asset {
-    #[inline]
-    pub fn is_renderer_asset(&self) -> bool {
-        match self {
-            Asset::Texture(_) => true,
-            Asset::Model(_) => true,
-            Asset::Mesh(_) => true,
-            Asset::Material(_) => true,
-            Asset::Shader(_) => true,
-            Asset::GraphicsPipeline(_) => true,
-            Asset::MeshGraphicsPipeline(_) => true,
-            Asset::ComputePipeline(_) => true,
-            Asset::RayTracingPipeline(_) => true,
-            _ => false
-        }
-    }
-
-    #[inline]
-    pub fn asset_type(&self) -> AssetType {
-        match self {
-            Asset::Texture(_) => AssetType::Texture,
-            Asset::Mesh(_) => AssetType::Mesh,
-            Asset::Model(_) => AssetType::Model,
-            Asset::Sound(_) => AssetType::Sound,
-            Asset::Material(_) => AssetType::Material,
-            Asset::Shader(_) => AssetType::Shader,
-            Asset::GraphicsPipeline(_) => AssetType::GraphicsPipeline,
-            Asset::MeshGraphicsPipeline(_) => AssetType::MeshGraphicsPipeline,
-            Asset::ComputePipeline(_) => AssetType::ComputePipeline,
-            Asset::RayTracingPipeline(_) => AssetType::RayTracingPipeline,
-        }
-    }
-}
-
-pub enum AssetRef<'a> {
-    Texture(&'a RendererTexture),
-    Material(&'a RendererMaterial),
-    Model(&'a RendererModel),
-    Mesh(&'a RendererMesh),
-    Shader(&'a RendererShader),
-    GraphicsPipeline(&'a RendererGraphicsPipeline),
-    MeshGraphicsPipeline(&'a RendererMeshGraphicsPipeline),
-    ComputePipeline(&'a RendererComputePipeline),
-    RayTracingPipeline(&'a RendererRayTracingPipeline),
-    Sound(()),
-}
-
-impl<'a> From<&'a RendererTexture> for AssetRef<'a> {
-    fn from(value: &'a RendererTexture) -> Self {
-        Self::Texture(value)
-    }
-}
-
-impl<'a> From<&'a RendererMaterial> for AssetRef<'a> {
-    fn from(value: &'a RendererMaterial) -> Self {
-        Self::Material(value)
-    }
-}
-
-impl<'a> From<&'a RendererModel> for AssetRef<'a> {
-    fn from(value: &'a RendererModel) -> Self {
-        Self::Model(value)
-    }
-}
-
-impl<'a> From<&'a RendererMesh> for AssetRef<'a> {
-    fn from(value: &'a RendererMesh) -> Self {
-        Self::Mesh(value)
-    }
-}
-
-impl<'a> From<&'a RendererShader> for AssetRef<'a> {
-    fn from(value: &'a RendererShader) -> Self {
-        Self::Shader(value)
-    }
-}
-
-impl<'a> From<&'a RendererGraphicsPipeline> for AssetRef<'a> {
-    fn from(value: &'a RendererGraphicsPipeline) -> Self {
-        Self::GraphicsPipeline(value)
-    }
-}
-
-impl<'a> From<&'a RendererMeshGraphicsPipeline> for AssetRef<'a> {
-    fn from(value: &'a RendererMeshGraphicsPipeline) -> Self {
-        Self::MeshGraphicsPipeline(value)
-    }
-}
-
-impl<'a> From<&'a RendererComputePipeline> for AssetRef<'a> {
-    fn from(value: &'a RendererComputePipeline) -> Self {
-        Self::ComputePipeline(value)
-    }
-}
-
-impl<'a> From<&'a RendererRayTracingPipeline> for AssetRef<'a> {
-    fn from(value: &'a RendererRayTracingPipeline) -> Self {
-        Self::RayTracingPipeline(value)
-    }
-}
-
-impl AssetRef<'_> {
-    #[inline]
-    pub fn is_renderer_asset(&self) -> bool {
-        match self {
-            AssetRef::Texture(_) => true,
-            AssetRef::Model(_) => true,
-            AssetRef::Mesh(_) => true,
-            AssetRef::Material(_) => true,
-            AssetRef::Shader(_) => true,
-            AssetRef::GraphicsPipeline(_) => true,
-            AssetRef::MeshGraphicsPipeline(_) => true,
-            AssetRef::ComputePipeline(_) => true,
-            AssetRef::RayTracingPipeline(_) => true,
-            _ => false
-        }
-    }
-
-    #[inline]
-    pub fn asset_type(&self) -> AssetType {
-        match self {
-            AssetRef::Texture(_) => AssetType::Texture,
-            AssetRef::Mesh(_) => AssetType::Mesh,
-            AssetRef::Model(_) => AssetType::Model,
-            AssetRef::Sound(_) => AssetType::Sound,
-            AssetRef::Material(_) => AssetType::Material,
-            AssetRef::Shader(_) => AssetType::Shader,
-            AssetRef::GraphicsPipeline(_) => AssetType::GraphicsPipeline,
-            AssetRef::MeshGraphicsPipeline(_) => AssetType::MeshGraphicsPipeline,
-            AssetRef::ComputePipeline(_) => AssetType::ComputePipeline,
-            AssetRef::RayTracingPipeline(_) => AssetType::RayTracingPipeline,
-        }
-    }
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, VariantArray)]
+pub enum AssetTypeGroup {
+    Rendering,
+    Audio,
+    Level
 }

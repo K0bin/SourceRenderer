@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use sourcerenderer_core::Vec2UI;
 
-use crate::asset::AssetManager;
 use crate::renderer::passes::modern::VisibilityBufferPass;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
@@ -26,7 +25,7 @@ impl SsrPass {
     pub fn new(
         resolution: Vec2UI,
         resources: &mut RendererResources,
-        asset_manager: &Arc<AssetManager>,
+        assets: &RendererAssets,
         _visibility_buffer: bool,
     ) -> Self {
         resources.create_texture(
@@ -46,7 +45,7 @@ impl SsrPass {
             false,
         );
 
-        let pipeline = asset_manager.request_compute_pipeline("shaders/ssr.comp.json");
+        let pipeline = assets.request_compute_pipeline("shaders/ssr.comp.json");
 
         Self { pipeline }
     }

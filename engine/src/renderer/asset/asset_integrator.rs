@@ -7,13 +7,13 @@ use smallvec::SmallVec;
 
 use super::*;
 use crate::asset::{
-    Asset, AssetData, AssetHandle, AssetLoadPriority, AssetManager, AssetType, AssetWithHandle, MaterialData, MaterialHandle, MaterialValue, MeshData, ModelData, ShaderData, ShaderHandle, TextureData, TextureHandle
+    AssetData, AssetHandle, AssetLoadPriority, AssetManager, AssetType, MaterialData, MaterialHandle, MaterialValue, MeshData, ModelData, ShaderData, ShaderHandle, TextureData, TextureHandle
 };
 use crate::graphics::*;
 
 struct DelayedAsset {
-    fence: Option<SharedFenceValuePair>,
-    asset: AssetWithHandle,
+    fence: SharedFenceValuePair,
+    asset: RendererAssetWithHandle,
 }
 
 pub struct AssetIntegrator {
@@ -48,37 +48,48 @@ impl AssetIntegrator {
 
     pub fn integrate<T: Into<AssetHandle>>(
         &self,
+        assets: &RendererAssetsReadOnly,
         asset_manager: &Arc<AssetManager>,
         shader_manager: &ShaderManager,
         handle: T,
-        asset_data: &AssetData,
+        asset_data: AssetData,
         priority: AssetLoadPriority
-    ) {
+    ) -> Option<RendererAssetWithHandle> {
         let handle: AssetHandle = handle.into();
         trace!("Integrating asset: {:?} {:?}", asset_data.asset_type(), handle);
-        let (asset, fence) = match asset_data {
+        match asset_data {
             AssetData::Texture(texture_data) => {
                 let (renderer_texture, fence) = self.integrate_texture(handle.into(), priority, texture_data);
-                (Asset::Texture(renderer_texture), fence)
-            },
-            AssetData::Mesh(mesh_data) => (Asset::Mesh(self.integrate_mesh(mesh_data)), None),
-            AssetData::Model(model_data) => (Asset::Model(self.integrate_model(asset_manager, model_data)), None),
-            AssetData::Material(material_data) => (Asset::Material(self.integrate_material(asset_manager, material_data)), None),
-            AssetData::Shader(shader_data) => (Asset::Shader(self.integrate_shader(asset_manager, shader_manager, handle.into(), shader_data)), None),
-            _ => panic!("Asset type is not a renderer asset")
-        };
+                let renderer_texture_with_handle = RendererAssetWithHandle::Texture(handle.into(), renderer_texture);
 
-        let mut queue: crate::MutexGuard<'_, Vec<DelayedAsset>> = self.asset_queue.lock().unwrap();
-        queue.push(DelayedAsset {
-            fence, asset: AssetWithHandle::combine(handle, asset)
-        });
+                if let Some(fence) = fence {
+                    let mut queue: crate::MutexGuard<'_, Vec<DelayedAsset>> = self.asset_queue.lock().unwrap();
+                    queue.push(DelayedAsset {
+                        fence,
+                        asset: renderer_texture_with_handle,
+                    });
+                    None
+                } else {
+                    Some(renderer_texture_with_handle)
+                }
+            },
+            AssetData::Mesh(mesh_data) =>
+                Some(RendererAssetWithHandle::Mesh(handle.into(), self.integrate_mesh(mesh_data))),
+            AssetData::Model(model_data) =>
+                Some(RendererAssetWithHandle::Model(handle.into(), self.integrate_model(asset_manager, model_data))),
+            AssetData::Material(material_data) =>
+                Some(RendererAssetWithHandle::Material(handle.into(), self.integrate_material(asset_manager, material_data))),
+            AssetData::Shader(shader_data) =>
+                Some(RendererAssetWithHandle::Shader(handle.into(), self.integrate_shader(assets, shader_manager, handle.into(), shader_data))),
+            _ => panic!("Asset type is not a renderer asset")
+        }
     }
 
     fn integrate_texture(
         &self,
         handle: TextureHandle,
         priority: AssetLoadPriority,
-        texture_data: &TextureData
+        texture_data: TextureData
     ) -> (RendererTexture, Option<SharedFenceValuePair>) {
         let (view, fence) = self.upload_texture(handle, texture_data, priority == AssetLoadPriority::Low);
         let bindless_index = if self.device.supports_bindless() {
@@ -95,7 +106,7 @@ impl AssetIntegrator {
 
     fn integrate_mesh(
         &self,
-        mesh: &MeshData
+        mesh: MeshData
     ) -> RendererMesh {
         if cfg!(target_arch = "wasm32") {
             // WebGPU can't do multi draw indirect or bindless anyway and likely prefers having single buffer objects per mesh.
@@ -172,7 +183,7 @@ impl AssetIntegrator {
     fn upload_texture(
         &self,
         handle: TextureHandle,
-        texture: &TextureData,
+        texture: TextureData,
         do_async: bool,
     ) -> (
         Arc<TextureView>,
@@ -217,7 +228,7 @@ impl AssetIntegrator {
     fn integrate_material(
         &self,
         asset_manager: &Arc<AssetManager>,
-        material: &MaterialData,
+        material: MaterialData,
     ) -> RendererMaterial {
         let mut properties =
             HashMap::<String, RendererMaterialValue>::with_capacity(material.properties.len());
@@ -245,7 +256,7 @@ impl AssetIntegrator {
     fn integrate_model(
         &self,
         asset_manager: &Arc<AssetManager>,
-        model: &ModelData
+        model: ModelData
     ) -> RendererModel {
         let mesh_handle = asset_manager.get_or_reserve_handle(&model.mesh_path, AssetType::Mesh);
 
@@ -261,48 +272,40 @@ impl AssetIntegrator {
 
     fn integrate_shader(
         &self,
-        asset_manager: &Arc<AssetManager>,
+        assets: &RendererAssetsReadOnly,
         shader_manager: &ShaderManager,
         handle: ShaderHandle,
-        shader: &ShaderData
+        shader: ShaderData
     ) -> RendererShader {
         let name = format!("{:?}", handle);
-        let shader = Arc::new(self.device.create_shader(shader, Some(&name)));
-        asset_manager.add_asset_with_handle(AssetWithHandle::combine(handle.into(), Asset::Shader(shader.clone())));
-        shader_manager.add_shader(asset_manager, handle, &shader);
+        let shader = Arc::new(self.device.create_shader(&shader, Some(&name)));
+        shader_manager.add_shader(assets, handle, &shader);
         shader
     }
 
     pub(super) fn flush(
         &self,
-        asset_manager: &Arc<AssetManager>,
         _shader_manager: &ShaderManager,
-    ) {
+    ) -> SmallVec::<[RendererAssetWithHandle; 2]> {
         let mut retained_delayed_assets = SmallVec::<[DelayedAsset; 2]>::new();
-        let mut ready_delayed_assets = SmallVec::<[DelayedAsset; 2]>::new();
+        let mut ready_delayed_assets = SmallVec::<[RendererAssetWithHandle; 2]>::new();
         {
             let mut queue = self.asset_queue.lock().unwrap();
             for delayed_asset in queue.drain(..) {
-                if let Some(fence) = delayed_asset.fence.as_ref() {
-                    if fence.is_signalled() {
-                        ready_delayed_assets.push(delayed_asset);
-                    } else {
-                        retained_delayed_assets.push(delayed_asset);
-                    }
+                if delayed_asset.fence.is_signalled() {
+                    ready_delayed_assets.push(delayed_asset.asset);
                 } else {
-                    ready_delayed_assets.push(delayed_asset);
+                    retained_delayed_assets.push(delayed_asset);
                 }
             }
             queue.extend(retained_delayed_assets);
         }
 
-        for delayed_asset in ready_delayed_assets.drain(..) {
-            asset_manager.add_asset_with_handle(delayed_asset.asset);
-        }
-
         // Make sure the work initializing the resources actually gets submitted
         self.device.flush_transfers();
         self.device.free_completed_transfers();
+
+        ready_delayed_assets
     }
 
     #[inline(always)]

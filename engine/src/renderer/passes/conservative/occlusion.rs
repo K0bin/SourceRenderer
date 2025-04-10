@@ -49,7 +49,7 @@ pub struct OcclusionPass {
 impl OcclusionPass {
     pub fn new(
         device: &Arc<crate::graphics::Device>,
-        asset_manager: &Arc<AssetManager>,
+        assets: &RendererAssets,
     ) -> Self {
         let buffer_info = BufferInfo {
             size: (std::mem::size_of::<u32>() * QUERY_COUNT) as u64,

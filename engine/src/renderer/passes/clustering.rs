@@ -1,11 +1,8 @@
-use std::sync::Arc;
-
 use sourcerenderer_core::{
     Vec2UI, Vec3UI, Vec4
 };
 
-use crate::asset::AssetManager;
-use crate::renderer::asset::{ComputePipelineHandle, RendererAssetsReadOnly};
+use crate::renderer::asset::{ComputePipelineHandle, RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
@@ -32,9 +29,9 @@ impl ClusteringPass {
     #[allow(unused)]
     pub fn new(
         barriers: &mut RendererResources,
-        asset_manager: &Arc<AssetManager>,
+        assets: &RendererAssets,
     ) -> Self {
-        let pipeline = asset_manager.request_compute_pipeline("shaders/clustering.comp.json");
+        let pipeline = assets.request_compute_pipeline("shaders/clustering.comp.json");
 
         barriers.create_buffer(
             Self::CLUSTERS_BUFFER_NAME,
