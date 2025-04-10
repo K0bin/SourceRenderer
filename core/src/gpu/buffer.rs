@@ -45,7 +45,7 @@ pub struct BufferInfo {
   pub sharing_mode: QueueSharingMode
 }
 
-pub trait Buffer : Hash + PartialEq + Eq + Send + Sync {
+pub trait Buffer : Hash + PartialEq + Eq {
   fn info(&self) -> &BufferInfo;
 
   unsafe fn map(&self, offset: u64, length: u64, invalidate: bool) -> Option<*mut c_void>;

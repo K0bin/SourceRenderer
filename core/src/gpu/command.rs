@@ -102,12 +102,12 @@ pub struct BufferCopyRegion {
   pub size: u64
 }
 
-pub trait CommandPool<B: GPUBackend> : Send {
+pub trait CommandPool<B: GPUBackend> {
   unsafe fn create_command_buffer(&mut self) -> B::CommandBuffer;
   unsafe fn reset(&mut self);
 }
 
-pub trait CommandBuffer<B: GPUBackend> : Send {
+pub trait CommandBuffer<B: GPUBackend> {
   unsafe fn set_pipeline(&mut self, pipeline: PipelineBinding<B>);
   unsafe fn set_vertex_buffer(&mut self, index: u32, vertex_buffer: &B::Buffer, offset: u64);
   unsafe fn set_index_buffer(&mut self, index_buffer: &B::Buffer, offset: u64, format: IndexFormat);
@@ -157,7 +157,12 @@ pub trait CommandBuffer<B: GPUBackend> : Send {
   unsafe fn end_query(&mut self, query_index: u32);
   unsafe fn copy_query_results_to_buffer(&mut self, query_pool: &B::QueryPool, start_index: u32, count: u32, buffer: &B::Buffer, buffer_offset: u64);
 
+  #[cfg(not(feature = "single_thread_gpu_api"))]
   type CommandBufferInheritance: Send + Sync;
+
+  #[cfg(feature = "single_thread_gpu_api")]
+  type CommandBufferInheritance;
+
   unsafe fn execute_inner(&mut self, submission: &[&B::CommandBuffer], inheritance: Self::CommandBufferInheritance);
 
   unsafe fn reset(&mut self, frame: u64);
@@ -437,8 +442,4 @@ pub enum BindingFrequency {
   VeryFrequent = 0,
   Frequent = 1,
   Frame = 2,
-}
-
-pub trait InnerCommandBufferProvider<B: GPUBackend> : Send + Sync {
-  fn get_inner_command_buffer(&self) -> B::CommandBuffer;
 }
