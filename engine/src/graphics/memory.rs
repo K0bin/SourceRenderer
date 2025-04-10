@@ -29,12 +29,12 @@ pub(super) struct MemoryAllocatorInner {
 
 const CHUNK_SIZE: u64 = 256 << 20;
 
-pub(super) struct MemoryAllocation<H: Send + Sync> {
+pub(super) struct MemoryAllocation<H> {
     allocation: Allocation<H>,
     _memory_usage: MemoryUsage
 }
 
-impl<T: Send + Sync> AsRef<Allocation<T>> for MemoryAllocation<T> {
+impl<T> AsRef<Allocation<T>> for MemoryAllocation<T> {
     fn as_ref(&self) -> &Allocation<T> {
         &self.allocation
     }
