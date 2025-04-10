@@ -74,7 +74,7 @@ impl RendererAssets {
     ) {
         let asset = {
             let assets = self.read();
-            self.integrator.integrate(&assets, &self.asset_manager, &self.shader_manager, handle, asset_data, priority)
+            self.integrator.integrate(&assets, &self.shader_manager, handle, asset_data, priority)
         };
         if let Some(asset) = asset {
             self.add_asset(asset);
@@ -89,7 +89,19 @@ impl RendererAssets {
             RendererAssetWithHandle::Material(handle, asset) => assets.materials.insert(handle.into(), asset).is_some(),
             RendererAssetWithHandle::Model(handle, asset) => assets.models.insert(handle.into(), asset).is_some(),
             RendererAssetWithHandle::Mesh(handle, asset) => assets.meshes.insert(handle.into(), asset).is_some(),
-            RendererAssetWithHandle::Shader(handle, asset) => assets.shaders.insert(handle.into(), asset).is_some(),
+            RendererAssetWithHandle::Shader(handle, asset) => {
+                let already_existed = assets.shaders.insert(handle.into(), asset).is_some();
+                if already_existed {
+                    return true;
+                }
+                std::mem::drop(assets);
+                let assets_read = self.read();
+                let compilations_queued = self.shader_manager.update_remaining_compilations(&assets_read);
+                if compilations_queued != 0 {
+                    log::info!("Queued {} pipelines for compilation", compilations_queued);
+                }
+                false
+            },
             RendererAssetWithHandle::GraphicsPipeline(handle, asset) => assets.graphics_pipelines.insert(handle.into(), asset).is_some(),
             RendererAssetWithHandle::ComputePipeline(handle, asset) => assets.compute_pipelines.insert(handle.into(), asset).is_some(),
             RendererAssetWithHandle::RayTracingPipeline(handle, asset) => assets.ray_tracing_pipelines.insert(handle.into(), asset).is_some(),
@@ -99,21 +111,22 @@ impl RendererAssets {
 
     #[inline(always)]
     pub(crate) fn request_graphics_pipeline(&self, info: &GraphicsPipelineInfo) -> GraphicsPipelineHandle {
-        self.shader_manager.request_graphics_pipeline(&self.asset_manager, info)
+        self.shader_manager.request_graphics_pipeline(&self.read(), info)
     }
 
     #[inline(always)]
     pub(crate) fn request_compute_pipeline(&self, shader_path: &str) -> ComputePipelineHandle {
-        self.shader_manager.request_compute_pipeline(&self.asset_manager, shader_path)
+        self.shader_manager.request_compute_pipeline(&self.read(), shader_path)
     }
 
     #[inline(always)]
     pub(crate) fn request_ray_tracing_pipeline(&self, info: &RayTracingPipelineInfo) -> RayTracingPipelineHandle {
-        self.shader_manager.request_ray_tracing_pipeline(&self.asset_manager, info)
+        self.shader_manager.request_ray_tracing_pipeline(&self.read(), info)
     }
 
     pub(crate) fn read<'a>(&'a self) -> RendererAssetsReadOnly<'a> {
         RendererAssetsReadOnly {
+            asset_manager: &self.asset_manager,
             maps: self.assets.read(),
             placeholders: &self.placeholders,
             vertex_buffer: self.integrator.vertex_buffer(),
@@ -185,6 +198,7 @@ impl RendererAssetMaps {
 }
 
 pub struct RendererAssetsReadOnly<'a> {
+    asset_manager: &'a Arc<AssetManager>,
     maps: RwLockReadGuard<'a, RendererAssetMaps>,
     placeholders: &'a AssetPlaceholders,
     vertex_buffer: &'a Arc<BufferSlice>,
@@ -313,5 +327,10 @@ impl RendererAssetsReadOnly<'_> {
     #[inline(always)]
     pub fn index_buffer(&self) -> &Arc<BufferSlice> {
         self.index_buffer
+    }
+
+    #[inline(always)]
+    pub fn asset_manager(&self) -> &Arc<AssetManager> {
+        self.asset_manager
     }
 }

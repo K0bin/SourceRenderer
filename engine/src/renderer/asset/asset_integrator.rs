@@ -49,7 +49,6 @@ impl AssetIntegrator {
     pub fn integrate<T: Into<AssetHandle>>(
         &self,
         assets: &RendererAssetsReadOnly,
-        asset_manager: &Arc<AssetManager>,
         shader_manager: &ShaderManager,
         handle: T,
         asset_data: AssetData,
@@ -76,9 +75,9 @@ impl AssetIntegrator {
             AssetData::Mesh(mesh_data) =>
                 Some(RendererAssetWithHandle::Mesh(handle.into(), self.integrate_mesh(mesh_data))),
             AssetData::Model(model_data) =>
-                Some(RendererAssetWithHandle::Model(handle.into(), self.integrate_model(asset_manager, model_data))),
+                Some(RendererAssetWithHandle::Model(handle.into(), self.integrate_model(assets.asset_manager(), model_data))),
             AssetData::Material(material_data) =>
-                Some(RendererAssetWithHandle::Material(handle.into(), self.integrate_material(asset_manager, material_data))),
+                Some(RendererAssetWithHandle::Material(handle.into(), self.integrate_material(assets.asset_manager(), material_data))),
             AssetData::Shader(shader_data) =>
                 Some(RendererAssetWithHandle::Shader(handle.into(), self.integrate_shader(assets, shader_manager, handle.into(), shader_data))),
             _ => panic!("Asset type is not a renderer asset")
@@ -279,7 +278,7 @@ impl AssetIntegrator {
     ) -> RendererShader {
         let name = format!("{:?}", handle);
         let shader = Arc::new(self.device.create_shader(&shader, Some(&name)));
-        shader_manager.add_shader(assets, handle, &shader);
+        shader_manager.queue_pipelines_containing_shader(assets, handle, &shader);
         shader
     }
 
