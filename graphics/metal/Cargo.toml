@@ -10,13 +10,13 @@ build = "build.rs"
 objc2-metal = "0.3"
 objc2 = { version = "0.6", features = [ "std", "disable-encoding-assertions" ] } # disable-encoding-assertions is required otherwise the Metal debugger doesn't work
 objc2-foundation = "0.3"
-objc2-quartz-core = "0.3.0"
-dispatch2 = "0.2.0"
-block2 = "0.6.0"
+objc2-quartz-core = "0.3"
+dispatch2 = "0.2"
+block2 = "0.6"
 block = "0.1"
 sourcerenderer_core = { path = "../../core" }
-bitflags = "2.4"
-smallvec = { version = "1.13", features = [ "union", "const_generics", "const_new" ] }
+bitflags = "2.9"
+smallvec = { version = "1.15", features = [ "union", "const_generics", "const_new" ] }
 spirv_cross_sys = { path = "../../vendor/spirv-cross-sys" }
 serde_json = "1.0"
 log = "0.4"
