@@ -22,9 +22,9 @@ use super::{RendererAssetsReadOnly, RendererShader};
 // COMMON
 //
 
-pub trait PipelineCompileTask: Send + Sync + Clone {
+pub trait PipelineCompileTask: Clone {
     type TShaders;
-    type TPipeline: Send + Sync;
+    type TPipeline;
 
     fn asset_type() -> AssetType;
     fn pipeline_from_asset_ref<'a>(asset: AssetRef<'a>) -> &'a CompiledPipeline<Self>;
@@ -716,7 +716,7 @@ pub struct ShaderManager {
 
 struct PipelineTypeManager<THandle, T>
 where
-    THandle: Hash + PartialEq + Eq + Clone + Copy + Send + Sync + From<AssetHandle>,
+    THandle: Hash + PartialEq + Eq + Clone + Copy + From<AssetHandle>,
     T: PipelineCompileTask,
 {
     remaining_compilations: Mutex<HashMap<THandle, T>>,
@@ -725,7 +725,7 @@ where
 
 impl<THandle, T> PipelineTypeManager<THandle, T>
 where
-    THandle: Hash + PartialEq + Eq + Clone + Copy + Send + Sync + From<AssetHandle>,
+    THandle: Hash + PartialEq + Eq + Clone + Copy + From<AssetHandle>,
     T: PipelineCompileTask,
 {
     fn new() -> Self {
@@ -878,7 +878,7 @@ impl ShaderManager {
         task: T,
     ) -> THandle
     where
-        THandle: Hash + PartialEq + Eq + Clone + Copy + Send + Sync + From<AssetHandle>,
+        THandle: Hash + PartialEq + Eq + Clone + Copy + From<AssetHandle>,
         T: PipelineCompileTask,
     {
         let handle: THandle = asset_manager.reserve_handle_without_path(T::asset_type()).into();
@@ -887,6 +887,55 @@ impl ShaderManager {
         handle
     }
 
+    fn collect_ready_pipeline_handles_for_new_shader_handle<THandle, T>(
+        &self,
+        asset_manager: &Arc<AssetManager>,
+        pipeline_type_manager: &Arc<PipelineTypeManager<THandle, T>>,
+        handle: ShaderHandle,
+        shader: &RendererShader
+    ) -> SmallVec::<[THandle; 1]>
+    where
+        THandle: Hash + PartialEq + Eq + Clone + Copy + From<AssetHandle> + Into<AssetHandle> + 'static,
+        T: PipelineCompileTask + 'static,
+    {
+        trace!("Integrating shader {:?} {:?}", shader.shader_type(), handle);
+        let mut ready_handles = SmallVec::<[THandle; 1]>::new();
+        // Find all pipelines that use this shader and queue new compile tasks for those.
+        // This is done because add_shader will get called when a shader has changed on disk, so we need to load
+        // all remaining shaders of a pipeline and recompile it.
+
+        let assets_read = asset_manager.read_renderer_assets();
+        let mut remaining_compilations: crate::MutexGuard<'_, HashMap<THandle, T>> = pipeline_type_manager.remaining_compilations.lock().unwrap();
+        let compiled_pipeline_handles = assets_read.all_pipeline_handles(T::asset_type());
+        for pipeline_handle in compiled_pipeline_handles {
+            let asset_ref = assets_read.get(pipeline_handle).unwrap();
+            let pipeline: &CompiledPipeline<T> = T::pipeline_from_asset_ref(asset_ref);
+            let existing_pipeline_match = pipeline.task.contains_shader(handle);
+            if let Some(shader_type) = existing_pipeline_match {
+                assert!(shader_type == shader.shader_type());
+                let typed_handle: THandle = pipeline_handle.into();
+                if !remaining_compilations.contains_key(&typed_handle) {
+                    let task: T = pipeline.task.clone();
+                    remaining_compilations.insert(typed_handle, task);
+                }
+            }
+        }
+
+        for (pipeline_handle, task) in remaining_compilations.iter() {
+            let remaining_compile_match = task.contains_shader(handle);
+            if let Some(shader_type) = remaining_compile_match {
+                trace!("Found pipeline that contains shader {:?} {:?}. Testing if its ready to compile.", shader.shader_type(), handle);
+                assert!(shader_type == shader.shader_type());
+                if task.can_compile(&assets_read, Some(handle)) {
+                    trace!("Pipeline that contains shader {:?} {:?} is ready to compile.", shader.shader_type(), handle);
+                    ready_handles.push(*pipeline_handle);
+                }
+            }
+        }
+        ready_handles
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn add_shader_type<THandle, T>(
         &self,
         asset_manager: &Arc<AssetManager>,
@@ -895,84 +944,117 @@ impl ShaderManager {
         shader: &RendererShader
     ) -> bool
     where
-        THandle: Hash + PartialEq + Eq + Clone + Copy + Send + Sync + From<AssetHandle> + Into<AssetHandle> + 'static,
+        THandle: Hash + PartialEq + Eq + Clone + Copy + Send + From<AssetHandle> + Into<AssetHandle> + 'static,
+        T: PipelineCompileTask + Send + 'static,
+    {
+        trace!("Integrating shader {:?} {:?}", shader.shader_type(), handle);
+        let mut ready_handles = self.collect_ready_pipeline_handles_for_new_shader_handle(asset_manager, pipeline_type_manager, handle, shader);
+
+        if ready_handles.is_empty() {
+            trace!("Nothing to do with shader {:?} {:?}", shader.shader_type(), handle);
+            return true;
+        }
+
+        trace!("Queuing compile tasks for pipelines with {:?} {:?}", shader.shader_type(), handle);
+        self.spawn_compile_task(ready_handles, asset_manager, pipeline_type_manager);
+
+        true
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn add_shader_type<THandle, T>(
+        &self,
+        asset_manager: &Arc<AssetManager>,
+        pipeline_type_manager: &Arc<PipelineTypeManager<THandle, T>>,
+        handle: ShaderHandle,
+        shader: &RendererShader
+    ) -> bool
+    where
+        THandle: Hash + PartialEq + Eq + Clone + Copy + From<AssetHandle> + Into<AssetHandle> + 'static,
         T: PipelineCompileTask + 'static,
     {
-        {
-            trace!("Integrating shader {:?} {:?}", shader.shader_type(), handle);
-            let mut ready_handles = SmallVec::<[THandle; 1]>::new();
-            {
-                // Find all pipelines that use this shader and queue new compile tasks for those.
-                // This is done because add_shader will get called when a shader has changed on disk, so we need to load
-                // all remaining shaders of a pipeline and recompile it.
+        trace!("Integrating shader {:?} {:?}", shader.shader_type(), handle);
+        let mut ready_handles = self.collect_ready_pipeline_handles_for_new_shader_handle(asset_manager, pipeline_type_manager, handle, shader);
 
-                let assets_read = asset_manager.read_renderer_assets();
-                let mut remaining_compilations: crate::MutexGuard<'_, HashMap<THandle, T>> = pipeline_type_manager.remaining_compilations.lock().unwrap();
-                let compiled_pipeline_handles = assets_read.all_pipeline_handles(T::asset_type());
-                for pipeline_handle in compiled_pipeline_handles {
-                    let asset_ref = assets_read.get(pipeline_handle).unwrap();
-                    let pipeline: &CompiledPipeline<T> = T::pipeline_from_asset_ref(asset_ref);
-                    let existing_pipeline_match = pipeline.task.contains_shader(handle);
-                    if let Some(shader_type) = existing_pipeline_match {
-                        assert!(shader_type == shader.shader_type());
-                        let typed_handle: THandle = pipeline_handle.into();
-                        if !remaining_compilations.contains_key(&typed_handle) {
-                            let task: T = pipeline.task.clone();
-                            remaining_compilations.insert(typed_handle, task);
-                        }
-                    }
-                }
-
-                for (pipeline_handle, task) in remaining_compilations.iter() {
-                    let remaining_compile_match = task.contains_shader(handle);
-                    if let Some(shader_type) = remaining_compile_match {
-                        trace!("Found pipeline that contains shader {:?} {:?}. Testing if its ready to compile.", shader.shader_type(), handle);
-                        assert!(shader_type == shader.shader_type());
-                        if task.can_compile(&assets_read, Some(handle)) {
-                            trace!("Pipeline that contains shader {:?} {:?} is ready to compile.", shader.shader_type(), handle);
-                            ready_handles.push(*pipeline_handle);
-                        }
-                    }
-                }
-            }
-
-            if ready_handles.is_empty() {
-                trace!("Nothing to do with shader {:?} {:?}", shader.shader_type(), handle);
-                return true;
-            }
-
-            trace!("Queuing compile tasks for pipelines with {:?} {:?}", shader.shader_type(), handle);
-            let c_device = self.device.clone();
-            let c_manager: Arc<PipelineTypeManager<THandle, T>> = pipeline_type_manager.clone();
-            let c_asset_manager = asset_manager.clone();
-            c_manager.cond_var.notify_all();
-            let task_pool = bevy_tasks::ComputeTaskPool::get();
-            let task = task_pool.spawn(async move {
-                crate::autoreleasepool(|| {
-                    for handle in ready_handles.drain(..) {
-                        let task: T;
-                        let shaders: T::TShaders;
-
-                        let assets_read = c_asset_manager.read_renderer_assets();
-                        {
-                            let mut remaining_compilations = c_manager.remaining_compilations.lock().unwrap();
-                            let task_opt = remaining_compilations.remove(&handle);
-                            if task_opt.is_none() {
-                                continue;
-                            }
-                            task = task_opt.unwrap();
-                            shaders = task.collect_shaders_for_compilation(assets_read);
-                        };
-                        let pipeline: Arc<<T as PipelineCompileTask>::TPipeline> = task.compile(shaders, &c_device);
-                        let generic_handle: AssetHandle = handle.into();
-                        c_asset_manager.add_asset_with_handle(AssetWithHandle::combine(generic_handle, T::pipeline_into_asset(task, pipeline)));
-                    }
-                    c_manager.cond_var.notify_all();
-                })
-            });
-            task.detach();
-            true
+        if ready_handles.is_empty() {
+            trace!("Nothing to do with shader {:?} {:?}", shader.shader_type(), handle);
+            return true;
         }
+
+        trace!("Queuing compile tasks for pipelines with {:?} {:?}", shader.shader_type(), handle);
+        self.spawn_local_compile_task(ready_handles, asset_manager, pipeline_type_manager);
+
+        true
+    }
+
+    fn spawn_compile_task<THandle, T>(&self, mut ready_handles: SmallVec<[THandle; 1]>, asset_manager: &Arc<AssetManager>, pipeline_type_manager: &Arc<PipelineTypeManager<THandle, T>>)
+        where THandle: Hash + PartialEq + Eq + Clone + Copy + Send + From<AssetHandle> + Into<AssetHandle> + 'static,
+        T: PipelineCompileTask + Send + 'static {
+
+        let c_device = self.device.clone();
+        let c_manager: Arc<PipelineTypeManager<THandle, T>> = pipeline_type_manager.clone();
+        let c_asset_manager = asset_manager.clone();
+
+        let task_pool = bevy_tasks::ComputeTaskPool::get();
+        let task = task_pool.spawn(async move {
+            crate::autoreleasepool(|| {
+                for handle in ready_handles.drain(..) {
+                    let task: T;
+                    let shaders: T::TShaders;
+
+                    let assets_read = c_asset_manager.read_renderer_assets();
+                    {
+                        let mut remaining_compilations = c_manager.remaining_compilations.lock().unwrap();
+                        let task_opt = remaining_compilations.remove(&handle);
+                        if task_opt.is_none() {
+                            continue;
+                        }
+                        task = task_opt.unwrap();
+                        shaders = task.collect_shaders_for_compilation(assets_read);
+                    };
+                    let pipeline: Arc<<T as PipelineCompileTask>::TPipeline> = task.compile(shaders, &c_device);
+                    let generic_handle: AssetHandle = handle.into();
+                    c_asset_manager.add_asset_with_handle(AssetWithHandle::combine(generic_handle, T::pipeline_into_asset(task, pipeline)));
+                }
+                c_manager.cond_var.notify_all();
+            })
+        });
+        task.detach();
+    }
+
+    fn spawn_local_compile_task<THandle, T>(&self, mut ready_handles: SmallVec<[THandle; 1]>, asset_manager: &Arc<AssetManager>, pipeline_type_manager: &Arc<PipelineTypeManager<THandle, T>>)
+        where THandle: Hash + PartialEq + Eq + Clone + Copy + From<AssetHandle> + Into<AssetHandle> + 'static,
+        T: PipelineCompileTask + 'static {
+
+        let c_device = self.device.clone();
+        let c_manager: Arc<PipelineTypeManager<THandle, T>> = pipeline_type_manager.clone();
+        let c_asset_manager = asset_manager.clone();
+
+        let task_pool = bevy_tasks::ComputeTaskPool::get();
+        let task = task_pool.spawn_local(async move {
+            crate::autoreleasepool(|| {
+                for handle in ready_handles.drain(..) {
+                    let task: T;
+                    let shaders: T::TShaders;
+
+                    let assets_read = c_asset_manager.read_renderer_assets();
+                    {
+                        let mut remaining_compilations = c_manager.remaining_compilations.lock().unwrap();
+                        let task_opt = remaining_compilations.remove(&handle);
+                        if task_opt.is_none() {
+                            continue;
+                        }
+                        task = task_opt.unwrap();
+                        shaders = task.collect_shaders_for_compilation(assets_read);
+                    };
+                    let pipeline: Arc<<T as PipelineCompileTask>::TPipeline> = task.compile(shaders, &c_device);
+                    let generic_handle: AssetHandle = handle.into();
+                    c_asset_manager.add_asset_with_handle(AssetWithHandle::combine(generic_handle, T::pipeline_into_asset(task, pipeline)));
+                }
+                c_manager.cond_var.notify_all();
+            })
+        });
+        task.detach();
     }
 
     pub fn add_shader(&self, asset_manager: &Arc<AssetManager>, handle: ShaderHandle, shader: &RendererShader) {
