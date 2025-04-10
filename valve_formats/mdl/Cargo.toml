@@ -5,6 +5,6 @@ authors = ["Robin Kertels <robin.kertels@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-bitflags = "2.8"
+bitflags = "2.9"
 bevy_math = "0.15"
 io_util = { path = "../../io_util" }

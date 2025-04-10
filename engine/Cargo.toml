@@ -21,23 +21,25 @@ sourcerenderer_vvd = { path = "../valve_formats/vvd" }
 io_util = { path = "../io_util", features = [ "async" ] }
 regex = "1.11"
 bitvec = "1.0"
-smallvec = { version = "1.13.1", features = [ "union", "const_generics", "const_new" ] }
-gltf = { version = "1.4.0", features = ["KHR_lights_punctual"] }
+smallvec = { version = "1.15", features = [ "union", "const_generics", "const_new" ] }
+gltf = { version = "1.4", features = ["KHR_lights_punctual"] }
 rand = "0.9"
-bitset-core = "0.1.1"
-web-time = "1.1.0"
-log = "0.4.21"
-rapier3d = { version = "0.23.0", features = [ "enhanced-determinism", "f32" ] }
-half = "2.4.0"
+bitset-core = "0.1"
+web-time = "1.1"
+log = "0.4"
+rapier3d = { version = "0.24", features = [ "enhanced-determinism", "f32" ] }
+half = "2.6"
 profiling = "1.0"
 field-offset = "0.3"
-widestring = "1.0"
-bitflags = "2.4"
+widestring = "1.2"
+bitflags = "2.9"
+strum = "0.27"
+strum_macros = "0.27"
 # imgui = "0.12"
 thread_local = "1.1"
 serde_json = "1.0"
 smartstring = "1.0"
-bumpalo = { version = "3.16", features = [ "collections", "boxed" ] }
+bumpalo = { version = "3.17", features = [ "collections", "boxed" ] }
 futures-io = "0.3"
 waker-fn = "1.2"
 async-mutex = "1.4"
