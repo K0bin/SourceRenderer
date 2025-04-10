@@ -9,15 +9,12 @@ use super::align_up_64;
 
 const DEBUG: bool = false;
 
-pub(super) struct Chunk<T>
-    where T : Send + Sync
-{
+pub(super) struct Chunk<T> {
     inner: Arc<ChunkInner<T>>,
     size: u64
 }
 
-struct ChunkInner<T>
-where T : Send + Sync {
+struct ChunkInner<T> {
     free_list: Mutex<SmallVec<[Range; 16]>>,
     data: T,
     free_callback: Option<Box<dyn Fn(&[Range]) + Send + Sync>>,
@@ -31,19 +28,12 @@ pub struct Range {
     pub length: u64
 }
 
-pub(super) struct Allocation<T>
-    where T : Send + Sync
-{
+pub(super) struct Allocation<T>{
     inner: Arc<ChunkInner<T>>,
     pub range: Range,
 }
 
-unsafe impl<T> Send for Allocation<T> where T : Send + Sync {}
-unsafe impl<T> Sync for Allocation<T> where T : Send + Sync {}
-
-impl<T> Allocation<T>
-    where T : Send + Sync
-{
+impl<T> Allocation<T> {
     #[allow(unused)]
     #[inline(always)]
     pub fn offset(&self) -> u64 {
@@ -62,9 +52,7 @@ impl<T> Allocation<T>
     }
 }
 
-impl<T> Chunk<T>
-    where T : Send + Sync
-{
+impl<T> Chunk<T> {
     pub fn new(data: T, chunk_size: u64) -> Self {
         let mut free_list = SmallVec::<[Range; 16]>::new();
         free_list.push(Range {
@@ -84,7 +72,7 @@ impl<T> Chunk<T>
 
     #[allow(unused)]
     pub fn with_callback<F>(data: T, chunk_size: u64, free_callback: F) -> Self
-    where F: Fn(&[Range]) + Send + Sync + 'static {
+        where F: Fn(&[Range]) + Send + Sync + 'static {
         let mut free_list = SmallVec::<[Range; 16]>::new();
         free_list.push(Range {
             offset: 0u64,
@@ -195,9 +183,7 @@ impl<T> Chunk<T>
     }
 }
 
-impl<T> Drop for Allocation<T>
-    where T : Send + Sync
-{
+impl<T> Drop for Allocation<T> {
     fn drop(&mut self) {
         if DEBUG {
             return;
