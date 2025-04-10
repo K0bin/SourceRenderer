@@ -15,7 +15,7 @@ use crate::graphics::GraphicsPipelineInfo as ActualGraphicsPipelineInfo;
 use crate::graphics::MeshGraphicsPipelineInfo as ActualMeshGraphicsPipelineInfo;
 use crate::graphics::RayTracingPipelineInfo as ActualRayTracingPipelineInfo;
 
-use super::{RendererAssetsReadOnly, RendererShader};
+use super::{RendererAssetWithHandle, RendererAssetsReadOnly, RendererShader};
 
 //
 // COMMON
@@ -639,7 +639,7 @@ where
 {
     remaining_compilations: Mutex<HashMap<T::TPipelineHandle, T>>,
     cond_var: Condvar,
-    compiled_unpulled_pipelines: Arc<Mutex<Vec<(T::TPipelineHandle, Arc<T::TPipeline>)>>>,
+    compiled_unpulled_pipelines: Arc<Mutex<Vec<(T::TPipelineHandle, T, Arc<T::TPipeline>)>>>,
 }
 
 impl<T> PipelineTypeManager<T>
@@ -887,7 +887,7 @@ impl ShaderManager {
                 crate::autoreleasepool(|| {
                     let pipeline = task.compile(shaders, &c_device);
                     let mut delayed_pipelines = c_delayed_pipeline.lock().unwrap();
-                    delayed_pipelines.push((handle, pipeline));
+                    delayed_pipelines.push((handle, task, pipeline));
                     c_manager.cond_var.notify_all();
                 })
             });
@@ -917,7 +917,7 @@ impl ShaderManager {
                 crate::autoreleasepool(|| {
                     let pipeline = task.compile(shaders, &c_device);
                     let mut delayed_pipelines = c_delayed_pipeline.lock().unwrap();
-                    delayed_pipelines.push((handle, pipeline));
+                    delayed_pipelines.push((handle, task, pipeline));
                     c_manager.cond_var.notify_all();
                 })
             });
@@ -969,6 +969,35 @@ impl ShaderManager {
         count += self.update_remaining_compilations_type(assets, &self.compute);
         count += self.update_remaining_compilations_type(assets, &self.rt);
         count
+    }
+
+    pub fn pull_finished_pipelines(&self) -> SmallVec::<[RendererAssetWithHandle; 2]> {
+        let mut assets: SmallVec::<[RendererAssetWithHandle; 2]> = SmallVec::new();
+        {
+            let mut guard = self.graphics.compiled_unpulled_pipelines.lock().unwrap();
+            for (handle, task, pipeline) in guard.drain(..) {
+                assets.push(RendererAssetWithHandle::GraphicsPipeline(handle, CompiledPipeline { task, pipeline }));
+            }
+        }
+        {
+            let mut guard = self.mesh_graphics.compiled_unpulled_pipelines.lock().unwrap();
+            for (handle, task, pipeline) in guard.drain(..) {
+                assets.push(RendererAssetWithHandle::MeshGraphicsPipeline(handle, CompiledPipeline { task, pipeline }));
+            }
+        }
+        {
+            let mut guard = self.compute.compiled_unpulled_pipelines.lock().unwrap();
+            for (handle, task, pipeline) in guard.drain(..) {
+                assets.push(RendererAssetWithHandle::ComputePipeline(handle, CompiledPipeline { task, pipeline }));
+            }
+        }
+        {
+            let mut guard = self.rt.compiled_unpulled_pipelines.lock().unwrap();
+            for (handle, task, pipeline) in guard.drain(..) {
+                assets.push(RendererAssetWithHandle::RayTracingPipeline(handle, CompiledPipeline { task, pipeline }));
+            }
+        }
+        assets
     }
 
     pub fn has_remaining_mandatory_compilations(&self) -> bool {
