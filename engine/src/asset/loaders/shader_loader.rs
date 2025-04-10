@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bevy_tasks::futures_lite::AsyncReadExt;
 
 use log::trace;
-use sourcerenderer_core::gpu::PackedShader;
+use crate::graphics::gpu::PackedShader;
 
 use crate::asset::asset_manager::AssetFile;
 use crate::asset::{

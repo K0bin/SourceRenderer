@@ -1,6 +1,6 @@
 use std::{mem::ManuallyDrop, sync::Arc};
 
-use sourcerenderer_core::gpu::{self, Texture as _, Device as _, Heap as _};
+use super::gpu::{self, Texture as _, Device as _, Heap as _};
 
 use super::*;
 

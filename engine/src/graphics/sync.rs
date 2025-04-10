@@ -2,7 +2,7 @@ use std::{mem::ManuallyDrop, sync::Arc};
 
 use super::*;
 
-use sourcerenderer_core::gpu::Fence as _;
+use super::gpu::Fence as _;
 
 pub struct Fence {
     fence: ManuallyDrop<active_gpu_backend::Fence>,
@@ -99,7 +99,7 @@ impl SharedFenceValuePair {
 
     #[inline(always)]
     pub fn as_handle_ref(&self) -> active_gpu_backend::FenceValuePairRef {
-        sourcerenderer_core::gpu::FenceValuePairRef {
+        super::gpu::FenceValuePairRef {
             fence: self.fence.handle(),
             value: self.value,
             sync_before: self.sync_before

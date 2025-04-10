@@ -3,7 +3,7 @@ use std::{marker::PhantomData, sync::Arc};
 use atomic_refcell::AtomicRefMut;
 use crossbeam_channel::Sender;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, CommandBuffer as _, Buffer as _};
+use super::gpu::{self, CommandBuffer as _, Buffer as _};
 
 use super::*;
 

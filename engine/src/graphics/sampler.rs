@@ -1,6 +1,6 @@
 use std::{sync::Arc, mem::ManuallyDrop};
 
-use sourcerenderer_core::gpu::*;
+use super::gpu::*;
 
 use super::*;
 
