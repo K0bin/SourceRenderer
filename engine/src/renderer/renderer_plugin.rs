@@ -71,7 +71,7 @@ impl<P: Platform> Plugin for RendererPlugin<P> {
             .0;
         let gpu_resources = app.world().resource::<GPUDeviceResource>();
         let console_resource = app.world().resource::<ConsoleResource>();
-        let asset_manager_resource = app.world().resource::<AssetManagerECSResource<P>>();
+        let asset_manager_resource = app.world().resource::<AssetManagerECSResource>();
 
         let (renderer, sender) = Renderer::new(
             &gpu_resources.0,

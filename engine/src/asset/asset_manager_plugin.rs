@@ -12,7 +12,7 @@ use crate::asset::loaders::*;
 use super::AssetManager;
 
 #[derive(Resource)]
-pub struct AssetManagerECSResource<P: Platform>(pub Arc<AssetManager>, PlatformPhantomData<P>);
+pub struct AssetManagerECSResource(pub Arc<AssetManager>);
 
 pub struct AssetManagerPlugin<P: Platform>(PlatformPhantomData<P>);
 
@@ -28,13 +28,13 @@ impl<P: Platform> Plugin for AssetManagerPlugin<P> {
 
         asset_manager.add_loader(GltfLoader::new());
         asset_manager.add_loader(ImageLoader::new());
-        app.insert_resource(AssetManagerECSResource(asset_manager, PlatformPhantomData::<P>::default()));
-        app.add_systems(PreUpdate, load_level_system::<P>);
+        app.insert_resource(AssetManagerECSResource(asset_manager));
+        app.add_systems(PreUpdate, load_level_system);
     }
 }
 
-fn load_level_system<P: Platform>(world: &mut World) {
-    let asset_manager_res = world.get_resource::<AssetManagerECSResource<P>>().unwrap();
+fn load_level_system(world: &mut World) {
+    let asset_manager_res = world.get_resource::<AssetManagerECSResource>().unwrap();
     let asset_manager = &asset_manager_res.0;
     let level_opt = asset_manager.take_any_unintegrated_asset_data_of_type(AssetType::Level);
     if let Some(AssetData::Level(level)) = level_opt {
