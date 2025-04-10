@@ -8,6 +8,9 @@ use thread_local::ThreadLocal;
 use super::gpu::{self, CommandBuffer as _, CommandPool as _, Queue as _};
 use atomic_refcell::{AtomicRefCell, AtomicRefMut};
 
+#[cfg(target_arch = "wasm32")]
+use std::marker::PhantomData;
+
 use super::*;
 use super::CommandBuffer;
 
@@ -23,6 +26,9 @@ pub struct GraphicsContext {
   prerendered_frames: u32,
   destroyer: ManuallyDrop<Arc<DeferredDestroyer>>,
   global_buffer_allocator: Arc<BufferAllocator>,
+
+  #[cfg(target_arch = "wasm32")]
+  _p: PhantomData<*const u8>, // Remove Send + Sync
 }
 
 pub struct ThreadContext {
@@ -55,7 +61,7 @@ struct FrameContextCommandPool {
     command_pool: active_gpu_backend::CommandPool,
     sender: Sender<active_gpu_backend::CommandBuffer>,
     receiver: Receiver<active_gpu_backend::CommandBuffer>,
-    existing_cmd_buffer_handles: VecDeque<active_gpu_backend::CommandBuffer>
+    existing_cmd_buffer_handles: VecDeque<active_gpu_backend::CommandBuffer>,
 }
 
 impl GraphicsContext {
@@ -70,6 +76,9 @@ impl GraphicsContext {
       thread_contexts: ManuallyDrop::new(ThreadLocal::new()),
       prerendered_frames,
       global_buffer_allocator: buffer_allocator.clone(),
+
+      #[cfg(target_arch = "wasm32")]
+      _p: PhantomData,
     }
   }
 
@@ -196,6 +205,14 @@ impl Drop for GraphicsContext {
         unsafe { ManuallyDrop::drop(&mut self.destroyer) };
     }
 }
+
+// ThreadContext is only ever accessed through GraphicsContext.
+// GraphicsContext will be turned !Send + !Sync on Wasm32, so we can make ThreadContext Send + Sync
+// so ThreadLocal is fine with it.
+#[cfg(target_arch = "wasm32")]
+unsafe impl Send for ThreadContext {}
+#[cfg(target_arch = "wasm32")]
+unsafe impl Sync for ThreadContext {}
 
 impl ThreadContext {
   fn new(
