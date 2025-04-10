@@ -32,12 +32,17 @@ impl AssetLoader for ShaderLoader {
     ) -> Result<(), ()> {
         trace!("Loading shader: {:?}", &file.path);
         let mut buffer = Vec::<u8>::new();
-        let res = file.read_to_end(&mut buffer).await;
-        if res.is_err() {
-            println!("WTF {:?}", res);
+        let file_res = file.read_to_end(&mut buffer).await;
+        if let Err(e) = &file_res {
+            log::error!("Loading shader file failed: {:?}", e);
+            return Err(());
         }
-        res.map_err(|_e| ())?;
-        let shader: PackedShader = serde_json::from_slice(&buffer).map_err(|_e| ())?;
+        let shader_res = serde_json::from_slice(&buffer);
+        if let Err(e) = &shader_res {
+            log::error!("Deserializing shader file failed: {:?}", e);
+            return Err(());
+        }
+        let shader: PackedShader = shader_res.unwrap();
         manager.add_asset_data_with_progress(
             &file.path,
             AssetData::Shader(shader),
