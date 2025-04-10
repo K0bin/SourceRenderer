@@ -54,9 +54,6 @@ pub struct WebGPUBindGroupLayout {
     max_used_binding: u32
 }
 
-unsafe impl Send for WebGPUBindGroupLayout {}
-unsafe impl Sync for WebGPUBindGroupLayout {}
-
 fn sampling_type_to_webgpu(sampling_type: gpu::SamplingType) -> GpuTextureSampleType {
     match sampling_type {
         gpu::SamplingType::Float => GpuTextureSampleType::Float,
@@ -190,9 +187,6 @@ pub struct WebGPUPipelineLayout {
     layout: GpuPipelineLayout,
     bind_group_layouts: [Option<Arc<WebGPUBindGroupLayout>>; gpu::NON_BINDLESS_SET_COUNT as usize]
 }
-
-unsafe impl Send for WebGPUPipelineLayout {}
-unsafe impl Sync for WebGPUPipelineLayout {}
 
 impl WebGPUPipelineLayout {
     pub(crate) fn new(device: &GpuDevice, bind_group_layouts: &[Option<Arc<WebGPUBindGroupLayout>>]) -> Self {

@@ -28,9 +28,6 @@ impl WebGPUQueue {
     }
 }
 
-unsafe impl Send for WebGPUQueue {}
-unsafe impl Sync for WebGPUQueue {}
-
 impl gpu::Queue<WebGPUBackend> for WebGPUQueue {
     unsafe fn create_command_pool(&self, command_pool_type: gpu::CommandPoolType, _flags: gpu::CommandPoolFlags) -> WebGPUCommandPool {
         WebGPUCommandPool::new(&self.device, command_pool_type, &self.limits)

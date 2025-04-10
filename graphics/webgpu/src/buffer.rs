@@ -32,9 +32,6 @@ impl Hash for WebGPUBuffer {
     }
 }
 
-unsafe impl Send for WebGPUBuffer {}
-unsafe impl Sync for WebGPUBuffer {}
-
 impl WebGPUBuffer {
     pub(crate) fn new(device: &GpuDevice, info: &gpu::BufferInfo, mappable: bool, name: Option<&str>) -> Result<Self, ()> {
         // If usage contains MAP_WRITE, it must not contain any other usage flags besides COPY_SRC.

@@ -133,12 +133,6 @@ pub struct WebGPUCommandBuffer {
     readback_syncs: HashSet<WebGPUReadbackBufferSync>,
 }
 
-unsafe impl Send for WebGPUCommandBuffer {}
-unsafe impl Sync for WebGPUCommandBuffer {}
-
-unsafe impl Send for WebGPURenderBundleInheritance {}
-unsafe impl Sync for WebGPURenderBundleInheritance {}
-
 fn load_op_color_to_webgpu(load_op: &gpu::LoadOpColor) -> (GpuLoadOp, &gpu::ClearColor) {
     match load_op {
         gpu::LoadOpColor::Load => (GpuLoadOp::Load, &gpu::ClearColor::BLACK),
@@ -1132,9 +1126,6 @@ pub struct WebGPUCommandPool {
     pool_type: gpu::CommandPoolType,
     limits: WebGPULimits
 }
-
-unsafe impl Send for WebGPUCommandPool {}
-unsafe impl Sync for WebGPUCommandPool {}
 
 impl WebGPUCommandPool {
     pub(crate) fn new(

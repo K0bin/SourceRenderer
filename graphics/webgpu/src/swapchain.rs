@@ -24,9 +24,6 @@ pub struct WebGPUSwapchain {
     backbuffer_counter: u64,
 }
 
-unsafe impl Send for WebGPUSwapchain {}
-unsafe impl Sync for WebGPUSwapchain {}
-
 impl WebGPUSwapchain {
     pub fn new(device: &GpuDevice, surface: WebGPUSurface) -> Self {
         let context_obj: JsValue = surface.canvas().get_context("webgpu")

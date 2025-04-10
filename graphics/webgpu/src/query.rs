@@ -7,9 +7,6 @@ pub struct WebGPUQueryPool {
     query_set: AtomicRefCell<GpuQuerySet>,
 }
 
-unsafe impl Send for WebGPUQueryPool {}
-unsafe impl Sync for WebGPUQueryPool {}
-
 impl WebGPUQueryPool {
     pub(crate) fn new(device: &GpuDevice, count: u32) -> Self {
         let descriptor = GpuQuerySetDescriptor::new(count, GpuQueryType::Occlusion);
