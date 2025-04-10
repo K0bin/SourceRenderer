@@ -1,4 +1,4 @@
-#[cfg(feature = "threading")]
+#[cfg(feature = "render_thread")]
 use std::thread::JoinHandle;
 
 use std::mem::ManuallyDrop;
@@ -132,10 +132,10 @@ struct PreInitRendererResourceWrapper {
 struct RendererResourceWrapper {
     sender: ManuallyDrop<RendererSender>,
 
-    #[cfg(not(feature = "threading"))]
+    #[cfg(not(feature = "render_thread"))]
     renderer: SyncCell<Renderer>,
 
-    #[cfg(feature = "threading")]
+    #[cfg(feature = "render_thread")]
     thread_handle: ManuallyDrop<JoinHandle<()>>,
 }
 
@@ -143,7 +143,7 @@ impl Drop for RendererResourceWrapper {
     fn drop(&mut self) {
         unsafe { ManuallyDrop::drop(&mut self.sender); }
 
-        #[cfg(feature = "threading")]
+        #[cfg(feature = "render_thread")]
         {
             let handle = unsafe { ManuallyDrop::take(&mut self.thread_handle) };
             handle.join().unwrap();
@@ -151,7 +151,7 @@ impl Drop for RendererResourceWrapper {
     }
 }
 
-#[cfg(not(feature = "threading"))]
+#[cfg(not(feature = "render_thread"))]
 fn install_renderer_systems(
     app: &mut App,
 ) {
@@ -168,7 +168,7 @@ fn install_renderer_systems(
     app.add_systems(Last, end_frame.after(ExtractSet));
 }
 
-#[cfg(not(feature = "threading"))]
+#[cfg(not(feature = "render_thread"))]
 fn insert_renderer_resource(
     app: &mut App,
     renderer: Renderer,
@@ -188,7 +188,7 @@ struct SyncSet;
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 struct ExtractSet;
 
-#[cfg(feature = "threading")]
+#[cfg(feature = "render_thread")]
 fn install_renderer_systems(
     app: &mut App,
 ) {
@@ -210,7 +210,7 @@ fn install_renderer_systems(
     app.add_systems(Last, end_frame.after(ExtractSet));
 }
 
-#[cfg(feature = "threading")]
+#[cfg(feature = "render_thread")]
 fn insert_renderer_resource(
     app: &mut App,
     renderer: Renderer,
@@ -225,7 +225,7 @@ fn insert_renderer_resource(
     app.insert_resource(wrapper);
 }
 
-#[cfg(feature = "threading")]
+#[cfg(feature = "render_thread")]
 fn start_render_thread(mut renderer: Renderer) -> std::thread::JoinHandle<()> {
     std::thread::Builder::new()
         .name("RenderThread".to_string())
@@ -393,7 +393,7 @@ fn end_frame(
         events.send(AppExit::from_code(1));
     }
 
-    #[cfg(not(feature = "threading"))]
+    #[cfg(not(feature = "render_thread"))]
     {
         let frame_result = renderer.renderer.get().render();
         if frame_result == EngineLoopFuncResult::Exit {
