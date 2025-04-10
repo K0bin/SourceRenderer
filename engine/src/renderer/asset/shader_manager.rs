@@ -4,7 +4,6 @@ use std::hash::Hash;
 use std::sync::Arc;
 use crate::{Mutex, Condvar};
 
-use log::trace;
 use smallvec::SmallVec;
 use crate::graphics::gpu::Shader as _;
 
@@ -38,11 +37,7 @@ pub trait PipelineCompileTask: Clone {
     fn handle(&self) -> Self::TPipelineHandle;
     fn contains_shader(&self, handle: ShaderHandle) -> Option<ShaderType>;
     fn request_shader_refresh(&self, asset_manager: &Arc<AssetManager>);
-    fn can_compile(
-        &self,
-        renderer_assets_read: &RendererAssetsReadOnly<'_>,
-        loaded_shader_handle: Option<ShaderHandle>
-    ) -> bool;
+    fn can_compile(&self, renderer_assets_read: &RendererAssetsReadOnly<'_>) -> bool;
     fn collect_shaders_for_compilation(
         &self,
         renderer_assets_read: &RendererAssetsReadOnly<'_>
@@ -173,14 +168,10 @@ impl PipelineCompileTask for GraphicsCompileTask {
         }
     }
 
-    fn can_compile(
-        &self,
-        renderer_assets_read: &RendererAssetsReadOnly<'_>,
-        loaded_shader_handle: Option<ShaderHandle>,
-    ) -> bool {
-        (loaded_shader_handle.map_or(false, |s| s == self.vs) || renderer_assets_read.get_shader(self.vs).is_some())
+    fn can_compile(&self, renderer_assets_read: &RendererAssetsReadOnly<'_>) -> bool {
+        renderer_assets_read.get_shader(self.vs).is_some()
             && self.fs
-                .map(|fs| loaded_shader_handle.map_or(false, |s| s == fs) || renderer_assets_read.get_shader(fs).is_some())
+                .map(|fs| renderer_assets_read.get_shader(fs).is_some())
                 .unwrap_or(true)
     }
 
@@ -326,17 +317,13 @@ impl PipelineCompileTask for MeshGraphicsCompileTask {
         }
     }
 
-    fn can_compile(
-        &self,
-        renderer_assets_read: &RendererAssetsReadOnly<'_>,
-        loaded_shader_handle: Option<ShaderHandle>,
-    ) -> bool {
-        (loaded_shader_handle.map_or(false, |s| s == self.ms) || renderer_assets_read.get_shader(self.ms).is_some())
+    fn can_compile(&self, renderer_assets_read: &RendererAssetsReadOnly<'_>) -> bool {
+        renderer_assets_read.get_shader(self.ms).is_some()
             && self.ts
-                .map(|ts| loaded_shader_handle.map_or(false, |s| s == ts) || renderer_assets_read.get_shader(ts).is_some())
+                .map(|ts| renderer_assets_read.get_shader(ts).is_some())
                 .unwrap_or(true)
             && self.fs
-                .map(|fs| loaded_shader_handle.map_or(false, |s| s == fs) || renderer_assets_read.get_shader(fs).is_some())
+                .map(|fs| renderer_assets_read.get_shader(fs).is_some())
                 .unwrap_or(true)
     }
 
@@ -450,12 +437,8 @@ impl PipelineCompileTask for ComputeCompileTask {
         asset_manager.request_asset_refresh_by_handle(self.shader_handle, AssetLoadPriority::High);
     }
 
-    fn can_compile(
-        &self,
-        renderer_assets_read: &RendererAssetsReadOnly<'_>,
-        loaded_shader_handle: Option<ShaderHandle>,
-    ) -> bool {
-        loaded_shader_handle.map_or(false, |s| s == self.shader_handle) || renderer_assets_read.get_shader(self.shader_handle).is_some()
+    fn can_compile(&self, renderer_assets_read: &RendererAssetsReadOnly<'_>) -> bool {
+        renderer_assets_read.get_shader(self.shader_handle).is_some()
     }
 
     fn collect_shaders_for_compilation(
@@ -572,27 +555,23 @@ impl PipelineCompileTask for RayTracingCompileTask {
         }
     }
 
-    fn can_compile(
-        &self,
-        renderer_assets_read: &RendererAssetsReadOnly<'_>,
-        loaded_shader_handle: Option<ShaderHandle>,
-    ) -> bool {
-        if !loaded_shader_handle.map_or(false, |s| s == self.ray_gen_shader) && !renderer_assets_read.get_shader(self.ray_gen_shader).is_some()
+    fn can_compile(&self, renderer_assets_read: &RendererAssetsReadOnly<'_>) -> bool {
+        if !renderer_assets_read.get_shader(self.ray_gen_shader).is_some()
         {
             return false;
         }
         for shader in &self.closest_hit_shaders {
-            if !loaded_shader_handle.map_or(false, |s| s == *shader) && !renderer_assets_read.get_shader(*shader).is_some() {
+            if !renderer_assets_read.get_shader(*shader).is_some() {
                 return false;
             }
         }
         for shader in &self.any_hit_shaders {
-            if !loaded_shader_handle.map_or(false, |s| s == *shader) && !renderer_assets_read.get_shader(*shader).is_some() {
+            if !renderer_assets_read.get_shader(*shader).is_some() {
                 return false;
             }
         }
         for shader in &self.miss_shaders {
-            if !loaded_shader_handle.map_or(false, |s| s == *shader) && !renderer_assets_read.get_shader(*shader).is_some() {
+            if !renderer_assets_read.get_shader(*shader).is_some() {
                 return false;
             }
         }
@@ -691,7 +670,7 @@ impl ShaderManager {
 
     pub fn request_graphics_pipeline(
         &self,
-        asset_manager: &Arc<AssetManager>,
+        assets: &RendererAssetsReadOnly,
         info: &GraphicsPipelineInfo,
     ) -> GraphicsPipelineHandle {
         let stored_input_layout = StoredVertexLayoutInfo {
@@ -707,30 +686,34 @@ impl ShaderManager {
             constants: info.blend.constants.clone(),
         };
 
+        let asset_manager = assets.asset_manager();
         let (vs_handle, _) = asset_manager.request_asset(&info.vs, AssetType::Shader, AssetLoadPriority::Normal);
         let fs_handle = info.fs.as_ref().map(|fs| asset_manager.request_asset(fs, AssetType::Shader, AssetLoadPriority::Normal).0.into());
 
         let handle: GraphicsPipelineHandle = asset_manager.reserve_handle_without_path(AssetType::GraphicsPipeline).into();
-        let mut remaining = self.graphics.remaining_compilations.lock().unwrap();
-        remaining.insert(handle, GraphicsCompileTask {
-            vs: vs_handle.into(),
-            fs: fs_handle,
-            vertex_layout: stored_input_layout,
-            rasterizer: info.rasterizer.clone(),
-            depth_stencil: info.depth_stencil.clone(),
-            blend: stored_blend,
-            primitive_type: info.primitive_type,
-            render_target_formats: info.render_target_formats.iter().copied().collect(),
-            depth_stencil_format: info.depth_stencil_format,
-            is_async: false,
-            handle,
-        });
+        {
+            let mut remaining = self.graphics.remaining_compilations.lock().unwrap();
+            remaining.insert(handle, GraphicsCompileTask {
+                vs: vs_handle.into(),
+                fs: fs_handle,
+                vertex_layout: stored_input_layout,
+                rasterizer: info.rasterizer.clone(),
+                depth_stencil: info.depth_stencil.clone(),
+                blend: stored_blend,
+                primitive_type: info.primitive_type,
+                render_target_formats: info.render_target_formats.iter().copied().collect(),
+                depth_stencil_format: info.depth_stencil_format,
+                is_async: false,
+                handle,
+            });
+        }
+        self.update_remaining_compilations_type(assets, &self.graphics);
         handle
     }
 
     pub fn request_mesh_graphics_pipeline(
         &self,
-        asset_manager: &Arc<AssetManager>,
+        assets: &RendererAssetsReadOnly,
         info: &MeshGraphicsPipelineInfo,
     ) -> MeshGraphicsPipelineHandle {
         let stored_blend = StoredBlendInfo {
@@ -741,86 +724,93 @@ impl ShaderManager {
             constants: info.blend.constants.clone(),
         };
 
+        let asset_manager = assets.asset_manager();
         let ts_handle = info.ts.as_ref().map(|ts| asset_manager.request_asset(ts, AssetType::Shader, AssetLoadPriority::Normal).0.into());
         let (ms_handle, _) = asset_manager.request_asset(&info.ms, AssetType::Shader, AssetLoadPriority::Normal);
         let fs_handle = info.fs.as_ref().map(|fs| asset_manager.request_asset(fs, AssetType::Shader, AssetLoadPriority::Normal).0.into());
 
         let handle: MeshGraphicsPipelineHandle = asset_manager.reserve_handle_without_path(AssetType::MeshGraphicsPipeline).into();
-        let mut remaining = self.mesh_graphics.remaining_compilations.lock().unwrap();
-        remaining.insert(handle, MeshGraphicsCompileTask {
-            ts: ts_handle,
-            ms: ms_handle.into(),
-            fs: fs_handle,
-            rasterizer: info.rasterizer.clone(),
-            depth_stencil: info.depth_stencil.clone(),
-            blend: stored_blend,
-            render_target_formats: info.render_target_formats.iter().copied().collect(),
-            depth_stencil_format: info.depth_stencil_format,
-            is_async: false,
-            handle,
-        });
+        {
+            let mut remaining = self.mesh_graphics.remaining_compilations.lock().unwrap();
+            remaining.insert(handle, MeshGraphicsCompileTask {
+                ts: ts_handle,
+                ms: ms_handle.into(),
+                fs: fs_handle,
+                rasterizer: info.rasterizer.clone(),
+                depth_stencil: info.depth_stencil.clone(),
+                blend: stored_blend,
+                render_target_formats: info.render_target_formats.iter().copied().collect(),
+                depth_stencil_format: info.depth_stencil_format,
+                is_async: false,
+                handle,
+            });
+        }
+        self.update_remaining_compilations_type(assets, &self.mesh_graphics);
         handle
     }
 
     pub fn request_compute_pipeline(
         &self,
-        asset_manager: &Arc<AssetManager>,
+        assets: &RendererAssetsReadOnly,
         path: &str) -> ComputePipelineHandle {
+        let asset_manager = assets.asset_manager();
         let (shader_handle, _) = asset_manager.request_asset(path, AssetType::Shader, AssetLoadPriority::Normal);
 
         let handle: ComputePipelineHandle = asset_manager.reserve_handle_without_path(AssetType::ComputePipeline).into();
-        let mut remaining = self.compute.remaining_compilations.lock().unwrap();
-        remaining.insert(handle, ComputeCompileTask {
-            shader_handle: shader_handle.into(),
-            is_async: false,
-            handle,
-        });
+        {
+            let mut remaining = self.compute.remaining_compilations.lock().unwrap();
+            remaining.insert(handle, ComputeCompileTask {
+                shader_handle: shader_handle.into(),
+                is_async: false,
+                handle,
+            });
+        }
+        self.update_remaining_compilations_type(assets, &self.compute);
         handle
     }
 
     pub fn request_ray_tracing_pipeline(
         &self,
-        asset_manager: &Arc<AssetManager>,
+        assets: &RendererAssetsReadOnly,
         info: &RayTracingPipelineInfo,
     ) -> RayTracingPipelineHandle {
+        let asset_manager = assets.asset_manager();
         let handle: RayTracingPipelineHandle = asset_manager.reserve_handle_without_path(AssetType::RayTracingPipeline).into();
-        let mut remaining = self.rt.remaining_compilations.lock().unwrap();
-        remaining.insert(handle, RayTracingCompileTask {
-            closest_hit_shaders: info.closest_hit_shaders.iter()
-                .map(|path| asset_manager.request_asset(path, AssetType::Shader, AssetLoadPriority::Normal).0.into())
-                .collect(),
-            any_hit_shaders: info.any_hit_shaders.iter()
-                .map(|path| asset_manager.request_asset(path, AssetType::Shader, AssetLoadPriority::Normal).0.into())
-                .collect(),
-            miss_shaders: info.miss_shaders.iter().map(|path| asset_manager.request_asset(path, AssetType::Shader, AssetLoadPriority::Normal).0.into()).collect(),
-            ray_gen_shader: asset_manager.request_asset(&info.ray_gen_shader, AssetType::Shader, AssetLoadPriority::Normal).0.into(),
-            is_async: false,
-            handle,
-        });
+        {
+            let mut remaining = self.rt.remaining_compilations.lock().unwrap();
+            remaining.insert(handle, RayTracingCompileTask {
+                closest_hit_shaders: info.closest_hit_shaders.iter()
+                    .map(|path| asset_manager.request_asset(path, AssetType::Shader, AssetLoadPriority::Normal).0.into())
+                    .collect(),
+                any_hit_shaders: info.any_hit_shaders.iter()
+                    .map(|path| asset_manager.request_asset(path, AssetType::Shader, AssetLoadPriority::Normal).0.into())
+                    .collect(),
+                miss_shaders: info.miss_shaders.iter().map(|path| assets.asset_manager().request_asset(path, AssetType::Shader, AssetLoadPriority::Normal).0.into()).collect(),
+                ray_gen_shader: asset_manager.request_asset(&info.ray_gen_shader, AssetType::Shader, AssetLoadPriority::Normal).0.into(),
+                is_async: false,
+                handle,
+            });
+        }
+        self.update_remaining_compilations_type(assets, &self.rt);
         handle
     }
 
-    fn collect_ready_pipeline_handles_for_new_shader_handle<T>(
+    fn queue_pipelines_containing_shader_type<T>(
         &self,
         assets_read: &RendererAssetsReadOnly,
         pipeline_type_manager: &Arc<PipelineTypeManager<T>>,
         handle: ShaderHandle,
         shader: &RendererShader
-    ) -> SmallVec::<[T; 1]>
+    )
     where
         T: PipelineCompileTask + 'static,
     {
-        trace!("Integrating shader {:?} {:?}", shader.shader_type(), handle);
-        let mut ready_handles = SmallVec::<[T::TPipelineHandle; 1]>::new();
-
-        // Find all pipelines that use this shader and queue new compile tasks for those.
-        // This is done because add_shader will get called when a shader has changed on disk, so we need to load
-        // all remaining shaders of a pipeline and recompile it.
         let mut remaining_compilations: crate::MutexGuard<'_, HashMap<T::TPipelineHandle, T>> = pipeline_type_manager.remaining_compilations.lock().unwrap();
         let finished_pipelines = T::finished_pipelines(assets_read);
         for (pipeline_handle, pipeline) in finished_pipelines {
             let existing_pipeline_match = pipeline.task.contains_shader(handle);
             if let Some(shader_type) = existing_pipeline_match {
+                log::info!("Found pipeline that contains shader: {:?}", handle);
                 assert!(shader_type == shader.shader_type());
                 if !remaining_compilations.contains_key(&pipeline_handle) {
                     let task: T = pipeline.task.clone();
@@ -828,17 +818,22 @@ impl ShaderManager {
                 }
             }
         }
+    }
 
+    fn collect_ready_pipeline_handles<T>(
+        &self,
+        assets_read: &RendererAssetsReadOnly,
+        pipeline_type_manager: &Arc<PipelineTypeManager<T>>,
+    ) -> SmallVec::<[T; 1]>
+    where
+        T: PipelineCompileTask + 'static,
+    {
         // Go over all pipelines that can be compiled now.
+        let mut ready_handles = SmallVec::<[T::TPipelineHandle; 1]>::new();
+        let mut remaining_compilations: crate::MutexGuard<'_, HashMap<T::TPipelineHandle, T>> = pipeline_type_manager.remaining_compilations.lock().unwrap();
         for (pipeline_handle, task) in remaining_compilations.iter() {
-            let remaining_compile_match = task.contains_shader(handle);
-            if let Some(shader_type) = remaining_compile_match {
-                trace!("Found pipeline that contains shader {:?} {:?}. Testing if its ready to compile.", shader.shader_type(), handle);
-                assert!(shader_type == shader.shader_type());
-                if task.can_compile(&assets_read, Some(handle)) {
-                    trace!("Pipeline that contains shader {:?} {:?} is ready to compile.", shader.shader_type(), handle);
-                    ready_handles.push(*pipeline_handle);
-                }
+            if task.can_compile(&assets_read) {
+                ready_handles.push(*pipeline_handle);
             }
         }
 
@@ -849,31 +844,26 @@ impl ShaderManager {
         ready_tasks
     }
 
-    fn add_shader_type<T>(
+    fn update_remaining_compilations_type<T>(
         &self,
         assets: &RendererAssetsReadOnly,
         pipeline_type_manager: &Arc<PipelineTypeManager<T>>,
-        handle: ShaderHandle,
-        shader: &RendererShader
-    ) -> bool
+    ) -> u32
     where
         T: PipelineCompileTask + Send + 'static,
     {
-        trace!("Integrating shader {:?} {:?}", shader.shader_type(), handle);
-        let ready_tasks = self.collect_ready_pipeline_handles_for_new_shader_handle(assets, pipeline_type_manager, handle, shader);
-
+        let ready_tasks = self.collect_ready_pipeline_handles(assets, pipeline_type_manager);
         if ready_tasks.is_empty() {
-            trace!("Nothing to do with shader {:?} {:?}", shader.shader_type(), handle);
-            return true;
+            return 0;
         }
+        let count = ready_tasks.len() as u32;
 
-        trace!("Queuing compile tasks for pipelines with {:?} {:?}", shader.shader_type(), handle);
         #[cfg(not(target_arch = "wasm32"))]
         self.spawn_compile_task(ready_tasks, assets, pipeline_type_manager);
         #[cfg(target_arch = "wasm32")]
         self.spawn_local_compile_task(ready_handles, asset_manager, pipeline_type_manager);
 
-        true
+        count
     }
 
     #[allow(unused)]
@@ -881,7 +871,7 @@ impl ShaderManager {
         &self,
         mut ready_tasks: SmallVec<[T; 1]>,
         assets: &RendererAssetsReadOnly,
-        pipeline_type_manager: &Arc<PipelineTypeManager<T>>
+        pipeline_type_manager: &Arc<PipelineTypeManager<T>>,
     )
         where T: PipelineCompileTask + Send + 'static
     {
@@ -935,23 +925,23 @@ impl ShaderManager {
         }
     }
 
-    pub fn add_shader(&self, assets: &RendererAssetsReadOnly, handle: ShaderHandle, shader: &RendererShader) {
+    pub fn queue_pipelines_containing_shader(&self, assets: &RendererAssetsReadOnly, handle: ShaderHandle, shader: &RendererShader) {
         let shader_type = shader.shader_type();
         if shader_type == ShaderType::ComputeShader {
-            self.add_shader_type(assets, &self.compute, handle, shader);
+            self.queue_pipelines_containing_shader_type(assets, &self.compute, handle, shader);
             return;
         }
 
         if shader_type == ShaderType::RayGen
             || shader_type == ShaderType::RayClosestHit
             || shader_type == ShaderType::RayMiss {
-            self.add_shader_type(assets, &self.rt, handle, shader);
+            self.queue_pipelines_containing_shader_type(assets, &self.rt, handle, shader);
             return;
         }
 
         if shader_type == ShaderType::FragmentShader {
-            self.add_shader_type(assets, &self.graphics, handle, shader);
-            self.add_shader_type(assets, &self.mesh_graphics, handle, shader);
+            self.queue_pipelines_containing_shader_type(assets, &self.graphics, handle, shader);
+            self.queue_pipelines_containing_shader_type(assets, &self.mesh_graphics, handle, shader);
             return;
         }
 
@@ -959,17 +949,26 @@ impl ShaderManager {
             || shader_type == ShaderType::GeometryShader
             || shader_type == ShaderType::TessellationControlShader
             || shader_type == ShaderType::TessellationEvaluationShader {
-            self.add_shader_type(assets, &self.graphics, handle, shader);
+            self.queue_pipelines_containing_shader_type(assets, &self.graphics, handle, shader);
             return;
         }
 
         if shader_type == ShaderType::MeshShader
             || shader_type == ShaderType::TaskShader {
-            self.add_shader_type(assets, &self.mesh_graphics, handle, shader);
+            self.queue_pipelines_containing_shader_type(assets, &self.mesh_graphics, handle, shader);
             return;
         }
 
         panic!("Unhandled shader. {:?}", handle);
+    }
+
+    pub fn update_remaining_compilations(&self, assets: &RendererAssetsReadOnly) -> u32 {
+        let mut count = 0;
+        count += self.update_remaining_compilations_type(assets, &self.graphics);
+        count += self.update_remaining_compilations_type(assets, &self.mesh_graphics);
+        count += self.update_remaining_compilations_type(assets, &self.compute);
+        count += self.update_remaining_compilations_type(assets, &self.rt);
+        count
     }
 
     pub fn has_remaining_mandatory_compilations(&self) -> bool {
