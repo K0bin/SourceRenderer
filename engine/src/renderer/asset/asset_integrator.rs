@@ -284,7 +284,7 @@ impl AssetIntegrator {
 
     pub(super) fn flush(
         &self,
-        _shader_manager: &ShaderManager,
+        shader_manager: &ShaderManager,
     ) -> SmallVec::<[RendererAssetWithHandle; 2]> {
         let mut retained_delayed_assets = SmallVec::<[DelayedAsset; 2]>::new();
         let mut ready_delayed_assets = SmallVec::<[RendererAssetWithHandle; 2]>::new();
@@ -298,6 +298,11 @@ impl AssetIntegrator {
                 }
             }
             queue.extend(retained_delayed_assets);
+        }
+
+        let finished_pipelines = shader_manager.pull_finished_pipelines();
+        for asset in finished_pipelines {
+            ready_delayed_assets.push(asset);
         }
 
         // Make sure the work initializing the resources actually gets submitted
