@@ -30,9 +30,6 @@ impl Hash for WebGPUShader {
     }
 }
 
-unsafe impl Send for WebGPUShader {}
-unsafe impl Sync for WebGPUShader {}
-
 impl WebGPUShader {
     pub fn new(device: &GpuDevice, shader: &gpu::PackedShader, name: Option<&str>) -> Self {
         assert_ne!(shader.shader_wgsl.len(), 0);
@@ -107,9 +104,6 @@ pub struct WebGPUGraphicsPipeline {
     pipeline: GpuRenderPipeline,
     layout: Arc<WebGPUPipelineLayout>
 }
-
-unsafe impl Send for WebGPUGraphicsPipeline {}
-unsafe impl Sync for WebGPUGraphicsPipeline {}
 
 fn format_to_vertex_format(format: gpu::Format) -> GpuVertexFormat {
     match format {
@@ -478,9 +472,6 @@ pub struct WebGPUComputePipeline {
     resources: [Box<[gpu::Resource]>; gpu::NON_BINDLESS_SET_COUNT as usize],
     layout: Arc<WebGPUPipelineLayout>
 }
-
-unsafe impl Send for WebGPUComputePipeline {}
-unsafe impl Sync for WebGPUComputePipeline {}
 
 impl WebGPUComputePipeline {
     pub(crate) fn new(device: &GpuDevice, shader: &WebGPUShader, shared: &WebGPUShared, name: Option<&str>, limits: &WebGPULimits) -> Result<Self, ()> {

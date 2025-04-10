@@ -7,9 +7,6 @@ pub struct WebGPUSurface {
     canvas: OffscreenCanvas
 }
 
-unsafe impl Send for WebGPUSurface {}
-unsafe impl Sync for WebGPUSurface {}
-
 impl PartialEq for WebGPUSurface {
     fn eq(&self, other: &Self) -> bool {
         self.canvas == other.canvas

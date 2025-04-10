@@ -13,9 +13,6 @@ pub struct WebGPUDevice {
     limits: WebGPULimits
 }
 
-unsafe impl Send for WebGPUDevice {}
-unsafe impl Sync for WebGPUDevice {}
-
 impl WebGPUDevice {
     pub(crate) fn new(device: GpuDevice, features: &WebGPUFeatures, limits: &WebGPULimits, debug: bool) -> Self {
         let memory_infos: [gpu::MemoryTypeInfo; 1] = [

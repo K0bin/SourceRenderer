@@ -42,9 +42,6 @@ pub struct WebGPUInstance {
     adapters: [WebGPUAdapter; 2]
 }
 
-unsafe impl Send for WebGPUInstance {}
-unsafe impl Sync for WebGPUInstance {}
-
 impl WebGPUInstance {
     pub async fn async_init(navigator: Navigator) -> Result<WebGPUInstanceAsyncInitResult, WebGPUInstanceInitError> {
         let gpu = navigator.gpu();

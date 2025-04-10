@@ -83,9 +83,6 @@ impl Hash for WebGPUTexture {
     }
 }
 
-unsafe impl Send for WebGPUTexture {}
-unsafe impl Sync for WebGPUTexture {}
-
 impl Drop for WebGPUTexture {
     fn drop(&mut self) {
         self.texture.destroy();
@@ -257,9 +254,6 @@ impl Hash for WebGPUTextureView {
         ptr_val.hash(state);
     }
 }
-
-unsafe impl Send for WebGPUTextureView {}
-unsafe impl Sync for WebGPUTextureView {}
 
 impl WebGPUTextureView {
     pub fn new(_device: &GpuDevice, texture: &WebGPUTexture, info: &gpu::TextureViewInfo, name: Option<&str>) -> Result<Self, ()> {

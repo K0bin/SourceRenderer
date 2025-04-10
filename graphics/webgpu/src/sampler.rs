@@ -7,9 +7,6 @@ pub struct WebGPUSampler {
     sampler: GpuSampler
 }
 
-unsafe impl Send for WebGPUSampler {}
-unsafe impl Sync for WebGPUSampler {}
-
 fn filter_to_webgpu(filter: gpu::Filter) -> GpuFilterMode {
     match filter {
         gpu::Filter::Linear => GpuFilterMode::Linear,

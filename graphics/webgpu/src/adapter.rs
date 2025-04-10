@@ -115,9 +115,6 @@ impl WebGPUAdapter {
     }
 }
 
-unsafe impl Send for WebGPUAdapter {}
-unsafe impl Sync for WebGPUAdapter {}
-
 impl gpu::Adapter<WebGPUBackend> for WebGPUAdapter {
     fn adapter_type(&self) -> sourcerenderer_core::gpu::AdapterType {
         self.adapter_type

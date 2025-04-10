@@ -14,9 +14,6 @@ pub struct WebGPUHeap {
     _size: u64,
 }
 
-unsafe impl Send for WebGPUHeap {}
-unsafe impl Sync for WebGPUHeap {}
-
 impl WebGPUHeap {
     pub(crate) fn new(device: &GpuDevice, memory_type_index: u32, size: u64, mappable: bool) -> Self {
         Self {

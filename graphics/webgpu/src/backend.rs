@@ -1,4 +1,4 @@
-use sourcerenderer_core::gpu::GPUBackend;
+use sourcerenderer_core::gpu;
 
 pub use crate::{
     adapter::*,
@@ -18,7 +18,7 @@ pub use crate::{
 
 pub struct WebGPUBackend();
 
-impl GPUBackend for WebGPUBackend {
+impl gpu::GPUBackend for WebGPUBackend {
     type Instance = WebGPUInstance;
     type Adapter = WebGPUAdapter;
     type Device = WebGPUDevice;
