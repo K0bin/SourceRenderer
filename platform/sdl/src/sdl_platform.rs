@@ -259,15 +259,17 @@ impl NotifyFileWatcher {
             recommended_watcher(
                 move |event: Result<notify::Event, notify::Error>| match event {
                     Ok(event) => {
-                        for path in event.paths {
-                            let path_str = path.to_str().unwrap().to_string();
-                            let relative_path = if path_str.starts_with(&base_path) {
-                                &path_str[base_path.len() + 1..]
-                            } else {
-                                &path_str
-                            };
+                        if let notify::EventKind::Modify(notify::event::ModifyKind::Data(_)) = event.kind  {
+                            for path in event.paths {
+                                let path_str = path.to_str().unwrap().to_string();
+                                let relative_path = if path_str.starts_with(&base_path) {
+                                    &path_str[base_path.len() + 1..]
+                                } else {
+                                    &path_str
+                                };
 
-                            sender.send(relative_path.to_string()).unwrap();
+                                sender.send(relative_path.to_string()).unwrap();
+                            }
                         }
                     }
                     _ => {}
