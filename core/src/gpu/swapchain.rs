@@ -13,7 +13,10 @@ pub trait Backbuffer {
 }
 
 pub trait Swapchain<B: GPUBackend> : Sized {
-  type Backbuffer : Backbuffer + Send + Sync;
+  #[cfg(not(feature = "single_thread_gpu_api"))]
+  type Backbuffer : Backbuffer;
+  #[cfg(feature = "single_thread_gpu_api")]
+  type Backbuffer : Backbuffer;
 
   fn will_reuse_backbuffers(&self) -> bool;
   unsafe fn next_backbuffer(&mut self) -> Result<Self::Backbuffer, SwapchainError>;

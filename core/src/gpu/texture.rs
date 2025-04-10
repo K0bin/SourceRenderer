@@ -152,16 +152,16 @@ pub struct SamplerInfo {
   pub max_lod: Option<f32>,
 }
 
-pub trait Texture : Send + Sync + PartialEq + Eq {
+pub trait Texture : PartialEq + Eq {
   fn info(&self) -> &TextureInfo;
   unsafe fn can_be_written_directly(&self) -> bool;
 }
 
-pub trait TextureView : Send + Sync + PartialEq + Eq {
+pub trait TextureView : PartialEq + Eq {
   fn texture_info(&self) -> &TextureInfo;
   fn info(&self) -> &TextureViewInfo;
 }
 
-pub trait Sampler : Send + Sync {
+pub trait Sampler {
   fn info(&self) -> &SamplerInfo;
 }

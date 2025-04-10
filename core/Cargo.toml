@@ -19,3 +19,7 @@ futures-io = "0.3"
 
 bevy_math = "0.15"
 bevy_log = "0.15"
+
+[features]
+default = ["single_thread_gpu_api"]
+single_thread_gpu_api = []

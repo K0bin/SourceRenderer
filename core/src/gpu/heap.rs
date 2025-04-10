@@ -42,7 +42,7 @@ pub struct MemoryInfo {
 #[derive(Debug)]
 pub struct OutOfMemoryError {}
 
-pub trait Heap<B: GPUBackend> : Send + Sync {
+pub trait Heap<B: GPUBackend> {
     fn memory_type_index(&self) -> u32;
     unsafe fn create_buffer(&self, info: &BufferInfo, offset: u64, name: Option<&str>) -> Result<B::Buffer, OutOfMemoryError>;
     unsafe fn create_texture(&self, info: &TextureInfo, offset: u64, name: Option<&str>) -> Result<B::Texture, OutOfMemoryError>;
