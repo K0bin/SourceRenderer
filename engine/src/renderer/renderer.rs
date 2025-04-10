@@ -135,7 +135,7 @@ impl Renderer {
         self.device.flush_all();
 
         let mut message_receiving_result = ReceiveMessagesResult::WaitForMessages;
-        if cfg!(feature = "threading") {
+        if cfg!(feature = "render_thread") {
             while message_receiving_result == ReceiveMessagesResult::WaitForMessages {
                 message_receiving_result = self.receive_messages();
             }
@@ -375,6 +375,7 @@ impl Renderer {
     }
 
     pub fn is_ready(&self) -> bool {
+        self.assets.receive_assets();
         let assets = self.assets.read();
         self.render_path.is_ready(&assets)
     }
@@ -567,7 +568,7 @@ impl RendererSender {
         log::trace!("Stopping renderer");
         self.sender = None;
 
-        if cfg!(feature = "threading") {
+        if cfg!(feature = "render_thread") {
             self.unblock_game_thread();
         }
     }

@@ -62,7 +62,8 @@ bevy_input = "0.15"
 # This forces Cargo to use a more recent version of Slab.
 slab = "=0.4.9"
 
-parking_lot = { version = "0.12", optional = true, default-features = false }
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+parking_lot = "0.12"
 
 [target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "android", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
 sourcerenderer_vulkan = { path = "../graphics/vulkan" }
@@ -79,6 +80,8 @@ getrandom = { version = "0.3", features = [ "wasm_js" ] }
 [features]
 default = [ "threading" ]
 # default = [ ]
-threading = [ "bevy_tasks/multi_threaded", "bevy_ecs/multi_threaded", "dep:parking_lot" ]
+ecs_threading = [ "bevy_tasks/multi_threaded" ]
+render_thread = [ ]
+threading = [ "ecs_threading", "render_thread" ]
 web = [ ]
 profile = [ "profiling/profile-with-optick" ]
