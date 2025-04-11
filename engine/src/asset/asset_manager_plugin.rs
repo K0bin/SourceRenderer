@@ -5,7 +5,6 @@ use bevy_ecs::system::Resource;
 use bevy_ecs::world::World;
 use sourcerenderer_core::{Platform, PlatformPhantomData};
 
-use crate::graphics::GPUDeviceResource;
 use crate::asset::*;
 use crate::asset::loaders::*;
 
@@ -20,9 +19,7 @@ impl<P: Platform> Default for AssetManagerPlugin<P>{ fn default() -> Self { Self
 
 impl<P: Platform> Plugin for AssetManagerPlugin<P> {
     fn build(&self, app: &mut bevy_app::App) {
-        let gpu_device = &app.world().get_resource::<GPUDeviceResource>().expect("AssetManager needs GraphicsDevice atm").0;
-
-        let asset_manager: Arc<AssetManager> = AssetManager::new(gpu_device);
+        let asset_manager: Arc<AssetManager> = AssetManager::new();
         asset_manager.add_container(FSContainer::<P>::new(&asset_manager));
         asset_manager.add_loader(ShaderLoader::new());
 
