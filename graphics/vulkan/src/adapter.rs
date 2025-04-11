@@ -108,10 +108,12 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         let supported_extensions = self.instance
                 .instance
                 .enumerate_device_extension_properties(self.physical_device).unwrap();
-        for ref prop in supported_extensions {
-            let name_ptr = &prop.extension_name as *const c_char;
-            let c_char_ptr = name_ptr as *const c_char;
-            let name_res = unsafe { CStr::from_ptr(c_char_ptr) }.to_str();
+        for extension in &supported_extensions {
+            let name_c = unsafe { CStr::from_ptr(&extension.extension_name as *const c_char) };
+            let name_res = name_c.to_str();
+            if name_res.is_err() {
+                continue;
+            }
             let name = name_res.unwrap();
             extensions |= match name {
                 SWAPCHAIN_EXT_NAME => VkAdapterExtensionSupport::SWAPCHAIN,
@@ -425,7 +427,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             vk::PhysicalDeviceFragmentShaderBarycentricFeaturesKHR::default();
         let mut features_host_image_copy = vk::PhysicalDeviceHostImageCopyFeaturesEXT::default();
         let mut features_mesh_shader = vk::PhysicalDeviceMeshShaderFeaturesEXT::default();
-        let mut extension_names: Vec<&str> = vec![SWAPCHAIN_EXT_NAME];
+        let mut enabled_extensions: Vec<&str> = vec![SWAPCHAIN_EXT_NAME];
 
         enabled_features.features.shader_storage_image_write_without_format = vk::TRUE;
         enabled_features.features.sampler_anisotropy = vk::TRUE;
@@ -460,7 +462,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         if extensions
             .intersects(VkAdapterExtensionSupport::MEMORY_BUDGET)
         {
-            extension_names.push(MEMORY_BUDGET_EXT_NAME);
+            enabled_extensions.push(MEMORY_BUDGET_EXT_NAME);
         }
 
         let supports_descriptor_indexing = supported_features_12
@@ -520,7 +522,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         }
 
         if supports_rt_pipeline || supports_rt_query {
-            extension_names.push(ACCELERATION_STRUCTURE_EXT_NAME);
+            enabled_extensions.push(ACCELERATION_STRUCTURE_EXT_NAME);
             enabled_features_12.buffer_device_address = vk::TRUE;
             features_acceleration_structure.acceleration_structure = vk::TRUE;
             features_acceleration_structure.p_next = std::mem::replace(
@@ -533,11 +535,11 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
 
         if supports_rt_pipeline {
             println!("Ray tracing pipelines supported.");
-            extension_names.push(RAY_TRACING_PIPELINE_EXT_NAME);
+            enabled_extensions.push(RAY_TRACING_PIPELINE_EXT_NAME);
             if extensions.contains(VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS) {
-                extension_names.push(DEFERRED_HOST_OPERATIONS_EXT_NAME);
+                enabled_extensions.push(DEFERRED_HOST_OPERATIONS_EXT_NAME);
             }
-            extension_names.push(PIPELINE_LIBRARY_EXT_NAME);
+            enabled_extensions.push(PIPELINE_LIBRARY_EXT_NAME);
             features_rt_pipeline.ray_tracing_pipeline = vk::TRUE;
             features_rt_pipeline.p_next = std::mem::replace(
                 &mut enabled_features.p_next,
@@ -549,7 +551,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
 
         if supports_rt_query {
             println!("Ray tracing queries supported.");
-            extension_names.push(RAY_QUERY_EXT_NAME);
+            enabled_extensions.push(RAY_QUERY_EXT_NAME);
             features_rt_query.ray_query = vk::TRUE;
             features_rt_query.p_next = std::mem::replace(
                 &mut enabled_features.p_next,
@@ -585,7 +587,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                     as *mut vk::PhysicalDeviceFragmentShaderBarycentricFeaturesKHR
                     as *mut c_void,
             );
-            extension_names.push(BARYCENTRICS_EXT_NAME);
+            enabled_extensions.push(BARYCENTRICS_EXT_NAME);
             enabled_features.features.geometry_shader = vk::TRUE; // Unfortunately this is necessary for gl_PrimitiveId
         }
 
@@ -594,7 +596,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         }
 
         if supported_features_host_image_copy.host_image_copy == vk::TRUE {
-            extension_names.push(HOST_IMAGE_COPY_EXT_NAME);
+            enabled_extensions.push(HOST_IMAGE_COPY_EXT_NAME);
             features_host_image_copy.host_image_copy = vk::TRUE;
             features_host_image_copy.p_next = std::mem::replace(
                 &mut enabled_features.p_next,
@@ -606,7 +608,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
 
         if supported_features_mesh_shader.mesh_shader == vk::TRUE
             && supported_features_mesh_shader.task_shader == vk::TRUE {
-            extension_names.push(MESH_SHADER_EXT_NAME);
+            enabled_extensions.push(MESH_SHADER_EXT_NAME);
             features_mesh_shader.mesh_shader = vk::TRUE;
             features_mesh_shader.task_shader = vk::TRUE;
             features_mesh_shader.p_next = std::mem::replace(
@@ -617,11 +619,11 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             );
         }
 
-        let extension_names_c: Vec<CString> = extension_names
+        let enabled_extensions_c: Vec<CString> = enabled_extensions
             .iter()
             .map(|ext| CString::new(*ext).unwrap())
             .collect();
-        let extension_names_ptr: Vec<*const c_char> = extension_names_c
+        let enabled_extension_c_ptrs: Vec<*const c_char> = enabled_extensions_c
             .iter()
             .map(|ext_c| ext_c.as_ptr())
             .collect();
@@ -630,8 +632,8 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             p_queue_create_infos: queue_create_descs.as_ptr(),
             queue_create_info_count: queue_create_descs.len() as u32,
             p_enabled_features: std::ptr::null(),
-            pp_enabled_extension_names: extension_names_ptr.as_ptr(),
-            enabled_extension_count: extension_names_c.len() as u32,
+            pp_enabled_extension_names: enabled_extension_c_ptrs.as_ptr(),
+            enabled_extension_count: enabled_extensions_c.len() as u32,
             p_next: &enabled_features as &vk::PhysicalDeviceFeatures2 as *const vk::PhysicalDeviceFeatures2 as *const c_void,
             ..Default::default()
         };
