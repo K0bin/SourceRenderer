@@ -229,7 +229,6 @@ pub struct LoadedAssetData {
 
 
 pub struct AssetManager {
-    device: Arc<crate::graphics::Device>,
     containers: async_rwlock::RwLock<Vec<Box<dyn ErasedAssetContainer>>>,
     pending_containers: AsyncCounter,
     pending_loaders: AsyncCounter,
@@ -243,9 +242,7 @@ pub struct AssetManager {
 }
 
 impl AssetManager {
-    pub fn new(
-        device: &Arc<crate::graphics::Device>,
-    ) -> Arc<Self> {
+    pub fn new() -> Arc<Self> {
         let mut channels = HashMap::<AssetTypeGroup, (Sender<LoadedAssetData>, Receiver<LoadedAssetData>)>::new();
         for group in AssetTypeGroup::VARIANTS {
             let channel = unbounded();
@@ -253,7 +250,6 @@ impl AssetManager {
         }
 
         let manager = Arc::new(Self {
-            device: device.clone(),
             loaders: async_rwlock::RwLock::new(Vec::new()),
             containers: async_rwlock::RwLock::new(Vec::new()),
             path_map: Mutex::new(HashMap::new()),
@@ -267,10 +263,6 @@ impl AssetManager {
         });
 
         manager
-    }
-
-    pub fn graphics_device(&self) -> &Arc<crate::graphics::Device> {
-        &self.device
     }
 
     pub fn add_mesh_data(
