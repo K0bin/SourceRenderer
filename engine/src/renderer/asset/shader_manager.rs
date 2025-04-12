@@ -22,8 +22,13 @@ use super::{RendererAssetWithHandle, RendererAssetsReadOnly, RendererShader};
 //
 
 pub trait PipelineCompileTask: Clone {
-    type TShaders : Send;
     type TPipelineHandle: Hash + PartialEq + Eq + Clone + Copy + From<AssetHandle> + Into<AssetHandle> + Send + Sync + std::fmt::Debug;
+
+    #[cfg(not(target_arch = "wasm32"))]
+    type TShaders : Send;
+    #[cfg(target_arch = "wasm32")]
+    type TShaders;
+
     #[cfg(not(target_arch = "wasm32"))]
     type TPipeline : Send + Sync;
     #[cfg(target_arch = "wasm32")]
@@ -861,7 +866,7 @@ impl ShaderManager {
         #[cfg(not(target_arch = "wasm32"))]
         self.spawn_compile_task(ready_tasks, assets, pipeline_type_manager);
         #[cfg(target_arch = "wasm32")]
-        self.spawn_local_compile_task(ready_handles, asset_manager, pipeline_type_manager);
+        self.spawn_local_compile_task(ready_tasks, assets, pipeline_type_manager);
 
         count
     }
