@@ -23,7 +23,7 @@ use super::{RendererAssetWithHandle, RendererAssetsReadOnly, RendererShader};
 
 pub trait PipelineCompileTask: Clone {
     type TShaders : Send;
-    type TPipelineHandle: Hash + PartialEq + Eq + Clone + Copy + From<AssetHandle> + Into<AssetHandle> + Send + Sync;
+    type TPipelineHandle: Hash + PartialEq + Eq + Clone + Copy + From<AssetHandle> + Into<AssetHandle> + Send + Sync + std::fmt::Debug;
     #[cfg(not(target_arch = "wasm32"))]
     type TPipeline : Send + Sync;
     #[cfg(target_arch = "wasm32")]
@@ -887,6 +887,7 @@ impl ShaderManager {
                 crate::autoreleasepool(|| {
                     let pipeline = task.compile(shaders, &c_device);
                     let mut delayed_pipelines = c_delayed_pipeline.lock().unwrap();
+                    log::info!("Finished compiling pipeline with handle: {:?}", handle);
                     delayed_pipelines.push((handle, task, pipeline));
                     c_manager.cond_var.notify_all();
                 })
@@ -917,6 +918,7 @@ impl ShaderManager {
                 crate::autoreleasepool(|| {
                     let pipeline = task.compile(shaders, &c_device);
                     let mut delayed_pipelines = c_delayed_pipeline.lock().unwrap();
+                    log::info!("Finished compiling pipeline with handle: {:?}", handle);
                     delayed_pipelines.push((handle, task, pipeline));
                     c_manager.cond_var.notify_all();
                 })
