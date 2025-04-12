@@ -103,15 +103,21 @@ impl RendererAssets {
                 false
             },
             RendererAssetWithHandle::GraphicsPipeline(handle, asset) => assets.graphics_pipelines.insert(handle.into(), asset).is_some(),
+            RendererAssetWithHandle::MeshGraphicsPipeline(handle, asset) => assets.mesh_graphics_pipelines.insert(handle.into(), asset).is_some(),
             RendererAssetWithHandle::ComputePipeline(handle, asset) => assets.compute_pipelines.insert(handle.into(), asset).is_some(),
             RendererAssetWithHandle::RayTracingPipeline(handle, asset) => assets.ray_tracing_pipelines.insert(handle.into(), asset).is_some(),
-            _ => panic!("Unsupported asset type {:?}", asset.asset_type()),
         }
     }
 
     #[inline(always)]
     pub(crate) fn request_graphics_pipeline(&self, info: &GraphicsPipelineInfo) -> GraphicsPipelineHandle {
         self.shader_manager.request_graphics_pipeline(&self.read(), info)
+    }
+
+    #[allow(unused)]
+    #[inline(always)]
+    pub(crate) fn request_mesh_graphics_pipeline(&self, info: &MeshGraphicsPipelineInfo) -> MeshGraphicsPipelineHandle {
+        self.shader_manager.request_mesh_graphics_pipeline(&self.read(), info)
     }
 
     #[inline(always)]
