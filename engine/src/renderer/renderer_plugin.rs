@@ -402,6 +402,7 @@ fn end_frame(
     mut events: EventWriter<AppExit>,
     mut renderer: RendererResourceAccessorMut
 ) {
+    #[cfg(feature = "render_thread")]
     if renderer.sender.is_saturated() {
         return;
     }
