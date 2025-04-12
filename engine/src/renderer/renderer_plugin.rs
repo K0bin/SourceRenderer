@@ -7,6 +7,7 @@ use std::mem::ManuallyDrop;
 
 use sourcerenderer_core::console::Console;
 use sourcerenderer_core::gpu::Surface as _;
+#[cfg(feature = "render_thread")]
 use web_time::Duration;
 
 use bevy_app::{
@@ -89,6 +90,7 @@ impl<P: GraphicsPlatform<ActiveBackend>> RendererPlugin<P> {
 #[derive(Resource)]
 struct RendererResourceWrapper {
     sender: ManuallyDrop<RendererSender>,
+    is_saturated: bool,
 
     #[cfg(not(feature = "render_thread"))]
     renderer: SyncCell<Renderer>,
@@ -100,6 +102,7 @@ struct RendererResourceWrapper {
 #[cfg(all(not(feature = "render_thread"), target_arch = "wasm32"))]
 struct RendererResourceWrapper {
     sender: ManuallyDrop<RendererSender>,
+    is_saturated: bool,
 
     renderer: SyncCell<Renderer>,
 }
@@ -116,23 +119,6 @@ impl Drop for RendererResourceWrapper {
     }
 }
 
-#[cfg(not(feature = "render_thread"))]
-fn install_renderer_systems(
-    app: &mut App,
-) {
-    app.add_systems(
-        Last,
-        (
-            extract_camera,
-            extract_static_renderables,
-            extract_point_lights,
-            extract_directional_lights,
-        )
-            .in_set(ExtractSet),
-    );
-    app.add_systems(Last, end_frame.after(ExtractSet));
-}
-
 #[allow(unused)]
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 struct SyncSet;
@@ -140,7 +126,6 @@ struct SyncSet;
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 struct ExtractSet;
 
-#[cfg(feature = "render_thread")]
 fn install_renderer_systems(
     app: &mut App,
 ) {
@@ -208,6 +193,7 @@ fn insert_renderer_resource<P: GraphicsPlatform<ActiveBackend>>(app: &mut App) {
 
     let wrapper = RendererResourceWrapper {
         sender: ManuallyDrop::new(sender),
+        is_saturated: false,
 
         #[cfg(not(feature = "render_thread"))]
         renderer: SyncCell::new(renderer),
@@ -268,7 +254,7 @@ fn extract_camera(
     active_camera: Res<ActiveCamera>,
     camera_entities: Query<(&InterpolatedTransform, &Camera, &GlobalTransform)>,
 ) {
-    if renderer.sender.is_saturated() {
+    if renderer.is_saturated {
         return;
     }
 
@@ -310,7 +296,7 @@ fn extract_static_renderables(
             if result.is_err() {
                 events.send(AppExit::from_code(1));
             }
-        } else if !renderer.sender.is_saturated() {
+        } else if !renderer.is_saturated {
             let result = renderer.sender.update_transform(entity, transform.0);
 
             if result.is_err() {
@@ -346,7 +332,7 @@ fn extract_point_lights(
             if result.is_err() {
                 events.send(AppExit::from_code(1));
             }
-        } else if !renderer.sender.is_saturated() {
+        } else if !renderer.is_saturated {
             let result = renderer.sender.update_transform(entity, transform.0);
 
             if result.is_err() {
@@ -379,7 +365,7 @@ fn extract_directional_lights(
             if result.is_err() {
                 events.send(AppExit::from_code(1));
             }
-        } else if !renderer.sender.is_saturated() {
+        } else if !renderer.is_saturated {
             let result = renderer.sender.update_transform(entity, transform.0);
 
             if result.is_err() {
@@ -403,7 +389,7 @@ fn end_frame(
     mut renderer: RendererResourceAccessorMut
 ) {
     #[cfg(feature = "render_thread")]
-    if renderer.sender.is_saturated() {
+    if renderer.is_saturated {
         return;
     }
 
@@ -422,10 +408,15 @@ fn end_frame(
 }
 
 #[allow(unused)]
-fn begin_frame(renderer: RendererResourceAccessorMut) {
+fn begin_frame(mut renderer: RendererResourceAccessorMut) {
     // Unblock regularly so the fixed time systems can run.
     // All rendering systems check if the renderer is saturated before sending new commands.
+    #[cfg(feature = "render_thread")]
     renderer.sender.wait_until_available(Duration::from_micros(1000000u64 / 4u64 / (TICK_RATE as u64)));
+
+    // Update saturated only at the beginning of the frame to avoid inconsistent
+    // states caused by the renderer suddenly becoming available in the middle of an update.
+    renderer.is_saturated = renderer.sender.is_saturated();
 }
 
 fn create_renderer(
