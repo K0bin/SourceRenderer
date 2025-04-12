@@ -56,6 +56,11 @@ enum ReceiveMessagesResult {
     Empty
 }
 
+#[cfg(any(feature = "render_thread", not(target_arch = "wasm32")))]
+type BoxedRenderPath = Box<dyn RenderPath + Send>;
+#[cfg(all(not(feature = "render_thread"), target_arch = "wasm32"))]
+type BoxedRenderPath = Box<dyn RenderPath>;
+
 pub struct Renderer {
     device: Arc<Device>,
     receiver: RendererReceiver,
@@ -63,7 +68,7 @@ pub struct Renderer {
     scene: RendererScene,
     context: GraphicsContext,
     swapchain: Arc<Mutex<Swapchain>>,
-    render_path: Box<dyn RenderPath>,
+    render_path: BoxedRenderPath,
     assets: RendererAssets,
     last_frame: Instant,
     frame: u64
@@ -384,7 +389,7 @@ impl Renderer {
         ReceiveMessagesResult::Empty
     }
 
-    pub fn set_render_path(&mut self, render_path: Box<dyn RenderPath>) {
+    pub fn set_render_path(&mut self, render_path: BoxedRenderPath) {
         self.render_path = render_path;
     }
 
