@@ -21,10 +21,7 @@ use bevy_ecs::schedule::{
     SystemSet,
 };
 use bevy_ecs::system::{
-    Query,
-    Res,
-    ResMut,
-    Resource,
+    NonSend, NonSendMut, Query, Res, ResMut, Resource
 };
 use bevy_ecs::world::Ref;
 use bevy_transform::components::GlobalTransform;
@@ -77,7 +74,10 @@ impl<P: GraphicsPlatform<ActiveBackend>> RendererPlugin<P> {
         Self(PhantomData)
     }
     pub fn window_changed(app: &App, window_state: WindowState) {
+        #[cfg(any(feature = "render_thread", not(target_arch = "wasm32")))]
         let resource = app.world().get_resource::<RendererResourceWrapper>();
+        #[cfg(all(not(feature = "render_thread"), target_arch = "wasm32"))]
+        let resource = app.world().get_non_send_resource::<RendererResourceWrapper>();
         if let Some(resource) = resource {
             // It might not be finished initializing yet.
             resource.sender.window_changed(window_state);
@@ -85,6 +85,7 @@ impl<P: GraphicsPlatform<ActiveBackend>> RendererPlugin<P> {
     }
 }
 
+#[cfg(any(feature = "render_thread", not(target_arch = "wasm32")))]
 #[derive(Resource)]
 struct RendererResourceWrapper {
     sender: ManuallyDrop<RendererSender>,
@@ -94,6 +95,13 @@ struct RendererResourceWrapper {
 
     #[cfg(feature = "render_thread")]
     thread_handle: ManuallyDrop<JoinHandle<()>>,
+}
+
+#[cfg(all(not(feature = "render_thread"), target_arch = "wasm32"))]
+struct RendererResourceWrapper {
+    sender: ManuallyDrop<RendererSender>,
+
+    renderer: SyncCell<Renderer>,
 }
 
 impl Drop for RendererResourceWrapper {
@@ -154,6 +162,16 @@ fn install_renderer_systems(
     app.add_systems(Last, end_frame.after(ExtractSet));
 }
 
+#[cfg(any(feature = "render_thread", not(target_arch = "wasm32")))]
+type RendererResourceAccessor<'a> = Res<'a, RendererResourceWrapper>;
+#[cfg(all(not(feature = "render_thread"), target_arch = "wasm32"))]
+type RendererResourceAccessor<'a> = NonSend<'a, RendererResourceWrapper>;
+
+#[cfg(any(feature = "render_thread", not(target_arch = "wasm32")))]
+type RendererResourceAccessorMut<'a> = ResMut<'a, RendererResourceWrapper>;
+#[cfg(all(not(feature = "render_thread"), target_arch = "wasm32"))]
+type RendererResourceAccessorMut<'a> = NonSendMut<'a, RendererResourceWrapper>;
+
 fn insert_renderer_resource<P: GraphicsPlatform<ActiveBackend>>(app: &mut App) {
     let surface_resource: GPUSurfaceResource = app.world_mut().remove_non_send_resource().unwrap();
     let instace_resource: GPUInstanceResource = app.world_mut().remove_non_send_resource().unwrap();
@@ -197,7 +215,10 @@ fn insert_renderer_resource<P: GraphicsPlatform<ActiveBackend>>(app: &mut App) {
         #[cfg(feature = "render_thread")]
         thread_handle: ManuallyDrop::new(handle),
     };
+    #[cfg(any(feature = "render_thread", not(target_arch = "wasm32")))]
     app.insert_resource(wrapper);
+    #[cfg(all(not(feature = "render_thread"), target_arch = "wasm32"))]
+    app.insert_non_send_resource(wrapper);
 }
 
 #[cfg(feature = "render_thread")]
@@ -243,7 +264,7 @@ fn start_render_thread<P: GraphicsPlatform<ActiveBackend>>(
 
 fn extract_camera(
     mut events: EventWriter<AppExit>,
-    renderer: Res<RendererResourceWrapper>,
+    renderer: RendererResourceAccessor,
     active_camera: Res<ActiveCamera>,
     camera_entities: Query<(&InterpolatedTransform, &Camera, &GlobalTransform)>,
 ) {
@@ -276,7 +297,7 @@ fn extract_camera(
 
 fn extract_static_renderables(
     mut events: EventWriter<AppExit>,
-    renderer: Res<RendererResourceWrapper>,
+    renderer: RendererResourceAccessor,
     static_renderables: Query<(Entity, Ref<StaticRenderableComponent>, Ref<InterpolatedTransform>)>,
     mut removed_static_renderables: RemovedComponents<StaticRenderableComponent>,
 ) {
@@ -312,7 +333,7 @@ fn extract_static_renderables(
 
 fn extract_point_lights(
     mut events: EventWriter<AppExit>,
-    renderer: Res<RendererResourceWrapper>,
+    renderer: RendererResourceAccessor,
     point_lights: Query<(Entity, Ref<PointLightComponent>, Ref<InterpolatedTransform>)>,
     mut removed_point_lights: RemovedComponents<PointLightComponent>,
 ) {
@@ -345,7 +366,7 @@ fn extract_point_lights(
 
 fn extract_directional_lights(
     mut events: EventWriter<AppExit>,
-    renderer: Res<RendererResourceWrapper>,
+    renderer: RendererResourceAccessor,
     directional_lights: Query<(Entity, Ref<DirectionalLightComponent>, Ref<InterpolatedTransform>)>,
     mut removed_directional_lights: RemovedComponents<DirectionalLightComponent>,
 ) {
@@ -379,7 +400,7 @@ fn extract_directional_lights(
 #[allow(unused_mut)]
 fn end_frame(
     mut events: EventWriter<AppExit>,
-    mut renderer: ResMut<RendererResourceWrapper>
+    mut renderer: RendererResourceAccessorMut
 ) {
     if renderer.sender.is_saturated() {
         return;
@@ -400,7 +421,7 @@ fn end_frame(
 }
 
 #[allow(unused)]
-fn begin_frame(renderer: ResMut<RendererResourceWrapper>) {
+fn begin_frame(renderer: RendererResourceAccessorMut) {
     // Unblock regularly so the fixed time systems can run.
     // All rendering systems check if the renderer is saturated before sending new commands.
     renderer.sender.wait_until_available(Duration::from_micros(1000000u64 / 4u64 / (TICK_RATE as u64)));
