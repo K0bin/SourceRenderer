@@ -393,9 +393,11 @@ fn end_frame(
         return;
     }
 
-    let result = renderer.sender.end_frame();
-    if result.is_err() {
-        events.send(AppExit::from_code(1));
+    if !renderer.is_saturated {
+        let result = renderer.sender.end_frame();
+        if result.is_err() {
+            events.send(AppExit::from_code(1));
+        }
     }
 
     #[cfg(not(feature = "render_thread"))]
