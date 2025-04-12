@@ -1,13 +1,10 @@
 use bevy_app::App;
-use bevy_ecs::system::Resource;
 use sourcerenderer_core::platform::{GraphicsPlatform, Window};
 
 use super::{active_gpu_backend, APIInstance, Surface};
 
-#[derive(Resource)]
 pub struct GPUInstanceResource(pub APIInstance);
 
-#[derive(Resource)]
 pub struct GPUSurfaceResource{
     pub surface: Surface,
     pub width: u32,
