@@ -52,4 +52,6 @@ pub fn main() {
             break 'event_loop;
         }
     }
+
+    std::process::exit(0);
 }
