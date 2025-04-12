@@ -71,7 +71,8 @@ pub struct Renderer {
     render_path: BoxedRenderPath,
     assets: RendererAssets,
     last_frame: Instant,
-    frame: u64
+    frame: u64,
+    was_ready: bool,
 }
 
 impl Drop for Renderer {
@@ -130,6 +131,7 @@ impl Renderer {
             assets,
             last_frame: Instant::now(),
             frame: 0u64,
+            was_ready: false,
         }
     }
 
@@ -168,6 +170,9 @@ impl Renderer {
         if !self.is_ready() {
             // The shaders aren't ready to be used yet. Quit after handling messages.
             return EngineLoopFuncResult::KeepRunning;
+        } else if !self.was_ready {
+            self.was_ready = true;
+            log::info!("Renderer is ready now.");
         }
 
         let delta = Instant::now().duration_since(self.last_frame);
