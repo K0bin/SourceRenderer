@@ -21,6 +21,9 @@ pub struct WebGPUInstanceInitError {
 
 impl WebGPUInstanceInitError {
     fn new(msg: &str) -> Self { Self { msg: msg.to_string() }}
+
+    pub fn uninited() -> Self { Self::new("The asynchronous WebGPU process has not yet been started.") }
+    pub fn unfinished() -> Self { Self::new("The asynchronous WebGPU initialization has not yet finished.") }
 }
 
 impl Display for WebGPUInstanceInitError {

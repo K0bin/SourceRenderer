@@ -1,5 +1,5 @@
 use sourcerenderer_core::platform::Window;
-use sourcerenderer_webgpu::{WebGPUBackend, WebGPUDevice, WebGPUInstance, WebGPUSurface, WebGPUSwapchain};
+use sourcerenderer_webgpu::{WebGPUBackend, WebGPUInstance, WebGPUSurface};
 use web_sys::OffscreenCanvas;
 
 pub struct WebWindow {

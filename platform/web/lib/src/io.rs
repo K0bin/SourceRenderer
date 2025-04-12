@@ -6,7 +6,7 @@ use std::task::{Context, Poll};
 
 use futures_lite::io::Cursor;
 
-use sourcerenderer_core::platform::{IO, FileWatcher};
+use sourcerenderer_core::platform::{PlatformIO, FileWatcher};
 
 struct ForceSendFuture<T, F: Future<Output = T>>(F);
 
@@ -25,7 +25,7 @@ unsafe impl<T, F> Send for ForceSendFuture<T, F>
 
 pub struct WebIO {}
 
-impl IO for WebIO {
+impl PlatformIO for WebIO {
     type File = Cursor<Box<[u8]>>;
     type FileWatcher = NopWatcher;
 
