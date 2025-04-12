@@ -10,16 +10,15 @@ use bevy_math::Vec2;
 use bevy_time::{Fixed, Time};
 use bevy_transform::components::Transform;
 use sourcerenderer_core::{
-    Platform,
     Quaternion,
     Vec3,
 };
 
 use sourcerenderer_engine::Camera;
 
-pub fn install<P: Platform>(app: &mut App) {
-    app.add_systems(FixedUpdate, (fps_camera_movement::<P>,));
-    app.add_systems(Update, (retrieve_fps_camera_rotation::<P>,));
+pub fn install(app: &mut App) {
+    app.add_systems(FixedUpdate, (fps_camera_movement,));
+    app.add_systems(Update, (retrieve_fps_camera_rotation,));
 }
 
 #[derive(Component, Default)]
@@ -71,7 +70,7 @@ fn fps_camera_rotation(mouse: &MouseMotion, fps_camera: &mut FPSCamera) -> Quate
     Quaternion::from_euler(bevy_math::EulerRot::XYZ, fps_camera.pitch, fps_camera.yaw, 0f32)
 }
 
-pub(crate) fn retrieve_fps_camera_rotation<P: Platform>(
+pub(crate) fn retrieve_fps_camera_rotation(
     mut mouse_motion: EventReader<MouseMotion>,
     mut query: Query<(&mut Transform, &mut FPSCameraComponent), With<Camera>>,
 ) {
@@ -82,7 +81,7 @@ pub(crate) fn retrieve_fps_camera_rotation<P: Platform>(
     }
 }
 
-pub(crate) fn fps_camera_movement<P: Platform>(
+pub(crate) fn fps_camera_movement(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut query: Query<&mut Transform, (With<Camera>, With<FPSCameraComponent>)>,
     tick_rate: Res<Time<Fixed>>,

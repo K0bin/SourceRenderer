@@ -161,13 +161,14 @@ pub use active_gpu_backend::{
     RayTracingPipelineInfo,
     Backend as ActiveBackend,
     Texture as BackendTexture,
-    Backbuffer
+    Instance as APIInstance,
+    Backbuffer,
+    Surface,
 };
 
 #[allow(unused)]
 pub(crate) use self::gpu::{
     BINDLESS_TEXTURE_COUNT,
-    AdapterType,
     LoadOpColor,
     LoadOpDepthStencil,
     BarrierSync,
@@ -232,4 +233,5 @@ pub use self::gpu::{
     Filter,
     AddressMode,
     SamplerInfo,
+    AdapterType,
 };

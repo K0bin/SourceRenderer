@@ -2,6 +2,10 @@ use crate::Matrix4;
 
 use super::*;
 
+pub trait Surface<B: GPUBackend> {
+  unsafe fn create_swapchain(self, width: u32, height: u32, vsync: bool, device: &B::Device) -> Result<B::Swapchain, SwapchainError>;
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SwapchainError {
   Other,
@@ -12,7 +16,7 @@ pub trait Backbuffer {
   fn key(&self) -> u64;
 }
 
-pub trait Swapchain<B: GPUBackend> : Sized {
+pub trait Swapchain<B: GPUBackend> {
   #[cfg(not(feature = "single_thread_gpu_api"))]
   type Backbuffer : Backbuffer;
   #[cfg(feature = "single_thread_gpu_api")]

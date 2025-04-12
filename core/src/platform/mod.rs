@@ -1,11 +1,10 @@
 use std::error::Error;
-use std::marker::PhantomData;
 
 use crate::{Vec2, Vec2I, Vec2UI, gpu::GPUBackend};
 use crate::input::Key;
 
 mod io;
-pub use io::IO;
+pub use io::PlatformIO;
 pub use io::FileWatcher;
 
 #[derive(PartialEq)]
@@ -22,24 +21,9 @@ pub enum GraphicsApi {
   Vulkan
 }
 
-pub trait Platform: 'static + Sized {
-  type IO: io::IO;
+pub trait GraphicsPlatform<B: GPUBackend> : 'static {
+  fn create_instance(debug_layers: bool) -> Result<B::Instance, Box<dyn Error>>;
 }
-
-pub trait GraphicsPlatform<B: GPUBackend> {
-  fn create_instance(&self, debug_layers: bool) -> Result<B::Instance, Box<dyn Error>>;
-}
-
-pub trait WindowProvider<B: GPUBackend> {
-  type Window: Window<B>;
-  fn window(&self) -> &Self::Window;
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
-pub struct PlatformPhantomData<P: Platform>(PhantomData<P>);
-unsafe impl<P: Platform> Send for PlatformPhantomData<P> {}
-unsafe impl<P: Platform> Sync for PlatformPhantomData<P> {}
-impl<P: Platform> Default for PlatformPhantomData<P> { fn default() -> Self { Self(PhantomData) } }
 
 #[derive(PartialEq)]
 pub enum Event<B: GPUBackend> {
@@ -81,5 +65,4 @@ pub trait Window<B: GPUBackend> {
   fn width(&self) -> u32;
   fn height(&self) -> u32;
   fn create_surface(&self, graphics_instance: &B::Instance) -> B::Surface;
-  fn create_swapchain(&self, vsync: bool, device: &B::Device, surface: B::Surface) -> B::Swapchain;
 }

@@ -1,11 +1,14 @@
+use std::marker::PhantomData;
+use std::sync::Arc;
 #[cfg(feature = "render_thread")]
 use std::thread::JoinHandle;
 
 use std::mem::ManuallyDrop;
 
+use sourcerenderer_core::console::Console;
+use sourcerenderer_core::gpu::Surface as _;
 use web_time::Duration;
 
-use atomic_refcell::AtomicRefCell;
 use bevy_app::{
     App, AppExit, Last, Plugin
 };
@@ -26,12 +29,10 @@ use bevy_ecs::system::{
 use bevy_ecs::world::Ref;
 use bevy_transform::components::GlobalTransform;
 use bevy_utils::synccell::SyncCell;
-use log::{debug, info};
-use sourcerenderer_core::{
-    Platform, PlatformPhantomData, Vec2UI
-};
+use sourcerenderer_core::Vec2UI;
+use sourcerenderer_core::platform::GraphicsPlatform;
 
-use super::renderer::RendererSender;
+use super::renderer::{RendererSender, RendererReceiver};
 use super::{
     DirectionalLightComponent,
     PointLightComponent,
@@ -39,11 +40,11 @@ use super::{
     StaticRenderableComponent,
 };
 use crate::EngineLoopFuncResult;
-use crate::asset::AssetManagerECSResource;
+use crate::asset::{AssetManager, AssetManagerECSResource};
 use crate::engine::{
     ConsoleResource, WindowState, TICK_RATE
 };
-use crate::graphics::{GPUDeviceResource, GPUSwapchainResource};
+use crate::graphics::{ActiveBackend, Adapter, AdapterType, APIInstance, GPUInstanceResource, GPUSurfaceResource, Instance, Surface, Swapchain};
 use crate::transform::InterpolatedTransform;
 use crate::{
     ActiveCamera,
@@ -60,58 +61,20 @@ struct WindowSizeChangedEvent {
 #[derive(Event)]
 struct WindowMinimized {}
 
-pub struct RendererPlugin<P: Platform>(PlatformPhantomData<P>);
+pub struct RendererPlugin<P: GraphicsPlatform<ActiveBackend>>(PhantomData<P>);
+unsafe impl<P: GraphicsPlatform<ActiveBackend>> Send for RendererPlugin<P> {}
+unsafe impl<P: GraphicsPlatform<ActiveBackend>> Sync for RendererPlugin<P> {}
 
-impl<P: Platform> Plugin for RendererPlugin<P> {
+impl<P: GraphicsPlatform<ActiveBackend>> Plugin for RendererPlugin<P> {
     fn build(&self, app: &mut App) {
-        let swapchain: crate::graphics::Swapchain = app
-            .world_mut()
-            .remove_resource::<GPUSwapchainResource>()
-            .unwrap()
-            .0;
-        let gpu_resources = app.world().resource::<GPUDeviceResource>();
-        let console_resource = app.world().resource::<ConsoleResource>();
-        let asset_manager_resource = app.world().resource::<AssetManagerECSResource>();
-
-        let (renderer, sender) = Renderer::new(
-            &gpu_resources.0,
-            swapchain,
-            &asset_manager_resource.0,
-            &console_resource.0,
-        );
-
-        let pre_init_wrapper = PreInitRendererResourceWrapper {
-            renderer: AtomicRefCell::new(SyncCell::new(renderer)),
-            sender
-        };
-        app.insert_resource(pre_init_wrapper);
-    }
-
-    fn ready(&self, app: &App) -> bool {
-        let pre_init_res = app.world().resource::<PreInitRendererResourceWrapper>();
-        let mut renderer_borrow = pre_init_res.renderer.borrow_mut();
-        let renderer = renderer_borrow.get();
-
-        let ready = renderer.is_ready();
-        if ready {
-            info!("Renderer ready! Done compiling all mandatory shaders.")
-        }
-        ready
-    }
-
-    fn finish(&self, app: &mut App) {
-        let pre_init_wrapper = app.world_mut().remove_resource::<PreInitRendererResourceWrapper>().unwrap();
-
-        let PreInitRendererResourceWrapper { renderer: renderer_cell, sender } = pre_init_wrapper;
-        let renderer = SyncCell::to_inner(AtomicRefCell::into_inner(renderer_cell));
-        insert_renderer_resource(app, renderer, sender);
+        insert_renderer_resource::<P>(app);
         install_renderer_systems(app);
     }
 }
 
-impl<P: Platform> RendererPlugin<P> {
+impl<P: GraphicsPlatform<ActiveBackend>> RendererPlugin<P> {
     pub fn new() -> Self {
-        Self(PlatformPhantomData::default())
+        Self(PhantomData)
     }
     pub fn window_changed(app: &App, window_state: WindowState) {
         let resource = app.world().get_resource::<RendererResourceWrapper>();
@@ -120,12 +83,6 @@ impl<P: Platform> RendererPlugin<P> {
             resource.sender.window_changed(window_state);
         }
     }
-}
-
-#[derive(Resource)]
-struct PreInitRendererResourceWrapper {
-    renderer: AtomicRefCell<SyncCell<Renderer>>,
-    sender: RendererSender,
 }
 
 #[derive(Resource)]
@@ -168,19 +125,6 @@ fn install_renderer_systems(
     app.add_systems(Last, end_frame.after(ExtractSet));
 }
 
-#[cfg(not(feature = "render_thread"))]
-fn insert_renderer_resource(
-    app: &mut App,
-    renderer: Renderer,
-    sender: RendererSender,
-) {
-    let wrapper = RendererResourceWrapper {
-        renderer: SyncCell::new(renderer),
-        sender: ManuallyDrop::new(sender),
-    };
-    app.insert_resource(wrapper);
-}
-
 #[allow(unused)]
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 struct SyncSet;
@@ -210,27 +154,80 @@ fn install_renderer_systems(
     app.add_systems(Last, end_frame.after(ExtractSet));
 }
 
-#[cfg(feature = "render_thread")]
-fn insert_renderer_resource(
-    app: &mut App,
-    renderer: Renderer,
-    sender: RendererSender
-) {
-    let handle = start_render_thread(renderer);
+fn insert_renderer_resource<P: GraphicsPlatform<ActiveBackend>>(app: &mut App) {
+    let surface_resource: GPUSurfaceResource = app.world_mut().remove_non_send_resource().unwrap();
+    let instace_resource: GPUInstanceResource = app.world_mut().remove_non_send_resource().unwrap();
+
+    let GPUSurfaceResource { surface, width: swapchain_width, height: swapchain_height } = surface_resource;
+    let instance = instace_resource.0;
+
+    let console_resource = app.world().resource::<ConsoleResource>();
+    let asset_manager_resource = app.world().resource::<AssetManagerECSResource>();
+
+    let (sender, receiver) = Renderer::new_channel();
+
+    #[cfg(feature = "render_thread")]
+    let handle = start_render_thread::<P>(
+        receiver,
+        instance,
+        surface,
+        swapchain_width,
+        swapchain_height,
+        &asset_manager_resource.0,
+        &console_resource.0
+    );
+
+    #[cfg(not(feature = "render_thread"))]
+    let renderer = create_renderer(
+        receiver,
+        instance,
+        surface,
+        swapchain_width,
+        swapchain_height,
+        &asset_manager_resource.0,
+        &console_resource.0
+    );
 
     let wrapper = RendererResourceWrapper {
         sender: ManuallyDrop::new(sender),
+
+        #[cfg(not(feature = "render_thread"))]
+        renderer: SyncCell::new(renderer),
+
+        #[cfg(feature = "render_thread")]
         thread_handle: ManuallyDrop::new(handle),
     };
     app.insert_resource(wrapper);
 }
 
 #[cfg(feature = "render_thread")]
-fn start_render_thread(mut renderer: Renderer) -> std::thread::JoinHandle<()> {
+fn start_render_thread<P: GraphicsPlatform<ActiveBackend>>(
+    receiver: RendererReceiver,
+    instance: APIInstance,
+    surface: Surface,
+    swapchain_width: u32,
+    swapchain_height: u32,
+    asset_manager: &Arc<AssetManager>,
+    console: &Arc<Console>,
+) -> std::thread::JoinHandle<()> {
+
+    let c_asset_manager = asset_manager.clone();
+    let c_console = console.clone();
     std::thread::Builder::new()
         .name("RenderThread".to_string())
         .spawn(move || {
             log::trace!("Started renderer thread");
+
+            let mut renderer = create_renderer(
+                receiver,
+                instance,
+                surface,
+                swapchain_width,
+                swapchain_height,
+                &c_asset_manager,
+                &c_console
+            );
+
             'renderer_loop: loop {
                 let mut result = EngineLoopFuncResult::Exit;
                 crate::autoreleasepool(|| {
@@ -302,7 +299,7 @@ fn extract_static_renderables(
     }
 
     if !removed_static_renderables.is_empty() {
-        debug!("Removing {} static renderables", removed_static_renderables.len());
+        log::debug!("Removing {} static renderables", removed_static_renderables.len());
     }
     for entity in removed_static_renderables.read() {
         let result = renderer.sender.unregister_static_renderable(entity);
@@ -407,4 +404,37 @@ fn begin_frame(renderer: ResMut<RendererResourceWrapper>) {
     // Unblock regularly so the fixed time systems can run.
     // All rendering systems check if the renderer is saturated before sending new commands.
     renderer.sender.wait_until_available(Duration::from_micros(1000000u64 / 4u64 / (TICK_RATE as u64)));
+}
+
+fn create_renderer(
+    receiver: RendererReceiver,
+    instance: APIInstance,
+    surface: Surface,
+    swapchain_width: u32,
+    swapchain_height: u32,
+    asset_manager: &Arc<AssetManager>,
+    console: &Arc<Console>,
+) -> Renderer {
+    let instance = Instance::new(instance);
+    let adapter = pick_adapter(instance.list_adapters());
+    let device = adapter.create_device(&surface);
+
+    let core_swapchain = unsafe { surface.create_swapchain(swapchain_width, swapchain_height, true, device.handle()).unwrap() };
+    let swapchain = Swapchain::new(core_swapchain, &device);
+
+    Renderer::new(&device, swapchain, receiver, asset_manager, console)
+}
+
+fn pick_adapter(adapters: &[Adapter]) -> &Adapter {
+    for adapter in adapters {
+        if adapter.adapter_type() == AdapterType::Discrete {
+            return adapter;
+        }
+    }
+    for adapter in adapters {
+        if adapter.adapter_type() == AdapterType::Integrated {
+            return adapter;
+        }
+    }
+    adapters.first().expect("No adapter found")
 }

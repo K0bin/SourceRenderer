@@ -2,6 +2,7 @@
 extern crate lazy_static;
 
 pub use sdl_platform::SDLPlatform;
+use sdl_platform::StdIO;
 use sourcerenderer_engine::{Engine, EngineLoopFuncResult};
 
 mod sdl_platform;
@@ -35,7 +36,7 @@ fn autoreleasepool<T, F: FnOnce() -> T>(func: F) -> T {
 
 pub fn main() {
     let mut platform = SDLPlatform::new();
-    let mut engine = Box::new(Engine::run(platform.as_ref(), GamePlugin::<SDLPlatform>::default()));
+    let mut engine = Box::new(Engine::run::<_, StdIO, SDLPlatform>(platform.window(), GamePlugin));
 
     'event_loop: loop {
         let engine_loop_result = autoreleasepool(|| {

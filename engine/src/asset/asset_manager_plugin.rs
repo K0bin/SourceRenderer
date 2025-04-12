@@ -1,9 +1,10 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use bevy_app::{Plugin, PreUpdate};
 use bevy_ecs::system::Resource;
 use bevy_ecs::world::World;
-use sourcerenderer_core::{Platform, PlatformPhantomData};
+use sourcerenderer_core::platform::PlatformIO;
 
 use crate::asset::*;
 use crate::asset::loaders::*;
@@ -13,14 +14,16 @@ use super::AssetManager;
 #[derive(Resource)]
 pub struct AssetManagerECSResource(pub Arc<AssetManager>);
 
-pub struct AssetManagerPlugin<P: Platform>(PlatformPhantomData<P>);
+pub struct AssetManagerPlugin<IO: PlatformIO>(PhantomData<IO>);
+unsafe impl<IO: PlatformIO> Send for AssetManagerPlugin<IO> {}
+unsafe impl<IO: PlatformIO> Sync for AssetManagerPlugin<IO> {}
 
-impl<P: Platform> Default for AssetManagerPlugin<P>{ fn default() -> Self { Self(Default::default()) } }
+impl<IO: PlatformIO> Default for AssetManagerPlugin<IO>{ fn default() -> Self { Self(Default::default()) } }
 
-impl<P: Platform> Plugin for AssetManagerPlugin<P> {
+impl<IO: PlatformIO> Plugin for AssetManagerPlugin<IO> {
     fn build(&self, app: &mut bevy_app::App) {
         let asset_manager: Arc<AssetManager> = AssetManager::new();
-        asset_manager.add_container(FSContainer::<P>::new(&asset_manager));
+        asset_manager.add_container(FSContainer::<IO>::new(&asset_manager));
         asset_manager.add_loader(ShaderLoader::new());
 
         asset_manager.add_loader(GltfLoader::new());

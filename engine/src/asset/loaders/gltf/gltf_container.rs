@@ -5,8 +5,7 @@ use std::usize;
 use bevy_tasks::futures_lite::io::{BufReader, Cursor};
 use bevy_tasks::futures_lite::{AsyncReadExt, AsyncSeekExt};
 use futures_io::{AsyncRead, AsyncSeek};
-use sourcerenderer_core::platform::IO;
-use sourcerenderer_core::Platform;
+use sourcerenderer_core::platform::PlatformIO;
 
 use crate::asset::asset_manager::AssetFile;
 use crate::asset::loaders::gltf::glb;
@@ -23,24 +22,24 @@ pub struct GltfContainer<R: AsyncRead + AsyncSeek + Unpin> {
     texture_base_path: String,
 }
 
-pub async fn load_memory_gltf_container<P: Platform>(path: &str, external: bool) -> IOResult<GltfContainer<Cursor<Box<[u8]>>>> {
+pub async fn load_memory_gltf_container<IO: PlatformIO>(path: &str, external: bool) -> IOResult<GltfContainer<Cursor<Box<[u8]>>>> {
     let mut file = if external {
-        P::IO::open_external_asset(path).await?
+        IO::open_external_asset(path).await?
     } else {
-        P::IO::open_asset(path).await?
+        IO::open_asset(path).await?
     };
     let mut data = Vec::<u8>::new();
     file.read_to_end(&mut data).await?;
     GltfContainer::<Cursor<Box<[u8]>>>::new(path, Cursor::new(data.into_boxed_slice())).await
 }
 
-pub async fn load_file_gltf_container<P: Platform>(path: &str, external: bool) -> IOResult<GltfContainer<BufReader<<P::IO as IO>::File>>> {
+pub async fn load_file_gltf_container<IO: PlatformIO>(path: &str, external: bool) -> IOResult<GltfContainer<BufReader<IO::File>>> {
     let file = BufReader::new(if external {
-        P::IO::open_external_asset(path).await?
+        IO::open_external_asset(path).await?
     } else {
-        P::IO::open_asset(path).await?
+        IO::open_asset(path).await?
     });
-    GltfContainer::<BufReader<<P::IO as IO>::File>>::new(path, file).await
+    GltfContainer::<BufReader<IO::File>>::new(path, file).await
 }
 
 impl<R: AsyncRead + AsyncSeek + Unpin> GltfContainer<R> {

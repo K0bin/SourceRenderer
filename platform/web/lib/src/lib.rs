@@ -51,6 +51,13 @@ pub async fn start_engine(navigator: Navigator, canvas: OffscreenCanvas) -> Engi
   wrapper
 }
 
+
+
+#[wasm_bindgen(js_name = "module")]
+pub fn module() -> js_sys::WebAssembly::Module {
+  js_sys::WebAssembly::Module::from(wasm_bindgen::module())
+}
+
 #[wasm_bindgen(module = "/src/web_glue.ts")]
 extern "C" {
   #[wasm_bindgen(js_name = "fetchAsset", catch)]

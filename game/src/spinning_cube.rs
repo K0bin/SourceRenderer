@@ -11,7 +11,7 @@ use bevy_transform::components::Transform;
 use bevy_log::*;
 use sourcerenderer_engine::graphics::*;
 use sourcerenderer_core::{
-    Platform, PlatformPhantomData, Quaternion, Vec2, Vec3
+    Quaternion, Vec2, Vec3
 };
 use sourcerenderer_engine::Engine;
 
@@ -29,25 +29,18 @@ use sourcerenderer_engine::renderer::{
 };
 use sourcerenderer_engine::Camera;
 
-pub(crate) struct SpinningCubePlugin<P: Platform>(PlatformPhantomData<P>);
-
-impl<P: Platform> Default for SpinningCubePlugin<P> {
-    fn default() -> Self { Self(Default::default()) }
-}
+pub(crate) struct SpinningCubePlugin;
 
 #[derive(Component)]
 struct SpinningCube {}
 
-unsafe impl<P: Platform> Send for SpinningCubePlugin<P> {}
-unsafe impl<P: Platform> Sync for SpinningCubePlugin<P> {}
-
-impl<P: Platform> Plugin for SpinningCubePlugin<P> {
+impl Plugin for SpinningCubePlugin {
     fn build<'a>(&self, app: &'a mut App) {
         app.insert_resource(PlaceLightsState { was_space_down: false });
-        app.add_systems(SpawnScene, (place_lights, spin::<P>,));
+        app.add_systems(SpawnScene, (place_lights, spin,));
 
         {
-            let asset_manager: &Arc<AssetManager> = Engine::get_asset_manager::<P>(app);
+            let asset_manager: &Arc<AssetManager> = Engine::get_asset_manager(app);
 
             let indices: [u32; 36] = [
                 2, 1, 0, 0, 3, 2, // front
@@ -312,7 +305,7 @@ impl<P: Platform> Plugin for SpinningCubePlugin<P> {
     }
 }
 
-fn spin<P: Platform>(mut query: Query<&mut Transform, With<SpinningCube>>, delta_time: Res<bevy_time::Time>) {
+fn spin(mut query: Query<&mut Transform, With<SpinningCube>>, delta_time: Res<bevy_time::Time>) {
     for mut transform in query.iter_mut() {
         transform.rotation *= Quaternion::from_axis_angle(
             Vec3::new(0.0f32, 1.0f32, 0.0f32),

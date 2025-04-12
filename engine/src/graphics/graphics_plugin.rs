@@ -1,32 +1,28 @@
-use std::sync::Arc;
-
+use bevy_app::App;
 use bevy_ecs::system::Resource;
-use sourcerenderer_core::{platform::{GraphicsPlatform, Window, WindowProvider}, Platform};
+use sourcerenderer_core::platform::{GraphicsPlatform, Window};
 
-use super::{active_gpu_backend, Device, Instance, Swapchain};
-
-#[derive(Resource)]
-pub struct GPUDeviceResource(pub Arc<Device>);
+use super::{active_gpu_backend, APIInstance, Surface};
 
 #[derive(Resource)]
-pub struct GPUSwapchainResource(pub Swapchain);
+pub struct GPUInstanceResource(pub APIInstance);
 
-pub(crate) fn initialize_graphics<P: Platform + GraphicsPlatform<active_gpu_backend::Backend> + WindowProvider<active_gpu_backend::Backend>>(platform: &P, app: &mut bevy_app::App) {
-    let api_instance = platform
-        .create_instance(false)
+#[derive(Resource)]
+pub struct GPUSurfaceResource{
+    pub surface: Surface,
+    pub width: u32,
+    pub height: u32,
+}
+
+pub(crate) fn initialize_graphics<P: GraphicsPlatform<active_gpu_backend::Backend>>(app: &mut App, window: &impl Window<active_gpu_backend::Backend>) {
+    let api_instance = P::create_instance(false)
         .expect("Failed to initialize graphics");
-    let gpu_instance = Instance::new(api_instance);
 
-    let surface = platform.window().create_surface(gpu_instance.handle());
-
-    let gpu_adapters = gpu_instance.list_adapters();
-    let gpu_device = gpu_adapters.first().expect("No suitable GPU found").create_device(&surface);
-
-    let core_swapchain = platform.window().create_swapchain(true, gpu_device.handle(), surface);
-    let gpu_swapchain = Swapchain::new(core_swapchain, &gpu_device);
-
-    let gpu_resource = GPUDeviceResource(gpu_device);
-    let gpu_swapchain_resource = GPUSwapchainResource(gpu_swapchain);
-    app.insert_resource(gpu_resource);
-    app.insert_resource(gpu_swapchain_resource);
+    let gpu_surface = window.create_surface(&api_instance);
+    app.insert_non_send_resource(GPUSurfaceResource {
+        surface: gpu_surface,
+        width: window.width(),
+        height: window.height(),
+    });
+    app.insert_non_send_resource(GPUInstanceResource(api_instance));
 }
