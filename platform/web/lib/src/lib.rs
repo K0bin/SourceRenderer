@@ -1,3 +1,4 @@
+use io::WebIO;
 use js_sys::Uint8Array;
 use log::info;
 use platform::WebPlatform;
@@ -43,7 +44,7 @@ pub async fn start_engine(navigator: Navigator, canvas: OffscreenCanvas) -> Engi
   let platform = WebPlatform::new(navigator, canvas).await;
 
   info!("Initializing engine");
-  let engine = ActualEngine::run(&platform, GamePlugin::<WebPlatform>::default());
+  let engine = ActualEngine::run::<_, WebIO, WebPlatform>(platform.window(), GamePlugin);
 
   let wrapper = Engine {
     engine: Some(engine),
