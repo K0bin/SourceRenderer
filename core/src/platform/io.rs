@@ -10,7 +10,7 @@ pub trait FileWatcher {
   fn unwatch<P: AsRef<Path>>(&mut self, path: P);
 }
 
-pub trait IO {
+pub trait PlatformIO: 'static + Send + Sync {
   type File: AsyncRead + AsyncSeek + Send + Sync + Unpin;
   type FileWatcher : FileWatcher + Send;
   fn open_asset<P: AsRef<Path> + Send>(path: P) -> impl Future<Output = IOResult<Self::File>> + Send;

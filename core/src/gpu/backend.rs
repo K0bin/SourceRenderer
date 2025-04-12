@@ -7,7 +7,7 @@ pub trait GPUBackend: 'static + Sized {
   type Instance: Instance<Self> + Send + Sync;
   type Adapter: Adapter<Self> + Send + Sync;
   type Device: Device<Self> + Send + Sync;
-  type Surface: Send + Sync + PartialEq + Eq; // TODO: Add trait with associated type and to_transferable function that returns the offscreen canvas JsValue;
+  type Surface: Surface<Self> + Send + Sync + PartialEq + Eq;
   type Swapchain: Swapchain<Self> + Send + Sync;
   type CommandPool: CommandPool<Self> + Send;
   type CommandBuffer: CommandBuffer<Self> + Send;
@@ -34,7 +34,7 @@ pub trait GPUBackend: 'static + Sized {
   type Instance: Instance<Self>;
   type Adapter: Adapter<Self>;
   type Device: Device<Self>;
-  type Surface: PartialEq + Eq;
+  type Surface: Surface<Self> + PartialEq + Eq;
   type Swapchain: Swapchain<Self>;
   type CommandPool: CommandPool<Self>;
   type CommandBuffer: CommandBuffer<Self>;

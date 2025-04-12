@@ -13,10 +13,8 @@ use crossbeam_channel::{
     Receiver,
 };
 use sourcerenderer_core::platform::{
-    FileWatcher,
-    IO,
+    FileWatcher, PlatformIO
 };
-use sourcerenderer_core::Platform;
 
 use crate::asset::asset_manager::{
     AssetContainer,
@@ -24,12 +22,12 @@ use crate::asset::asset_manager::{
 };
 use crate::asset::AssetManager;
 
-pub struct FSContainer<P: Platform> {
+pub struct FSContainer<IO: PlatformIO> {
     path: PathBuf,
-    watcher: Option<Mutex<<P::IO as IO>::FileWatcher>>,
+    watcher: Option<Mutex<IO::FileWatcher>>,
 }
 
-impl<P: Platform> AssetContainer for FSContainer<P> {
+impl<IO: PlatformIO> AssetContainer for FSContainer<IO> {
     // TODO: write path URI struct to handle getting the path without metadata more elegantly
     // TODO: replace / with platform specific separator
 
@@ -44,7 +42,7 @@ impl<P: Platform> AssetContainer for FSContainer<P> {
         } else {
             path
         };
-        <P::IO as IO>::asset_exists(self.path.join(path_without_metadata)).await
+        IO::asset_exists(self.path.join(path_without_metadata)).await
     }
 
     async fn load(&self, path: &str) -> Option<AssetFile> {
@@ -59,7 +57,7 @@ impl<P: Platform> AssetContainer for FSContainer<P> {
             path
         };
         let final_path = self.path.join(path_without_metadata);
-        let file_res = <P::IO as IO>::open_asset(final_path.clone()).await;
+        let file_res = IO::open_asset(final_path.clone()).await;
         if let Err(e) = file_res {
             log::error!("Failed to load file using platform API. Path: {}, Error: \n{:?}", path, e);
             return None;
@@ -80,17 +78,17 @@ impl<P: Platform> AssetContainer for FSContainer<P> {
     }
 }
 
-impl<P: Platform> FSContainer<P> {
+impl<IO: PlatformIO> FSContainer<IO> {
     pub fn new(asset_manager: &Arc<AssetManager>) -> Self {
         let (sender, receiver) = unbounded();
-        let file_watcher = <P::IO as IO>::new_file_watcher(sender);
+        let file_watcher = IO::new_file_watcher(sender);
         let asset_mgr_weak = Arc::downgrade(asset_manager);
 
         if cfg!(feature = "threading") {
             let mut thread_builder = thread::Builder::new();
             thread_builder = thread_builder.name("AssetManagerWatchThread".to_string());
             let _ = thread_builder.spawn(move || {
-                fs_container_watch_thread_fn::<P>(asset_mgr_weak, receiver)
+                fs_container_watch_thread_fn(asset_mgr_weak, receiver)
             }).unwrap();
         }
         Self {
@@ -100,7 +98,7 @@ impl<P: Platform> FSContainer<P> {
     }
 }
 
-fn fs_container_watch_thread_fn<P: Platform>(
+fn fs_container_watch_thread_fn(
     asset_manager: Weak<AssetManager>,
     receiver: Receiver<String>,
 ) {

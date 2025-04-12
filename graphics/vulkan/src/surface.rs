@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use sourcerenderer_core::gpu;
+
 use ash::{
     khr::surface::Instance as SurfaceLoader,
     prelude::VkResult,
@@ -89,5 +91,11 @@ impl Drop for VkSurface {
         unsafe {
             self.surface_loader.destroy_surface(handle, None);
         }
+    }
+}
+
+impl gpu::Surface<VkBackend> for VkSurface {
+    unsafe fn create_swapchain(self, width: u32, height: u32, vsync: bool, device: &VkDevice) -> Result<VkSwapchain, gpu::SwapchainError> {
+        VkSwapchain::new(vsync, width, height, device.inner(), self)
     }
 }

@@ -36,6 +36,12 @@ impl PartialEq<MTLSurface> for MTLSurface {
 
 impl Eq for MTLSurface {}
 
+impl gpu::Surface<MTLBackend> for MTLSurface {
+    unsafe fn create_swapchain(self, width: u32, height: u32, _vsync: bool, device: &MTLDevice) -> Result<MTLSwapchain, gpu::SwapchainError> {
+        Ok(MTLSwapchain::new(self, device.handle(), Some((width, height))))
+    }
+}
+
 pub struct MTLBackbuffer {
     texture: MTLTexture,
     drawable: Retained<ProtocolObject<dyn objc2_quartz_core::CAMetalDrawable>>

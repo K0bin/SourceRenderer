@@ -19,10 +19,6 @@ impl Window<WebGPUBackend> for WebWindow {
         WebGPUSurface::new(graphics_instance, self.canvas.clone()).unwrap()
     }
 
-    fn create_swapchain(&self, _vsync: bool, device: &WebGPUDevice, surface: WebGPUSurface) -> WebGPUSwapchain {
-        WebGPUSwapchain::new(device.handle(), surface)
-    }
-
     fn width(&self) -> u32 {
         self.canvas.width()
     }

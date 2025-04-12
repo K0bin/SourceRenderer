@@ -44,17 +44,21 @@ pub struct RendererSender {
     state: Arc<RendererState>,
 }
 
+pub struct RendererReceiver {
+    receiver: Receiver<RendererCommand>,
+    state: Arc<RendererState>,
+}
+
 #[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
 enum ReceiveMessagesResult {
     FrameCompleted,
     Quit,
-    WaitForMessages
+    Empty
 }
 
 pub struct Renderer {
     device: Arc<Device>,
-    state: Arc<RendererState>,
-    receiver: Receiver<RendererCommand>,
+    receiver: RendererReceiver,
     resources: RendererResources,
     scene: RendererScene,
     context: GraphicsContext,
@@ -67,22 +71,39 @@ pub struct Renderer {
 
 impl Drop for Renderer {
     fn drop(&mut self) {
-        let mut counter_guard = self.state.queued_frames_counter.lock().unwrap();
+        let mut counter_guard = self.receiver.state.queued_frames_counter.lock().unwrap();
         *counter_guard = 0;
-        self.state.cond_var.notify_all();
+        self.receiver.state.cond_var.notify_all();
     }
 }
 
 impl Renderer {
+    pub fn new_channel() -> (RendererSender, RendererReceiver) {
+        let (sender, receiver) = unbounded::<RendererCommand>();
+        let state = Arc::new(RendererState {
+            queued_frames_counter: Mutex::new(0),
+            cond_var: Condvar::new(),
+        });
+        let renderer_sender = RendererSender {
+            sender: Some(sender),
+            state: state.clone(),
+        };
+        let renderer_receiver = RendererReceiver {
+            state,
+            receiver,
+        };
+        (renderer_sender, renderer_receiver)
+    }
+
     pub fn new(
         device: &Arc<Device>,
         swapchain: Swapchain,
+        receiver: RendererReceiver,
         asset_manager: &Arc<AssetManager>,
         _console: &Arc<Console>,
-    ) -> (Self, RendererSender) {
+    ) -> Self {
         log::info!("Initializing renderer with {} backend", crate::graphics::ActiveBackend::name());
 
-        let (sender, receiver) = unbounded::<RendererCommand>();
         let mut context: GraphicsContext = device.create_context();
 
         let mut resources = RendererResources::new(device);
@@ -93,12 +114,8 @@ impl Renderer {
         let render_path = Box::new(WebRenderer::new(device, &swapchain, &mut context, &mut resources, &assets));
         //let render_path: Box<dyn RenderPath> = Box::new(NoOpRenderPath);
 
-        let renderer = Self {
+        Self {
             device: device.clone(),
-            state: Arc::new(RendererState {
-                queued_frames_counter: Mutex::new(0),
-                cond_var: Condvar::new(),
-            }),
             receiver,
             resources,
             scene: RendererScene::new(),
@@ -108,13 +125,7 @@ impl Renderer {
             assets,
             last_frame: Instant::now(),
             frame: 0u64,
-        };
-        let renderer_sender = RendererSender {
-            sender: Some(sender),
-            state: renderer.state.clone()
-        };
-
-        (renderer, renderer_sender)
+        }
     }
 
     #[allow(unused)]
@@ -134,22 +145,24 @@ impl Renderer {
         // Flush all submissions from the last frame in case this hasn't happened yet.
         self.device.flush_all();
 
-        let mut message_receiving_result = ReceiveMessagesResult::WaitForMessages;
-        if cfg!(feature = "render_thread") {
-            while message_receiving_result == ReceiveMessagesResult::WaitForMessages {
-                message_receiving_result = self.receive_messages();
+        let message_receiving_result = self.receive_messages();
+        match message_receiving_result {
+            ReceiveMessagesResult::Empty => {
+                let counter_guard = self.receiver.state.queued_frames_counter.lock().unwrap();
+                if *counter_guard == 0 {
+                    return EngineLoopFuncResult::KeepRunning;
+                }
             }
-        } else {
-            message_receiving_result = self.receive_messages();
-            if message_receiving_result == ReceiveMessagesResult::WaitForMessages {
-                log::warn!("No finished frame yet.");
+            ReceiveMessagesResult::Quit => {
+                log::info!("Quitting renderer.");
                 return EngineLoopFuncResult::Exit;
             }
+            ReceiveMessagesResult::FrameCompleted => {}
         }
 
-        if message_receiving_result == ReceiveMessagesResult::Quit {
-            log::info!("Quitting renderer.");
-            return EngineLoopFuncResult::Exit;
+        if !self.is_ready() {
+            // The shaders aren't ready to be used yet. Quit after handling messages.
+            return EngineLoopFuncResult::KeepRunning;
         }
 
         let delta = Instant::now().duration_since(self.last_frame);
@@ -228,22 +241,22 @@ impl Renderer {
         self.frame += 1;
 
         // Dec queued frame counter
-        let mut counter_guard = self.state.queued_frames_counter.lock().unwrap();
+        let mut counter_guard = self.receiver.state.queued_frames_counter.lock().unwrap();
         *counter_guard -= 1;
-        self.state.cond_var.notify_all();
+        self.receiver.state.cond_var.notify_all();
 
         EngineLoopFuncResult::KeepRunning
     }
 
     fn receive_messages(&mut self) -> ReceiveMessagesResult {
-        let message_res = self.receiver.try_recv();
         let mut message_opt: Option<RendererCommand>;
+        let message_res = self.receiver.receiver.try_recv();
         match message_res {
             Ok(message) => { message_opt = Some(message); },
             Err(err) => {
                 return match err {
                     TryRecvError::Disconnected => ReceiveMessagesResult::Quit,
-                    TryRecvError::Empty => ReceiveMessagesResult::WaitForMessages,
+                    TryRecvError::Empty => ReceiveMessagesResult::Empty,
                 };
             }
         }
@@ -359,15 +372,16 @@ impl Renderer {
                 }
             }
 
-            let message_res = self.receiver.try_recv();
+            let message_res = self.receiver.receiver.try_recv();
             if let Err(err) = &message_res {
-                if err.is_disconnected() {
-                    panic!("Rendering channel closed {:?}", err);
-                }
+                return match err {
+                    TryRecvError::Disconnected => ReceiveMessagesResult::Quit,
+                    TryRecvError::Empty => ReceiveMessagesResult::Empty,
+                };
             }
             message_opt = message_res.ok();
         }
-        ReceiveMessagesResult::WaitForMessages
+        ReceiveMessagesResult::Empty
     }
 
     pub fn set_render_path(&mut self, render_path: Box<dyn RenderPath>) {

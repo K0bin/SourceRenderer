@@ -93,11 +93,6 @@ impl Window<AndroidPlatform> for AndroidWindow {
     Arc::new(VkSurface::new(instance_raw, surface, surface_loader))
   }
 
-  fn create_swapchain(&self, vsync: bool, device: &VkDevice, surface: &Arc<VkSurface>) -> Arc<VkSwapchain> {
-    let device_inner = device.inner();
-    return VkSwapchain::new(vsync, self.native_window.width() as u32, self.native_window.height() as u32, device_inner, surface).unwrap();
-  }
-
   fn width(&self) -> u32 {
     unsafe {
       ANativeWindow_getWidth(self.native_window.ptr().as_ptr()) as u32

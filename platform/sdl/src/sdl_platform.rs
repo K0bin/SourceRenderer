@@ -22,7 +22,7 @@ use sdl3::{
     VideoSubsystem,
 };
 use sourcerenderer_core::platform::{
-    FileWatcher, Platform, Window, WindowProvider, IO
+    FileWatcher, PlatformIO, Window,
 };
 use sourcerenderer_core::{
     Vec2I,
@@ -58,7 +58,7 @@ pub struct SDLPlatform {
     sdl_context: Sdl,
     _video_subsystem: VideoSubsystem,
     event_pump: EventPump,
-    pub(crate) window: SDLWindow,
+    window: SDLWindow,
     _mouse_pos: Vec2I,
 }
 
@@ -82,6 +82,10 @@ impl SDLPlatform {
             window,
             _mouse_pos: Vec2I::new(0, 0),
         })
+    }
+
+    pub fn window(&self) -> &SDLWindow {
+        &self.window
     }
 
     pub(crate) fn poll_events(&mut self, engine: &mut Engine) -> bool {
@@ -162,7 +166,7 @@ impl SDLPlatform {
 }
 
 impl SDLWindow {
-    pub fn new(
+    fn new(
         _sdl_context: &Sdl,
         video_subsystem: &VideoSubsystem,
     ) -> SDLWindow {
@@ -184,31 +188,9 @@ impl SDLWindow {
     }
 }
 
-impl Platform for SDLPlatform {
-    type IO = StdIO;
-}
-
-impl WindowProvider<SDLGPUBackend> for SDLPlatform {
-    type Window = SDLWindow;
-
-    fn window(&self) -> &SDLWindow {
-        &self.window
-    }
-}
-
 impl Window<SDLGPUBackend> for SDLWindow {
     fn create_surface(&self, graphics_instance: &<SDLGPUBackend as gpu::GPUBackend>::Instance) -> <SDLGPUBackend as gpu::GPUBackend>::Surface {
         sdl_gpu::create_surface(&self.window, graphics_instance)
-    }
-
-    fn create_swapchain(
-        &self,
-        vsync: bool,
-        device: &<SDLGPUBackend as gpu::GPUBackend>::Device,
-        surface: <SDLGPUBackend as gpu::GPUBackend>::Surface
-     ) -> <SDLGPUBackend as gpu::GPUBackend>::Swapchain {
-        let (width, height) = self.window.size_in_pixels();
-        sdl_gpu::create_swapchain(vsync, width, height, device, surface)
     }
 
     fn width(&self) -> u32 {
@@ -222,7 +204,7 @@ impl Window<SDLGPUBackend> for SDLWindow {
 
 pub struct StdIO {}
 
-impl IO for StdIO {
+impl PlatformIO for StdIO {
     type File = async_fs::File; // TODO: Replace with an implementation that uses Bevys IOTaskPool as executor
     type FileWatcher = NotifyFileWatcher;
 

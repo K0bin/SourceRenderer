@@ -1,6 +1,6 @@
 use sdl3::video::WindowBuilder;
 use sourcerenderer_core::platform::GraphicsPlatform;
-use sourcerenderer_vulkan::{VkBackend, VkDevice, VkInstance, VkSurface, VkSwapchain};
+use sourcerenderer_vulkan::{VkBackend, VkInstance, VkSurface};
 
 use crate::SDLPlatform;
 
@@ -13,9 +13,8 @@ use ash::vk::{
 pub(crate) type SDLGPUBackend = VkBackend;
 
 impl GraphicsPlatform<VkBackend> for SDLPlatform {
-    fn create_instance(&self, debug_layers: bool) -> Result<VkInstance, Box<dyn std::error::Error>> {
-        let instance_extensions = self.window.sdl_window_handle().vulkan_instance_extensions()?;
-        Ok(VkInstance::new(&instance_extensions, debug_layers))
+    fn create_instance(debug_layers: bool) -> Result<VkInstance, Box<dyn std::error::Error>> {
+        Ok(VkInstance::new(debug_layers))
     }
 }
 
@@ -34,18 +33,7 @@ pub(crate) fn create_surface(sdl_window_handle: &sdl3::video::Window, graphics_i
     )
 }
 
-pub(crate) fn create_swapchain(vsync: bool, width: u32, height: u32, device: &VkDevice, surface: VkSurface) -> VkSwapchain {
-    let device_inner = device.inner();
-    VkSwapchain::new(
-        vsync,
-        width,
-        height,
-        device_inner,
-        surface
-    )
-    .unwrap()
-}
-
 pub(crate) fn prepare_window(window_builder: &mut WindowBuilder) {
+    // Loads the Vulkan functions for SDL3. Required for `vulkan_instance_extensions`.
     window_builder.vulkan();
 }
