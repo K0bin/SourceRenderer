@@ -14,7 +14,7 @@ async function init(canvas: OffscreenCanvas) {
     await initWasm();
     engine = await startEngine(navigator, canvas);
     requestAnimationFrame((_time) => {
-        renderFrame();
+        frame();
     });
 }
 
@@ -23,10 +23,10 @@ onerror = (_e) => {
     engine = null;
 };
 
-function renderFrame() {
+function frame() {
     engine?.frame();
 
     requestAnimationFrame((_time) => {
-        renderFrame();
+        frame();
     });
 }
