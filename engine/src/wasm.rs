@@ -13,7 +13,7 @@ pub mod thread {
 
     pub struct JoinHandle<T: Send>(Arc<ThreadShared<T>>);
     impl<T: Send> JoinHandle<T> {
-        pub fn join(self) -> T {
+        pub fn join(self) -> std::thread::Result<T> {
             let guard = self.0.state.lock().unwrap();
             let mut finished_guard = self.0.cond_var.wait_while(guard, |state| {
                 let done = match state {
@@ -30,7 +30,7 @@ pub mod thread {
 
             let finished_state = std::mem::replace(&mut *finished_guard, ThreadState::Joined);
             if let ThreadState::Finished(data) = finished_state {
-                data
+                Ok(data)
             } else {
                 unreachable!()
             }
@@ -54,7 +54,7 @@ pub mod thread {
         unimplemented!()
     }
 
-    pub fn spawn_with_js_val<F, TF, T>(f: F, data: JsValue) -> JoinHandle<T>
+    pub fn spawn_with_js_val<F, TF, T>(f: F, data: JsValue, name: Option<&str>) -> JoinHandle<T>
     where
         F: FnOnce(JsValue) -> TF + Send + 'static,
         TF: Future<Output = T> + 'static,
@@ -92,14 +92,13 @@ pub mod thread {
         let boxed_ptr_workaround: u64 = unsafe { std::mem::transmute(boxed_ptr) };
         // wasm_bindgen doesn't support FnOnce so we have to resort to hacks.
 
-        unsafe {
-            start_thread_worker(
-                wasm_bindgen::module().dyn_into().unwrap(),
-                wasm_bindgen::memory().dyn_into().unwrap(),
-                boxed_ptr_workaround,
-                data,
-            );
-        }
+        start_thread_worker(
+            wasm_bindgen::module().dyn_into().unwrap(),
+            wasm_bindgen::memory().dyn_into().unwrap(),
+            boxed_ptr_workaround,
+            data,
+            name.unwrap_or("Thread"),
+        );
 
         log::info!("Started WASM thread");
         JoinHandle(shared)
@@ -127,6 +126,7 @@ extern "C" {
         memory: WebAssembly::Memory,
         callback_ptr: u64, // dyn => fat pointer => Pointer size of wasm32 is 32 => u64
         data: JsValue,
+        name: &str,
     );
 }
 

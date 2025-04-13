@@ -22,14 +22,19 @@ export function startThreadWorker(
     memory: WebAssembly.Memory,
     callbackPtr: bigint,
     data: any,
+    name: string,
 ): Worker {
-    const worker = new ThreadWorker({ name: "Thread" });
+    const worker = new ThreadWorker({ name });
     const msg: ThreadWorkerInit = {
         module,
         memory,
         callbackPtr,
         data,
     };
-    worker.postMessage(msg);
+    let transferables: Array<Transferable> = [];
+    if (data instanceof OffscreenCanvas || data instanceof ArrayBuffer) {
+        transferables.push(data);
+    }
+    worker.postMessage(msg, transferables);
     return worker;
 }
