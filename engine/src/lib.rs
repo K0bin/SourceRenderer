@@ -22,6 +22,9 @@ pub mod renderer;
 mod ui;
 pub mod graphics;
 
+#[cfg(target_arch = "wasm32")]
+pub mod wasm;
+
 #[allow(unused_imports)]
 #[cfg(feature = "threading")]
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};

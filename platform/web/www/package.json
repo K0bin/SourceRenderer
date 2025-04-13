@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "clean-build": "rimraf dist ../lib/pkg && tsc && vite build",
+    "vite-build": "vite build",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },
