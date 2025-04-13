@@ -77,7 +77,7 @@ objc2 = { version = "0.6", features = [ "std", "disable-encoding-assertions" ] }
 sourcerenderer_webgpu = { path = "../graphics/webgpu" }
 getrandom = { version = "0.3", features = [ "wasm_js" ] }
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
-web-sys = { version = "0.3", features = [ "OffscreenCanvas" ] }
+web-sys = { version = "0.3", features = [ "OffscreenCanvas", "Navigator", "DedicatedWorkerGlobalScope", "WorkerNavigator" ] }
 js-sys = "0.3"
 wasm-bindgen-futures = "0.4.50"
 
