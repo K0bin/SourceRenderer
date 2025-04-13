@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::future::{poll_fn, Future};
+use std::future::Future;
 use std::hash::Hash;
 use std::io::{
     Read,
@@ -12,8 +12,7 @@ use std::sync::atomic::{
     AtomicU32, AtomicU64, Ordering
 };
 use std::sync::Arc;
-use crate::Mutex;
-use std::task::{Poll, Waker};
+use crate::{AsyncCounter, Mutex};
 
 use bevy_tasks::futures_lite::io::{Cursor, AsyncAsSync};
 use bevy_tasks::futures_lite::AsyncSeekExt;
@@ -152,70 +151,6 @@ impl<T> ErasedAssetLoader for T
         progress: &'a Arc<AssetLoaderProgress>,
     ) -> Pin<Box<dyn Future<Output = Result<(), ()>> + Send + 'a>> {
         Box::pin(AssetLoader::load(self, file, manager, priority, progress))
-    }
-}
-
-struct AsyncCounter {
-    counter: AtomicU32,
-    wakers: Mutex<Vec<Waker>>,
-    min_value_for_waking: u32
-}
-impl AsyncCounter {
-    fn new(min_value_for_waking: u32) -> Self {
-        Self {
-            counter: AtomicU32::new(0u32),
-            wakers: Mutex::new(Vec::new()),
-            min_value_for_waking
-        }
-    }
-
-    fn increment(&self) -> u32 {
-        self.counter.fetch_add(1, Ordering::Acquire) + 1
-    }
-
-    fn decrement(&self) -> u32 {
-        let mut count = self.counter.fetch_sub(1, Ordering::Release) - 1;
-        while count <= self.min_value_for_waking {
-            let waker = {
-                let mut guard = self.wakers.lock().unwrap();
-                guard.pop()
-            };
-            if let Some(waker) = waker {
-                waker.wake();
-            } else {
-                break;
-            }
-            count = self.counter.load(Ordering::Relaxed);
-        }
-        count
-    }
-
-    #[allow(unused)]
-    fn load(&self) -> u32 {
-        self.counter.load(Ordering::Relaxed)
-    }
-
-    fn wait_for_zero<'a>(&'a self) -> impl Future<Output = ()> + 'a {
-        self.wait_for_value(0)
-    }
-
-    fn wait_for_value<'a>(&'a self, value: u32) -> impl Future<Output = ()> + 'a {
-        assert!(value <= self.min_value_for_waking);
-        poll_fn(move |ctx| {
-            let mut pending_count = self.counter.load(Ordering::Acquire);
-            if pending_count <= value {
-                Poll::Ready(())
-            } else {
-                let mut guard = self.wakers.lock().unwrap();
-                pending_count = self.counter.load(Ordering::Relaxed);
-                if pending_count <= value {
-                    return Poll::Ready(());
-                }
-                guard.push(ctx.waker().clone());
-
-                Poll::Pending
-            }
-        })
     }
 }
 
