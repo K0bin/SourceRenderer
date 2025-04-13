@@ -6,7 +6,10 @@ edition = "2021"
 [dependencies]
 sourcerenderer_core = { path = "../../core", features = [ "single_thread_gpu_api" ] }
 web-sys = { version = "0.3", features = [
-    "Navigator", "HtmlCanvasElement", "OffscreenCanvas",
+    "Navigator",
+    "WorkerNavigator",
+    "HtmlCanvasElement",
+    "OffscreenCanvas",
     "Gpu",
     "GpuAdapter",
     "GpuAdapterInfo",

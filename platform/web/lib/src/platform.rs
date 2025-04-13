@@ -1,6 +1,6 @@
 use sourcerenderer_core::{atomic_refcell::AtomicRefCell, platform::GraphicsPlatform};
-use sourcerenderer_webgpu::{WebGPUBackend, WebGPUInstance, WebGPUInstanceAsyncInitResult, WebGPUInstanceInitError};
-use web_sys::{Navigator, OffscreenCanvas};
+use sourcerenderer_webgpu::{WebGPUBackend, WebGPUInstance, WebGPUInstanceAsyncInitResult, WebGPUInstanceInitError, NavigatorKind};
+use web_sys::{Navigator, OffscreenCanvas, WorkerNavigator};
 
 use crate::window::WebWindow;
 
@@ -13,9 +13,16 @@ pub struct WebPlatform {
 }
 
 impl WebPlatform {
-    pub(crate) async fn new(navigator: Navigator, canvas: OffscreenCanvas) -> Self {
+    pub(crate) async fn new(navigator: &Navigator, canvas: OffscreenCanvas) -> Self {
         let window = WebWindow::new(canvas);
-        init_webgpu_on_thread(navigator).await;
+        init_webgpu_on_thread(NavigatorKind::Window(navigator)).await;
+        Self {
+            window,
+        }
+    }
+    pub(crate) async fn new_on_worker(navigator: &WorkerNavigator, canvas: OffscreenCanvas) -> Self {
+        let window = WebWindow::new(canvas);
+        init_webgpu_on_thread(NavigatorKind::Worker(navigator)).await;
         Self {
             window,
         }
@@ -38,7 +45,7 @@ impl GraphicsPlatform<WebGPUBackend> for WebPlatform {
     }
 }
 
-async fn init_webgpu_on_thread(navigator: Navigator) {
+async fn init_webgpu_on_thread(navigator: NavigatorKind<'_>) {
     GPU_INIT.with(|gpu_init_refcell| {
         let mut gpu_init = gpu_init_refcell.borrow_mut();
         *gpu_init = Err(WebGPUInstanceInitError::unfinished());

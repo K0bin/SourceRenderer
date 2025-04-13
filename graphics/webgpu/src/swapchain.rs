@@ -75,6 +75,11 @@ impl gpu::Swapchain<WebGPUBackend> for WebGPUSwapchain {
         let web_texture = self.canvas_context.get_current_texture()
             .map_err(|_e| gpu::SwapchainError::Other)?;
 
+        if web_texture.width() != self.texture_info.width || web_texture.height() != self.texture_info.height
+            || self.surface.canvas().width() != self.texture_info.width || self.surface.canvas().height() != self.texture_info.height {
+            return Err(gpu::SwapchainError::NeedsRecreation);
+        }
+
         let key = self.backbuffer_counter;
         self.backbuffer_counter += 1;
         let texture = WebGPUTexture::from_texture(&self.device, web_texture);

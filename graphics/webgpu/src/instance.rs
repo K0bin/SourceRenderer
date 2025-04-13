@@ -1,7 +1,7 @@
 use std::{error::Error, fmt::{Debug, Display}};
 
 use sourcerenderer_core::gpu;
-use web_sys::{GpuAdapter, GpuDevice, Navigator, GpuRequestAdapterOptions, GpuPowerPreference, Gpu};
+use web_sys::{Gpu, GpuAdapter, GpuDevice, GpuPowerPreference, GpuRequestAdapterOptions, Navigator, WorkerNavigator};
 use wasm_bindgen_futures::*;
 
 use crate::{adapter::WebGPUAdapter, WebGPUBackend};
@@ -45,9 +45,17 @@ pub struct WebGPUInstance {
     adapters: [WebGPUAdapter; 2]
 }
 
+pub enum NavigatorKind<'a> {
+    Window(&'a Navigator),
+    Worker(&'a WorkerNavigator),
+}
+
 impl WebGPUInstance {
-    pub async fn async_init(navigator: Navigator) -> Result<WebGPUInstanceAsyncInitResult, WebGPUInstanceInitError> {
-        let gpu = navigator.gpu();
+    pub async fn async_init(navigator: NavigatorKind<'_>) -> Result<WebGPUInstanceAsyncInitResult, WebGPUInstanceInitError> {
+        let gpu = match navigator {
+            NavigatorKind::Window(navigator) => navigator.gpu(),
+            NavigatorKind::Worker(navigator) => navigator.gpu(),
+        };
         if !gpu.is_object() || gpu.is_null() || gpu.is_undefined() {
             return Err(WebGPUInstanceInitError::new("Browser does not support WebGPU"));
         }
