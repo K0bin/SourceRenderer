@@ -40,8 +40,6 @@ pub async fn start_engine(navigator: Navigator, canvas: OffscreenCanvas) -> Engi
 
   console_log::init_with_level(log::Level::Trace).unwrap();
 
-  sourcerenderer_engine::wasm::test_thread();
-
   info!("Initializing platform");
   let platform = WebPlatform::new(navigator, canvas).await;
 
