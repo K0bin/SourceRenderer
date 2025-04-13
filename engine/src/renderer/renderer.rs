@@ -56,10 +56,8 @@ enum ReceiveMessagesResult {
     Empty
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-type BoxedRenderPath = Box<dyn RenderPath + Send>;
-#[cfg(target_arch = "wasm32")]
-type BoxedRenderPath = Box<dyn RenderPath>;
+trait MaybeSendRenderPath : RenderPath + sourcerenderer_core::gpu::GPUMaybeSend {}
+type BoxedRenderPath = Box<dyn MaybeSendRenderPath>;
 
 pub struct Renderer {
     device: Arc<Device>,

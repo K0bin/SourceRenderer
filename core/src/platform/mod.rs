@@ -5,6 +5,8 @@ use crate::input::Key;
 
 mod io;
 pub use io::PlatformIO;
+pub use io::IOMaybeSend;
+pub use io::IOMaybeSync;
 pub use io::FileWatcher;
 
 #[derive(PartialEq)]

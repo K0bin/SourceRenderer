@@ -5,6 +5,9 @@ use std::sync::Arc;
 use crate::{Mutex, Condvar};
 
 use smallvec::SmallVec;
+
+use sourcerenderer_core::gpu::{GPUMaybeSend, GPUMaybeSync};
+
 use crate::graphics::gpu::Shader as _;
 
 use crate::asset::{
@@ -24,15 +27,8 @@ use super::{RendererAssetWithHandle, RendererAssetsReadOnly, RendererShader};
 pub trait PipelineCompileTask: Clone {
     type TPipelineHandle: Hash + PartialEq + Eq + Clone + Copy + From<AssetHandle> + Into<AssetHandle> + Send + Sync + std::fmt::Debug;
 
-    #[cfg(not(target_arch = "wasm32"))]
-    type TShaders : Send;
-    #[cfg(target_arch = "wasm32")]
-    type TShaders;
-
-    #[cfg(not(target_arch = "wasm32"))]
-    type TPipeline : Send + Sync;
-    #[cfg(target_arch = "wasm32")]
-    type TPipeline;
+    type TShaders : GPUMaybeSend;
+    type TPipeline : GPUMaybeSend + GPUMaybeSync;
 
     fn asset_type() -> AssetType;
 
@@ -888,7 +884,7 @@ impl ShaderManager {
             let shaders = task.collect_shaders_for_compilation(assets);
             let handle = task.handle();
 
-            let async_task = task_pool.spawn(async move {
+            let async_task = crate::tasks::spawn_async_compute(async move {
                 crate::autoreleasepool(|| {
                     let pipeline = task.compile(shaders, &c_device);
                     let mut delayed_pipelines = c_delayed_pipeline.lock().unwrap();

@@ -17,9 +17,9 @@ pub trait Backbuffer {
 }
 
 pub trait Swapchain<B: GPUBackend> {
-  #[cfg(not(feature = "single_thread_gpu_api"))]
+  #[cfg(not(feature = "non_send_gpu"))]
   type Backbuffer : Backbuffer;
-  #[cfg(feature = "single_thread_gpu_api")]
+  #[cfg(feature = "non_send_gpu")]
   type Backbuffer : Backbuffer;
 
   fn will_reuse_backbuffers(&self) -> bool;

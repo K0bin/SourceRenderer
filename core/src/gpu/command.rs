@@ -157,10 +157,10 @@ pub trait CommandBuffer<B: GPUBackend> {
   unsafe fn end_query(&mut self, query_index: u32);
   unsafe fn copy_query_results_to_buffer(&mut self, query_pool: &B::QueryPool, start_index: u32, count: u32, buffer: &B::Buffer, buffer_offset: u64);
 
-  #[cfg(not(feature = "single_thread_gpu_api"))]
+  #[cfg(not(feature = "non_send_gpu"))]
   type CommandBufferInheritance: Send + Sync;
 
-  #[cfg(feature = "single_thread_gpu_api")]
+  #[cfg(feature = "non_send_gpu")]
   type CommandBufferInheritance;
 
   unsafe fn execute_inner(&mut self, submission: &[&B::CommandBuffer], inheritance: Self::CommandBufferInheritance);

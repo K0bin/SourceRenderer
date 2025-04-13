@@ -40,6 +40,8 @@ mod rw_lock_wasm;
 #[cfg(not(feature = "threading"))]
 use rw_lock_wasm::*;
 
+pub mod tasks;
+
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 fn autoreleasepool<T, F>(func: F) -> T
     where

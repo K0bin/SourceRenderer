@@ -22,6 +22,8 @@ use futures_io::{AsyncRead, AsyncSeek};
 use sourcerenderer_core::Vec4;
 use strum::VariantArray as _;
 
+use sourcerenderer_core::platform::IOMaybeSend;
+
 use crate::math::BoundingBox;
 use crate::graphics::TextureInfo;
 
@@ -76,23 +78,27 @@ impl Seek for AssetFile {
     }
 }
 
+trait ContainerContainsFuture : Future<Output = bool> + IOMaybeSend {}
+impl<T: Future<Output = bool> + IOMaybeSend> ContainerContainsFuture for T {}
+trait ContainerFileOptionFuture : Future<Output = Option<AssetFile>> + IOMaybeSend {}
+impl<T: Future<Output = Option<AssetFile>> + IOMaybeSend> ContainerFileOptionFuture for T {}
 pub trait AssetContainer: Send + Sync + 'static {
-    fn contains(&self, path: &str) -> impl Future<Output = bool> + Send;
-    fn load(&self, path: &str) -> impl Future<Output = Option<AssetFile>> + Send;
+    fn contains(&self, path: &str) -> impl ContainerContainsFuture;
+    fn load(&self, path: &str) -> impl ContainerFileOptionFuture;
 }
 
 pub trait ErasedAssetContainer: Send + Sync {
-    fn contains<'a>(&'a self, path: &'a str) -> Pin<Box<dyn Future<Output = bool> + Send + 'a>>;
-    fn load<'a>(&'a self, path: &'a str) -> Pin<Box<dyn Future<Output = Option<AssetFile>> + Send + 'a>>;
+    fn contains<'a>(&'a self, path: &'a str) -> Pin<Box<dyn ContainerContainsFuture + 'a>>;
+    fn load<'a>(&'a self, path: &'a str) -> Pin<Box<dyn ContainerFileOptionFuture + 'a>>;
 }
 
 impl<T> ErasedAssetContainer for T
     where T: AssetContainer {
-    fn contains<'a> (&'a self, path: &'a str) -> Pin<Box<dyn Future<Output = bool> + Send + 'a>> {
+    fn contains<'a> (&'a self, path: &'a str) -> Pin<Box<dyn ContainerContainsFuture + 'a>> {
         Box::pin(AssetContainer::contains(self, path))
     }
 
-    fn load<'a>(&'a self, path: &'a str) -> Pin<Box<dyn Future<Output = Option<AssetFile>> + Send + 'a>> {
+    fn load<'a>(&'a self, path: &'a str) -> Pin<Box<dyn ContainerFileOptionFuture + 'a>> {
         Box::pin(AssetContainer::load(self, path))
     }
 }
@@ -115,6 +121,8 @@ pub enum AssetLoadPriority {
     Low,
 }
 
+trait LoaderFuture : Future<Output = Result<(), ()>> + IOMaybeSend {}
+impl<T: Future<Output = Result<(), ()>> + IOMaybeSend> LoaderFuture for T {}
 pub trait AssetLoader: Send + Sync + 'static {
     fn matches(&self, file: &mut AssetFile) -> bool;
     fn load(
@@ -123,7 +131,7 @@ pub trait AssetLoader: Send + Sync + 'static {
         manager: &Arc<AssetManager>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
-    ) -> impl Future<Output = Result<(), ()>> + Send;
+    ) -> impl LoaderFuture;
 }
 
 pub trait ErasedAssetLoader: Send + Sync {
@@ -134,7 +142,7 @@ pub trait ErasedAssetLoader: Send + Sync {
         manager: &'a Arc<AssetManager>,
         priority: AssetLoadPriority,
         progress: &'a Arc<AssetLoaderProgress>,
-    ) -> Pin<Box<dyn Future<Output = Result<(), ()>> + Send + 'a>>;
+    ) -> Pin<Box<dyn LoaderFuture + 'a>>;
 }
 
 impl<T> ErasedAssetLoader for T
@@ -149,7 +157,7 @@ impl<T> ErasedAssetLoader for T
         manager: &'a Arc<AssetManager>,
         priority: AssetLoadPriority,
         progress: &'a Arc<AssetLoaderProgress>,
-    ) -> Pin<Box<dyn Future<Output = Result<(), ()>> + Send + 'a>> {
+    ) -> Pin<Box<dyn LoaderFuture + 'a>> {
         Box::pin(AssetLoader::load(self, file, manager, priority, progress))
     }
 }
@@ -472,7 +480,7 @@ impl AssetManager {
         }
 
         let asset_mgr = self.clone();
-        let io_task = IoTaskPool::get().spawn(async move {
+        let io_task = crate::tasks::spawn_io(async move {
             // Avoid keeping the entire IoTaskPool busy with low priority loads while higher priority loads are waiting.
             if priority == AssetLoadPriority::Normal {
                 asset_mgr.pending_high_priority_loads.wait_for_value(LOAD_PRIORITY_THRESHOLD).await;
@@ -494,7 +502,7 @@ impl AssetManager {
                 return;
             }
             let file = file_opt.unwrap();
-            let load_task = AsyncComputeTaskPool::get().spawn(async move {
+            let load_task = crate::tasks::spawn_async_compute(async move {
                 log::trace!("Loading asset at path: {}", &file.path);
                 let _ = asset_mgr.load_asset(file, handle, priority, &load_request.progress).await;
                 if priority == AssetLoadPriority::High {

@@ -36,3 +36,27 @@ mod query;
 pub trait Resettable {
   fn reset(&mut self);
 }
+
+#[cfg(feature = "non_send_gpu")]
+mod send_sync_bounds {
+    #[allow(unused)]
+    pub trait GPUMaybeSend {}
+    impl<T> GPUMaybeSend for T {}
+
+    #[allow(unused)]
+    pub trait GPUMaybeSync {}
+    impl<T> GPUMaybeSync for T {}
+}
+
+#[cfg(not(feature = "non_send_gpu"))]
+mod send_sync_bounds {
+    #[allow(unused)]
+    pub trait GPUMaybeSend: Send {}
+    impl<T: Send> GPUMaybeSend for T {}
+
+    #[allow(unused)]
+    pub trait GPUMaybeSync: Sync {}
+    impl<T: Sync> GPUMaybeSync for T {}
+}
+
+pub use send_sync_bounds::*;

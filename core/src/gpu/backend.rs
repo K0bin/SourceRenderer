@@ -1,57 +1,29 @@
-use super::*;
+use super::{send_sync_bounds::GPUMaybeSend, *};
 
 use std::hash::Hash;
 
-#[cfg(not(feature = "single_thread_gpu_api"))]
 pub trait GPUBackend: 'static + Sized {
-  type Instance: Instance<Self> + Send + Sync;
-  type Adapter: Adapter<Self> + Send + Sync;
-  type Device: Device<Self> + Send + Sync;
-  type Surface: Surface<Self> + Send + Sync + PartialEq + Eq;
-  type Swapchain: Swapchain<Self> + Send + Sync;
-  type CommandPool: CommandPool<Self> + Send;
-  type CommandBuffer: CommandBuffer<Self> + Send;
+  type Instance: Instance<Self> + GPUMaybeSend + GPUMaybeSync;
+  type Adapter: Adapter<Self> + GPUMaybeSend + GPUMaybeSync;
+  type Device: Device<Self> + GPUMaybeSend + GPUMaybeSync;
+  type Surface: Surface<Self> + GPUMaybeSend + GPUMaybeSync + PartialEq + Eq;
+  type Swapchain: Swapchain<Self> + GPUMaybeSend + GPUMaybeSync;
+  type CommandPool: CommandPool<Self> + GPUMaybeSend;
+  type CommandBuffer: CommandBuffer<Self> + GPUMaybeSend;
   type Texture: Texture + PartialEq;
   type TextureView: TextureView + PartialEq;
-  type Sampler: Send + Sync;
-  type Buffer: Buffer + Send + Sync + PartialEq;
-  type Shader: Shader + Hash + Eq + PartialEq + Send + Sync;
-  type GraphicsPipeline: Send + Sync;
-  type MeshGraphicsPipeline: Send + Sync;
-  type ComputePipeline: ComputePipeline + Send + Sync;
-  type RayTracingPipeline: Send + Sync;
-  type Fence : Fence + Send + Sync;
-  type Queue : Queue<Self> + Send + Sync;
+  type Sampler: GPUMaybeSend + GPUMaybeSync;
+  type Buffer: Buffer + GPUMaybeSend + GPUMaybeSync + PartialEq;
+  type Shader: Shader + Hash + Eq + PartialEq + GPUMaybeSend + GPUMaybeSync;
+  type GraphicsPipeline: GPUMaybeSend + GPUMaybeSync;
+  type MeshGraphicsPipeline: GPUMaybeSend + GPUMaybeSync;
+  type ComputePipeline: ComputePipeline + GPUMaybeSend + GPUMaybeSync;
+  type RayTracingPipeline: GPUMaybeSend + GPUMaybeSync;
+  type Fence : Fence + GPUMaybeSend + GPUMaybeSync;
+  type Queue : Queue<Self> + GPUMaybeSend + GPUMaybeSync;
   type Heap : Heap<Self>;
-  type QueryPool : QueryPool + Send + Sync;
-  type AccelerationStructure : AccelerationStructure + Send + Sync;
-
-  fn name() -> &'static str;
-}
-
-#[cfg(feature = "single_thread_gpu_api")]
-pub trait GPUBackend: 'static + Sized {
-  type Instance: Instance<Self>;
-  type Adapter: Adapter<Self>;
-  type Device: Device<Self>;
-  type Surface: Surface<Self> + PartialEq + Eq;
-  type Swapchain: Swapchain<Self>;
-  type CommandPool: CommandPool<Self>;
-  type CommandBuffer: CommandBuffer<Self>;
-  type Texture: Texture + PartialEq;
-  type TextureView: TextureView + PartialEq;
-  type Sampler;
-  type Buffer: Buffer + PartialEq;
-  type Shader: Shader + Hash + Eq + PartialEq;
-  type GraphicsPipeline;
-  type MeshGraphicsPipeline;
-  type ComputePipeline: ComputePipeline;
-  type RayTracingPipeline;
-  type Fence : Fence;
-  type Queue : Queue<Self>;
-  type Heap : Heap<Self>;
-  type QueryPool : QueryPool;
-  type AccelerationStructure : AccelerationStructure;
+  type QueryPool : QueryPool + GPUMaybeSend + GPUMaybeSync;
+  type AccelerationStructure : AccelerationStructure + GPUMaybeSend + GPUMaybeSync;
 
   fn name() -> &'static str;
 }
