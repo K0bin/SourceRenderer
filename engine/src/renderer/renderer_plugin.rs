@@ -465,7 +465,7 @@ fn pick_adapter(adapters: &[Adapter]) -> &Adapter {
 
 #[cfg(all(target_arch = "wasm32", feature = "render_thread"))]
 mod wasm {
-    use std::{cell::RefCell, rc::Rc};
+    use std::{cell::{Cell, RefCell}, rc::Rc};
 
     use super::*;
     use web_sys::{OffscreenCanvas, DedicatedWorkerGlobalScope, Navigator};
@@ -510,8 +510,10 @@ mod wasm {
 
             let c_counter = counter.clone();
             let c_scope = scope.clone();
+            let animation_id = Rc::new(Cell::new(0i32));
             let render_function = Rc::new(RefCell::new(None));
             let c_render_function = render_function.clone();
+            let c_animation_id = animation_id.clone();
             *render_function.borrow_mut() = Some(Closure::new(move || {
                 log::info!("WASM render frame");
                 let result = renderer.render();
@@ -522,15 +524,21 @@ mod wasm {
                 } else {
                     let render_function_borrow = c_render_function.borrow();
                     let render_function_ref: &Closure<dyn FnMut()> = render_function_borrow.as_ref().unwrap();
-                    let _ = c_scope.request_animation_frame(render_function_ref.as_ref().unchecked_ref());
+                    let id = c_scope.request_animation_frame(render_function_ref.as_ref().unchecked_ref()).unwrap();
+                    c_animation_id.replace(id);
                 }
             }));
 
             let render_function_borrow = render_function.borrow();
             let render_function_ref: &Closure<dyn FnMut()> = render_function_borrow.as_ref().unwrap();
-            let _ = scope.request_animation_frame(render_function_ref.as_ref().unchecked_ref());
+            let id = scope.request_animation_frame(render_function_ref.as_ref().unchecked_ref()).unwrap();
+            animation_id.replace(id);
 
-            //counter.wait_for_zero().await;
+            counter.wait_for_zero().await;
+            let final_id = animation_id.take();
+            if final_id != 0 {
+                scope.cancel_animation_frame(final_id);
+            }
         }, surface.take_canvas().into(), Some("RenderThread"))
     }
 }
