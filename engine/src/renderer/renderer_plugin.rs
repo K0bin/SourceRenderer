@@ -1,7 +1,11 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
-#[cfg(feature = "render_thread")]
+
+#[cfg(all(feature = "render_thread", not(target_arch = "wasm32")))]
 use std::thread::JoinHandle;
+
+#[cfg(all(feature = "render_thread", target_arch = "wasm32"))]
+use crate::wasm::thread::JoinHandle;
 
 use std::mem::ManuallyDrop;
 
@@ -170,6 +174,11 @@ fn insert_renderer_resource<P: GraphicsPlatform<ActiveBackend>>(app: &mut App) {
     let (sender, receiver) = Renderer::new_channel();
 
     #[cfg(feature = "render_thread")]
+    log::info!("RENDER THREAD");
+    #[cfg(not(feature = "render_thread"))]
+    log::info!("NO RENDER THREAD");
+
+    #[cfg(feature = "render_thread")]
     let handle = start_render_thread::<P>(
         receiver,
         instance,
@@ -207,7 +216,7 @@ fn insert_renderer_resource<P: GraphicsPlatform<ActiveBackend>>(app: &mut App) {
     app.insert_non_send_resource(wrapper);
 }
 
-#[cfg(feature = "render_thread")]
+#[cfg(all(feature = "render_thread", not(target_arch = "wasm32")))]
 fn start_render_thread<P: GraphicsPlatform<ActiveBackend>>(
     receiver: RendererReceiver,
     instance: APIInstance,
@@ -453,3 +462,77 @@ fn pick_adapter(adapters: &[Adapter]) -> &Adapter {
     }
     adapters.first().expect("No adapter found")
 }
+
+#[cfg(all(target_arch = "wasm32", feature = "render_thread"))]
+mod wasm {
+    use std::{cell::RefCell, rc::Rc};
+
+    use super::*;
+    use web_sys::{OffscreenCanvas, DedicatedWorkerGlobalScope, Navigator};
+    use wasm_bindgen::{JsCast, prelude::wasm_bindgen, closure::Closure};
+    use sourcerenderer_webgpu::{WebGPUInstance, WebGPUSurface, NavigatorKind};
+
+    use crate::AsyncCounter;
+
+    pub fn start_render_thread<P: GraphicsPlatform<ActiveBackend>>(
+        receiver: RendererReceiver,
+        instance: APIInstance,
+        surface: Surface,
+        swapchain_width: u32,
+        swapchain_height: u32,
+        asset_manager: &Arc<AssetManager>,
+        console: &Arc<Console>,
+    ) -> crate::wasm::thread::JoinHandle<()> {
+        log::info!("Using WASM render thread");
+        let c_asset_manager = asset_manager.clone();
+        let c_console = console.clone();
+
+        crate::wasm::thread::spawn_with_js_val(async move |data| {
+            let scope: DedicatedWorkerGlobalScope = js_sys::global().dyn_into().unwrap();
+            let navigator = scope.navigator();
+            let webgpu_init = WebGPUInstance::async_init(NavigatorKind::Worker(&navigator)).await.unwrap();
+            let instance = WebGPUInstance::new(&webgpu_init, false);
+            let canvas: OffscreenCanvas = data.dyn_into().unwrap();
+            let surface = WebGPUSurface::new(&instance, canvas).unwrap();
+
+            let counter = Arc::new(AsyncCounter::new(0));
+
+            let mut renderer = create_renderer(
+                receiver,
+                instance,
+                surface,
+                swapchain_width,
+                swapchain_height,
+                &c_asset_manager,
+                &c_console,
+            );
+
+            let c_counter = counter.clone();
+            let c_scope = scope.clone();
+            let render_function = Rc::new(RefCell::new(None));
+            let c_render_function = render_function.clone();
+            *render_function.borrow_mut() = Some(Closure::new(move || {
+                log::info!("WASM render frame");
+                let result = renderer.render();
+                if result == EngineLoopFuncResult::Exit {
+                    c_counter.set(0);
+                } else {
+                    let render_function_borrow = c_render_function.borrow();
+                    let render_function_ref: &Closure<dyn FnMut()> = render_function_borrow.as_ref().unwrap();
+                    let _ = c_scope.request_animation_frame(render_function_ref.as_ref().unchecked_ref());
+                    c_counter.increment();
+                }
+            }));
+
+            let render_function_borrow = render_function.borrow();
+            let render_function_ref: &Closure<dyn FnMut()> = render_function_borrow.as_ref().unwrap();
+            let _ = scope.request_animation_frame(render_function_ref.as_ref().unchecked_ref());
+            counter.increment();
+
+            //counter.wait_for_zero().await;
+        }, surface.take_canvas().into(), Some("RenderThread"))
+    }
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "render_thread"))]
+use wasm::start_render_thread;
