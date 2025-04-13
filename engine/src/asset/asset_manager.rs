@@ -16,7 +16,6 @@ use crate::{AsyncCounter, Mutex};
 
 use bevy_tasks::futures_lite::io::{Cursor, AsyncAsSync};
 use bevy_tasks::futures_lite::AsyncSeekExt;
-use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use futures_io::{AsyncRead, AsyncSeek};
 use sourcerenderer_core::Vec4;
@@ -289,14 +288,14 @@ impl AssetManager {
 
     pub fn add_container_with_progress_async(
         self: &Arc<Self>,
-        future: impl Future<Output = impl AssetContainer> + Send + 'static,
+        future: impl Future<Output = impl AssetContainer> + IOMaybeSend + 'static,
         progress: Option<&Arc<AssetLoaderProgress>>
     ) {
         self.pending_containers.increment();
 
         let c_progress = progress.cloned();
         let c_self = self.clone();
-        IoTaskPool::get().spawn(async move {
+        crate::tasks::spawn_io(async move {
             {
                 let container_box = Box::new(future.await);
                 let mut containers = c_self.containers.write().await;
@@ -314,7 +313,7 @@ impl AssetManager {
         self.pending_loaders.increment();
 
         let c_self = self.clone();
-        IoTaskPool::get().spawn(async move {
+        crate::tasks::spawn_io(async move {
             let mut loaders = c_self.loaders.write().await;
             loaders.push(Box::new(loader));
 
