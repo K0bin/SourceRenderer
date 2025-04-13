@@ -14,7 +14,7 @@ default = ["console_error_panic_hook"]
 [dependencies]
 js-sys = "0.3"
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
-sourcerenderer_core = { path = "../../../core" }
+sourcerenderer_core = { path = "../../../core", features = [ "non_send_io" ] }
 sourcerenderer_engine = { path = "../../../engine", default-features = false, features = [ "web", "render_thread" ] }
 sourcerenderer_webgpu = { path = "../../../graphics/webgpu" }
 sourcerenderer_game = { path = "../../../game" }

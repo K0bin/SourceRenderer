@@ -496,6 +496,7 @@ mod wasm {
             let surface = WebGPUSurface::new(&instance, canvas).unwrap();
 
             let counter = Arc::new(AsyncCounter::new(0));
+            counter.increment();
 
             let mut renderer = create_renderer(
                 receiver,
@@ -515,19 +516,19 @@ mod wasm {
                 log::info!("WASM render frame");
                 let result = renderer.render();
                 if result == EngineLoopFuncResult::Exit {
+                    // Clean up circular reference
+                    let _ = c_render_function.borrow_mut().take();
                     c_counter.set(0);
                 } else {
                     let render_function_borrow = c_render_function.borrow();
                     let render_function_ref: &Closure<dyn FnMut()> = render_function_borrow.as_ref().unwrap();
                     let _ = c_scope.request_animation_frame(render_function_ref.as_ref().unchecked_ref());
-                    c_counter.increment();
                 }
             }));
 
             let render_function_borrow = render_function.borrow();
             let render_function_ref: &Closure<dyn FnMut()> = render_function_borrow.as_ref().unwrap();
             let _ = scope.request_animation_frame(render_function_ref.as_ref().unchecked_ref());
-            counter.increment();
 
             //counter.wait_for_zero().await;
         }, surface.take_canvas().into(), Some("RenderThread"))

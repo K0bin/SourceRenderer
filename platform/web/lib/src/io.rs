@@ -8,21 +8,6 @@ use futures_lite::io::Cursor;
 
 use sourcerenderer_core::platform::{PlatformIO, FileWatcher};
 
-struct ForceSendFuture<T, F: Future<Output = T>>(F);
-
-impl<T, F> Future for ForceSendFuture<T, F>
-    where F: Future<Output = T> {
-    type Output = T;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let field_pin = unsafe { self.map_unchecked_mut(|this| &mut this.0) };
-        field_pin.poll(cx)
-    }
-}
-
-unsafe impl<T, F> Send for ForceSendFuture<T, F>
-    where F: Future<Output = T> {}
-
 pub struct WebIO {}
 
 impl PlatformIO for WebIO {
@@ -32,8 +17,7 @@ impl PlatformIO for WebIO {
     async fn open_asset<P: AsRef<Path> + Send>(path: P) -> IOResult<Self::File> {
         log::trace!("Loading web file: {:?}", path.as_ref());
         let future = crate::fetch_asset(path.as_ref().to_str().unwrap());
-        let send_future = ForceSendFuture(future);
-        let buffer_res = send_future.await;
+        let buffer_res = future.await;
         let buffer = buffer_res.map_err(|js_val| {
             let response_code_opt = js_val.as_f64();
             if response_code_opt.is_none() {
@@ -55,8 +39,7 @@ impl PlatformIO for WebIO {
     async fn asset_exists<P: AsRef<Path> + Send>(path: P) -> bool {
         // There is no smarter solution for this as far as I'm aware. Hope the caching work at least...
         let future = crate::fetch_asset(path.as_ref().to_str().unwrap());
-        let send_future = ForceSendFuture(future);
-        let result = send_future.await;
+        let result = future.await;
         result.is_ok()
     }
 
