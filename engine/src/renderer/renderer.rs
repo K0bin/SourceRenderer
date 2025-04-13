@@ -371,7 +371,7 @@ impl Renderer {
                     let handle = self.assets.asset_manager().get_or_reserve_handle(&path, AssetType::Texture);
                     self.scene.set_lightmap(Some(handle.into()));
                 }
-                RendererCommand::RenderUI(data) => { self.render_path.set_ui_data(data); },
+                //RendererCommand::RenderUI(data) => { self.render_path.set_ui_data(data); },
 
                 RendererCommand::WindowChanged(window_state) => {
                     match window_state {
@@ -580,8 +580,9 @@ impl RendererSender {
             return Err(SendError(()));
         };
 
-        sender.send(RendererCommand::RenderUI(ui_data))
-            .map_err(|_| SendError(()))
+        /*sender.send(RendererCommand::RenderUI(ui_data))
+            .map_err(|_| SendError(()))*/
+        unimplemented!()
     }
 
     pub fn unblock_game_thread(&self) {
