@@ -12,14 +12,26 @@ console.log("Thread initialized");
 let initOutput: InitOutput|null = null;
 
 async function run(data: ThreadWorkerInit) {
+    console.log("Thread starting");
+
     initOutput = await initWasm({
         module_or_path: data.module,
         memory: data.memory,
     });
     await threadFunc(data.callbackPtr, data.data);
-    initOutput.__wbindgen_thread_destroy();
+    console.log("Thread finished");
 }
 
 onerror = (_e) => {
-    initOutput?.__wbindgen_thread_destroy();
+    destroyThread();
 };
+
+export function destroyThread() {
+    // This has to be done in a separate function because
+    // the Promise -> Rust conversion happens after run is done.
+    // It also has to happen inside of JS.
+    console.log("Destroying thread");
+    initOutput?.__wbindgen_thread_destroy();
+    initOutput = null;
+    console.log("Thread destroyed");
+}

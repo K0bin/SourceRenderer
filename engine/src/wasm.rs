@@ -118,7 +118,7 @@ pub struct ThreadShared<T: Send> {
 }
 
 
-#[wasm_bindgen(raw_module = "../../www/src/web_glue.ts")] // (module = "/src/web_glue/web_glue.ts")]
+#[wasm_bindgen(raw_module = "../../www/src/web_glue.ts")]
 extern "C" {
     #[wasm_bindgen(js_name = "startThreadWorker")]
     fn start_thread_worker(
@@ -130,6 +130,12 @@ extern "C" {
     );
 }
 
+#[wasm_bindgen(raw_module = "../../www/src/worker/thread_worker.ts")]
+extern "C" {
+    #[wasm_bindgen(js_name = "destroyThread")]
+    fn destroy_thread();
+}
+
 #[wasm_bindgen(js_name = "threadFunc")]
 pub async fn thread_func(
     callback_ptr: u64,
@@ -138,4 +144,5 @@ pub async fn thread_func(
     let callback_ptr: *mut (dyn FnOnce(JsValue) -> Pin<Box<dyn Future<Output = ()>>> + Send + 'static) = unsafe { std::mem::transmute(callback_ptr) };
     let callback = unsafe { Box::from_raw(callback_ptr) };
     callback(data).await;
+    destroy_thread();
 }
