@@ -40,6 +40,8 @@ pub async fn start_engine(navigator: Navigator, canvas: OffscreenCanvas) -> Engi
 
   console_log::init_with_level(log::Level::Trace).unwrap();
 
+  sourcerenderer_engine::wasm::test_thread();
+
   info!("Initializing platform");
   let platform = WebPlatform::new(navigator, canvas).await;
 
@@ -52,15 +54,8 @@ pub async fn start_engine(navigator: Navigator, canvas: OffscreenCanvas) -> Engi
   wrapper
 }
 
-
-
-#[wasm_bindgen(js_name = "module")]
-pub fn module() -> js_sys::WebAssembly::Module {
-  js_sys::WebAssembly::Module::from(wasm_bindgen::module())
-}
-
-#[wasm_bindgen(module = "/src/web_glue.ts")]
+#[wasm_bindgen(raw_module = "../../www/src/web_glue.ts")]
 extern "C" {
   #[wasm_bindgen(js_name = "fetchAsset", catch)]
-  pub async fn fetch_asset(path: &str) -> Result<Uint8Array, JsValue>;
+  pub async extern fn fetch_asset(path: &str) -> Result<Uint8Array, JsValue>;
 }

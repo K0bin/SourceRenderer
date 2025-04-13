@@ -28,5 +28,8 @@ pub use self::asset_data::*;
 pub use self::asset_manager_plugin::*;
 pub use fixed_byte_size_cache::*;
 
+#[cfg(target_arch = "wasm32")]
+pub use asset_manager::wasm;
+
 use bevy_math::Vec2;
 use sourcerenderer_core::Vec3;
