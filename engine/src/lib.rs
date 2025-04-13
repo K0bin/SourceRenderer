@@ -22,6 +22,9 @@ pub mod renderer;
 mod ui;
 pub mod graphics;
 
+mod async_counter;
+pub use async_counter::*;
+
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
 
