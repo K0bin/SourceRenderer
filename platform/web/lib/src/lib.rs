@@ -74,4 +74,8 @@ pub async fn start_engine_with_fake_canvas(navigator: &WorkerNavigator, width: u
 extern "C" {
   #[wasm_bindgen(js_name = "fetchAsset", catch)]
   pub async extern fn fetch_asset(path: &str) -> Result<Uint8Array, JsValue>;
+  #[wasm_bindgen(js_name = "fetchAssetHead", catch)]
+  pub async extern fn fetch_asset_head(path: &str) -> Result<u32, JsValue>;
+  #[wasm_bindgen(js_name = "fetchAssetRange", catch)]
+  pub async extern fn fetch_asset_range(path: &str, offset: u32, length: u32) -> Result<Uint8Array, JsValue>;*/
 }
