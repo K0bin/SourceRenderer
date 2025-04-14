@@ -515,7 +515,6 @@ mod wasm {
             let c_render_function = render_function.clone();
             let c_animation_id = animation_id.clone();
             *render_function.borrow_mut() = Some(Closure::new(move || {
-                log::info!("WASM render frame");
                 let result = renderer.render();
                 if result == EngineLoopFuncResult::Exit {
                     // Clean up circular reference
