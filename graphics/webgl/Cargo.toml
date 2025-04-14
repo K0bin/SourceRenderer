@@ -1,0 +1,37 @@
+[package]
+name = "sourcerenderer_webgl"
+version = "0.1.0"
+authors = ["Robin Kertels <robin.kertels@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+js-sys = "0.3.55"
+wasm-bindgen = "0.2.78"
+sourcerenderer_core = { path = "../../core" }
+log = "0.4.14"
+smallvec = { version = "1.8.0", features = [ "union", "const_generics", "const_new" ] }
+bitflags = "2.3.2"
+
+[dependencies.web-sys]
+version = "0.3.55"
+features = [
+  'Document',
+  'Element',
+  'HtmlCanvasElement',
+  'WebGlBuffer',
+  'WebGlRenderingContext',
+  'WebGl2RenderingContext',
+  'WebGlProgram',
+  'WebGlShader',
+  'WebGlTexture',
+  'WebGlProgram',
+  'Window',
+  'DedicatedWorkerGlobalScope',
+  'WebglCompressedTextureS3tc',
+  'WebGlActiveInfo',
+  'WebGlFramebuffer',
+  'WebGlVertexArrayObject',
+  'WebGlUniformLocation',
+  'WebGlSampler',
+  'ExtTextureFilterAnisotropic',
+]
