@@ -27,6 +27,13 @@ impl WebPlatform {
             window,
         }
     }
+    pub(crate) async fn new_on_worker_without_canvas(navigator: &WorkerNavigator, width: u32, height: u32) -> Self {
+        let window = WebWindow::new_fake(width, height);
+        init_webgpu_on_thread(NavigatorKind::Worker(navigator)).await;
+        Self {
+            window,
+        }
+    }
 
     pub(crate) fn window(&self) -> &WebWindow {
         &self.window

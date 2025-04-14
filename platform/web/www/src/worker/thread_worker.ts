@@ -1,6 +1,6 @@
 import { default as initWasm, threadFunc, InitOutput } from "../../../lib/pkg/sourcerenderer_web";
 
-import { ThreadWorkerInit } from "../web_glue.ts";
+import { ThreadWorkerInit } from "../engine_worker_communication.ts";
 
 onmessage = async (msg: MessageEvent) => {
     console.log("Receiving msg");

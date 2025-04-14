@@ -539,7 +539,7 @@ mod wasm {
             if final_id != 0 {
                 scope.cancel_animation_frame(final_id);
             }
-        }, surface.take_canvas().into(), Some("RenderThread"))
+        }, surface.take_js_val(), Some("RenderThread"))
     }
 }
 

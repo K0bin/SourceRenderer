@@ -5,7 +5,7 @@ use platform::WebPlatform;
 use sourcerenderer_engine::{Engine as ActualEngine, EngineLoopFuncResult};
 use sourcerenderer_game::GamePlugin;
 use wasm_bindgen::{prelude::wasm_bindgen, JsValue};
-use web_sys::{Navigator, OffscreenCanvas};
+use web_sys::{Navigator, OffscreenCanvas, WorkerNavigator};
 
 mod platform;
 mod window;
@@ -35,13 +35,31 @@ impl Engine {
 
 
 #[wasm_bindgen(js_name = "startEngine")]
-pub async fn start_engine(navigator: &Navigator, canvas: OffscreenCanvas) -> Engine {
+pub async fn start_engine(navigator: &WorkerNavigator, canvas: OffscreenCanvas) -> Engine {
   utils::set_panic_hook();
 
   console_log::init_with_level(log::Level::Trace).unwrap();
 
   info!("Initializing platform");
-  let platform = WebPlatform::new(navigator, canvas).await;
+  let platform = WebPlatform::new_on_worker(navigator, canvas).await;
+
+  info!("Initializing engine");
+  let engine = ActualEngine::run::<_, WebIO, WebPlatform>(platform.window(), GamePlugin);
+
+  let wrapper = Engine {
+    engine: Some(engine),
+  };
+  wrapper
+}
+
+#[wasm_bindgen(js_name = "startEngineWithFakeCanvas")]
+pub async fn start_engine_with_fake_canvas(navigator: &WorkerNavigator, width: u32, height: u32) -> Engine {
+  utils::set_panic_hook();
+
+  console_log::init_with_level(log::Level::Trace).unwrap();
+
+  info!("Initializing platform");
+  let platform = WebPlatform::new_on_worker_without_canvas(navigator, width, height).await;
 
   info!("Initializing engine");
   let engine = ActualEngine::run::<_, WebIO, WebPlatform>(platform.window(), GamePlugin);
