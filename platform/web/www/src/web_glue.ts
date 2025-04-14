@@ -12,6 +12,37 @@ export async function fetchAsset(path: string): Promise<Uint8Array> {
     return buffer;
 }
 
+export async function fetchAssetRange(path: string, offset: number, length: number): Promise<Uint8Array> {
+    const url = new URL("./enginedata/" + path, location.origin);
+    console.trace("Fetching: " + url);
+    const response = await fetch(url, {
+        headers: [
+            ["Range", "bytes=" + offset + "-" + (offset + length)],
+        ]
+    });
+    if (response.status != 200) {
+        throw response.status;
+    }
+    const buffer = await response.bytes();
+    return buffer;
+}
+
+export async function fetchAssetHead(path: string): Promise<number> {
+    const url = new URL("./enginedata/" + path, location.origin);
+    console.trace("Fetching HEADER: " + url);
+    const response = await fetch(url, {
+        method: "HEAD",
+    });
+    if (response.status != 204) {
+        throw response.status;
+    }
+    const contentLength = response.headers.get("Content-Length");
+    if (contentLength === null) {
+        throw new Error("No content-length header");
+    }
+    return Number.parseInt(contentLength);
+}
+
 export function startThreadWorker(
     module: WebAssembly.Module,
     memory: WebAssembly.Memory,
