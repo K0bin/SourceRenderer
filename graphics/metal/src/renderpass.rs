@@ -44,12 +44,45 @@ pub(crate) unsafe fn render_pass_to_descriptors(info: &gpu::RenderPassBeginInfo<
             attachment_desc.setSlice(resolve_view.view.info().base_array_layer as NSUInteger);
         }
         if let gpu::LoadOpColor::Clear(color) = rt.load_op {
-            attachment_desc.setClearColor(objc2_metal::MTLClearColor {
-                red: color.as_f32()[0] as f64,
-                green: color.as_f32()[1] as f64,
-                blue: color.as_f32()[2] as f64,
-                alpha: color.as_f32()[3] as f64,
-            });
+            let format = rt.view.info().format.unwrap_or(rt.view.texture_info().format);
+            if format.is_unorm() {
+                attachment_desc.setClearColor(objc2_metal::MTLClearColor {
+                    red: color.as_u32()[0] as f64 / 255.0f64,
+                    green: color.as_u32()[1] as f64 / 255.0f64,
+                    blue: color.as_u32()[2] as f64 / 255.0f64,
+                    alpha: color.as_u32()[3] as f64 / 255.0f64,
+                });
+            } else if format.is_snorm() {
+                attachment_desc.setClearColor(objc2_metal::MTLClearColor {
+                    red: color.as_i32()[0] as f64 / 255.0f64,
+                    green: color.as_i32()[1] as f64 / 255.0f64,
+                    blue: color.as_i32()[2] as f64 / 255.0f64,
+                    alpha: color.as_i32()[3] as f64 / 255.0f64,
+                });
+            } else if format.is_uint() {
+                attachment_desc.setClearColor(objc2_metal::MTLClearColor {
+                    red: color.as_u32()[0] as f64,
+                    green: color.as_u32()[1] as f64,
+                    blue: color.as_u32()[2] as f64,
+                    alpha: color.as_u32()[3] as f64,
+                });
+            } else if format.is_sint() {
+                attachment_desc.setClearColor(objc2_metal::MTLClearColor {
+                    red: color.as_i32()[0] as f64,
+                    green: color.as_i32()[1] as f64,
+                    blue: color.as_i32()[2] as f64,
+                    alpha: color.as_i32()[3] as f64,
+                });
+            } else if format.is_float() {
+                attachment_desc.setClearColor(objc2_metal::MTLClearColor {
+                    red: color.as_f32()[0] as f64,
+                    green: color.as_f32()[1] as f64,
+                    blue: color.as_f32()[2] as f64,
+                    alpha: color.as_f32()[3] as f64,
+                });
+            } else {
+                panic!("Something is wrong with the clear color.")
+            }
         }
         descriptor.colorAttachments().setObject_atIndexedSubscript(Some(&attachment_desc), index as usize);
     }
