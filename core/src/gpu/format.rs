@@ -100,4 +100,63 @@ impl Format {
       _ => Vec2UI::new(1, 1)
     }
   }
+
+  pub fn is_float(&self) -> bool {
+    match self {
+      Format::R16Float
+      | Format::R32Float
+      | Format::RG32Float
+      | Format::RG16Float
+      | Format::RGB32Float
+      | Format::RGBA32Float
+      | Format::RGBA16Float
+      | Format::R11G11B10Float => true,
+      _ => false,
+    }
+  }
+
+  pub fn is_unorm(&self) -> bool {
+    match self {
+      Format::R8Unorm
+      | Format::R16UNorm
+      | Format::R32UNorm
+      | Format::RG8UNorm
+      | Format::BGR8UNorm
+      | Format::RG16UNorm
+      | Format::RGBA8UNorm
+      | Format::BGRA8UNorm => true,
+      _ => false,
+    }
+  }
+
+  pub fn is_snorm(&self) -> bool {
+    match self {
+      Format::R16SNorm => true,
+      _ => false,
+    }
+  }
+
+  pub fn is_srgb(&self) -> bool {
+    match self {
+      Format::RGBA8Srgb => true,
+      _ => false,
+    }
+  }
+
+  pub fn is_uint(&self) -> bool {
+    match self {
+      Format::R16UInt
+      | Format::R32UInt
+      | Format::RG16UInt => true,
+      _ => false,
+    }
+  }
+
+  pub fn is_sint(&self) -> bool {
+    match self {
+      Format::R16SInt
+      | Format::RG16SInt => true,
+      _ => false,
+    }
+  }
 }
