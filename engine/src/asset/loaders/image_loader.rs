@@ -37,7 +37,7 @@ impl AssetLoader for ImageLoader {
         let is_png = file.path.ends_with(".png");
 
         let path = file.path.clone();
-        let buf_reader = BufReader::new(file);
+        let buf_reader = BufReader::with_capacity(16, file);
         let image_reader = ImageReader::with_format(
             buf_reader,
             if is_png {
