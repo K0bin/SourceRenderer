@@ -33,7 +33,7 @@ export async function fetchAssetHead(path: string): Promise<number> {
     const response = await fetch(url, {
         method: "HEAD",
     });
-    if (response.status != 204) {
+    if (response.status !== 204 && response.status !== 200) {
         throw response.status;
     }
     const contentLength = response.headers.get("Content-Length");

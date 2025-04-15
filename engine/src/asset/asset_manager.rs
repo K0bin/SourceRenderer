@@ -2,26 +2,23 @@ use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::hash::Hash;
 use std::io::{
-    Read,
-    Result as IOResult,
-    Seek,
-    SeekFrom,
+    Read, Result as IOResult, Seek, SeekFrom
 };
-use std::pin::Pin;
+use std::pin::{pin, Pin};
 use std::sync::atomic::{
     AtomicU32, AtomicU64, Ordering
 };
 use std::sync::Arc;
 use crate::{AsyncCounter, Mutex};
 
-use bevy_tasks::futures_lite::io::{Cursor, AsyncAsSync};
 use bevy_tasks::futures_lite::AsyncSeekExt;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use futures_io::{AsyncRead, AsyncSeek};
+use futures_lite::io::AsyncAsSync;
 use sourcerenderer_core::Vec4;
 use strum::VariantArray as _;
 
-use sourcerenderer_core::platform::IOMaybeSend;
+use sourcerenderer_core::platform::{IOFutureMaybeSend, PlatformFile};
 
 use crate::math::BoundingBox;
 use crate::graphics::TextureInfo;
@@ -36,7 +33,16 @@ pub struct AssetLoadRequest {
 
 pub struct AssetFile {
     pub path: String,
-    pub data: Cursor<Box<[u8]>>,
+    pub file: Box<dyn PlatformFile>,
+}
+
+impl Clone for AssetFile {
+    fn clone(&self) -> Self {
+        Self {
+            path: self.path.clone(),
+            file: dyn_clone::clone_box(&*self.file)
+        }
+    }
 }
 
 impl AsyncRead for AssetFile {
@@ -45,7 +51,7 @@ impl AsyncRead for AssetFile {
         cx: &mut std::task::Context<'_>,
         buf: &mut [u8],
     ) -> std::task::Poll<IOResult<usize>> {
-        AsyncRead::poll_read(Pin::new(&mut self.as_mut().data), cx, buf)
+        pin!(&mut self.file).poll_read(cx, buf)
     }
 }
 
@@ -55,7 +61,7 @@ impl AsyncSeek for AssetFile {
         cx: &mut std::task::Context<'_>,
         pos: SeekFrom,
     ) -> std::task::Poll<IOResult<u64>> {
-        AsyncSeek::poll_seek(Pin::new(&mut self.as_mut().data), cx, pos)
+        pin!(&mut self.file).poll_seek(cx, pos)
     }
 }
 
@@ -63,7 +69,7 @@ impl Read for AssetFile {
     fn read(&mut self, buf: &mut [u8]) -> IOResult<usize> {
         let waker = waker_fn::waker_fn(|| {});
         let mut context = std::task::Context::from_waker(&waker);
-        let mut as_sync = AsyncAsSync::new(&mut context, &mut self.data);
+        let mut as_sync = AsyncAsSync::new(&mut context, &mut self.file);
         as_sync.read(buf)
     }
 }
@@ -72,15 +78,15 @@ impl Seek for AssetFile {
     fn seek(&mut self, pos: SeekFrom) -> IOResult<u64> {
         let waker = waker_fn::waker_fn(|| {});
         let mut context = std::task::Context::from_waker(&waker);
-        let mut as_sync = AsyncAsSync::new(&mut context, &mut self.data);
+        let mut as_sync = AsyncAsSync::new(&mut context, &mut self.file);
         as_sync.seek(pos)
     }
 }
 
-trait ContainerContainsFuture : Future<Output = bool> + IOMaybeSend {}
-impl<T: Future<Output = bool> + IOMaybeSend> ContainerContainsFuture for T {}
-trait ContainerFileOptionFuture : Future<Output = Option<AssetFile>> + IOMaybeSend {}
-impl<T: Future<Output = Option<AssetFile>> + IOMaybeSend> ContainerFileOptionFuture for T {}
+trait ContainerContainsFuture : Future<Output = bool> + IOFutureMaybeSend {}
+impl<T: Future<Output = bool> + IOFutureMaybeSend> ContainerContainsFuture for T {}
+trait ContainerFileOptionFuture : Future<Output = Option<AssetFile>> + IOFutureMaybeSend {}
+impl<T: Future<Output = Option<AssetFile>> + IOFutureMaybeSend> ContainerFileOptionFuture for T {}
 pub trait AssetContainer: Send + Sync + 'static {
     fn contains(&self, path: &str) -> impl ContainerContainsFuture;
     fn load(&self, path: &str) -> impl ContainerFileOptionFuture;
@@ -120,8 +126,8 @@ pub enum AssetLoadPriority {
     Low,
 }
 
-trait LoaderFuture : Future<Output = Result<(), ()>> + IOMaybeSend {}
-impl<T: Future<Output = Result<(), ()>> + IOMaybeSend> LoaderFuture for T {}
+trait LoaderFuture : Future<Output = Result<(), ()>> + IOFutureMaybeSend {}
+impl<T: Future<Output = Result<(), ()>> + IOFutureMaybeSend> LoaderFuture for T {}
 pub trait AssetLoader: Send + Sync + 'static {
     fn matches(&self, file: &mut AssetFile) -> bool;
     fn load(
@@ -288,7 +294,7 @@ impl AssetManager {
 
     pub fn add_container_with_progress_async(
         self: &Arc<Self>,
-        future: impl Future<Output = impl AssetContainer> + IOMaybeSend + 'static,
+        future: impl Future<Output = impl AssetContainer> + IOFutureMaybeSend + 'static,
         progress: Option<&Arc<AssetLoaderProgress>>
     ) {
         self.pending_containers.increment();

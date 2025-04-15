@@ -23,6 +23,7 @@ bevy_ecs = "0.15"
 bevy_tasks = "0.15"
 sourcerenderer_game = { path = "../../game" }
 async-fs = "2.1"
+async-mutex = "1.4"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-metal = "0.3"

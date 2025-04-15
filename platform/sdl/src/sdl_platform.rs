@@ -4,7 +4,10 @@ use std::path::{
     Path,
     PathBuf,
 };
+use std::pin::{pin, Pin};
+use std::task::{Context, Poll};
 
+use bevy_tasks::futures_lite::{AsyncRead, AsyncSeek};
 use crossbeam_channel::Sender;
 use notify::{
     recommended_watcher,
@@ -203,6 +206,54 @@ impl Window<SDLGPUBackend> for SDLWindow {
 }
 
 pub struct StdIO {}
+
+pub struct StdFileWrapper {
+    path: Box<Path>,
+    file: Arc<async_mutex::Mutex<async_fs::File>>,
+    offset: u64,
+}
+
+impl AsyncRead for StdFileWrapper {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<IOResult<usize>> {
+        let poll_result = pin!(&mut self.file).poll_read(cx, buf);
+        if let Poll::Ready(result) = &poll_result {
+            if let Ok(bytes_read) = result {
+                self.offset += bytes_read;
+            }
+        }
+    }
+}
+
+impl AsyncSeek for StdFileWrapper {
+    fn poll_seek(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        pos: SeekFrom,
+    ) -> Poll<IOResult<u64>> {
+        let poll_result = pin!(&mut self.file).poll_seek(cx, pos);
+        if let Poll::Ready(result) = &poll_result {
+            if let Ok(offset) = result {
+                self.offset = offset;
+            }
+        }
+        poll_result
+    }
+}
+
+impl Clone for StdFileWrapper {
+    fn clone(&self) -> Self {
+        let new_file = async_fs::File::open(path);
+        Self {
+            path: self.path.clone(),
+            file: ,
+            offset: self.offset,
+        }
+    }
+}
 
 impl PlatformIO for StdIO {
     type File = async_fs::File; // TODO: Replace with an implementation that uses Bevys IOTaskPool as executor
