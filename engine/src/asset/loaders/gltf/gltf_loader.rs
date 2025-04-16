@@ -1,14 +1,20 @@
-use std::io::SeekFrom;
-use std::path::Path;
+use std::io::{
+    Cursor,
+    Read as _,
+    Seek as _,
+    SeekFrom,
+};
 use std::sync::Arc;
 use std::{
     slice,
     usize,
 };
 
-use bevy_math::{EulerRot, Quat};
+use bevy_math::{
+    EulerRot,
+    Quat,
+};
 use bevy_tasks::futures_lite::AsyncReadExt;
-use std::io::{Cursor, Seek as _, Read as _};
 use bevy_transform::components::Transform;
 use gltf::buffer::{
     Source,
@@ -24,6 +30,7 @@ use gltf::{
     Scene,
     Semantic,
 };
+use io_util::RawDataReadAsync;
 use log::warn;
 use sourcerenderer_core::{
     Vec2,
@@ -32,9 +39,22 @@ use sourcerenderer_core::{
 };
 
 use crate::asset::asset_manager::AssetFile;
-use crate::asset::loaded_level::{LoadedEntityParent, LevelData};
+use crate::asset::loaded_level::{
+    LevelData,
+    LoadedEntityParent,
+};
 use crate::asset::{
-    AssetData, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, AssetType, MeshData, MeshRange, ModelData, Vertex, FixedByteSizeCache
+    AssetData,
+    AssetLoadPriority,
+    AssetLoader,
+    AssetLoaderProgress,
+    AssetManager,
+    AssetType,
+    FixedByteSizeCache,
+    MeshData,
+    MeshRange,
+    ModelData,
+    Vertex,
 };
 use crate::math::BoundingBox;
 use crate::renderer::{
@@ -95,13 +115,21 @@ impl GltfLoader {
         let fixed_rotation = Vec4::new(rotation.x, rotation.y, rotation.z, rotation.w);
         let rot_quat = Quat::from_vec4(fixed_rotation).normalize();
         let euler_angles = rot_quat.to_euler(EulerRot::XYZ);
-        let rot_quat = Quat::from_euler(EulerRot::XYZ, euler_angles.0, -euler_angles.1, -euler_angles.2);
+        let rot_quat = Quat::from_euler(
+            EulerRot::XYZ,
+            euler_angles.0,
+            -euler_angles.1,
+            -euler_angles.2,
+        );
         let entity = world.push_entity(3);
-        world.push_component(entity, Transform {
-            translation: fixed_position,
-            scale,
-            rotation: rot_quat,
-        });
+        world.push_component(
+            entity,
+            Transform {
+                translation: fixed_position,
+                scale,
+                rotation: rot_quat,
+            },
+        );
         if let Some(parent) = parent_entity {
             world.push_component(entity, LoadedEntityParent(parent));
         }
@@ -129,7 +157,8 @@ impl GltfLoader {
                     &mut indices,
                     gltf_file_name,
                     buffer_cache,
-                ).await;
+                )
+                .await;
                 let material_path =
                     GltfLoader::load_material(&primitive.material(), asset_mgr, gltf_file_name);
                 materials.push(material_path);
@@ -229,12 +258,15 @@ impl GltfLoader {
                 AssetLoadPriority::Normal,
             );
 
-            world.push_component(entity, StaticRenderableComponent {
-                model_path,
-                receive_shadows: true,
-                cast_shadows: true,
-                can_move: false,
-            });
+            world.push_component(
+                entity,
+                StaticRenderableComponent {
+                    model_path,
+                    receive_shadows: true,
+                    cast_shadows: true,
+                    can_move: false,
+                },
+            );
         };
 
         if node.skin().is_some() {
@@ -265,14 +297,20 @@ impl GltfLoader {
             }
             match light.kind() {
                 gltf::khr_lights_punctual::Kind::Directional => {
-                    world.push_component(entity, DirectionalLightComponent {
-                        intensity: light.intensity() * 685f32, // Blender exports as W/m2, we need lux
-                    });
+                    world.push_component(
+                        entity,
+                        DirectionalLightComponent {
+                            intensity: light.intensity() * 685f32, // Blender exports as W/m2, we need lux
+                        },
+                    );
                 }
                 gltf::khr_lights_punctual::Kind::Point => {
-                    world.push_component(entity, PointLightComponent {
-                        intensity: light.intensity(),
-                    });
+                    world.push_component(
+                        entity,
+                        PointLightComponent {
+                            intensity: light.intensity(),
+                        },
+                    );
                 }
                 gltf::khr_lights_punctual::Kind::Spot { .. } => todo!(),
             }
@@ -286,7 +324,8 @@ impl GltfLoader {
                 Some(entity),
                 gltf_file_name,
                 buffer_cache,
-            )).await;
+            ))
+            .await;
         }
     }
 
@@ -306,7 +345,8 @@ impl GltfLoader {
                 None,
                 gltf_file_name,
                 &mut buffer_cache,
-            ).await;
+            )
+            .await;
         }
         world
     }
@@ -338,10 +378,7 @@ impl GltfLoader {
                             view.length()
                         )
                     } else {
-                        format!(
-                            "{}/buffer/",
-                            gltf_file_name,
-                        )
+                        format!("{}/buffer/", gltf_file_name,)
                     }
                 }
                 Source::Uri(gltf_uri) => {
@@ -362,39 +399,47 @@ impl GltfLoader {
             view: &View<'_>,
         ) -> Box<[u8]> {
             let first_page = view.offset() / FILE_PAGE_SIZE;
-            let last_page = (view.offset() + view.length() + (FILE_PAGE_SIZE - 1)) / FILE_PAGE_SIZE;
-            let first_page_offset = (view.offset() / FILE_PAGE_SIZE) * FILE_PAGE_SIZE;
+            let last_page = (view.offset() + view.length()) / FILE_PAGE_SIZE;
+            let first_page_offset =
+                view.offset() - (view.offset() / FILE_PAGE_SIZE) * FILE_PAGE_SIZE;
 
             let mut data = Vec::with_capacity(view.length());
-            unsafe { data.set_len(view.length()); };
+            unsafe {
+                data.set_len(view.length());
+            };
 
-            for i in first_page..last_page {
+            for file_page_index in first_page..=last_page {
                 let uri = build_uri(gltf_file_name, gltf_path, view, false);
-                let key = (uri, i);
+                let key = (uri, file_page_index);
 
                 if !buffer_cache.contains_key(&key) {
-                    let mut file = asset_mgr.load_file(&key.0).await.expect("Failed to load buffer");
-                    let mut page_data = Vec::<u8>::with_capacity(FILE_PAGE_SIZE);
-                    page_data.resize(FILE_PAGE_SIZE, 0);
-                    let mut read_offset = 0;
-                    let mut bytes_read = 0;
-                    while read_offset < page_data.len() && bytes_read != 0 {
-                        bytes_read = file.read(&mut page_data[read_offset..]).await.unwrap();
-                        read_offset += bytes_read;
-                    }
-                    buffer_cache.insert(key.clone(), page_data.into_boxed_slice()).unwrap();
+                    let mut file = asset_mgr
+                        .load_file(&key.0)
+                        .await
+                        .expect("Failed to load buffer");
+                    let page_data = file.read_data_padded(FILE_PAGE_SIZE).await.unwrap();
+                    buffer_cache
+                        .insert(key.clone(), page_data)
+                        .unwrap();
                 }
 
                 if let Some(page) = buffer_cache.get(&key) {
-                    if i == first_page || i == last_page {
-                        let src_start = if i == first_page { first_page_offset } else { 0 };
-                        let src_end = FILE_PAGE_SIZE.min(data.len());
-                        let dst_start = i * FILE_PAGE_SIZE;
-                        let dst_end = data.len().min((i + 1) * FILE_PAGE_SIZE);
-                        data[dst_start..=dst_end].copy_from_slice(&page[src_start..src_end]);
+                    let dst_page_index = file_page_index - first_page;
+                    let dst_page_start = dst_page_index * FILE_PAGE_SIZE;
+                    let dst_next_page_start = dst_page_start + FILE_PAGE_SIZE;
+                    if file_page_index == first_page || file_page_index == last_page {
+                        let src_start = if dst_page_index == 0 {
+                            first_page_offset
+                        } else {
+                            0
+                        };
+                        let dst_end = data.len().min(dst_next_page_start - first_page_offset);
+                        let src_end = FILE_PAGE_SIZE.min(src_start + dst_end - dst_page_start);
+                        //log::warn!("Loading path: {:?}, page in file: {:?}, A placing data from: {:?}-{:?} into {:?}-{:?}", &key.0, file_page_index, src_start, src_end, dst_page_start, dst_end);
+                        data[dst_page_start..dst_end].copy_from_slice(&page[src_start..src_end]);
                     } else {
-                        let dst_start = i * FILE_PAGE_SIZE;
-                        data[dst_start..FILE_PAGE_SIZE].copy_from_slice(&page[..]);
+                        //log::warn!("Loading path: {:?}, page in file: {:?}, B placing data from: {:?}-{:?} into {:?}-{:?}", &key.0, file_page_index, 0, page.len(), dst_page_start, dst_next_page_start);
+                        data[dst_page_start..dst_next_page_start].copy_from_slice(&page[..]);
                     }
                 }
             }
@@ -413,7 +458,14 @@ impl GltfLoader {
             let positions = primitive.get(&Semantic::Positions).unwrap();
             assert!(positions.sparse().is_none());
             let positions_view = positions.view().unwrap();
-            let positions_data = load_data(gltf_file_name, gltf_path, asset_mgr, buffer_cache, &positions_view).await;
+            let positions_data = load_data(
+                gltf_file_name,
+                gltf_path,
+                asset_mgr,
+                buffer_cache,
+                &positions_view,
+            )
+            .await;
             let mut positions_buffer_cursor = Cursor::new(positions_data);
             let positions_stride = if let Some(stride) = positions_view.stride() {
                 stride
@@ -424,7 +476,14 @@ impl GltfLoader {
             let normals = primitive.get(&Semantic::Normals).unwrap();
             assert!(normals.sparse().is_none());
             let normals_view = normals.view().unwrap();
-            let normals_data = load_data(gltf_file_name, gltf_path, asset_mgr, buffer_cache, &normals_view).await;
+            let normals_data = load_data(
+                gltf_file_name,
+                gltf_path,
+                asset_mgr,
+                buffer_cache,
+                &normals_view,
+            )
+            .await;
             let mut normals_buffer_cursor = Cursor::new(normals_data);
             let normals_stride = if let Some(stride) = normals_view.stride() {
                 stride
@@ -435,7 +494,14 @@ impl GltfLoader {
             let texcoords = primitive.get(&Semantic::TexCoords(0)).unwrap();
             assert!(texcoords.sparse().is_none());
             let texcoords_view = texcoords.view().unwrap();
-            let texcoords_data = load_data(gltf_file_name, gltf_path, asset_mgr, buffer_cache, &texcoords_view).await;
+            let texcoords_data = load_data(
+                gltf_file_name,
+                gltf_path,
+                asset_mgr,
+                buffer_cache,
+                &texcoords_view,
+            )
+            .await;
             let mut texcoords_buffer_cursor = Cursor::new(texcoords_data);
             let texcoords_stride = if let Some(stride) = texcoords_view.stride() {
                 stride
@@ -475,7 +541,8 @@ impl GltfLoader {
                 let mut normal_data = [0u8; 12];
                 assert!(normals.size() <= normal_data.len());
                 assert_eq!(normals.size(), std::mem::size_of::<Vec3>());
-                normals_buffer_cursor.read_exact(&mut normal_data[..normals.size()])
+                normals_buffer_cursor
+                    .read_exact(&mut normal_data[..normals.size()])
                     .unwrap();
 
                 texcoords_buffer_cursor
@@ -521,7 +588,9 @@ impl GltfLoader {
 
                 let mut attr_data = [0u8; 8];
                 assert!(indices_accessor.size() <= attr_data.len());
-                buffer_cursor.read_exact(&mut attr_data[..indices_accessor.size()]).unwrap();
+                buffer_cursor
+                    .read_exact(&mut attr_data[..indices_accessor.size()])
+                    .unwrap();
                 assert!(indices_accessor.size() <= std::mem::size_of::<u32>());
 
                 if indices_accessor.size() == 4 {
@@ -616,7 +685,7 @@ impl GltfLoader {
                         } else {
                             uri.to_string()
                         }
-                    },
+                    }
                 }
             });
 
@@ -643,20 +712,22 @@ impl GltfLoader {
 
 impl AssetLoader for GltfLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
-        (file.path.contains("gltf") || file.path.contains("glb"))
-            && file.path.contains("/scene/")
-            && Gltf::from_reader(file).is_ok()
+        (file.path().contains("gltf") || file.path().contains("glb"))
+            && file.path().contains("/scene/")
     }
 
     async fn load(
         &self,
-        file: AssetFile,
+        mut file: AssetFile,
         manager: &Arc<AssetManager>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<(), ()> {
-        let path = file.path.clone();
-        let gltf = Gltf::from_reader(file).unwrap();
+        let mut data: Vec<u8> = Vec::new();
+        let path = file.path().to_string();
+        file.read_to_end(&mut data).await.map_err(|_| ())?;
+        let cursor = Cursor::new(data);
+        let gltf = Gltf::from_reader(cursor).unwrap();
         const PUNCTUAL_LIGHT_EXTENSION: &'static str = "KHR_lights_punctual";
         for extension in gltf.extensions_required() {
             if extension != PUNCTUAL_LIGHT_EXTENSION {
@@ -681,7 +752,8 @@ impl AssetLoader for GltfLoader {
             let scene_name_or_fallback: String;
             if let Some(scene_name) = scene.name() {
                 scene_name_or_fallback = format!("{}/scene/{}", gltf_name, scene_name);
-            } else if gltf.scenes().len() > 1 || scene_name_start + scene_prefix.len() < path.len() {
+            } else if gltf.scenes().len() > 1 || scene_name_start + scene_prefix.len() < path.len()
+            {
                 scene_name_or_fallback = format!("{}/scene/{}", gltf_name, scene.index());
             } else {
                 scene_name_or_fallback = format!("{}/scene/", gltf_name);
@@ -689,7 +761,12 @@ impl AssetLoader for GltfLoader {
 
             if &path == &scene_name_or_fallback {
                 let world = GltfLoader::load_scene(&scene, manager, gltf_name).await;
-                manager.add_asset_data_with_progress(&scene_name_or_fallback, AssetData::Level(world), Some(progress), priority);
+                manager.add_asset_data_with_progress(
+                    &scene_name_or_fallback,
+                    AssetData::Level(world),
+                    Some(progress),
+                    priority,
+                );
             }
         }
         Ok(())

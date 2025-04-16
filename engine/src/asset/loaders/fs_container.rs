@@ -66,10 +66,7 @@ impl<IO: PlatformIO> AssetContainer for FSContainer<IO> {
             let mut watcher_locked = watcher.lock().unwrap();
             watcher_locked.watch(final_path);
         }
-        Some(AssetFile {
-            path: path.to_string(),
-            file: Box::new(file),
-        })
+        Some(AssetFile::new_file(path, file))
     }
 }
 

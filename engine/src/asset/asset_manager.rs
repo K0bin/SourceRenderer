@@ -14,7 +14,7 @@ use crate::{AsyncCounter, Mutex};
 use bevy_tasks::futures_lite::AsyncSeekExt;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use futures_io::{AsyncRead, AsyncSeek};
-use futures_lite::io::AsyncAsSync;
+use futures_lite::io::{AsyncAsSync, Cursor};
 use sourcerenderer_core::Vec4;
 use strum::VariantArray as _;
 
@@ -31,17 +31,40 @@ pub struct AssetLoadRequest {
     pub _priority: AssetLoadPriority,
 }
 
-pub struct AssetFile {
-    pub path: String,
-    pub file: Box<dyn PlatformFile>,
+enum AssetFileContents {
+    File(Box<dyn PlatformFile>),
+    Memory(Cursor<Box<[u8]>>),
 }
 
-impl Clone for AssetFile {
-    fn clone(&self) -> Self {
-        Self {
-            path: self.path.clone(),
-            file: dyn_clone::clone_box(&*self.file)
+pub struct AssetFile {
+    path: String,
+    contents: AssetFileContents,
+}
+
+impl AssetFile {
+    pub fn new_file<F: PlatformFile + 'static>(path: &str, file: F) -> Self {
+        AssetFile {
+            path: path.to_string(),
+            contents: AssetFileContents::File(Box::new(file)),
         }
+    }
+
+    pub fn new_boxed_file(path: &str, file: Box<dyn PlatformFile>) -> Self {
+        AssetFile {
+            path: path.to_string(),
+            contents: AssetFileContents::File(file),
+        }
+    }
+
+    pub fn new_memory(path: &str, memory: Box<[u8]>) -> Self {
+        AssetFile {
+            path: path.to_string(),
+            contents: AssetFileContents::Memory(Cursor::new(memory)),
+        }
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
     }
 }
 
@@ -51,7 +74,10 @@ impl AsyncRead for AssetFile {
         cx: &mut std::task::Context<'_>,
         buf: &mut [u8],
     ) -> std::task::Poll<IOResult<usize>> {
-        pin!(&mut self.file).poll_read(cx, buf)
+        match &mut self.contents {
+            AssetFileContents::File(file) => pin!(file).poll_read(cx, buf),
+            AssetFileContents::Memory(memory) => pin!(memory).poll_read(cx, buf),
+        }
     }
 }
 
@@ -61,25 +87,10 @@ impl AsyncSeek for AssetFile {
         cx: &mut std::task::Context<'_>,
         pos: SeekFrom,
     ) -> std::task::Poll<IOResult<u64>> {
-        pin!(&mut self.file).poll_seek(cx, pos)
-    }
-}
-
-impl Read for AssetFile {
-    fn read(&mut self, buf: &mut [u8]) -> IOResult<usize> {
-        let waker = waker_fn::waker_fn(|| {});
-        let mut context = std::task::Context::from_waker(&waker);
-        let mut as_sync = AsyncAsSync::new(&mut context, &mut self.file);
-        as_sync.read(buf)
-    }
-}
-
-impl Seek for AssetFile {
-    fn seek(&mut self, pos: SeekFrom) -> IOResult<u64> {
-        let waker = waker_fn::waker_fn(|| {});
-        let mut context = std::task::Context::from_waker(&waker);
-        let mut as_sync = AsyncAsSync::new(&mut context, &mut self.file);
-        as_sync.seek(pos)
+        match &mut self.contents {
+            AssetFileContents::File(file) => pin!(file).poll_seek(cx, pos),
+            AssetFileContents::Memory(memory) => pin!(memory).poll_seek(cx, pos),
+        }
     }
 }
 

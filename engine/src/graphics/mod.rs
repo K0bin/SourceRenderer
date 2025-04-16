@@ -144,7 +144,7 @@ mod active_gpu_backend {
     pub use sourcerenderer_metal::MTLQueryPool as QueryPool;
     pub type RayTracingPipeline = ();
     pub use sourcerenderer_metal::MTLShader as Shader;
-    pub type Barrier<'a> = super::gpu::singl::Barrier<'a, self::Backend>;
+    pub type Barrier<'a> = super::gpu::Barrier<'a, self::Backend>;
     pub type RenderTarget<'a> = super::gpu::RenderTarget<'a, self::Backend>;
     pub type AccelerationStructureInstance<'a> = super::gpu::AccelerationStructureInstance<'a, self::Backend>;
     pub type FenceValuePairRef<'a> = super::gpu::FenceValuePairRef<'a, self::Backend>;

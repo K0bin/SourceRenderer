@@ -3,6 +3,7 @@ use std::future::Future;
 use std::io::{Result as IOResult, Error as IOError, ErrorKind};
 use std::pin::{pin, Pin};
 use std::path::Path;
+use std::sync::LazyLock;
 use std::task::{Context, Poll};
 
 use futures_lite::io::Cursor;
@@ -19,7 +20,7 @@ pub struct WebFetchFile {
 
 const MAX_NON_RANGED_FETCH: usize = 2_000_000;
 
-static FILE_LENGTH_CACHE: async_mutex::Mutex<HashMap<String, u64>> = async_mutex::Mutex::new(HashMap::new());
+static FILE_LENGTH_CACHE: LazyLock<async_mutex::Mutex<HashMap<String, u64>>> = LazyLock::new(|| async_mutex::Mutex::new(HashMap::new()));
 
 impl WebFetchFile {
     async fn new<P: AsRef<Path> + Send>(path: P) -> IOResult<Self> {
@@ -30,7 +31,7 @@ impl WebFetchFile {
         let data = if length <= MAX_NON_RANGED_FETCH && length != 0 {
             let mut buffer = Vec::<u8>::with_capacity(length);
             buffer.resize(length as usize, 0u8);
-            let fetched_len = Self::fetch(path, &mut buffer).await?;
+            let fetched_len = Self::fetch(uri, &mut buffer).await?;
             assert_eq!(fetched_len, length);
             Some(buffer.into_boxed_slice())
         } else {
@@ -38,7 +39,7 @@ impl WebFetchFile {
         };
 
         Ok(Self {
-            path: path.into(),
+            path: (path.as_ref() as &Path).into(),
             length: length as u64,
             current_position: 0,
             data,
@@ -88,7 +89,7 @@ impl WebFetchFile {
 
         if buf.len() < MAX_NON_RANGED_FETCH {
             log::warn!("Doing a small read: Path: {:?}, Offset: {:?}, Length: {:?}", uri, offset, buf.len());
-            panic!("meh");
+            //panic!("meh");
         }
 
         let future = crate::fetch_asset_range(uri, offset as u32, buf.len() as u32);
@@ -114,8 +115,8 @@ impl WebFetchFile {
         // Use global cache for file sizes to avoid redundant HEAD requests
         {
             let cache = FILE_LENGTH_CACHE.lock().await;
-            if let Some(length) = FILE_LENGTH_CACHE.get(uri) {
-                return length;
+            if let Some(length) = cache.get(uri) {
+                return Ok(*length);
             };
         }
         let result = Self::fetch_file_length(uri).await;
@@ -147,7 +148,8 @@ impl AsyncRead for WebFetchFile {
         let position = self.current_position;
         self.current_position = (self.current_position + (buf.len() as u64)).min(self.length);
         let length = (self.length - position).min(buf.len() as u64);
-        pin!(Self::fetch_range(&self.path, &mut buf[..(length as usize)], position)).poll(cx)
+        let uri = self.path.as_ref().to_str().unwrap();
+        pin!(Self::fetch_range(&uri, &mut buf[..(length as usize)], position)).poll(cx)
     }
 }
 

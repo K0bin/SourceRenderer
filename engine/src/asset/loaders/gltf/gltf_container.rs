@@ -2,19 +2,20 @@ use std::io::{Error as IOError, ErrorKind, Result as IOResult, SeekFrom};
 use std::path::Path;
 use std::usize;
 
-use bevy_tasks::futures_lite::io::Cursor;
+use bevy_tasks::futures_lite::io::{BufReader, Cursor};
 use bevy_tasks::futures_lite::{AsyncReadExt, AsyncSeekExt};
-use sourcerenderer_core::platform::{PlatformFile, PlatformIO};
+use futures_io::{AsyncRead, AsyncSeek};
+use sourcerenderer_core::platform::PlatformIO;
 
 use crate::asset::asset_manager::AssetFile;
 use crate::asset::loaders::gltf::glb;
 use crate::asset::AssetContainer;
 
-pub struct GltfContainer<R: PlatformFile> {
+pub struct GltfContainer<R: AsyncRead + AsyncSeek + Unpin> {
     json_offset: u64,
     data_offset: u64,
     data_length: u64,
-    file: Box<R>,
+    reader: async_mutex::Mutex<R>,
     _base_path: String,
     scene_base_path: String,
     buffer_base_path: String,
@@ -32,25 +33,25 @@ pub async fn load_memory_gltf_container<IO: PlatformIO>(path: &str, external: bo
     GltfContainer::<Cursor<Box<[u8]>>>::new(path, Cursor::new(data.into_boxed_slice())).await
 }
 
-pub async fn load_file_gltf_container<IO: PlatformIO>(path: &str, external: bool) -> IOResult<GltfContainer<IO::File>> {
-    let file = if external {
+pub async fn load_file_gltf_container<IO: PlatformIO>(path: &str, external: bool) -> IOResult<GltfContainer<BufReader<IO::File>>> {
+    let file = BufReader::new(if external {
         IO::open_external_asset(path).await?
     } else {
         IO::open_asset(path).await?
-    };
-    GltfContainer::<IO::File>::new(path, file).await
+    });
+    GltfContainer::<BufReader<IO::File>>::new(path, file).await
 }
 
-impl<R: PlatformFile> GltfContainer<R> {
-    pub async fn new(path: &str, mut file: R) -> IOResult<Self> {
-        let header = glb::GlbHeader::read(&mut file).await?;
+impl<R: AsyncRead + AsyncSeek + Unpin> GltfContainer<R> {
+    pub async fn new(path: &str, mut reader: R) -> IOResult<Self> {
+        let header = glb::GlbHeader::read(&mut reader).await?;
 
-        let json_chunk_header = glb::GlbChunkHeader::read(&mut file).await?;
-        let json_offset = file.seek(SeekFrom::Current(0)).await?;
-        file.seek(SeekFrom::Current(json_chunk_header.length as i64)).await?;
+        let json_chunk_header = glb::GlbChunkHeader::read(&mut reader).await?;
+        let json_offset = reader.seek(SeekFrom::Current(0)).await?;
+        reader.seek(SeekFrom::Current(json_chunk_header.length as i64)).await?;
 
-        let data_chunk_header = glb::GlbChunkHeader::read(&mut file).await?;
-        let data_offset = file.seek(SeekFrom::Current(0)).await?;
+        let data_chunk_header = glb::GlbChunkHeader::read(&mut reader).await?;
+        let data_offset = reader.seek(SeekFrom::Current(0)).await?;
 
         if data_offset + data_chunk_header.length as u64 != header.length as u64 {
             log::error!("GLB file contains more than 3 chunks. This is currently unsupported.");
@@ -70,7 +71,7 @@ impl<R: PlatformFile> GltfContainer<R> {
         let texture_base_path = base_path.clone() + "texture/";
 
         Ok(Self {
-            file: Box::new(file),
+            reader: async_mutex::Mutex::new(reader),
             json_offset,
             data_offset,
             data_length: data_chunk_header.length as u64,
@@ -82,7 +83,7 @@ impl<R: PlatformFile> GltfContainer<R> {
     }
 }
 
-impl<R: PlatformFile + 'static> AssetContainer for GltfContainer<R> {
+impl<R: AsyncRead + AsyncSeek + Unpin + Send + Sync + 'static> AssetContainer for GltfContainer<R> {
     async fn contains(&self, path: &str) -> bool {
         log::trace!("Looking for file {:?} in GLTFContainer", path);
         path.starts_with(&self.scene_base_path)
@@ -92,6 +93,7 @@ impl<R: PlatformFile + 'static> AssetContainer for GltfContainer<R> {
 
     async fn load(&self, path: &str) -> Option<crate::asset::asset_manager::AssetFile> {
         log::trace!("Loading file: {:?} from GLTFContainer", path);
+        let mut reader = self.reader.lock().await;
         if path.starts_with(&self.scene_base_path) {
             let length =
                 (self.data_offset - self.json_offset - glb::GlbChunkHeader::size()) as usize;
@@ -99,13 +101,9 @@ impl<R: PlatformFile + 'static> AssetContainer for GltfContainer<R> {
             unsafe {
                 buffer.set_len(length);
             }
-            let mut file = dyn_clone::clone_box(&*self.file);
-            file.seek(SeekFrom::Start(self.json_offset)).await.ok()?;
-            file.read_exact(&mut buffer).await.ok()?;
-            return Some(AssetFile {
-                path: path.to_string(),
-                file: file,
-            });
+            reader.seek(SeekFrom::Start(self.json_offset)).await.ok()?;
+            reader.read_exact(&mut buffer).await.ok()?;
+            return Some(AssetFile::new_memory(path, buffer.into_boxed_slice()));
         }
         let is_texture = path.starts_with(&self.texture_base_path);
         let is_buffer = path.starts_with(&self.buffer_base_path);
@@ -132,17 +130,13 @@ impl<R: PlatformFile + 'static> AssetContainer for GltfContainer<R> {
             unsafe {
                 buffer.set_len(length as usize);
             }
-            let mut new_file = dyn_clone::clone_box(&*self.file);
-            new_file
+            reader
                 .seek(SeekFrom::Start(self.data_offset + offset))
                 .await
                 .ok()?;
-            new_file.read_exact(&mut buffer).await.ok()?;
+            reader.read_exact(&mut buffer).await.ok()?;
 
-            return Some(AssetFile {
-                path: path.to_string(),
-                file: new_file,
-            });
+            return Some(AssetFile::new_memory(path, buffer.into_boxed_slice()));
         }
 
         None

@@ -536,7 +536,7 @@ mod wasm {
             counter.wait_for_zero().await;
             let final_id = animation_id.take();
             if final_id != 0 {
-                scope.cancel_animation_frame(final_id);
+                let _ = scope.cancel_animation_frame(final_id);
             }
         }, surface.take_js_val(), Some("RenderThread"))
     }
