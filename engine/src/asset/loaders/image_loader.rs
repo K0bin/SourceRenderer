@@ -1,6 +1,7 @@
-use std::io::BufReader;
+use std::io::Cursor;
 use std::sync::Arc;
 
+use futures_lite::AsyncReadExt;
 use image::{
     ImageReader,
     GenericImageView,
@@ -24,22 +25,25 @@ impl ImageLoader {
 
 impl AssetLoader for ImageLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
-        file.path.ends_with(".png") || file.path.ends_with(".jpg") || file.path.ends_with(".jpeg")
+        file.path().ends_with(".png") || file.path().ends_with(".jpg") || file.path().ends_with(".jpeg")
     }
 
     async fn load(
         &self,
-        file: AssetFile,
+        mut file: AssetFile,
         manager: &Arc<AssetManager>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<(), ()> {
-        let is_png = file.path.ends_with(".png");
+        let is_png = file.path().ends_with(".png");
 
-        let path = file.path.clone();
-        let buf_reader = BufReader::with_capacity(16, file);
+        let mut data: Vec<u8> = Vec::new();
+        let path = file.path().to_string();
+        file.read_to_end(&mut data).await.map_err(|_| ())?;
+        let cursor = Cursor::new(data);
+
         let image_reader = ImageReader::with_format(
-            buf_reader,
+            cursor,
             if is_png {
                 ImageFormat::Png
             } else {
