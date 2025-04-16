@@ -1,6 +1,6 @@
-use std::{future::Future, io::Result as IOResult};
+use std::{future::Future, io::{Result as IOResult, SeekFrom}};
 
-use futures_lite::{AsyncRead, AsyncReadExt};
+use futures_lite::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt};
 
 use crate::StringReadError;
 
@@ -38,15 +38,59 @@ impl<T: AsyncRead + ?Sized + Unpin> StringReadAsync for T {
 }
 
 pub trait RawDataReadAsync {
-  fn read_data(&mut self, len: usize) -> impl Future<Output = IOResult<Box<[u8]>>>;
+  fn read_data(&mut self, max_len: usize) -> impl Future<Output = IOResult<Box<[u8]>>>;
+  fn read_data_exact(&mut self, len: usize) -> impl Future<Output = IOResult<Box<[u8]>>>;
+  fn read_data_padded(&mut self, len: usize) -> impl Future<Output = IOResult<Box<[u8]>>>;
 }
 
 impl<T: AsyncRead + ?Sized + Unpin> RawDataReadAsync for T {
-  async fn read_data(&mut self, len: usize) -> IOResult<Box<[u8]>> {
+  async fn read_data_exact(&mut self, len: usize) -> IOResult<Box<[u8]>> {
     let mut buffer = Vec::with_capacity(len);
     unsafe { buffer.set_len(len); }
     self.read_exact(&mut buffer).await?;
     Ok(buffer.into_boxed_slice())
+  }
+
+  async fn read_data(&mut self, len: usize) -> IOResult<Box<[u8]>> {
+    let mut buffer = Vec::with_capacity(len);
+    unsafe { buffer.set_len(len); }
+
+    let mut read_offset = 0;
+    let mut bytes_read = 0;
+    while read_offset < buffer.len() && bytes_read != 0 {
+        bytes_read = self.read(&mut buffer[read_offset..]).await?;
+        read_offset += bytes_read;
+    }
+
+    buffer.resize(read_offset, 0u8);
+    Ok(buffer.into_boxed_slice())
+  }
+
+  async fn read_data_padded(&mut self, len: usize) -> IOResult<Box<[u8]>> {
+    let mut buffer = Vec::with_capacity(len);
+    buffer.resize(len, 0u8);
+
+    let mut read_offset = 0;
+    let mut bytes_read = 0;
+    while read_offset < buffer.len() && bytes_read != 0 {
+        bytes_read = self.read(&mut buffer[read_offset..]).await?;
+        read_offset += bytes_read;
+    }
+
+    Ok(buffer.into_boxed_slice())
+  }
+}
+
+pub trait ReadEntireSeekableFileAsync {
+  fn read_seekable_to_end(&mut self) -> impl Future<Output = IOResult<Box<[u8]>>>;
+}
+
+// The standard library read_to_end function does a lot of small reads because it can't rely on Seek.
+impl<T: RawDataReadAsync + AsyncSeek + ?Sized + Unpin> ReadEntireSeekableFileAsync for T {
+  async fn read_seekable_to_end(&mut self) -> IOResult<Box<[u8]>> {
+    let len = self.seek(SeekFrom::End(0)).await? as usize;
+    let _ = self.seek(SeekFrom::Start(0)).await?;
+    self.read_data_exact(len).await
   }
 }
 
