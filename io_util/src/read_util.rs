@@ -1,4 +1,4 @@
-use std::io::{Read, Result as IOResult, Error as IOError};
+use std::io::{Error as IOError, Read, Result as IOResult, Seek, SeekFrom};
 use std::string::FromUtf8Error;
 
 #[derive(Debug)]
@@ -42,14 +42,58 @@ impl<T: Read + ?Sized> StringRead for T {
 
 pub trait RawDataRead {
   fn read_data(&mut self, len: usize) -> IOResult<Box<[u8]>>;
+  fn read_data_exact(&mut self, len: usize) -> IOResult<Box<[u8]>>;
+  fn read_data_padded(&mut self, len: usize) -> IOResult<Box<[u8]>>;
 }
 
 impl<T: Read + ?Sized> RawDataRead for T {
-  fn read_data(&mut self, len: usize) -> IOResult<Box<[u8]>> {
+  fn read_data_exact(&mut self, len: usize) -> IOResult<Box<[u8]>> {
     let mut buffer = Vec::with_capacity(len);
     unsafe { buffer.set_len(len); }
     self.read_exact(&mut buffer)?;
     Ok(buffer.into_boxed_slice())
+  }
+
+  fn read_data(&mut self, len: usize) -> IOResult<Box<[u8]>> {
+    let mut buffer = Vec::with_capacity(len);
+    unsafe { buffer.set_len(len); }
+
+    let mut read_offset = 0;
+    let mut bytes_read = 0;
+    while read_offset < buffer.len() && bytes_read != 0 {
+        bytes_read = self.read(&mut buffer[read_offset..])?;
+        read_offset += bytes_read;
+    }
+
+    buffer.resize(read_offset, 0u8);
+    Ok(buffer.into_boxed_slice())
+  }
+
+  fn read_data_padded(&mut self, len: usize) -> IOResult<Box<[u8]>> {
+    let mut buffer = Vec::with_capacity(len);
+    buffer.resize(len, 0u8);
+
+    let mut read_offset = 0;
+    let mut bytes_read = 0;
+    while read_offset < buffer.len() && bytes_read != 0 {
+        bytes_read = self.read(&mut buffer[read_offset..])?;
+        read_offset += bytes_read;
+    }
+
+    Ok(buffer.into_boxed_slice())
+  }
+}
+
+pub trait ReadEntireSeekableFile {
+  fn read_seekable_to_end(&mut self) -> IOResult<Box<[u8]>>;
+}
+
+// The standard library read_to_end function does a lot of small reads because it can't rely on Seek.
+impl<T: RawDataRead + Seek + ?Sized + Unpin> ReadEntireSeekableFile for T {
+  fn read_seekable_to_end(&mut self) -> IOResult<Box<[u8]>> {
+    let len = self.seek(SeekFrom::End(0))? as usize;
+    let _ = self.seek(SeekFrom::Start(0))?;
+    self.read_data_exact(len)
   }
 }
 
