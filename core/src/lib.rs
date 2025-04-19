@@ -21,10 +21,6 @@ mod align;
 pub use align::*;
 mod fixed_size_vec;
 pub use fixed_size_vec::*;
-mod fixed_byte_size_cache;
-pub use fixed_byte_size_cache::*;
-mod page_cache;
-pub use page_cache::*;
 
 pub unsafe fn extend_lifetime<'b, T>(r: &'b T) -> &'static T {
     std::mem::transmute::<&'b T, &'static T>(r)

@@ -16,6 +16,7 @@ use bevy_math::{
 };
 use bevy_tasks::futures_lite::AsyncReadExt;
 use bevy_transform::components::Transform;
+use futures_lite::AsyncSeekExt;
 use gltf::buffer::{
     Source,
     View,
@@ -31,7 +32,6 @@ use gltf::{
     Semantic,
 };
 use io_util::RawDataReadAsync;
-use log::warn;
 use sourcerenderer_core::{
     Vec2,
     Vec3,
@@ -64,6 +64,8 @@ use crate::renderer::{
 };
 
 const FILE_PAGE_SIZE: usize = 16_384;
+const READ_AHEAD_PAGE_COUNT: usize = 16;
+const CACHE_PAGE_COUNT: usize = 128;
 
 type FilePageKey = (String, usize);
 
@@ -335,7 +337,8 @@ impl GltfLoader {
         gltf_file_name: &str,
     ) -> LevelData {
         let mut world: LevelData = LevelData::new(4096, 64);
-        let mut buffer_cache = FixedByteSizeCache::<FilePageKey, Box<[u8]>>::new(128 << 20);
+        assert!(CACHE_PAGE_COUNT >= (READ_AHEAD_PAGE_COUNT + 1));
+        let mut buffer_cache = FixedByteSizeCache::<FilePageKey, Box<[u8]>>::new(CACHE_PAGE_COUNT * FILE_PAGE_SIZE);
         let nodes = scene.nodes();
         for node in nodes {
             GltfLoader::visit_node(
@@ -360,32 +363,30 @@ impl GltfLoader {
         gltf_file_name: &'a str,
         buffer_cache: &'a mut FixedByteSizeCache<FilePageKey, Box<[u8]>>,
     ) {
-        const LOAD_ENTIRE_GLB_BUFFER: bool = false;
-
         fn build_uri<'a>(
             gltf_file_name: &'a str,
             gltf_path: &str,
-            view: &View<'_>,
-            load_entire_buffer: bool,
-        ) -> String {
-            match view.buffer().source() {
+            src: Source<'_>,
+            range: Option<(usize, usize)>,
+        ) -> (String, usize) {
+            match src {
                 Source::Bin => {
-                    if load_entire_buffer {
-                        format!(
+                    if let Some((offset, length)) = range {
+                        (format!(
                             "{}/buffer/{}-{}",
                             gltf_file_name,
-                            view.offset(),
-                            view.length()
-                        )
+                            offset,
+                            length
+                        ), 0)
                     } else {
-                        format!("{}/buffer/", gltf_file_name,)
+                        (format!("{}/buffer/", gltf_file_name), range.map(|(offset, _)| offset).unwrap_or(0))
                     }
                 }
                 Source::Uri(gltf_uri) => {
                     if let Some(last_slash_pos) = gltf_path.find('/') {
-                        format!("{}/{}", &gltf_path[..last_slash_pos], &gltf_uri)
+                        (format!("{}/{}", &gltf_path[..last_slash_pos], &gltf_uri), range.map(|(offset, _)| offset).unwrap_or(0))
                     } else {
-                        gltf_uri.to_string()
+                        (gltf_uri.to_string(), range.map(|(offset, _)| offset).unwrap_or(0))
                     }
                 }
             }
@@ -400,8 +401,8 @@ impl GltfLoader {
         ) -> Box<[u8]> {
             let first_page = view.offset() / FILE_PAGE_SIZE;
             let last_page = (view.offset() + view.length()) / FILE_PAGE_SIZE;
-            let first_page_offset =
-                view.offset() - (view.offset() / FILE_PAGE_SIZE) * FILE_PAGE_SIZE;
+            let offset_in_first_page =
+                view.offset() - first_page * FILE_PAGE_SIZE;
 
             let mut data = Vec::with_capacity(view.length());
             unsafe {
@@ -409,38 +410,48 @@ impl GltfLoader {
             };
 
             for file_page_index in first_page..=last_page {
-                let uri = build_uri(gltf_file_name, gltf_path, view, false);
-                let key = (uri, file_page_index);
+                let relative_page_index = file_page_index - first_page;
+                let (buffer_uri, _) = build_uri(gltf_file_name, gltf_path, view.buffer().source(), None);
+                let key = (buffer_uri, file_page_index);
 
                 if !buffer_cache.contains_key(&key) {
+                    let read_size = FILE_PAGE_SIZE * (READ_AHEAD_PAGE_COUNT + 1);
+                    let (page_uri, offset) = build_uri(gltf_file_name, gltf_path, view.buffer().source(), Some((file_page_index * FILE_PAGE_SIZE, read_size)));
+
                     let mut file = asset_mgr
-                        .load_file(&key.0)
+                        .load_file(&page_uri)
                         .await
                         .expect("Failed to load buffer");
-                    let page_data = file.read_data_padded(FILE_PAGE_SIZE).await.unwrap();
-                    buffer_cache
-                        .insert(key.clone(), page_data)
-                        .unwrap();
+                    file.seek(SeekFrom::Start(offset as u64)).await.unwrap();
+                    let cache_data = file.read_data_padded(read_size).await.unwrap();
+                    let mut cache_data_vec = cache_data.into_vec();
+                    for i in (0..(read_size / FILE_PAGE_SIZE)).rev() {
+                        let file_page_index = file_page_index + i;
+                        let start_in_cache = i * FILE_PAGE_SIZE;
+                        let end_in_cache = start_in_cache + FILE_PAGE_SIZE;
+                        assert_eq!(end_in_cache, cache_data_vec.len());
+                        let page_data = cache_data_vec.split_off(start_in_cache);
+                        buffer_cache
+                            .insert((key.0.clone(), file_page_index), page_data.into_boxed_slice())
+                            .unwrap();
+                    }
                 }
 
                 if let Some(page) = buffer_cache.get(&key) {
-                    let dst_page_index = file_page_index - first_page;
-                    let dst_page_start = dst_page_index * FILE_PAGE_SIZE;
-                    let dst_next_page_start = dst_page_start + FILE_PAGE_SIZE;
-                    if file_page_index == first_page || file_page_index == last_page {
-                        let src_start = if dst_page_index == 0 {
-                            first_page_offset
-                        } else {
-                            0
-                        };
-                        let dst_end = data.len().min(dst_next_page_start - first_page_offset);
-                        let src_end = FILE_PAGE_SIZE.min(src_start + dst_end - dst_page_start);
-                        //log::warn!("Loading path: {:?}, page in file: {:?}, A placing data from: {:?}-{:?} into {:?}-{:?}", &key.0, file_page_index, src_start, src_end, dst_page_start, dst_end);
-                        data[dst_page_start..dst_end].copy_from_slice(&page[src_start..src_end]);
+                    let src_start: usize;
+                    let dst_start: usize;
+                    if relative_page_index == 0 {
+                        src_start = offset_in_first_page;
+                        dst_start = 0;
                     } else {
-                        //log::warn!("Loading path: {:?}, page in file: {:?}, B placing data from: {:?}-{:?} into {:?}-{:?}", &key.0, file_page_index, 0, page.len(), dst_page_start, dst_next_page_start);
-                        data[dst_page_start..dst_next_page_start].copy_from_slice(&page[..]);
-                    }
+                        src_start = 0;
+                        dst_start = relative_page_index * FILE_PAGE_SIZE - offset_in_first_page;
+                    };
+                    let len = (page.len() - src_start).min(data.len() - dst_start);
+                    let src_end = src_start + len;
+                    let dst_end = dst_start + len;
+
+                    data[dst_start..dst_end].copy_from_slice(&page[src_start..src_end]);
                 }
             }
 
@@ -637,10 +648,10 @@ impl GltfLoader {
 
         let pbr = material.pbr_metallic_roughness();
         if material.double_sided() {
-            //warn!("Double sided materials are not supported, material path: {}", material_path);
+            //log::warn!("Double sided materials are not supported, material path: {}", material_path);
         }
         if material.alpha_mode() != AlphaMode::Opaque {
-            //warn!("Unsupported alpha mode, alpha mode: {:?}, material path: {}", material.alpha_mode(), material_path);
+            //log::warn!("Unsupported alpha mode, alpha mode: {:?}, material path: {}", material.alpha_mode(), material_path);
         }
 
         let albedo_info = pbr.base_color_texture();
@@ -649,7 +660,7 @@ impl GltfLoader {
                 if albedo.tex_coord() == 0 {
                     Some(albedo)
                 } else {
-                    warn!("Found non zero texcoord for texture: {}", &material_path);
+                    log::warn!("Found non zero texcoord for texture: {}", &material_path);
                     None
                 }
             })
@@ -657,7 +668,7 @@ impl GltfLoader {
                 if albedo.texture().sampler().wrap_s() != WrappingMode::Repeat
                     || albedo.texture().sampler().wrap_t() != WrappingMode::Repeat
                 {
-                    warn!(
+                    log::warn!(
                         "Texture uses non-repeat wrap mode: s: {:?}, t: {:?}",
                         albedo.texture().sampler().wrap_s(),
                         albedo.texture().sampler().wrap_t()

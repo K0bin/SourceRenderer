@@ -20,7 +20,7 @@ export async function fetchAssetRange(path: string, offset: number, length: numb
             ["Range", "bytes=" + offset + "-" + (offset + length)],
         ]
     });
-    if (response.status != 200) {
+    if (response.status != 200 && response.status != 206) {
         throw response.status;
     }
     const buffer = await response.bytes();
