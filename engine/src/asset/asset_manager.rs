@@ -185,7 +185,6 @@ pub struct LoadedAssetData {
     pub priority: AssetLoadPriority,
 }
 
-
 pub struct AssetManager {
     containers: async_rwlock::RwLock<Vec<Box<dyn ErasedAssetContainer>>>,
     pending_containers: AsyncCounter,
@@ -195,7 +194,7 @@ pub struct AssetManager {
     loaders: async_rwlock::RwLock<Vec<Box<dyn ErasedAssetLoader>>>,
     path_map: Mutex<HashMap<String, AssetHandle>>,
     next_asset_handle: AtomicU64,
-    requested_assets: Mutex<HashSet<AssetHandle>>,
+    loaded_assets: Mutex<HashSet<AssetHandle>>,
     channels: HashMap<AssetTypeGroup, (Sender<LoadedAssetData>, Receiver<LoadedAssetData>)>,
 }
 
@@ -212,7 +211,7 @@ impl AssetManager {
             containers: async_rwlock::RwLock::new(Vec::new()),
             path_map: Mutex::new(HashMap::new()),
             next_asset_handle: AtomicU64::new(1),
-            requested_assets: Mutex::new(HashSet::new()),
+            loaded_assets: Mutex::new(HashSet::new()),
             pending_containers: AsyncCounter::new(0),
             pending_loaders: AsyncCounter::new(0),
             pending_high_priority_loads: AsyncCounter::new(LOAD_PRIORITY_THRESHOLD),
@@ -472,7 +471,7 @@ impl AssetManager {
 
         {
             // Already requested?
-            let requests = self.requested_assets.lock().unwrap();
+            let mut requests = self.loaded_assets.lock().unwrap();
             if let Some(requested_asset_handle) = requests.get(&handle) {
                 if requested_asset_handle.asset_type() != asset_type {
                     log::error!("Requested an asset with the same path as a previously requested asset but with a different asset type. Path: {}, requested asset type: {:?}, previously requested asset type: {:?}.", path, asset_type, requested_asset_handle.asset_type());
@@ -480,6 +479,9 @@ impl AssetManager {
                     return (*requested_asset_handle, progress);
                 }
             }
+            // Already add it before it's really loaded so it's not racy with the loading process.
+            // TODO: Add a way for the renderer to notify the AssetManager about unloaded assets or failed loading.
+            requests.insert(handle);
         };
 
         let load_request = AssetLoadRequest {
@@ -599,11 +601,6 @@ impl AssetManager {
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<(), ()> {
         let handle: AssetHandle = handle.into();
-        {
-            let mut requests = self.requested_assets.lock().unwrap();
-            requests.remove(&handle);
-        }
-
         let loaders = self.loaders.read().await;
         let loader_opt: Option<&dyn ErasedAssetLoader> = AssetManager::find_loader(
             &mut file,
