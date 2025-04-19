@@ -45,6 +45,7 @@ waker-fn = "1.2"
 async-mutex = "1.4"
 async-rwlock = "1.3"
 atomic-waker = "1.1"
+futures-lite = "2.6"
 
 bevy_app = "0.15"
 bevy_math = "0.15"

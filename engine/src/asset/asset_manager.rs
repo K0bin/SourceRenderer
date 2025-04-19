@@ -11,10 +11,9 @@ use std::sync::atomic::{
 use std::sync::Arc;
 use crate::{AsyncCounter, Mutex};
 
-use bevy_tasks::futures_lite::AsyncSeekExt;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use futures_io::{AsyncRead, AsyncSeek};
-use futures_lite::io::Cursor;
+use futures_lite::{io::Cursor, io::AsyncSeekExt};
 use sourcerenderer_core::Vec4;
 use strum::VariantArray as _;
 
