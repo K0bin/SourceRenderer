@@ -12,7 +12,7 @@ use crate::SDLPlatform;
 pub(crate) type SDLGPUBackend = MTLBackend;
 
 impl GraphicsPlatform<MTLBackend> for SDLPlatform {
-    fn create_instance(&self, debug_layers: bool) -> Result<MTLInstance, Box<dyn Error>> {
+    fn create_instance(debug_layers: bool) -> Result<MTLInstance, Box<dyn Error>> {
         Ok(MTLInstance::new(debug_layers))
     }
 }
