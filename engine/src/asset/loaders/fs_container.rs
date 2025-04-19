@@ -6,8 +6,6 @@ use std::sync::{
 use crate::Mutex;
 use std::thread;
 
-use bevy_tasks::futures_lite::io::Cursor;
-use bevy_tasks::futures_lite::AsyncReadExt;
 use crossbeam_channel::{
     unbounded,
     Receiver,
@@ -62,19 +60,13 @@ impl<IO: PlatformIO> AssetContainer for FSContainer<IO> {
             log::error!("Failed to load file using platform API. Path: {}, Error: \n{:?}", path, e);
             return None;
         }
-        let mut file = file_res.unwrap();
+        let file = file_res.unwrap();
         if let Some(watcher) = self.watcher.as_ref() {
             log::trace!("Registering file for watcher: {} in FSContainer", path);
             let mut watcher_locked = watcher.lock().unwrap();
             watcher_locked.watch(final_path);
         }
-        let mut buf = Vec::<u8>::new();
-        file.read_to_end(&mut buf).await.ok()?;
-
-        Some(AssetFile {
-            path: path.to_string(),
-            data: Cursor::new(buf.into_boxed_slice()),
-        })
+        Some(AssetFile::new_file(path, file))
     }
 }
 
