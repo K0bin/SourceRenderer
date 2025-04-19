@@ -1,16 +1,12 @@
 use std::collections::HashMap;
-use std::future::{poll_fn, ready, Future};
-use std::io::{Error as IOError, ErrorKind, Result as IOResult, SeekFrom};
-use std::marker::PhantomData;
-use std::pin::{pin, Pin};
+use std::io::{Error as IOError, ErrorKind, Result as IOResult};
+use std::pin::Pin;
 use std::path::Path;
-use std::sync::atomic::AtomicU32;
 use std::sync::LazyLock;
 use std::task::{Context, Poll};
 
 use async_task::{Runnable, Task};
 use futures_lite::{AsyncRead, AsyncSeek, FutureExt};
-use js_sys::Uint8Array;
 use sourcerenderer_core::platform::{PlatformIO, FileWatcher};
 use wasm_bindgen_futures::spawn_local;
 
@@ -173,7 +169,7 @@ impl AsyncRead for WebFetchFile {
         let length = (self.length - position).min(buf.len() as u64);
         let uri = self.path.as_ref().to_string_lossy().to_string();
 
-        let (runnable, mut task) = async_task::spawn_local(async move {
+        let (runnable, task) = async_task::spawn_local(async move {
                 Self::fetch_range(&uri, position, length).await
             },
             |runnable: Runnable| {
@@ -217,7 +213,7 @@ impl AsyncSeek for WebFetchFile {
             std::io::SeekFrom::End(offset) => self.length - (offset.max(0i64) as u64).min(self.length),
             std::io::SeekFrom::Current(offset) => {
                 let mut clamped_offset = offset.max(-(self.current_position as i64));
-                clamped_offset = offset.min((self.length - self.current_position) as i64);
+                clamped_offset = clamped_offset.min((self.length - self.current_position) as i64);
                 let new_offset = (self.current_position as i64) + clamped_offset;
                 new_offset as u64
             }
