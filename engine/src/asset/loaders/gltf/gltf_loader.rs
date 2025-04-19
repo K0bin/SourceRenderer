@@ -236,29 +236,33 @@ impl GltfLoader {
                 bounding_box.max.x = -bb_min_x;
             }
 
-            asset_mgr.add_asset_data(
-                &mesh_path,
-                AssetData::Mesh(MeshData {
-                    indices: (indices_count > 0).then(|| indices_data),
-                    vertices: vertices_data,
-                    bounding_box: bounding_box,
-                    parts: parts.into_boxed_slice(),
-                    vertex_count: vertices_count as u32,
-                }),
-                AssetLoadPriority::Normal,
-            );
+            if !asset_mgr.asset_requested(&mesh_path) {
+                asset_mgr.add_asset_data(
+                    &mesh_path,
+                    AssetData::Mesh(MeshData {
+                        indices: (indices_count > 0).then(|| indices_data),
+                        vertices: vertices_data,
+                        bounding_box: bounding_box,
+                        parts: parts.into_boxed_slice(),
+                        vertex_count: vertices_count as u32,
+                    }),
+                    AssetLoadPriority::Normal,
+                );
+            }
 
             let mut model_path = gltf_file_name.to_string();
             model_path += "/model/";
             model_path += &model_name;
-            asset_mgr.add_asset_data(
-                &model_path,
-                AssetData::Model(ModelData {
-                    mesh_path: mesh_path.clone(),
-                    material_paths: materials,
-                }),
-                AssetLoadPriority::Normal,
-            );
+            if !asset_mgr.asset_requested(&model_path) {
+                asset_mgr.add_asset_data(
+                    &model_path,
+                    AssetData::Model(ModelData {
+                        mesh_path: mesh_path.clone(),
+                        material_paths: materials,
+                    }),
+                    AssetLoadPriority::Normal,
+                );
+            }
 
             world.push_component(
                 entity,
@@ -645,6 +649,10 @@ impl GltfLoader {
                 .index()
                 .map_or_else(|| "default".to_string(), |index| index.to_string())
         );
+
+        if asset_mgr.asset_requested(&material_path) {
+            return material_path;
+        }
 
         let pbr = material.pbr_metallic_roughness();
         if material.double_sided() {
