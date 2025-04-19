@@ -43,7 +43,7 @@ pub async fn load_file_gltf_container<IO: PlatformIO>(path: &str, external: bool
 }
 
 impl<R: AsyncRead + AsyncSeek + Unpin> GltfContainer<R> {
-    pub async fn new(path: &str, mut reader: R) -> IOResult<Self> {
+    async fn new(path: &str, mut reader: R) -> IOResult<Self> {
         let header = glb::GlbHeader::read(&mut reader).await?;
 
         let json_chunk_header = glb::GlbChunkHeader::read(&mut reader).await?;

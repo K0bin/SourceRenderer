@@ -59,7 +59,7 @@ impl<T: Read + ?Sized> RawDataRead for T {
     unsafe { buffer.set_len(len); }
 
     let mut read_offset = 0;
-    let mut bytes_read = 0;
+    let mut bytes_read = usize::MAX;
     while read_offset < buffer.len() && bytes_read != 0 {
         bytes_read = self.read(&mut buffer[read_offset..])?;
         read_offset += bytes_read;
@@ -74,7 +74,7 @@ impl<T: Read + ?Sized> RawDataRead for T {
     buffer.resize(len, 0u8);
 
     let mut read_offset = 0;
-    let mut bytes_read = 0;
+    let mut bytes_read = usize::MAX;
     while read_offset < buffer.len() && bytes_read != 0 {
         bytes_read = self.read(&mut buffer[read_offset..])?;
         read_offset += bytes_read;

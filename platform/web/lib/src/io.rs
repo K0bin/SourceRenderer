@@ -1,21 +1,25 @@
 use std::collections::HashMap;
-use std::future::Future;
-use std::io::{Result as IOResult, Error as IOError, ErrorKind};
+use std::future::{poll_fn, ready, Future};
+use std::io::{Error as IOError, ErrorKind, Result as IOResult, SeekFrom};
+use std::marker::PhantomData;
 use std::pin::{pin, Pin};
 use std::path::Path;
+use std::sync::atomic::AtomicU32;
 use std::sync::LazyLock;
 use std::task::{Context, Poll};
 
-use futures_lite::io::Cursor;
-
-use futures_lite::{AsyncRead, AsyncReadExt, AsyncSeek, FutureExt};
+use async_task::{Runnable, Task};
+use futures_lite::{AsyncRead, AsyncSeek, FutureExt};
+use js_sys::Uint8Array;
 use sourcerenderer_core::platform::{PlatformIO, FileWatcher};
+use wasm_bindgen_futures::spawn_local;
 
 pub struct WebFetchFile {
     length: u64,
     current_position: u64,
     path: Box<Path>,
     data: Option<Box<[u8]>>,
+    task: Option<Task<IOResult<Uint8Array>>>,
 }
 
 const MAX_NON_RANGED_FETCH: usize = 2_000_000;
@@ -26,7 +30,6 @@ impl WebFetchFile {
     async fn new<P: AsRef<Path> + Send>(path: P) -> IOResult<Self> {
         let uri = path.as_ref().to_str().unwrap();
         let length = Self::fetch_file_length_cached(uri).await? as usize;
-        log::warn!("Reading file {:?}, size: {:?}", uri, length);
 
         let data = if length <= MAX_NON_RANGED_FETCH && length != 0 {
             let mut buffer = Vec::<u8>::with_capacity(length);
@@ -43,6 +46,7 @@ impl WebFetchFile {
             length: length as u64,
             current_position: 0,
             data,
+            task: None,
         })
     }
 
@@ -84,17 +88,16 @@ impl WebFetchFile {
         Ok(len)
     }
 
-    async fn fetch_range(uri: &str, buf: &mut [u8], offset: u64) -> IOResult<usize> {
-        log::trace!("Loading web file: {:?}", uri);
+    async fn fetch_range(uri: &str, offset: u64, length: u64) -> IOResult<Uint8Array> {
+        log::trace!("Loading range of web file: {:?}, offet: {:?}, length: {:?}", uri, offset, length);
 
-        if buf.len() < MAX_NON_RANGED_FETCH {
-            log::warn!("Doing a small read: Path: {:?}, Offset: {:?}, Length: {:?}", uri, offset, buf.len());
-            //panic!("meh");
+        if length < MAX_NON_RANGED_FETCH as u64{
+            log::warn!("Doing a small read: Path: {:?}, Offset: {:?}, Length: {:?}", uri, offset, length);
         }
 
-        let future = crate::fetch_asset_range(uri, offset as u32, buf.len() as u32);
+        let future = crate::fetch_asset_range(uri, offset as u32, length as u32);
         let buffer_res = future.await;
-        let buffer = buffer_res.map_err(|js_val| {
+        buffer_res.map_err(|js_val| {
             let response_code_opt = js_val.as_f64();
             if response_code_opt.is_none() {
                 IOError::new(ErrorKind::Other, format!("Response code: {:?}", js_val))
@@ -105,10 +108,7 @@ impl WebFetchFile {
                     _ => IOError::new(ErrorKind::Other, format!("Response code: {}", response_code)),
                 }
             }
-        })?;
-        let len = buffer.length() as usize;
-        buffer.copy_to(&mut buf[..len]);
-        Ok(len)
+        })
     }
 
     async fn fetch_file_length_cached(uri: &str) -> IOResult<u64> {
@@ -137,19 +137,57 @@ impl AsyncRead for WebFetchFile {
         cx: &mut Context<'_>,
         buf: &mut [u8],
     ) -> Poll<IOResult<usize>> {
+        if self.current_position == self.length || buf.len() == 0 {
+            return Poll::Ready(Ok(0usize));
+        }
+
         if let Some(data) = self.data.as_ref() {
-            let read_data_len = (buf.len()).min((self.length - self.current_position) as usize);
-            let pos = self.current_position as usize;
-            &mut buf[..read_data_len].copy_from_slice(&data[pos..(pos + read_data_len)]);
-            self.current_position += read_data_len as u64;
-            return Poll::Ready(Ok(read_data_len));
+            let len = ((self.length - self.current_position) as usize).min(buf.len());
+            let position = self.current_position as usize;
+            &mut buf[..len].copy_from_slice(&data[position..(position + len)]);
+            self.current_position += len as u64;
+            return Poll::Ready(Ok(len));
+        }
+
+        if let Some(task) = self.task.as_mut() {
+            let js_buffer = std::task::ready!(task.poll(cx))?;
+            let len = buf.len().min(js_buffer.length() as usize);
+            if js_buffer.length() as usize > len {
+                let js_sub_buffer = js_buffer.subarray(0, len as u32);
+                js_sub_buffer.copy_to(&mut buf[..len]);
+            } else {
+                js_buffer.copy_to(&mut buf[..len]);
+            }
+            self.current_position = (self.current_position + (len as u64)).min(self.length);
+            self.task = None;
+            return Poll::Ready(Ok(len));
         }
 
         let position = self.current_position;
-        self.current_position = (self.current_position + (buf.len() as u64)).min(self.length);
         let length = (self.length - position).min(buf.len() as u64);
-        let uri = self.path.as_ref().to_str().unwrap();
-        pin!(Self::fetch_range(&uri, &mut buf[..(length as usize)], position)).poll(cx)
+        let uri = self.path.as_ref().to_string_lossy().to_string();
+
+        let (runnable, mut task) = async_task::spawn_local(async move {
+                Self::fetch_range(&uri, position, length).await
+            },
+            |runnable: Runnable| {
+                spawn_local(async {
+                    runnable.run();
+            })
+        });
+
+        runnable.schedule();
+        self.task = Some(task);
+
+        if let Some(task) = self.task.as_mut() {
+            let js_buffer = std::task::ready!(task.poll(cx))?;
+            let len = buf.len().min(js_buffer.length() as usize);
+            js_buffer.copy_to(&mut buf[..len]);
+            self.task = None;
+            return Poll::Ready(Ok(len));
+        } else {
+            unreachable!();
+        }
     }
 }
 
@@ -159,6 +197,14 @@ impl AsyncSeek for WebFetchFile {
                 cx: &mut Context<'_>,
                 pos: std::io::SeekFrom,
             ) -> Poll<IOResult<u64>> {
+
+        if let Some(task) = self.task.as_mut() {
+            let js_buffer = std::task::ready!(task.poll(cx))?;
+            let len = js_buffer.length() as u64;
+            self.current_position = (self.current_position + len).min(self.length);
+            self.task = None;
+        }
+
         let new_pos: u64 = match pos {
             std::io::SeekFrom::Start(offset) => offset.min(self.length),
             std::io::SeekFrom::End(offset) => self.length - (offset.max(0i64) as u64).min(self.length),

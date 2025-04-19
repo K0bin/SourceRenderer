@@ -56,7 +56,7 @@ impl<T: AsyncRead + ?Sized + Unpin> RawDataReadAsync for T {
     unsafe { buffer.set_len(len); }
 
     let mut read_offset = 0;
-    let mut bytes_read = 0;
+    let mut bytes_read = usize::MAX;
     while read_offset < buffer.len() && bytes_read != 0 {
         bytes_read = self.read(&mut buffer[read_offset..]).await?;
         read_offset += bytes_read;
@@ -71,7 +71,7 @@ impl<T: AsyncRead + ?Sized + Unpin> RawDataReadAsync for T {
     buffer.resize(len, 0u8);
 
     let mut read_offset = 0;
-    let mut bytes_read = 0;
+    let mut bytes_read = usize::MAX;
     while read_offset < buffer.len() && bytes_read != 0 {
         bytes_read = self.read(&mut buffer[read_offset..]).await?;
         read_offset += bytes_read;

@@ -31,7 +31,7 @@ impl Window<WebGPUBackend> for WebWindow {
     fn create_surface(&self, graphics_instance: &WebGPUInstance) -> WebGPUSurface {
         match &self.canvas {
             CanvasKind::Canvas(canvas) => WebGPUSurface::new(graphics_instance, canvas.clone()).unwrap(),
-            CanvasKind::Fake { width, height } => WebGPUSurface::new_fake(graphics_instance).unwrap(),
+            CanvasKind::Fake { .. } => WebGPUSurface::new_fake(graphics_instance).unwrap(),
         }
     }
 

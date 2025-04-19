@@ -1,12 +1,12 @@
 use std::io::Cursor;
 use std::sync::Arc;
 
-use futures_lite::AsyncReadExt;
 use image::{
     ImageReader,
     GenericImageView,
     ImageFormat,
 };
+use io_util::ReadEntireSeekableFileAsync;
 
 use crate::graphics::*;
 
@@ -35,11 +35,10 @@ impl AssetLoader for ImageLoader {
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<(), ()> {
+        let path = file.path().to_string();
         let is_png = file.path().ends_with(".png");
 
-        let mut data: Vec<u8> = Vec::new();
-        let path = file.path().to_string();
-        file.read_to_end(&mut data).await.map_err(|_| ())?;
+        let data = file.read_seekable_to_end().await.map_err(|_| ())?;
         let cursor = Cursor::new(data);
 
         let image_reader = ImageReader::with_format(
