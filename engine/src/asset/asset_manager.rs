@@ -14,6 +14,7 @@ use crate::{AsyncCounter, Mutex};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use futures_io::{AsyncRead, AsyncSeek};
 use futures_lite::{io::Cursor, io::AsyncSeekExt};
+use io_util::ReadEntireSeekableFileAsync as _;
 use sourcerenderer_core::Vec4;
 use strum::VariantArray as _;
 
@@ -64,6 +65,31 @@ impl AssetFile {
 
     pub fn path(&self) -> &str {
         &self.path
+    }
+
+    pub async fn into_async_memory_cursor(self) -> IOResult<Cursor<Box<[u8]>>> {
+        match self.contents {
+            AssetFileContents::File(mut file) => {
+                let data = file.read_seekable_to_end().await?;
+                Ok(Cursor::new(data))
+            },
+            AssetFileContents::Memory(cursor) => Ok(cursor),
+        }
+    }
+
+    pub async fn into_memory_cursor(self) -> IOResult<std::io::Cursor<Box<[u8]>>> {
+        let async_cursor = self.into_async_memory_cursor().await?;
+        Ok(std::io::Cursor::new(async_cursor.into_inner()))
+    }
+
+    pub async fn data(self) -> IOResult<Box<[u8]>> {
+        match self.contents {
+            AssetFileContents::File(mut file) => {
+                let data = file.read_seekable_to_end().await?;
+                Ok(data)
+            },
+            AssetFileContents::Memory(cursor) => Ok(cursor.into_inner()),
+        }
     }
 }
 
@@ -600,7 +626,6 @@ impl AssetManager {
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<(), ()> {
-        let handle: AssetHandle = handle.into();
         let loaders = self.loaders.read().await;
         let loader_opt: Option<&dyn ErasedAssetLoader> = AssetManager::find_loader(
             &mut file,

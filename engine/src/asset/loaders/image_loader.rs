@@ -1,4 +1,3 @@
-use std::io::Cursor;
 use std::sync::Arc;
 
 use image::{
@@ -6,7 +5,6 @@ use image::{
     GenericImageView,
     ImageFormat,
 };
-use io_util::ReadEntireSeekableFileAsync;
 
 use crate::graphics::*;
 
@@ -30,7 +28,7 @@ impl AssetLoader for ImageLoader {
 
     async fn load(
         &self,
-        mut file: AssetFile,
+        file: AssetFile,
         manager: &Arc<AssetManager>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
@@ -38,8 +36,7 @@ impl AssetLoader for ImageLoader {
         let path = file.path().to_string();
         let is_png = file.path().ends_with(".png");
 
-        let data = file.read_seekable_to_end().await.map_err(|_| ())?;
-        let cursor = Cursor::new(data);
+        let cursor = file.into_memory_cursor().await.map_err(|_| ())?;
 
         let image_reader = ImageReader::with_format(
             cursor,

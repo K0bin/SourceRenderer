@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use io_util::ReadEntireSeekableFileAsync as _;
 use log::trace;
 use crate::graphics::gpu::PackedShader;
 
@@ -24,13 +23,14 @@ impl AssetLoader for ShaderLoader {
 
     async fn load(
         &self,
-        mut file: AssetFile,
+        file: AssetFile,
         manager: &Arc<AssetManager>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<(), ()> {
         trace!("Loading shader: {:?}", file.path());
-        let file_res = file.read_seekable_to_end().await;
+        let path = file.path().to_string();
+        let file_res = file.data().await;
         if let Err(e) = &file_res {
             log::error!("Loading shader file failed: {:?}", e);
             return Err(());
@@ -43,7 +43,7 @@ impl AssetLoader for ShaderLoader {
         }
         let shader: PackedShader = shader_res.unwrap();
         manager.add_asset_data_with_progress(
-            &file.path(),
+            &path,
             AssetData::Shader(shader),
             Some(progress),
             priority,
