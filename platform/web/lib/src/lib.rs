@@ -44,7 +44,7 @@ pub async fn start_engine(navigator: &WorkerNavigator, canvas: OffscreenCanvas) 
   let platform = WebPlatform::new_on_worker(navigator, canvas).await;
 
   info!("Initializing engine");
-  let engine = ActualEngine::run::<_, WebIO, WebPlatform>(platform.window(), GamePlugin);
+  let engine = ActualEngine::run::<_, WebIO, WebPlatform>(platform.window(), GamePlugin::<WebIO>::default());
 
   let wrapper = Engine {
     engine: Some(engine),
@@ -62,7 +62,7 @@ pub async fn start_engine_with_fake_canvas(navigator: &WorkerNavigator, width: u
   let platform = WebPlatform::new_on_worker_without_canvas(navigator, width, height).await;
 
   info!("Initializing engine");
-  let engine = ActualEngine::run::<_, WebIO, WebPlatform>(platform.window(), GamePlugin);
+  let engine = ActualEngine::run::<_, WebIO, WebPlatform>(platform.window(), GamePlugin::<WebIO>::default());
 
   let wrapper = Engine {
     engine: Some(engine),

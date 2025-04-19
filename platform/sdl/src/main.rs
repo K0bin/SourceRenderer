@@ -36,7 +36,7 @@ fn autoreleasepool<T, F: FnOnce() -> T>(func: F) -> T {
 
 pub fn main() {
     let mut platform = SDLPlatform::new();
-    let mut engine = Box::new(Engine::run::<_, StdIO, SDLPlatform>(platform.window(), GamePlugin));
+    let mut engine = Box::new(Engine::run::<_, StdIO, SDLPlatform>(platform.window(), GamePlugin::<StdIO>::default()));
 
     'event_loop: loop {
         let engine_loop_result = autoreleasepool(|| {
