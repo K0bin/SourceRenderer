@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;
 
-use crate::{engine::WindowState, ui::UIDrawData};
+use crate::engine::WindowState;
 
 pub enum RendererCommand {
     RegisterStatic {

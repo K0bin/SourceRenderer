@@ -26,11 +26,10 @@ use bevy_ecs::schedule::{
     SystemSet,
 };
 use bevy_ecs::system::{
-    NonSend, NonSendMut, Query, Res, ResMut, Resource
+    Query, Res, ResMut, Resource
 };
 use bevy_ecs::world::Ref;
 use bevy_transform::components::GlobalTransform;
-use bevy_utils::synccell::SyncCell;
 use sourcerenderer_core::Vec2UI;
 use sourcerenderer_core::platform::GraphicsPlatform;
 

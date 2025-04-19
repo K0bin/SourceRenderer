@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use bevy_tasks::futures_lite::AsyncReadExt;
-
-use io_util::{RawDataReadAsync, ReadEntireSeekableFileAsync as _};
+use io_util::ReadEntireSeekableFileAsync as _;
 use log::trace;
 use crate::graphics::gpu::PackedShader;
 

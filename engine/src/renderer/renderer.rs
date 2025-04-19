@@ -56,8 +56,8 @@ enum ReceiveMessagesResult {
     Empty
 }
 
-trait MaybeSendRenderPath : RenderPath + sourcerenderer_core::gpu::GPUMaybeSend {}
-type BoxedRenderPath = Box<dyn MaybeSendRenderPath>;
+pub trait MaybeSendRenderPath : RenderPath + sourcerenderer_core::gpu::GPUMaybeSend {}
+pub type BoxedRenderPath = Box<dyn MaybeSendRenderPath>;
 
 pub struct Renderer {
     device: Arc<Device>,
