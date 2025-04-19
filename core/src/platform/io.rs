@@ -14,23 +14,23 @@ pub trait FileWatcher {
 #[cfg(feature = "non_send_io")]
 mod send_sync_bounds {
     #[allow(unused)]
-    pub trait IOFutureMaybeSend {}
-    impl<T> IOFutureMaybeSend for T {}
+    pub trait IOMaybeSend {}
+    impl<T> IOMaybeSend for T {}
 
     #[allow(unused)]
-    pub trait IOFutureMaybeSync {}
-    impl<T> IOFutureMaybeSync for T {}
+    pub trait IOMaybeSync {}
+    impl<T> IOMaybeSync for T {}
 }
 
 #[cfg(not(feature = "non_send_io"))]
 mod send_sync_bounds {
     #[allow(unused)]
-    pub trait IOFutureMaybeSend: Send {}
-    impl<T: Send> IOFutureMaybeSend for T {}
+    pub trait IOMaybeSend: Send {}
+    impl<T: Send> IOMaybeSend for T {}
 
     #[allow(unused)]
-    pub trait IOFutureMaybeSync: Sync {}
-    impl<T: Sync> IOFutureMaybeSync for T {}
+    pub trait IOMaybeSync: Sync {}
+    impl<T: Sync> IOMaybeSync for T {}
 }
 
 pub use send_sync_bounds::*;
@@ -41,9 +41,9 @@ impl<T: AsyncRead + AsyncSeek + Sized + Send + Sync + Unpin> PlatformFile for T 
 pub trait PlatformIO: 'static + Send + Sync {
   type File: PlatformFile;
   type FileWatcher : FileWatcher + Send;
-  fn open_asset<P: AsRef<Path> + Send>(path: P) -> impl Future<Output = IOResult<Self::File>> + IOFutureMaybeSend;
-  fn asset_exists<P: AsRef<Path> + Send>(path: P) -> impl Future<Output = bool> + IOFutureMaybeSend;
-  fn open_external_asset<P: AsRef<Path> + Send>(path: P) -> impl Future<Output = IOResult<Self::File>> + IOFutureMaybeSend;
-  fn external_asset_exists<P: AsRef<Path> + Send>(path: P) -> impl Future<Output = bool> + IOFutureMaybeSend;
+  fn open_asset<P: AsRef<Path> + Send>(path: P) -> impl Future<Output = IOResult<Self::File>> + IOMaybeSend;
+  fn asset_exists<P: AsRef<Path> + Send>(path: P) -> impl Future<Output = bool> + IOMaybeSend;
+  fn open_external_asset<P: AsRef<Path> + Send>(path: P) -> impl Future<Output = IOResult<Self::File>> + IOMaybeSend;
+  fn external_asset_exists<P: AsRef<Path> + Send>(path: P) -> impl Future<Output = bool> + IOMaybeSend;
   fn new_file_watcher(sender: Sender<String>) -> Self::FileWatcher;
 }

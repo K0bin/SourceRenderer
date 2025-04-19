@@ -5,8 +5,8 @@ use crate::input::Key;
 
 mod io;
 pub use io::PlatformIO;
-pub use io::IOFutureMaybeSend;
-pub use io::IOFutureMaybeSync;
+pub use io::IOMaybeSend;
+pub use io::IOMaybeSync;
 pub use io::FileWatcher;
 pub use io::PlatformFile;
 

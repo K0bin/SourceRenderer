@@ -18,7 +18,7 @@ use io_util::ReadEntireSeekableFileAsync as _;
 use sourcerenderer_core::Vec4;
 use strum::VariantArray as _;
 
-use sourcerenderer_core::platform::{IOFutureMaybeSend, PlatformFile};
+use sourcerenderer_core::platform::{IOMaybeSend, PlatformFile};
 
 use crate::math::BoundingBox;
 use crate::graphics::TextureInfo;
@@ -119,10 +119,10 @@ impl AsyncSeek for AssetFile {
     }
 }
 
-pub trait ContainerContainsFuture : Future<Output = bool> + IOFutureMaybeSend {}
-impl<T: Future<Output = bool> + IOFutureMaybeSend> ContainerContainsFuture for T {}
-pub trait ContainerFileOptionFuture : Future<Output = Option<AssetFile>> + IOFutureMaybeSend {}
-impl<T: Future<Output = Option<AssetFile>> + IOFutureMaybeSend> ContainerFileOptionFuture for T {}
+pub trait ContainerContainsFuture : Future<Output = bool> + IOMaybeSend {}
+impl<T: Future<Output = bool> + IOMaybeSend> ContainerContainsFuture for T {}
+pub trait ContainerFileOptionFuture : Future<Output = Option<AssetFile>> + IOMaybeSend {}
+impl<T: Future<Output = Option<AssetFile>> + IOMaybeSend> ContainerFileOptionFuture for T {}
 pub trait AssetContainer: Send + Sync + 'static {
     fn contains(&self, path: &str) -> impl ContainerContainsFuture;
     fn load(&self, path: &str) -> impl ContainerFileOptionFuture;
@@ -162,8 +162,8 @@ pub enum AssetLoadPriority {
     Low,
 }
 
-pub trait LoaderFuture : Future<Output = Result<(), ()>> + IOFutureMaybeSend {}
-impl<T: Future<Output = Result<(), ()>> + IOFutureMaybeSend> LoaderFuture for T {}
+pub trait LoaderFuture : Future<Output = Result<(), ()>> + IOMaybeSend {}
+impl<T: Future<Output = Result<(), ()>> + IOMaybeSend> LoaderFuture for T {}
 pub trait AssetLoader: Send + Sync + 'static {
     fn matches(&self, file: &mut AssetFile) -> bool;
     fn load(
@@ -310,7 +310,7 @@ impl AssetManager {
 
     pub fn add_container_async(
         self: &Arc<Self>,
-        future: impl Future<Output = impl AssetContainer> + Send + 'static
+        future: impl Future<Output = impl AssetContainer> + IOMaybeSend + 'static
     ) {
         self.add_container_with_progress_async(future, None);
     }
@@ -336,7 +336,7 @@ impl AssetManager {
 
     pub fn add_container_with_progress_async(
         self: &Arc<Self>,
-        future: impl Future<Output = impl AssetContainer> + IOFutureMaybeSend + 'static,
+        future: impl Future<Output = impl AssetContainer> + IOMaybeSend + 'static,
         progress: Option<&Arc<AssetLoaderProgress>>
     ) {
         self.pending_containers.increment();
