@@ -115,6 +115,12 @@ impl Engine {
                 return EngineLoopFuncResult::KeepRunning;
             }
 
+            if cfg!(not(target_arch = "wasm32")) {
+                bevy_tasks::IoTaskPool::get().with_local_executor(|e| { e.try_tick(); });
+                bevy_tasks::AsyncComputeTaskPool::get().with_local_executor(|e| { e.try_tick(); });
+                bevy_tasks::ComputeTaskPool::get().with_local_executor(|e| { e.try_tick(); });
+            }
+
             app.update();
             if let Some(exit) = app.should_exit() {
                 log::info!("Exiting because of app: {:?}", exit);

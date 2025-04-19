@@ -244,6 +244,10 @@ fn start_render_thread<P: GraphicsPlatform<ActiveBackend>>(
             );
 
             'renderer_loop: loop {
+                bevy_tasks::IoTaskPool::get().with_local_executor(|e| { e.try_tick(); });
+                bevy_tasks::AsyncComputeTaskPool::get().with_local_executor(|e| { e.try_tick(); });
+                bevy_tasks::ComputeTaskPool::get().with_local_executor(|e| { e.try_tick(); });
+
                 let mut result = EngineLoopFuncResult::Exit;
                 crate::autoreleasepool(|| {
                     result = renderer.render();
