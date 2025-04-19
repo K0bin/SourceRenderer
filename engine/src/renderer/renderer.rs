@@ -573,8 +573,8 @@ impl RendererSender {
         *queued_guard > 1
     }
 
-    pub fn update_ui(&self, ui_data: UIDrawData) -> Result<(), SendError<()>> {
-        let sender = if let Some(sender) = self.sender.as_ref() {
+    pub fn update_ui(&self, _ui_data: UIDrawData) -> Result<(), SendError<()>> {
+        let _sender = if let Some(sender) = self.sender.as_ref() {
             sender
         } else {
             return Err(SendError(()));

@@ -1,4 +1,4 @@
-use std::io::BufReader;
+use std::io::Cursor;
 use std::sync::Arc;
 
 use image::{
@@ -6,6 +6,7 @@ use image::{
     GenericImageView,
     ImageFormat,
 };
+use io_util::ReadEntireSeekableFileAsync;
 
 use crate::graphics::*;
 
@@ -24,22 +25,24 @@ impl ImageLoader {
 
 impl AssetLoader for ImageLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
-        file.path.ends_with(".png") || file.path.ends_with(".jpg") || file.path.ends_with(".jpeg")
+        file.path().ends_with(".png") || file.path().ends_with(".jpg") || file.path().ends_with(".jpeg")
     }
 
     async fn load(
         &self,
-        file: AssetFile,
+        mut file: AssetFile,
         manager: &Arc<AssetManager>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<(), ()> {
-        let is_png = file.path.ends_with(".png");
+        let path = file.path().to_string();
+        let is_png = file.path().ends_with(".png");
 
-        let path = file.path.clone();
-        let buf_reader = BufReader::new(file);
+        let data = file.read_seekable_to_end().await.map_err(|_| ())?;
+        let cursor = Cursor::new(data);
+
         let image_reader = ImageReader::with_format(
-            buf_reader,
+            cursor,
             if is_png {
                 ImageFormat::Png
             } else {

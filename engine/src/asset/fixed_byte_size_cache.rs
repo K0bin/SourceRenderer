@@ -5,35 +5,33 @@ pub struct FixedByteSizeCache<K: Hash + PartialEq + Eq + Clone, V> {
     queue: VecDeque<K>,
     current_size: usize,
     max_size: usize,
-    min_last_entries: usize
 }
 
+#[derive(Debug)]
+pub struct FileTooLarge();
+
 impl<K: Hash + PartialEq + Eq + Clone, V> FixedByteSizeCache<K, V> {
-    pub fn new(max_size: usize, min_last_entries: usize) -> Self {
+    pub fn new(max_size: usize, ) -> Self {
         Self {
             buffers: HashMap::new(),
             queue: VecDeque::new(),
             current_size: 0,
             max_size,
-            min_last_entries
         }
     }
 
-    pub fn insert(&mut self, key: K, value: V) {
+    pub fn insert(&mut self, key: K, value: V) -> Result<bool, FileTooLarge> {
         if self.buffers.contains_key(&key) {
-            return;
+            return Ok(true);
         }
 
         let value_size = std::mem::size_of_val(&value);
-        if value_size > self.max_size && self.min_last_entries == 0 {
-            return;
+        if value_size > self.max_size {
+            return Err(FileTooLarge());
         }
 
-        if value_size > self.max_size * 2 && self.min_last_entries != 0{
-            log::warn!("Single entry is more than twice as large as max size of cache and will be stored regardless.");
-        }
-
-        while self.current_size + value_size > self.max_size && value_size <= self.max_size && self.queue.len() > self.min_last_entries && !self.queue.is_empty() {
+        while self.current_size + value_size > self.max_size {
+            assert!(!self.queue.is_empty());
             let next_key_to_remove = self.queue.pop_front().unwrap();
             let removed_value = self.buffers.remove(&next_key_to_remove).unwrap();
             self.current_size -= std::mem::size_of_val(&removed_value);
@@ -41,6 +39,7 @@ impl<K: Hash + PartialEq + Eq + Clone, V> FixedByteSizeCache<K, V> {
 
         self.buffers.insert(key.clone(), value);
         self.queue.push_back(key);
+        Ok(false)
     }
 
     pub fn contains_key<Q: ?Sized>(&self, key: &Q) -> bool
@@ -55,13 +54,6 @@ impl<K: Hash + PartialEq + Eq + Clone, V> FixedByteSizeCache<K, V> {
         K: Borrow<Q>,
         Q: Hash + Eq {
         self.buffers.get(key)
-    }
-
-    pub fn get_mut<Q: ?Sized>(&mut self, key: &Q) -> Option<&mut V>
-        where
-        K: Borrow<Q>,
-        Q: Hash + Eq {
-        self.buffers.get_mut(key)
     }
 
     pub fn remove<Q: ?Sized>(&mut self, key: &Q) -> Option<V>
@@ -89,11 +81,6 @@ impl<K: Hash + PartialEq + Eq + Clone, V> FixedByteSizeCache<K, V> {
     #[inline(always)]
     pub fn max_size(&self) -> usize {
         self.max_size
-    }
-
-    #[inline(always)]
-    pub fn min_last_entries(&self) -> usize {
-        self.min_last_entries
     }
 
     #[inline(always)]

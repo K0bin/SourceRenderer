@@ -1,13 +1,22 @@
-use std::io::SeekFrom;
+use std::io::{
+    Cursor,
+    Read as _,
+    Seek as _,
+    SeekFrom,
+};
 use std::sync::Arc;
 use std::{
     slice,
     usize,
 };
 
-use bevy_math::{EulerRot, Quat};
-use std::io::{Cursor, Seek as _, Read as _};
+use bevy_math::{
+    EulerRot,
+    Quat,
+};
+use bevy_tasks::futures_lite::AsyncReadExt;
 use bevy_transform::components::Transform;
+use futures_lite::AsyncSeekExt;
 use gltf::buffer::{
     Source,
     View,
@@ -22,7 +31,7 @@ use gltf::{
     Scene,
     Semantic,
 };
-use log::warn;
+use io_util::RawDataReadAsync;
 use sourcerenderer_core::{
     Vec2,
     Vec3,
@@ -30,9 +39,22 @@ use sourcerenderer_core::{
 };
 
 use crate::asset::asset_manager::AssetFile;
-use crate::asset::loaded_level::{LoadedEntityParent, LevelData};
+use crate::asset::loaded_level::{
+    LevelData,
+    LoadedEntityParent,
+};
 use crate::asset::{
-    AssetData, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, AssetType, MeshData, MeshRange, ModelData, Vertex, FixedByteSizeCache
+    AssetData,
+    AssetLoadPriority,
+    AssetLoader,
+    AssetLoaderProgress,
+    AssetManager,
+    AssetType,
+    FixedByteSizeCache,
+    MeshData,
+    MeshRange,
+    ModelData,
+    Vertex,
 };
 use crate::math::BoundingBox;
 use crate::renderer::{
@@ -40,6 +62,12 @@ use crate::renderer::{
     PointLightComponent,
     StaticRenderableComponent,
 };
+
+const FILE_PAGE_SIZE: usize = 16_384;
+const READ_AHEAD_PAGE_COUNT: usize = 16;
+const CACHE_PAGE_COUNT: usize = 128;
+
+type FilePageKey = (String, usize);
 
 pub struct GltfLoader {}
 
@@ -54,7 +82,7 @@ impl GltfLoader {
         asset_mgr: &Arc<AssetManager>,
         parent_entity: Option<usize>,
         gltf_file_name: &str,
-        buffer_cache: &mut FixedByteSizeCache<String, Box<[u8]>>,
+        buffer_cache: &mut FixedByteSizeCache<FilePageKey, Box<[u8]>>,
     ) {
         let (translation, rotation, scale) = match node.transform() {
             gltf::scene::Transform::Matrix {
@@ -89,13 +117,21 @@ impl GltfLoader {
         let fixed_rotation = Vec4::new(rotation.x, rotation.y, rotation.z, rotation.w);
         let rot_quat = Quat::from_vec4(fixed_rotation).normalize();
         let euler_angles = rot_quat.to_euler(EulerRot::XYZ);
-        let rot_quat = Quat::from_euler(EulerRot::XYZ, euler_angles.0, -euler_angles.1, -euler_angles.2);
+        let rot_quat = Quat::from_euler(
+            EulerRot::XYZ,
+            euler_angles.0,
+            -euler_angles.1,
+            -euler_angles.2,
+        );
         let entity = world.push_entity(3);
-        world.push_component(entity, Transform {
-            translation: fixed_position,
-            scale,
-            rotation: rot_quat,
-        });
+        world.push_component(
+            entity,
+            Transform {
+                translation: fixed_position,
+                scale,
+                rotation: rot_quat,
+            },
+        );
         if let Some(parent) = parent_entity {
             world.push_component(entity, LoadedEntityParent(parent));
         }
@@ -123,7 +159,8 @@ impl GltfLoader {
                     &mut indices,
                     gltf_file_name,
                     buffer_cache,
-                ).await;
+                )
+                .await;
                 let material_path =
                     GltfLoader::load_material(&primitive.material(), asset_mgr, gltf_file_name);
                 materials.push(material_path);
@@ -223,12 +260,15 @@ impl GltfLoader {
                 AssetLoadPriority::Normal,
             );
 
-            world.push_component(entity, StaticRenderableComponent {
-                model_path,
-                receive_shadows: true,
-                cast_shadows: true,
-                can_move: false,
-            });
+            world.push_component(
+                entity,
+                StaticRenderableComponent {
+                    model_path,
+                    receive_shadows: true,
+                    cast_shadows: true,
+                    can_move: false,
+                },
+            );
         };
 
         if node.skin().is_some() {
@@ -259,14 +299,20 @@ impl GltfLoader {
             }
             match light.kind() {
                 gltf::khr_lights_punctual::Kind::Directional => {
-                    world.push_component(entity, DirectionalLightComponent {
-                        intensity: light.intensity() * 685f32, // Blender exports as W/m2, we need lux
-                    });
+                    world.push_component(
+                        entity,
+                        DirectionalLightComponent {
+                            intensity: light.intensity() * 685f32, // Blender exports as W/m2, we need lux
+                        },
+                    );
                 }
                 gltf::khr_lights_punctual::Kind::Point => {
-                    world.push_component(entity, PointLightComponent {
-                        intensity: light.intensity(),
-                    });
+                    world.push_component(
+                        entity,
+                        PointLightComponent {
+                            intensity: light.intensity(),
+                        },
+                    );
                 }
                 gltf::khr_lights_punctual::Kind::Spot { .. } => todo!(),
             }
@@ -280,7 +326,8 @@ impl GltfLoader {
                 Some(entity),
                 gltf_file_name,
                 buffer_cache,
-            )).await;
+            ))
+            .await;
         }
     }
 
@@ -290,7 +337,8 @@ impl GltfLoader {
         gltf_file_name: &str,
     ) -> LevelData {
         let mut world: LevelData = LevelData::new(4096, 64);
-        let mut buffer_cache = FixedByteSizeCache::<String, Box<[u8]>>::new(128 << 20, 3);
+        assert!(CACHE_PAGE_COUNT >= (READ_AHEAD_PAGE_COUNT + 1));
+        let mut buffer_cache = FixedByteSizeCache::<FilePageKey, Box<[u8]>>::new(CACHE_PAGE_COUNT * FILE_PAGE_SIZE);
         let nodes = scene.nodes();
         for node in nodes {
             GltfLoader::visit_node(
@@ -300,7 +348,8 @@ impl GltfLoader {
                 None,
                 gltf_file_name,
                 &mut buffer_cache,
-            ).await;
+            )
+            .await;
         }
         world
     }
@@ -312,88 +361,101 @@ impl GltfLoader {
         vertices: &'a mut Vec<Vertex>,
         indices: &'a mut Vec<u32>,
         gltf_file_name: &'a str,
-        buffer_cache: &'a mut FixedByteSizeCache<String, Box<[u8]>>,
+        buffer_cache: &'a mut FixedByteSizeCache<FilePageKey, Box<[u8]>>,
     ) {
-        const LOAD_ENTIRE_GLB_BUFFER: bool = false;
-
-        async fn load_buffer<'a>(
-            gltf_file_name: &str,
+        fn build_uri<'a>(
+            gltf_file_name: &'a str,
             gltf_path: &str,
-            asset_mgr: &Arc<AssetManager>,
-            buffer_cache: &'a mut FixedByteSizeCache<String, Box<[u8]>>,
-            view: &View<'_>,
-        ) {
-            let uri: String;
-            match view.buffer().source() {
+            src: Source<'_>,
+            range: Option<(usize, usize)>,
+        ) -> (String, usize) {
+            match src {
                 Source::Bin => {
-                    uri = if !LOAD_ENTIRE_GLB_BUFFER {
-                        format!(
+                    if let Some((offset, length)) = range {
+                        (format!(
                             "{}/buffer/{}-{}",
                             gltf_file_name,
-                            view.offset(),
-                            view.length()
-                        )
+                            offset,
+                            length
+                        ), 0)
                     } else {
-                        format!(
-                            "{}/buffer/",
-                            gltf_file_name,
-                        )
-                    };
+                        (format!("{}/buffer/", gltf_file_name), range.map(|(offset, _)| offset).unwrap_or(0))
+                    }
                 }
                 Source::Uri(gltf_uri) => {
-                    uri = if let Some(last_slash_pos) = gltf_path.find('/') {
-                        format!("{}/{}", &gltf_path[..last_slash_pos], &gltf_uri)
+                    if let Some(last_slash_pos) = gltf_path.find('/') {
+                        (format!("{}/{}", &gltf_path[..last_slash_pos], &gltf_uri), range.map(|(offset, _)| offset).unwrap_or(0))
                     } else {
-                        gltf_uri.to_string()
-                    };
+                        (gltf_uri.to_string(), range.map(|(offset, _)| offset).unwrap_or(0))
+                    }
                 }
-            }
-
-            if !buffer_cache.contains_key(&uri) {
-                let file = asset_mgr.load_file(&uri).await.expect("Failed to load buffer");
-                let file_data = file.data.into_inner();
-                buffer_cache.insert(uri.clone(), file_data);
             }
         }
 
-        fn load_buffer_from_cache<'a>(
+        async fn load_data<'a>(
             gltf_file_name: &str,
             gltf_path: &str,
-            buffer_cache: &'a FixedByteSizeCache<String, Box<[u8]>>,
+            asset_mgr: &Arc<AssetManager>,
+            buffer_cache: &'a mut FixedByteSizeCache<FilePageKey, Box<[u8]>>,
             view: &View<'_>,
-        ) -> &'a [u8] {
-            let uri: String;
-            let offset: usize;
-            match view.buffer().source() {
-                Source::Bin => {
-                    if !LOAD_ENTIRE_GLB_BUFFER {
-                        uri = format!(
-                            "{}/buffer/{}-{}",
-                            gltf_file_name,
-                            view.offset(),
-                            view.length()
-                        );
-                        offset = 0;
-                    } else {
-                        uri = format!(
-                            "{}/buffer/",
-                            gltf_file_name,
-                        );
-                        offset = view.offset();
-                    };
+        ) -> Box<[u8]> {
+            let first_page = view.offset() / FILE_PAGE_SIZE;
+            let last_page = (view.offset() + view.length()) / FILE_PAGE_SIZE;
+            let offset_in_first_page =
+                view.offset() - first_page * FILE_PAGE_SIZE;
+
+            let mut data = Vec::with_capacity(view.length());
+            unsafe {
+                data.set_len(view.length());
+            };
+
+            for file_page_index in first_page..=last_page {
+                let relative_page_index = file_page_index - first_page;
+                let (buffer_uri, _) = build_uri(gltf_file_name, gltf_path, view.buffer().source(), None);
+                let key = (buffer_uri, file_page_index);
+
+                if !buffer_cache.contains_key(&key) {
+                    let read_size = FILE_PAGE_SIZE * (READ_AHEAD_PAGE_COUNT + 1);
+                    let (page_uri, offset) = build_uri(gltf_file_name, gltf_path, view.buffer().source(), Some((file_page_index * FILE_PAGE_SIZE, read_size)));
+
+                    let mut file = asset_mgr
+                        .load_file(&page_uri)
+                        .await
+                        .expect("Failed to load buffer");
+                    file.seek(SeekFrom::Start(offset as u64)).await.unwrap();
+                    let cache_data = file.read_data_padded(read_size).await.unwrap();
+                    let mut cache_data_vec = cache_data.into_vec();
+                    for i in (0..(read_size / FILE_PAGE_SIZE)).rev() {
+                        let file_page_index = file_page_index + i;
+                        let start_in_cache = i * FILE_PAGE_SIZE;
+                        let end_in_cache = start_in_cache + FILE_PAGE_SIZE;
+                        assert_eq!(end_in_cache, cache_data_vec.len());
+                        let page_data = cache_data_vec.split_off(start_in_cache);
+                        buffer_cache
+                            .insert((key.0.clone(), file_page_index), page_data.into_boxed_slice())
+                            .unwrap();
+                    }
                 }
-                Source::Uri(gltf_uri) => {
-                    offset = view.offset();
-                    uri = if let Some(last_slash_pos) = gltf_path.find('/') {
-                        format!("{}/{}", &gltf_path[..last_slash_pos], &gltf_uri)
+
+                if let Some(page) = buffer_cache.get(&key) {
+                    let src_start: usize;
+                    let dst_start: usize;
+                    if relative_page_index == 0 {
+                        src_start = offset_in_first_page;
+                        dst_start = 0;
                     } else {
-                        gltf_uri.to_string()
+                        src_start = 0;
+                        dst_start = relative_page_index * FILE_PAGE_SIZE - offset_in_first_page;
                     };
+                    let len = (page.len() - src_start).min(data.len() - dst_start);
+                    let src_end = src_start + len;
+                    let dst_end = dst_start + len;
+
+                    data[dst_start..dst_end].copy_from_slice(&page[src_start..src_end]);
                 }
             }
 
-            let file = buffer_cache.get(&uri).unwrap();
-            &file[offset..(offset + view.length())]
+            data.into_boxed_slice()
         }
 
         let index_base = vertices.len() as u32;
@@ -407,38 +469,14 @@ impl GltfLoader {
             let positions = primitive.get(&Semantic::Positions).unwrap();
             assert!(positions.sparse().is_none());
             let positions_view = positions.view().unwrap();
-            load_buffer(
+            let positions_data = load_data(
                 gltf_file_name,
                 gltf_path,
                 asset_mgr,
                 buffer_cache,
                 &positions_view,
-            ).await;
-
-            let normals = primitive.get(&Semantic::Normals).unwrap();
-            assert!(normals.sparse().is_none());
-            let normals_view = normals.view().unwrap();
-            load_buffer(
-                gltf_file_name,
-                gltf_path,
-                asset_mgr,
-                buffer_cache,
-                &normals_view,
-            ).await;
-
-            let texcoords = primitive.get(&Semantic::TexCoords(0)).unwrap();
-            assert!(texcoords.sparse().is_none());
-            let texcoords_view = texcoords.view().unwrap();
-            load_buffer(
-                gltf_file_name,
-                gltf_path,
-                asset_mgr,
-                buffer_cache,
-                &texcoords_view,
-            ).await;
-
-
-            let positions_data = load_buffer_from_cache(gltf_file_name, gltf_path, buffer_cache, &positions_view);
+            )
+            .await;
             let mut positions_buffer_cursor = Cursor::new(positions_data);
             let positions_stride = if let Some(stride) = positions_view.stride() {
                 stride
@@ -446,7 +484,17 @@ impl GltfLoader {
                 positions.size()
             };
 
-            let normals_data = load_buffer_from_cache(gltf_file_name, gltf_path, buffer_cache, &normals_view);
+            let normals = primitive.get(&Semantic::Normals).unwrap();
+            assert!(normals.sparse().is_none());
+            let normals_view = normals.view().unwrap();
+            let normals_data = load_data(
+                gltf_file_name,
+                gltf_path,
+                asset_mgr,
+                buffer_cache,
+                &normals_view,
+            )
+            .await;
             let mut normals_buffer_cursor = Cursor::new(normals_data);
             let normals_stride = if let Some(stride) = normals_view.stride() {
                 stride
@@ -454,7 +502,17 @@ impl GltfLoader {
                 normals.size()
             };
 
-            let texcoords_data = load_buffer_from_cache(gltf_file_name, gltf_path, buffer_cache, &texcoords_view);
+            let texcoords = primitive.get(&Semantic::TexCoords(0)).unwrap();
+            assert!(texcoords.sparse().is_none());
+            let texcoords_view = texcoords.view().unwrap();
+            let texcoords_data = load_data(
+                gltf_file_name,
+                gltf_path,
+                asset_mgr,
+                buffer_cache,
+                &texcoords_view,
+            )
+            .await;
             let mut texcoords_buffer_cursor = Cursor::new(texcoords_data);
             let texcoords_stride = if let Some(stride) = texcoords_view.stride() {
                 stride
@@ -494,7 +552,8 @@ impl GltfLoader {
                 let mut normal_data = [0u8; 12];
                 assert!(normals.size() <= normal_data.len());
                 assert_eq!(normals.size(), std::mem::size_of::<Vec3>());
-                normals_buffer_cursor.read_exact(&mut normal_data[..normals.size()])
+                normals_buffer_cursor
+                    .read_exact(&mut normal_data[..normals.size()])
                     .unwrap();
 
                 texcoords_buffer_cursor
@@ -528,15 +587,8 @@ impl GltfLoader {
         if let Some(indices_accessor) = indices_accessor {
             assert!(indices_accessor.sparse().is_none());
             let view = indices_accessor.view().unwrap();
-            load_buffer(
-                gltf_file_name,
-                gltf_path,
-                asset_mgr,
-                buffer_cache,
-                &view,
-            ).await;
 
-            let data = load_buffer_from_cache(gltf_file_name, gltf_path, buffer_cache, &view);
+            let data = load_data(gltf_file_name, gltf_path, asset_mgr, buffer_cache, &view).await;
             let mut buffer_cursor = Cursor::new(&data);
             buffer_cursor
                 .seek(SeekFrom::Start(indices_accessor.offset() as u64))
@@ -547,7 +599,9 @@ impl GltfLoader {
 
                 let mut attr_data = [0u8; 8];
                 assert!(indices_accessor.size() <= attr_data.len());
-                buffer_cursor.read_exact(&mut attr_data[..indices_accessor.size()]).unwrap();
+                buffer_cursor
+                    .read_exact(&mut attr_data[..indices_accessor.size()])
+                    .unwrap();
                 assert!(indices_accessor.size() <= std::mem::size_of::<u32>());
 
                 if indices_accessor.size() == 4 {
@@ -594,10 +648,10 @@ impl GltfLoader {
 
         let pbr = material.pbr_metallic_roughness();
         if material.double_sided() {
-            //warn!("Double sided materials are not supported, material path: {}", material_path);
+            //log::warn!("Double sided materials are not supported, material path: {}", material_path);
         }
         if material.alpha_mode() != AlphaMode::Opaque {
-            //warn!("Unsupported alpha mode, alpha mode: {:?}, material path: {}", material.alpha_mode(), material_path);
+            //log::warn!("Unsupported alpha mode, alpha mode: {:?}, material path: {}", material.alpha_mode(), material_path);
         }
 
         let albedo_info = pbr.base_color_texture();
@@ -606,7 +660,7 @@ impl GltfLoader {
                 if albedo.tex_coord() == 0 {
                     Some(albedo)
                 } else {
-                    warn!("Found non zero texcoord for texture: {}", &material_path);
+                    log::warn!("Found non zero texcoord for texture: {}", &material_path);
                     None
                 }
             })
@@ -614,7 +668,7 @@ impl GltfLoader {
                 if albedo.texture().sampler().wrap_s() != WrappingMode::Repeat
                     || albedo.texture().sampler().wrap_t() != WrappingMode::Repeat
                 {
-                    warn!(
+                    log::warn!(
                         "Texture uses non-repeat wrap mode: s: {:?}, t: {:?}",
                         albedo.texture().sampler().wrap_s(),
                         albedo.texture().sampler().wrap_t()
@@ -642,7 +696,7 @@ impl GltfLoader {
                         } else {
                             uri.to_string()
                         }
-                    },
+                    }
                 }
             });
 
@@ -669,20 +723,22 @@ impl GltfLoader {
 
 impl AssetLoader for GltfLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
-        (file.path.contains("gltf") || file.path.contains("glb"))
-            && file.path.contains("/scene/")
-            && Gltf::from_reader(file).is_ok()
+        (file.path().contains("gltf") || file.path().contains("glb"))
+            && file.path().contains("/scene/")
     }
 
     async fn load(
         &self,
-        file: AssetFile,
+        mut file: AssetFile,
         manager: &Arc<AssetManager>,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<(), ()> {
-        let path = file.path.clone();
-        let gltf = Gltf::from_reader(file).unwrap();
+        let mut data: Vec<u8> = Vec::new();
+        let path = file.path().to_string();
+        file.read_to_end(&mut data).await.map_err(|_| ())?;
+        let cursor = Cursor::new(data);
+        let gltf = Gltf::from_reader(cursor).unwrap();
         const PUNCTUAL_LIGHT_EXTENSION: &'static str = "KHR_lights_punctual";
         for extension in gltf.extensions_required() {
             if extension != PUNCTUAL_LIGHT_EXTENSION {
@@ -707,7 +763,8 @@ impl AssetLoader for GltfLoader {
             let scene_name_or_fallback: String;
             if let Some(scene_name) = scene.name() {
                 scene_name_or_fallback = format!("{}/scene/{}", gltf_name, scene_name);
-            } else if gltf.scenes().len() > 1 || scene_name_start + scene_prefix.len() < path.len() {
+            } else if gltf.scenes().len() > 1 || scene_name_start + scene_prefix.len() < path.len()
+            {
                 scene_name_or_fallback = format!("{}/scene/{}", gltf_name, scene.index());
             } else {
                 scene_name_or_fallback = format!("{}/scene/", gltf_name);
@@ -715,7 +772,12 @@ impl AssetLoader for GltfLoader {
 
             if &path == &scene_name_or_fallback {
                 let world = GltfLoader::load_scene(&scene, manager, gltf_name).await;
-                manager.add_asset_data_with_progress(&scene_name_or_fallback, AssetData::Level(world), Some(progress), priority);
+                manager.add_asset_data_with_progress(
+                    &scene_name_or_fallback,
+                    AssetData::Level(world),
+                    Some(progress),
+                    priority,
+                );
             }
         }
         Ok(())

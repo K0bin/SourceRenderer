@@ -43,7 +43,7 @@ pub async fn load_file_gltf_container<IO: PlatformIO>(path: &str, external: bool
 }
 
 impl<R: AsyncRead + AsyncSeek + Unpin> GltfContainer<R> {
-    pub async fn new(path: &str, mut reader: R) -> IOResult<Self> {
+    async fn new(path: &str, mut reader: R) -> IOResult<Self> {
         let header = glb::GlbHeader::read(&mut reader).await?;
 
         let json_chunk_header = glb::GlbChunkHeader::read(&mut reader).await?;
@@ -103,10 +103,7 @@ impl<R: AsyncRead + AsyncSeek + Unpin + Send + Sync + 'static> AssetContainer fo
             }
             reader.seek(SeekFrom::Start(self.json_offset)).await.ok()?;
             reader.read_exact(&mut buffer).await.ok()?;
-            return Some(AssetFile {
-                path: path.to_string(),
-                data: Cursor::new(buffer.into_boxed_slice()),
-            });
+            return Some(AssetFile::new_memory(path, buffer.into_boxed_slice()));
         }
         let is_texture = path.starts_with(&self.texture_base_path);
         let is_buffer = path.starts_with(&self.buffer_base_path);
@@ -139,10 +136,7 @@ impl<R: AsyncRead + AsyncSeek + Unpin + Send + Sync + 'static> AssetContainer fo
                 .ok()?;
             reader.read_exact(&mut buffer).await.ok()?;
 
-            return Some(AssetFile {
-                path: path.to_string(),
-                data: Cursor::new(buffer.into_boxed_slice()),
-            });
+            return Some(AssetFile::new_memory(path, buffer.into_boxed_slice()));
         }
 
         None
