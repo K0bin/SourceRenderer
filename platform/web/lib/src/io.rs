@@ -109,27 +109,16 @@ impl WebFetchFile {
                 }
             }
         })?;
-        log::warn!("A");
         let mut data = Vec::<u8>::with_capacity(length as usize);
-        log::warn!("B");
         let final_len = (length as usize).min(buffer.length() as usize);
-        log::warn!("C");
         unsafe { data.set_len(final_len); }
-        log::warn!("D");
         if final_len >= buffer.length() as usize {
-            log::warn!("E");
             buffer.copy_to(&mut data[..final_len]);
-            log::warn!("F");
         } else {
-            log::warn!("G");
             let subarray = buffer.subarray(0, final_len as u32);
-            log::warn!("H");
             subarray.copy_to(&mut data[..final_len]);
-            log::warn!("I");
         }
-        log::warn!("J");
         data.resize(length as usize, 0u8);
-        log::warn!("K");
         Ok(data.into_boxed_slice())
     }
 
