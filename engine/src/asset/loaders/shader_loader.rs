@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use bevy_tasks::futures_lite::AsyncReadExt;
 
+use io_util::{RawDataReadAsync, ReadEntireSeekableFileAsync as _};
 use log::trace;
 use crate::graphics::gpu::PackedShader;
 
@@ -20,7 +21,7 @@ impl ShaderLoader {
 
 impl AssetLoader for ShaderLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
-        file.path.ends_with(".json")
+        file.path().ends_with(".json")
     }
 
     async fn load(
@@ -30,13 +31,13 @@ impl AssetLoader for ShaderLoader {
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<(), ()> {
-        trace!("Loading shader: {:?}", &file.path);
-        let mut buffer = Vec::<u8>::new();
-        let file_res = file.read_to_end(&mut buffer).await;
+        trace!("Loading shader: {:?}", file.path());
+        let file_res = file.read_seekable_to_end().await;
         if let Err(e) = &file_res {
             log::error!("Loading shader file failed: {:?}", e);
             return Err(());
         }
+        let buffer = file_res.unwrap();
         let shader_res = serde_json::from_slice(&buffer);
         if let Err(e) = &shader_res {
             log::error!("Deserializing shader file failed: {:?}", e);
@@ -44,7 +45,7 @@ impl AssetLoader for ShaderLoader {
         }
         let shader: PackedShader = shader_res.unwrap();
         manager.add_asset_data_with_progress(
-            &file.path,
+            &file.path(),
             AssetData::Shader(shader),
             Some(progress),
             priority,
