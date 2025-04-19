@@ -622,7 +622,7 @@ impl AssetManager {
     async fn load_asset<T : Into<AssetHandle>>(
         self: &Arc<Self>,
         mut file: AssetFile,
-        handle: T,
+        _handle: T,
         priority: AssetLoadPriority,
         progress: &Arc<AssetLoaderProgress>,
     ) -> Result<(), ()> {
