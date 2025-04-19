@@ -29,6 +29,7 @@ log = "0.4"
 console_log = "1.0"
 futures-lite = "2.6"
 async-mutex = "1.4"
+async-task = "4.7"
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires

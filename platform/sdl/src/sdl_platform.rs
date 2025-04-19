@@ -4,10 +4,7 @@ use std::path::{
     Path,
     PathBuf,
 };
-use std::pin::{pin, Pin};
-use std::task::{Context, Poll};
 
-use bevy_tasks::futures_lite::{AsyncRead, AsyncSeek};
 use crossbeam_channel::Sender;
 use notify::{
     recommended_watcher,

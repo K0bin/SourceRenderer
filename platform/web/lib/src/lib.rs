@@ -1,11 +1,11 @@
 use io::WebIO;
-use js_sys::{Number, Uint8Array};
+use js_sys::Uint8Array;
 use log::info;
 use platform::WebPlatform;
 use sourcerenderer_engine::{Engine as ActualEngine, EngineLoopFuncResult};
 use sourcerenderer_game::GamePlugin;
-use wasm_bindgen::{prelude::wasm_bindgen, JsValue, JsCast as _};
-use web_sys::{Navigator, OffscreenCanvas, WorkerNavigator};
+use wasm_bindgen::{prelude::wasm_bindgen, JsValue};
+use web_sys::{OffscreenCanvas, WorkerNavigator};
 
 mod platform;
 mod window;

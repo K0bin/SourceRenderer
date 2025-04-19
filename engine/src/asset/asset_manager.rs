@@ -94,9 +94,9 @@ impl AsyncSeek for AssetFile {
     }
 }
 
-trait ContainerContainsFuture : Future<Output = bool> + IOFutureMaybeSend {}
+pub trait ContainerContainsFuture : Future<Output = bool> + IOFutureMaybeSend {}
 impl<T: Future<Output = bool> + IOFutureMaybeSend> ContainerContainsFuture for T {}
-trait ContainerFileOptionFuture : Future<Output = Option<AssetFile>> + IOFutureMaybeSend {}
+pub trait ContainerFileOptionFuture : Future<Output = Option<AssetFile>> + IOFutureMaybeSend {}
 impl<T: Future<Output = Option<AssetFile>> + IOFutureMaybeSend> ContainerFileOptionFuture for T {}
 pub trait AssetContainer: Send + Sync + 'static {
     fn contains(&self, path: &str) -> impl ContainerContainsFuture;
@@ -137,7 +137,7 @@ pub enum AssetLoadPriority {
     Low,
 }
 
-trait LoaderFuture : Future<Output = Result<(), ()>> + IOFutureMaybeSend {}
+pub trait LoaderFuture : Future<Output = Result<(), ()>> + IOFutureMaybeSend {}
 impl<T: Future<Output = Result<(), ()>> + IOFutureMaybeSend> LoaderFuture for T {}
 pub trait AssetLoader: Send + Sync + 'static {
     fn matches(&self, file: &mut AssetFile) -> bool;
