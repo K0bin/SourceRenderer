@@ -59,10 +59,10 @@ struct GlobalMemoryBarrier {
     access: BarrierAccess,
 }
 
-const USE_GLOBAL_MEMORY_BARRIERS_FOR_BUFFERS: bool = false;
+const USE_GLOBAL_MEMORY_BARRIERS_FOR_BUFFERS: bool = true;
 const USE_COARSE_BARRIERS_FOR_TEXTURES: bool = false;
 const USE_COARSE_BARRIERS_FOR_BUFFERS: bool = false;
-const WARN_ABOUT_READ_TO_READ_BARRIERS: bool = false;
+const WARN_ABOUT_READ_TO_READ_BARRIERS: bool = true;
 
 fn calculate_subresources(mip_length: u32, array_length: u32) -> u32 {
     array_length * mip_length
@@ -241,7 +241,7 @@ impl RendererResources {
             if stages.intersects(all_graphics_shaders) {
                 stages |= all_graphics_shaders;
             }
-            access = BarrierAccess::SHADER_READ;
+            access = BarrierAccess::MEMORY_READ;
         }
 
         let use_b_resource = (history == HistoryResourceEntry::Past)
@@ -279,7 +279,7 @@ impl RendererResources {
                         && !subresource_clone.access.is_write()
                         && subresource_clone.layout == layout
                     {
-                        println!(
+                        log::warn!(
                             "READ TO READ BARRIER: Texture: \"{}\", stage: {:?}, access: {:?}",
                             name, stages, access
                         );
@@ -511,7 +511,7 @@ impl RendererResources {
                     && !access.is_write()
                     && !buffer_mut.access.is_write()
                 {
-                    println!(
+                    log::warn!(
                         "READ TO READ BARRIER: Buffer: \"{}\", stage: {:?}, access: {:?}",
                         name, stages, access
                     );
@@ -543,7 +543,7 @@ impl RendererResources {
                     && !access.is_write()
                     && !global_mut.access.is_write()
                 {
-                    println!(
+                    log::warn!(
                         "READ TO READ BARRIER: Buffer: \"{}\", stage: {:?}, access: {:?}",
                         name, stages, access
                     );
