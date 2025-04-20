@@ -535,10 +535,8 @@ impl RendererSender {
             return Err(SendError(()));
         };
 
-        {
-            let mut queued_guard = self.state.queued_frames_counter.lock().unwrap();
-            *queued_guard += 1;
-        }
+        let mut queued_guard = self.state.queued_frames_counter.lock().unwrap();
+        *queued_guard += 1;
         sender.send(RendererCommand::EndFrame)
             .map_err(|_| SendError(()))
     }
