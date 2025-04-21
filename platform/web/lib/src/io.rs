@@ -87,10 +87,6 @@ impl WebFetchFile {
     async fn fetch_range(uri: &str, offset: u64, length: u64) -> IOResult<Box<[u8]>> {
         log::trace!("Loading range of web file: {:?}, offet: {:?}, length: {:?}", uri, offset, length);
 
-        if length < MAX_NON_RANGED_FETCH as u64{
-            log::warn!("Doing a small read: Path: {:?}, Offset: {:?}, Length: {:?}", uri, offset, length);
-        }
-
         let future = crate::fetch_asset_range(uri, offset as u32, length as u32);
         let buffer_res = future.await;
         let buffer = buffer_res.map_err(|js_val| {
