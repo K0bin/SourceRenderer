@@ -219,12 +219,12 @@ struct AssetSets {
 }
 
 pub struct AssetManager {
-    containers: async_rwlock::RwLock<Vec<Box<dyn ErasedAssetContainer>>>,
+    containers: async_lock::RwLock<Vec<Box<dyn ErasedAssetContainer>>>,
     pending_containers: AsyncCounter,
     pending_loaders: AsyncCounter,
     pending_high_priority_loads: AsyncCounter,
     pending_normal_priority_loads: AsyncCounter,
-    loaders: async_rwlock::RwLock<Vec<Box<dyn ErasedAssetLoader>>>,
+    loaders: async_lock::RwLock<Vec<Box<dyn ErasedAssetLoader>>>,
     path_map: Mutex<HashMap<String, AssetHandle>>,
     next_asset_handle: AtomicU64,
     asset_sets: Mutex<AssetSets>,
@@ -240,8 +240,8 @@ impl AssetManager {
         }
 
         let manager = Arc::new(Self {
-            loaders: async_rwlock::RwLock::new(Vec::new()),
-            containers: async_rwlock::RwLock::new(Vec::new()),
+            loaders: async_lock::RwLock::new(Vec::new()),
+            containers: async_lock::RwLock::new(Vec::new()),
             path_map: Mutex::new(HashMap::new()),
             next_asset_handle: AtomicU64::new(1),
             asset_sets: Mutex::new(Default::default()),

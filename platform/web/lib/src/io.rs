@@ -20,7 +20,7 @@ pub struct WebFetchFile {
 
 const MAX_NON_RANGED_FETCH: usize = 2_000_000;
 
-static FILE_LENGTH_CACHE: LazyLock<async_mutex::Mutex<HashMap<String, u64>>> = LazyLock::new(|| async_mutex::Mutex::new(HashMap::new()));
+static FILE_LENGTH_CACHE: LazyLock<async_lock::Mutex<HashMap<String, u64>>> = LazyLock::new(|| async_lock::Mutex::new(HashMap::new()));
 
 impl WebFetchFile {
     async fn new<P: AsRef<Path> + Send>(path: P) -> IOResult<Self> {

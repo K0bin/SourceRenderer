@@ -15,7 +15,7 @@ pub struct GltfContainer<R: AsyncRead + AsyncSeek + Unpin> {
     json_offset: u64,
     data_offset: u64,
     data_length: u64,
-    reader: async_mutex::Mutex<R>,
+    reader: async_lock::Mutex<R>,
     _base_path: String,
     scene_base_path: String,
     buffer_base_path: String,
@@ -71,7 +71,7 @@ impl<R: AsyncRead + AsyncSeek + Unpin> GltfContainer<R> {
         let texture_base_path = base_path.clone() + "texture/";
 
         Ok(Self {
-            reader: async_mutex::Mutex::new(reader),
+            reader: async_lock::Mutex::new(reader),
             json_offset,
             data_offset,
             data_length: data_chunk_header.length as u64,
