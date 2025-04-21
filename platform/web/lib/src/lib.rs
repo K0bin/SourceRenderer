@@ -70,6 +70,11 @@ pub async fn start_engine_with_fake_canvas(navigator: &WorkerNavigator, width: u
   wrapper
 }
 
+#[wasm_bindgen(js_name = "hasRenderThread")]
+pub fn has_render_thread() -> bool {
+  true
+}
+
 #[wasm_bindgen(raw_module = "../../www/src/web_glue.ts")]
 extern "C" {
   #[wasm_bindgen(js_name = "fetchAsset", catch)]

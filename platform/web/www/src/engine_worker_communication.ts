@@ -2,6 +2,8 @@ export enum EngineWorkerMessageType {
     StartThreadFromMain, // Browsers are buggy when starting workers from other workers
     TransferCanvas,
     TransferFakeCanvas,
+    RequestCanvas,
+    RequestFakeCanvas,
 }
 
 export type EngineMessageData = string|FakeCanvasData|OffscreenCanvas|ThreadWorkerInit;
@@ -21,5 +23,5 @@ export interface ThreadWorkerInit {
 
 export interface EngineWorkerMessage {
     messageType: EngineWorkerMessageType;
-    data: EngineMessageData;
+    data?: EngineMessageData;
 }

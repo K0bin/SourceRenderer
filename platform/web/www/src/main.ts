@@ -4,10 +4,6 @@ import { EngineWorkerMessageType, ThreadWorkerInit, EngineWorkerMessage, FakeCan
 
 let offscreenCanvas: OffscreenCanvas|null = null;
 
-// Must be true if the render thread feature isn't enabled.
-// Should be false if it is enabled because of browser bugs.
-const TRANSFER_CANVAS: boolean = true;
-
 function main() {
     const canvas = document.getElementById("canvas") as HTMLCanvasElement;
     canvas.width = window.innerWidth;
@@ -25,25 +21,36 @@ function main() {
             case EngineWorkerMessageType.StartThreadFromMain:
                 startThreadWorker(typedEvent.data as ThreadWorkerInit);
                 break;
+
+            case EngineWorkerMessageType.RequestCanvas:
+                const canvas = takeCanvas();
+                worker.postMessage({
+                        messageType: EngineWorkerMessageType.TransferCanvas,
+                        data: canvas,
+                    } as EngineWorkerMessage,
+                    [canvas]
+                );
+                offscreenCanvas = null;
+                break;
+
+            case EngineWorkerMessageType.RequestFakeCanvas:
+                worker.postMessage({
+                    messageType: EngineWorkerMessageType.TransferFakeCanvas,
+                    data: {
+                        width: width,
+                        height: height,
+                    } as FakeCanvasData,
+                } as EngineWorkerMessage);
+                break;
         }
     };
+}
 
-    if (TRANSFER_CANVAS) {
-        worker.postMessage({
-                messageType: EngineWorkerMessageType.TransferCanvas,
-                data: offscreenCanvas,
-            } as EngineWorkerMessage,
-            [offscreenCanvas]
-        );
-    } else {
-        worker.postMessage({
-            messageType: EngineWorkerMessageType.TransferFakeCanvas,
-            data: {
-                width: width,
-                height: height,
-            } as FakeCanvasData,
-        } as EngineWorkerMessage);
+function takeCanvas(): OffscreenCanvas {
+    if (offscreenCanvas === null) {
+        throw new Error("Canvas can only be transferred once.");
     }
+    return offscreenCanvas;
 }
 
 function startThreadWorker(msg: ThreadWorkerInit) {
@@ -51,8 +58,7 @@ function startThreadWorker(msg: ThreadWorkerInit) {
     const worker = new ThreadWorker({ name: msg.name });
     let transferables: Array<Transferable> = [];
     if (msg.data === "FAKE_CANVAS") {
-        msg.data = offscreenCanvas;
-        offscreenCanvas = null;
+        msg.data = takeCanvas();
     }
     if (msg.data instanceof OffscreenCanvas || msg.data instanceof ArrayBuffer) {
         transferables.push(msg.data);

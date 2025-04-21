@@ -1,5 +1,5 @@
-import { default as initWasm, Engine, startEngine, startEngineWithFakeCanvas } from "../../../lib/pkg/sourcerenderer_web";
-import { EngineWorkerMessage, EngineWorkerMessageType, FakeCanvasData, ThreadWorkerInit } from "../engine_worker_communication.ts";
+import { default as initWasm, Engine, startEngine, startEngineWithFakeCanvas, hasRenderThread } from "../../../lib/pkg/sourcerenderer_web";
+import { EngineWorkerMessage, EngineWorkerMessageType, FakeCanvasData } from "../engine_worker_communication.ts";
 
 onmessage = async (event: MessageEvent) => {
     const typedEvent = event.data as EngineWorkerMessage;
@@ -19,10 +19,21 @@ onmessage = async (event: MessageEvent) => {
 
 console.log("EngineThread initialized");
 
+await initWasm();
+
+if (hasRenderThread()) {
+    postMessage({
+        messageType: EngineWorkerMessageType.RequestFakeCanvas,
+    } as EngineWorkerMessage);
+} else {
+    postMessage({
+        messageType: EngineWorkerMessageType.RequestCanvas,
+    } as EngineWorkerMessage);
+}
+
 let engine: Engine|null = null;
 
 async function init(canvas: OffscreenCanvas) {
-    await initWasm();
     engine = await startEngine(navigator, canvas);
     requestAnimationFrame((_time) => {
         frame();
@@ -30,7 +41,6 @@ async function init(canvas: OffscreenCanvas) {
 }
 
 async function initWithFakeCanvas(width: number, height: number) {
-    await initWasm();
     engine = await startEngineWithFakeCanvas(navigator, width, height);
     requestAnimationFrame((_time) => {
         frame();
