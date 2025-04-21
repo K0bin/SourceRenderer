@@ -9,6 +9,8 @@ use crate::wasm::thread::JoinHandle;
 
 use std::mem::ManuallyDrop;
 
+#[allow(unused_imports)]
+use bevy_utils::synccell::SyncCell;
 use sourcerenderer_core::console::Console;
 use sourcerenderer_core::gpu::Surface as _;
 #[cfg(feature = "render_thread")]
@@ -25,8 +27,9 @@ use bevy_ecs::schedule::{
     IntoSystemConfigs,
     SystemSet,
 };
+#[allow(unused_imports)]
 use bevy_ecs::system::{
-    Query, Res, ResMut, Resource
+    NonSend, NonSendMut, Query, Res, ResMut, Resource
 };
 use bevy_ecs::world::Ref;
 use bevy_transform::components::GlobalTransform;

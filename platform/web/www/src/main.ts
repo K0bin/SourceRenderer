@@ -4,6 +4,10 @@ import { EngineWorkerMessageType, ThreadWorkerInit, EngineWorkerMessage, FakeCan
 
 let offscreenCanvas: OffscreenCanvas|null = null;
 
+// Must be true if the render thread feature isn't enabled.
+// Should be false if it is enabled because of browser bugs.
+const TRANSFER_CANVAS: boolean = true;
+
 function main() {
     const canvas = document.getElementById("canvas") as HTMLCanvasElement;
     canvas.width = window.innerWidth;
@@ -13,12 +17,6 @@ function main() {
     offscreenCanvas = canvas.transferControlToOffscreen();
 
     const worker = new EngineWorker({ name: "EngineThread" });
-    /*worker.postMessage({
-            messageType: EngineWorkerMessageType.TransferCanvas,
-            data: offscreenCanvas,
-        } as EngineWorkerMessage,
-        [offscreenCanvas]
-    );*/
 
     // Workaround for browser bugs
     worker.onmessage = (event) => {
@@ -29,13 +27,23 @@ function main() {
                 break;
         }
     };
-    worker.postMessage({
-        messageType: EngineWorkerMessageType.TransferFakeCanvas,
-        data: {
-            width: width,
-            height: height,
-        } as FakeCanvasData,
-    } as EngineWorkerMessage);
+
+    if (TRANSFER_CANVAS) {
+        worker.postMessage({
+                messageType: EngineWorkerMessageType.TransferCanvas,
+                data: offscreenCanvas,
+            } as EngineWorkerMessage,
+            [offscreenCanvas]
+        );
+    } else {
+        worker.postMessage({
+            messageType: EngineWorkerMessageType.TransferFakeCanvas,
+            data: {
+                width: width,
+                height: height,
+            } as FakeCanvasData,
+        } as EngineWorkerMessage);
+    }
 }
 
 function startThreadWorker(msg: ThreadWorkerInit) {
