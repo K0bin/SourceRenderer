@@ -29,16 +29,9 @@ pub use async_counter::*;
 pub mod wasm;
 
 #[allow(unused_imports)]
-#[cfg(feature = "threading")]
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-#[cfg(feature = "threading")]
 use std::sync::{Mutex, MutexGuard, Condvar};
-
-mod rw_lock_wasm;
-
-#[cfg(not(feature = "threading"))]
-use rw_lock_wasm::*;
 
 pub mod tasks;
 

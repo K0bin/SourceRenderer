@@ -45,6 +45,7 @@ waker-fn = "1.2"
 async-lock = "3.4"
 atomic-waker = "1.1"
 futures-lite = "2.6"
+parking_lot = "0.12"
 
 bevy_app = "0.15"
 bevy_math = "0.15"
@@ -61,9 +62,6 @@ bevy_input = "0.15"
 # bevy_ecs has a dependency on async-executor which itself has a dependency on an ancient version of slab that no longer builds on modern rust versions.
 # This forces Cargo to use a more recent version of Slab.
 slab = "=0.4.9"
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-parking_lot = "0.12"
 
 [target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "android", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
 sourcerenderer_vulkan = { path = "../graphics/vulkan" }
