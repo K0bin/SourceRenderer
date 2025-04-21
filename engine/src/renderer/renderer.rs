@@ -153,10 +153,7 @@ impl Renderer {
         let message_receiving_result = self.receive_messages();
         match message_receiving_result {
             ReceiveMessagesResult::Empty => {
-                let counter_guard = self.receiver.state.queued_frames_counter.lock().unwrap();
-                if *counter_guard == 0 {
-                    return EngineLoopFuncResult::KeepRunning;
-                }
+                return EngineLoopFuncResult::KeepRunning;
             }
             ReceiveMessagesResult::Quit => {
                 log::info!("Quitting renderer.");
@@ -167,6 +164,9 @@ impl Renderer {
 
         if !self.is_ready() {
             // The shaders aren't ready to be used yet. Quit after handling messages.
+            // Skip this frame.
+            let mut counter_guard = self.receiver.state.queued_frames_counter.lock().unwrap();
+            *counter_guard -= 1;
             return EngineLoopFuncResult::KeepRunning;
         } else if !self.was_ready {
             self.was_ready = true;
@@ -396,7 +396,7 @@ impl Renderer {
         self.render_path = render_path;
     }
 
-    pub fn is_ready(&self) -> bool {
+    fn is_ready(&self) -> bool {
         self.assets.receive_assets();
         let assets = self.assets.read();
         self.render_path.is_ready(&assets)
