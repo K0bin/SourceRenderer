@@ -1,29 +1,29 @@
-use crate::{LumpType, LumpData};
 use crate::PrimitiveRead;
+use crate::{LumpData, LumpType};
 use std::io::{Read, Result as IOResult};
 
 pub struct DispTri {
-  pub tags: DispTriTags
+    pub tags: DispTriTags,
 }
 
 impl LumpData for DispTri {
-  fn lump_type() -> LumpType {
-    LumpType::DisplacementTriangles
-  }
-  fn lump_type_hdr() -> Option<LumpType> {
-    None
-  }
+    fn lump_type() -> LumpType {
+        LumpType::DisplacementTriangles
+    }
+    fn lump_type_hdr() -> Option<LumpType> {
+        None
+    }
 
-  fn element_size(_version: i32) -> usize {
-    2
-  }
+    fn element_size(_version: i32) -> usize {
+        2
+    }
 
-  fn read(read: &mut dyn Read, _version: i32) -> IOResult<Self> {
-    let tags = read.read_u16()?;
-    Ok(Self {
-      tags: DispTriTags::from_bits(tags).unwrap()
-    })
-  }
+    fn read(read: &mut dyn Read, _version: i32) -> IOResult<Self> {
+        let tags = read.read_u16()?;
+        Ok(Self {
+            tags: DispTriTags::from_bits(tags).unwrap(),
+        })
+    }
 }
 
 bitflags! {
@@ -37,4 +37,3 @@ bitflags! {
     const FLAG_SURFPROP2 = 16;
   }
 }
-

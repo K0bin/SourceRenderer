@@ -2,11 +2,9 @@ use std::collections::HashMap;
 use std::usize;
 
 use bevy_ecs::entity::Entity;
+use bevy_math::Affine3A;
 use log::warn;
 use sourcerenderer_core::Vec3;
-use bevy_math::Affine3A;
-
-use crate::asset::TextureHandle;
 
 use super::drawable::View;
 use super::light::{
@@ -18,6 +16,7 @@ use super::{
     PointLight,
     RendererStaticDrawable,
 };
+use crate::asset::TextureHandle;
 
 pub struct RendererScene {
     views: Vec<View>,
@@ -80,8 +79,20 @@ impl RendererScene {
     }
 
     #[inline(always)]
-    pub fn view_update_info(&mut self) -> (&mut [View], &[RendererStaticDrawable], &[RendererPointLight], &[RendererDirectionalLight]) {
-        (&mut self.views, &self.static_meshes, &self.point_lights, &self.directional_lights)
+    pub fn view_update_info(
+        &mut self,
+    ) -> (
+        &mut [View],
+        &[RendererStaticDrawable],
+        &[RendererPointLight],
+        &[RendererDirectionalLight],
+    ) {
+        (
+            &mut self.views,
+            &self.static_meshes,
+            &self.point_lights,
+            &self.directional_lights,
+        )
     }
 
     pub fn add_static_drawable(&mut self, entity: Entity, static_drawable: RendererStaticDrawable) {
@@ -131,7 +142,10 @@ impl RendererScene {
             return;
         }
 
-        warn!("Found no entity on the renderer for ecs entity: {:?}", entity);
+        warn!(
+            "Found no entity on the renderer for ecs entity: {:?}",
+            entity
+        );
 
         debug_assert!(false); // debug unreachable
     }
@@ -169,7 +183,10 @@ impl RendererScene {
                 debug_assert_ne!(*index, self.directional_lights.len());
             }
         }
-        debug_assert_eq!(self.directional_light_entity_map.len(), self.directional_lights.len());
+        debug_assert_eq!(
+            self.directional_light_entity_map.len(),
+            self.directional_lights.len()
+        );
 
         self.directional_light_entity_map
             .insert(entity, self.point_lights.len());
@@ -186,7 +203,10 @@ impl RendererScene {
         }
         let index = index.unwrap();
         self.point_lights.remove(index);
-        debug_assert_eq!(self.directional_light_entity_map.len(), self.directional_lights.len());
+        debug_assert_eq!(
+            self.directional_light_entity_map.len(),
+            self.directional_lights.len()
+        );
     }
 
     #[inline(always)]

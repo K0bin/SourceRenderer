@@ -6,14 +6,18 @@ use sourcerenderer_core::Vec2UI;
 use super::rt_shadows::RTShadowPass;
 use super::shadow_map::ShadowMapPass;
 use super::visibility_buffer::VisibilityBufferPass;
+use crate::graphics::*;
+use crate::renderer::asset::{
+    ComputePipelineHandle,
+    RendererAssets,
+    RendererAssetsReadOnly,
+};
 use crate::renderer::passes::ssao::SsaoPass;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::asset::{ComputePipelineHandle, RendererAssets, RendererAssetsReadOnly};
-use crate::graphics::*;
 
 pub struct ShadingPass {
     sampler: Arc<crate::graphics::Sampler>,
@@ -78,7 +82,11 @@ impl ShadingPass {
             max_lod: None,
         }));
 
-        Self { sampler, shadow_sampler, pipeline }
+        Self {
+            sampler,
+            shadow_sampler,
+            pipeline,
+        }
     }
 
     #[inline(always)]
@@ -90,10 +98,12 @@ impl ShadingPass {
     pub(super) fn execute(
         &mut self,
         cmd_buffer: &mut CommandBuffer,
-        pass_params: &RenderPassParameters<'_>
+        pass_params: &RenderPassParameters<'_>,
     ) {
         let (width, height) = {
-            let info = pass_params.resources.texture_info(Self::SHADING_TEXTURE_NAME);
+            let info = pass_params
+                .resources
+                .texture_info(Self::SHADING_TEXTURE_NAME);
             (info.width, info.height)
         };
 
@@ -169,7 +179,9 @@ impl ShadingPass {
         };
 
         let cascade_count = {
-            let shadow_map_info = pass_params.resources.texture_info(ShadowMapPass::SHADOW_MAP_NAME);
+            let shadow_map_info = pass_params
+                .resources
+                .texture_info(ShadowMapPass::SHADOW_MAP_NAME);
             shadow_map_info.array_length
         };
 
@@ -185,12 +197,15 @@ impl ShadingPass {
                 array_layer_length: cascade_count,
                 mip_level_length: 1,
                 base_mip_level: 0,
-                format: None
+                format: None,
             },
             HistoryResourceEntry::Current,
         );
 
-        let pipeline = pass_params.assets.get_compute_pipeline(self.pipeline).unwrap();
+        let pipeline = pass_params
+            .assets
+            .get_compute_pipeline(self.pipeline)
+            .unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &ids);
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 2, &barycentrics);
@@ -228,7 +243,7 @@ impl ShadingPass {
             BindingFrequency::VeryFrequent,
             9,
             &shadow_map,
-            &self.shadow_sampler
+            &self.shadow_sampler,
         );
 
         cmd_buffer.flush_barriers();

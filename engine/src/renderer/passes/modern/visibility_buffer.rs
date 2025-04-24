@@ -6,16 +6,18 @@ use sourcerenderer_core::{
 
 use super::draw_prep::DrawPrepPass;
 use super::gpu_scene::DRAW_CAPACITY;
+use crate::graphics::*;
+use crate::renderer::asset::{
+    GraphicsPipelineHandle,
+    GraphicsPipelineInfo,
+    RendererAssets,
+    RendererAssetsReadOnly,
+};
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::asset::{
-    GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssets, RendererAssetsReadOnly
-};
-
-use crate::graphics::*;
 
 pub struct VisibilityBufferPass {
     pipeline: GraphicsPipelineHandle,
@@ -132,8 +134,11 @@ impl VisibilityBufferPass {
                     AttachmentBlendInfo::default(),
                 ],
             },
-            render_target_formats: &[primitive_id_texture_info.format, barycentrics_texture_info.format],
-            depth_stencil_format: depth_texture_info.format
+            render_target_formats: &[
+                primitive_id_texture_info.format,
+                barycentrics_texture_info.format,
+            ],
+            depth_stencil_format: depth_texture_info.format,
         };
         let pipeline = assets.request_graphics_pipeline(&pipeline_info);
 
@@ -148,7 +153,7 @@ impl VisibilityBufferPass {
     pub(super) fn execute(
         &mut self,
         cmd_buffer: &mut CommandBuffer,
-        params: &RenderPassParameters<'_>
+        params: &RenderPassParameters<'_>,
     ) {
         cmd_buffer.begin_label("Visibility Buffer pass");
         let draw_buffer = params.resources.access_buffer(
@@ -192,28 +197,26 @@ impl VisibilityBufferPass {
             HistoryResourceEntry::Current,
         );
 
-        cmd_buffer.begin_render_pass(
-            &RenderPassBeginInfo {
-                render_targets: &[
-                    RenderTarget {
-                        view: &primitive_id_rtv,
-                        load_op: LoadOpColor::Clear(ClearColor::BLACK),
-                        store_op: StoreOp::Store,
-                    },
-                    RenderTarget {
-                        view: &barycentrics_rtv,
-                        load_op: LoadOpColor::Clear(ClearColor::BLACK),
-                        store_op: StoreOp::Store,
-                    }
-                ],
-                depth_stencil: Some(&DepthStencilAttachment {
-                    view: &dsv,
-                    load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
+        cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
+            render_targets: &[
+                RenderTarget {
+                    view: &primitive_id_rtv,
+                    load_op: LoadOpColor::Clear(ClearColor::BLACK),
                     store_op: StoreOp::Store,
-                }),
-                query_range: None,
-            }
-        );
+                },
+                RenderTarget {
+                    view: &barycentrics_rtv,
+                    load_op: LoadOpColor::Clear(ClearColor::BLACK),
+                    store_op: StoreOp::Store,
+                },
+            ],
+            depth_stencil: Some(&DepthStencilAttachment {
+                view: &dsv,
+                load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
+                store_op: StoreOp::Store,
+            }),
+            query_range: None,
+        });
 
         let rtv_info = barycentrics_rtv.texture().unwrap().info();
         let pipeline = params.assets.get_graphics_pipeline(self.pipeline).unwrap();
@@ -233,7 +236,14 @@ impl VisibilityBufferPass {
         cmd_buffer.set_index_buffer(params.scene.index_buffer, 0, IndexFormat::U32);
 
         cmd_buffer.finish_binding();
-        cmd_buffer.draw_indexed_indirect_count(BufferRef::Regular(&draw_buffer), 4, BufferRef::Regular(&draw_buffer), 0, DRAW_CAPACITY, 20);
+        cmd_buffer.draw_indexed_indirect_count(
+            BufferRef::Regular(&draw_buffer),
+            4,
+            BufferRef::Regular(&draw_buffer),
+            0,
+            DRAW_CAPACITY,
+            20,
+        );
 
         cmd_buffer.end_render_pass();
         cmd_buffer.end_label();

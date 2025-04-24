@@ -1,14 +1,22 @@
 use std::sync::Arc;
+
 use web_time::Duration;
 
-use super::asset::{RendererAssetsReadOnly, RendererTexture};
+use super::asset::{
+    RendererAssetsReadOnly,
+    RendererTexture,
+};
 use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
-use crate::graphics::{BufferRef, GraphicsContext, Backbuffer};
+use crate::graphics::{
+    Backbuffer,
+    BufferRef,
+    GraphicsContext,
+    *,
+};
 use crate::ui::UIDrawData;
-use crate::graphics::*;
 
-pub struct SceneInfo<'a>{
+pub struct SceneInfo<'a> {
     pub scene: &'a RendererScene,
     pub active_view_index: usize,
     pub vertex_buffer: BufferRef<'a>,
@@ -25,12 +33,12 @@ pub struct RenderPassParameters<'a> {
     pub device: &'a Device,
     pub scene: &'a SceneInfo<'a>,
     pub resources: &'a mut RendererResources,
-    pub assets: &'a RendererAssetsReadOnly<'a>
+    pub assets: &'a RendererAssetsReadOnly<'a>,
 }
 
 pub struct RenderPathResult {
     pub cmd_buffer: FinishedCommandBuffer,
-    pub backbuffer: Option<Arc<Backbuffer>>
+    pub backbuffer: Option<Arc<Backbuffer>>,
 }
 
 pub trait RenderPath {
@@ -59,7 +67,9 @@ impl RenderPath for NoOpRenderPath {
     fn write_occlusion_culling_results(&self, _frame: u64, _bitset: &mut Vec<u32>) {}
     fn on_swapchain_changed(&mut self, _swapchain: &Swapchain) {}
     fn set_ui_data(&mut self, _data: UIDrawData) {}
-    fn is_ready(&self, _asset_manager: &RendererAssetsReadOnly) -> bool { true }
+    fn is_ready(&self, _asset_manager: &RendererAssetsReadOnly) -> bool {
+        true
+    }
     fn render(
         &mut self,
         context: &mut GraphicsContext,
@@ -84,7 +94,7 @@ impl RenderPath for NoOpRenderPath {
         }]);
         Ok(RenderPathResult {
             cmd_buffer: cmd_buffer.finish(),
-            backbuffer: Some(backbuffer)
+            backbuffer: Some(backbuffer),
         })
     }
 }

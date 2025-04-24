@@ -82,11 +82,7 @@ impl Frustum {
             corners[3] - corners[0],
         ];
         let center = corners[0] + 0.5f32 * (axes[0] + axes[1] + axes[2]);
-        let extents = Vec3::new(
-            axes[0].length(),
-            axes[1].length(),
-            axes[2].length(),
-        );
+        let extents = Vec3::new(axes[0].length(), axes[1].length(), axes[2].length());
         let normalized_axes = [
             axes[0] / extents.x,
             axes[1] / extents.y,

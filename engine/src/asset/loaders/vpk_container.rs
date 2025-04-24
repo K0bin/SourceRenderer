@@ -38,7 +38,8 @@ pub fn new_vpk_container(
     let path = asset_file.path.clone();
 
     Package::read(&path, asset_file, move |path| {
-        asset_manager.load_file(path)
+        asset_manager
+            .load_file(path)
             .ok_or_else(|| IOError::new(ErrorKind::NotFound, "File not found"))
     })
     .map(|package| Box::new(VPKContainer { package }) as Box<dyn AssetContainer>)

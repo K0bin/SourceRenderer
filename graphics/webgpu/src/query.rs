@@ -1,5 +1,8 @@
-use sourcerenderer_core::{atomic_refcell::{AtomicRef, AtomicRefCell}, gpu};
-use web_sys::{GpuDevice, GpuQuerySet, GpuQueryType, GpuQuerySetDescriptor};
+use sourcerenderer_core::{
+    atomic_refcell::{AtomicRef, AtomicRefCell},
+    gpu,
+};
+use web_sys::{GpuDevice, GpuQuerySet, GpuQuerySetDescriptor, GpuQueryType};
 
 pub struct WebGPUQueryPool {
     device: GpuDevice,
@@ -14,7 +17,7 @@ impl WebGPUQueryPool {
         Self {
             device: device.clone(),
             descriptor,
-            query_set: AtomicRefCell::new(query_set)
+            query_set: AtomicRefCell::new(query_set),
         }
     }
 

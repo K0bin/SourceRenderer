@@ -1,15 +1,28 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use crate::Mutex;
 
 use log::trace;
 use smallvec::SmallVec;
 
 use super::*;
 use crate::asset::{
-    AssetData, AssetHandle, AssetLoadPriority, AssetManager, AssetType, MaterialData, MaterialHandle, MaterialValue, MeshData, ModelData, ShaderData, ShaderHandle, TextureData, TextureHandle
+    AssetData,
+    AssetHandle,
+    AssetLoadPriority,
+    AssetManager,
+    AssetType,
+    MaterialData,
+    MaterialHandle,
+    MaterialValue,
+    MeshData,
+    ModelData,
+    ShaderData,
+    ShaderHandle,
+    TextureData,
+    TextureHandle,
 };
 use crate::graphics::*;
+use crate::Mutex;
 
 struct DelayedAsset {
     fence: SharedFenceValuePair,
@@ -27,12 +40,20 @@ impl AssetIntegrator {
     pub(crate) fn new(device: &Arc<crate::graphics::Device>) -> Self {
         let vertex_buffer = AssetBuffer::new(
             device,
-            if cfg!(not(target_arch = "wasm32")) { AssetBuffer::SIZE_BIG } else { 64 },
+            if cfg!(not(target_arch = "wasm32")) {
+                AssetBuffer::SIZE_BIG
+            } else {
+                64
+            },
             BufferUsage::VERTEX | BufferUsage::COPY_DST | BufferUsage::STORAGE,
         );
         let index_buffer = AssetBuffer::new(
             device,
-            if cfg!(not(target_arch = "wasm32")) { AssetBuffer::SIZE_SMALL } else { 64 },
+            if cfg!(not(target_arch = "wasm32")) {
+                AssetBuffer::SIZE_SMALL
+            } else {
+                64
+            },
             BufferUsage::INDEX | BufferUsage::COPY_DST | BufferUsage::STORAGE,
         );
 
@@ -52,17 +73,24 @@ impl AssetIntegrator {
         shader_manager: &ShaderManager,
         handle: T,
         asset_data: AssetData,
-        priority: AssetLoadPriority
+        priority: AssetLoadPriority,
     ) -> Option<RendererAssetWithHandle> {
         let handle: AssetHandle = handle.into();
-        trace!("Integrating asset: {:?} {:?}", asset_data.asset_type(), handle);
+        trace!(
+            "Integrating asset: {:?} {:?}",
+            asset_data.asset_type(),
+            handle
+        );
         match asset_data {
             AssetData::Texture(texture_data) => {
-                let (renderer_texture, fence) = self.integrate_texture(handle.into(), priority, texture_data);
-                let renderer_texture_with_handle = RendererAssetWithHandle::Texture(handle.into(), renderer_texture);
+                let (renderer_texture, fence) =
+                    self.integrate_texture(handle.into(), priority, texture_data);
+                let renderer_texture_with_handle =
+                    RendererAssetWithHandle::Texture(handle.into(), renderer_texture);
 
                 if let Some(fence) = fence {
-                    let mut queue: crate::MutexGuard<'_, Vec<DelayedAsset>> = self.asset_queue.lock().unwrap();
+                    let mut queue: crate::MutexGuard<'_, Vec<DelayedAsset>> =
+                        self.asset_queue.lock().unwrap();
                     queue.push(DelayedAsset {
                         fence,
                         asset: renderer_texture_with_handle,
@@ -71,16 +99,24 @@ impl AssetIntegrator {
                 } else {
                     Some(renderer_texture_with_handle)
                 }
-            },
-            AssetData::Mesh(mesh_data) =>
-                Some(RendererAssetWithHandle::Mesh(handle.into(), self.integrate_mesh(mesh_data))),
-            AssetData::Model(model_data) =>
-                Some(RendererAssetWithHandle::Model(handle.into(), self.integrate_model(assets.asset_manager(), model_data))),
-            AssetData::Material(material_data) =>
-                Some(RendererAssetWithHandle::Material(handle.into(), self.integrate_material(assets.asset_manager(), material_data))),
-            AssetData::Shader(shader_data) =>
-                Some(RendererAssetWithHandle::Shader(handle.into(), self.integrate_shader(assets, shader_manager, handle.into(), shader_data))),
-            _ => panic!("Asset type is not a renderer asset")
+            }
+            AssetData::Mesh(mesh_data) => Some(RendererAssetWithHandle::Mesh(
+                handle.into(),
+                self.integrate_mesh(mesh_data),
+            )),
+            AssetData::Model(model_data) => Some(RendererAssetWithHandle::Model(
+                handle.into(),
+                self.integrate_model(assets.asset_manager(), model_data),
+            )),
+            AssetData::Material(material_data) => Some(RendererAssetWithHandle::Material(
+                handle.into(),
+                self.integrate_material(assets.asset_manager(), material_data),
+            )),
+            AssetData::Shader(shader_data) => Some(RendererAssetWithHandle::Shader(
+                handle.into(),
+                self.integrate_shader(assets, shader_manager, handle.into(), shader_data),
+            )),
+            _ => panic!("Asset type is not a renderer asset"),
         }
     }
 
@@ -88,9 +124,10 @@ impl AssetIntegrator {
         &self,
         handle: TextureHandle,
         priority: AssetLoadPriority,
-        texture_data: TextureData
+        texture_data: TextureData,
     ) -> (RendererTexture, Option<SharedFenceValuePair>) {
-        let (view, fence) = self.upload_texture(handle, texture_data, priority == AssetLoadPriority::Low);
+        let (view, fence) =
+            self.upload_texture(handle, texture_data, priority == AssetLoadPriority::Low);
         let bindless_index = if self.device.supports_bindless() {
             self.device.insert_texture_into_bindless_heap(&view)
         } else {
@@ -103,37 +140,43 @@ impl AssetIntegrator {
         (renderer_texture, fence)
     }
 
-    fn integrate_mesh(
-        &self,
-        mesh: MeshData
-    ) -> RendererMesh {
+    fn integrate_mesh(&self, mesh: MeshData) -> RendererMesh {
         if cfg!(target_arch = "wasm32") {
             // WebGPU can't do multi draw indirect or bindless anyway and likely prefers having single buffer objects per mesh.
 
             let mut buffer_usage = BufferUsage::VERTEX | BufferUsage::INITIAL_COPY;
-            let mut buffer_size = align_up(std::mem::size_of_val(&mesh.vertices[..]), std::mem::size_of::<crate::asset::Vertex>());
+            let mut buffer_size = align_up(
+                std::mem::size_of_val(&mesh.vertices[..]),
+                std::mem::size_of::<crate::asset::Vertex>(),
+            );
             if let Some(indices) = mesh.indices.as_ref() {
-                buffer_size += align_up(std::mem::size_of_val(&indices[..]), std::mem::size_of::<u32>());
+                buffer_size += align_up(
+                    std::mem::size_of_val(&indices[..]),
+                    std::mem::size_of::<u32>(),
+                );
                 buffer_usage |= BufferUsage::INDEX;
             };
             let buffer = AssetBuffer::new(&self.device, buffer_size as u32, buffer_usage);
-            let vertex_buffer = buffer.get_slice(std::mem::size_of_val(&mesh.vertices[..]), std::mem::size_of::<crate::asset::Vertex>());
-            self.device.init_buffer(
-                &mesh.vertices[..],
-                vertex_buffer.buffer(),
-                vertex_buffer.offset() as u64
-            ).unwrap();
+            let vertex_buffer = buffer.get_slice(
+                std::mem::size_of_val(&mesh.vertices[..]),
+                std::mem::size_of::<crate::asset::Vertex>(),
+            );
+            self.device
+                .init_buffer(
+                    &mesh.vertices[..],
+                    vertex_buffer.buffer(),
+                    vertex_buffer.offset() as u64,
+                )
+                .unwrap();
 
             let index_buffer = mesh.indices.as_ref().map(|indices| {
                 let ib_slice = buffer.get_slice(
                     std::mem::size_of_val(&indices[..]),
                     std::mem::size_of::<u32>(),
                 );
-                self.device.init_buffer(
-                    &indices,
-                    ib_slice.buffer(),
-                    ib_slice.offset() as u64,
-                ).unwrap();
+                self.device
+                    .init_buffer(&indices, ib_slice.buffer(), ib_slice.offset() as u64)
+                    .unwrap();
                 ib_slice
             });
             return RendererMesh {
@@ -151,22 +194,22 @@ impl AssetIntegrator {
             std::mem::size_of_val(&mesh.vertices[..]),
             std::mem::size_of::<crate::asset::Vertex>(),
         ); // FIXME: hardcoded vertex size
-        self.device.init_buffer(
-            &mesh.vertices[..],
-            vertex_buffer.buffer(),
-            vertex_buffer.offset() as u64
-        ).unwrap();
+        self.device
+            .init_buffer(
+                &mesh.vertices[..],
+                vertex_buffer.buffer(),
+                vertex_buffer.offset() as u64,
+            )
+            .unwrap();
 
         let index_buffer = mesh.indices.as_ref().map(|indices| {
             let buffer = self.index_buffer.get_slice(
                 std::mem::size_of_val(&indices[..]),
                 std::mem::size_of::<u32>(),
             );
-            self.device.init_buffer(
-                &indices,
-                buffer.buffer(),
-                buffer.offset() as u64,
-            ).unwrap();
+            self.device
+                .init_buffer(&indices, buffer.buffer(), buffer.offset() as u64)
+                .unwrap();
             buffer
         });
 
@@ -184,29 +227,36 @@ impl AssetIntegrator {
         handle: TextureHandle,
         texture: TextureData,
         do_async: bool,
-    ) -> (
-        Arc<TextureView>,
-        Option<SharedFenceValuePair>
-    ) {
+    ) -> (Arc<TextureView>, Option<SharedFenceValuePair>) {
         let name = format!("{:?}", handle);
         let gpu_texture = self
             .device
-            .create_texture(&texture.info, Some(&name)).unwrap();
+            .create_texture(&texture.info, Some(&name))
+            .unwrap();
         let subresources = texture.info.array_length * texture.info.mip_levels;
         let mut fence = Option::<SharedFenceValuePair>::None;
         for subresource in 0..subresources {
             let mip_level = subresource % texture.info.mip_levels;
             let array_index = subresource / texture.info.mip_levels;
             if do_async {
-                fence = self.device.init_texture_async(
-                    &texture.data[subresource as usize][..],
-                    &gpu_texture,
-                    mip_level,
-                    array_index
-                ).unwrap();
+                fence = self
+                    .device
+                    .init_texture_async(
+                        &texture.data[subresource as usize][..],
+                        &gpu_texture,
+                        mip_level,
+                        array_index,
+                    )
+                    .unwrap();
             } else {
                 self.device
-                    .init_texture(&texture.data[subresource as usize][..], &gpu_texture, mip_level, array_index).unwrap();
+                    .init_texture(
+                        &texture.data[subresource as usize][..],
+                        &gpu_texture,
+                        mip_level,
+                        array_index,
+                    )
+                    .unwrap();
             }
         }
         let view = self.device.create_texture_view(
@@ -234,8 +284,12 @@ impl AssetIntegrator {
         for (key, value) in &material.properties {
             match value {
                 MaterialValue::Texture(path) => {
-                    let texture_handle = asset_manager.get_or_reserve_handle(path, AssetType::Texture);
-                    properties.insert(key.to_string(), RendererMaterialValue::Texture(texture_handle.into()));
+                    let texture_handle =
+                        asset_manager.get_or_reserve_handle(path, AssetType::Texture);
+                    properties.insert(
+                        key.to_string(),
+                        RendererMaterialValue::Texture(texture_handle.into()),
+                    );
                 }
                 MaterialValue::Float(val) => {
                     properties.insert(key.to_string(), RendererMaterialValue::Float(*val));
@@ -255,14 +309,15 @@ impl AssetIntegrator {
     fn integrate_model(
         &self,
         asset_manager: &Arc<AssetManager>,
-        model: ModelData
+        model: ModelData,
     ) -> RendererModel {
         let mesh_handle = asset_manager.get_or_reserve_handle(&model.mesh_path, AssetType::Mesh);
 
         let mut renderer_materials =
             SmallVec::<[MaterialHandle; 16]>::with_capacity(model.material_paths.len());
         for material_path in &model.material_paths {
-            let material_handle = asset_manager.get_or_reserve_handle(material_path, AssetType::Material);
+            let material_handle =
+                asset_manager.get_or_reserve_handle(material_path, AssetType::Material);
             renderer_materials.push(material_handle.into());
         }
 
@@ -274,7 +329,7 @@ impl AssetIntegrator {
         assets: &RendererAssetsReadOnly,
         shader_manager: &ShaderManager,
         handle: ShaderHandle,
-        shader: ShaderData
+        shader: ShaderData,
     ) -> RendererShader {
         let name = format!("{:?}", handle);
         let shader = Arc::new(self.device.create_shader(&shader, Some(&name)));
@@ -285,7 +340,7 @@ impl AssetIntegrator {
     pub(super) fn flush(
         &self,
         shader_manager: &ShaderManager,
-    ) -> SmallVec::<[RendererAssetWithHandle; 2]> {
+    ) -> SmallVec<[RendererAssetWithHandle; 2]> {
         let mut retained_delayed_assets = SmallVec::<[DelayedAsset; 2]>::new();
         let mut ready_delayed_assets = SmallVec::<[RendererAssetWithHandle; 2]>::new();
         {

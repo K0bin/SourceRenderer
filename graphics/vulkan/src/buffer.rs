@@ -1,18 +1,23 @@
-use std::{
-    ffi::{CString, c_void},
-    hash::{
-        Hash,
-        Hasher,
-    },
-    sync::Arc,
+use std::ffi::{
+    c_void,
+    CString,
 };
+use std::hash::{
+    Hash,
+    Hasher,
+};
+use std::sync::Arc;
 
 use ash::vk::{
     self,
     Handle as _,
 };
 use smallvec::SmallVec;
-use sourcerenderer_core::{align_down_64, align_up_64, gpu};
+use sourcerenderer_core::{
+    align_down_64,
+    align_up_64,
+    gpu,
+};
 
 use super::*;
 
@@ -40,7 +45,9 @@ impl VkBuffer {
     ) -> Result<Self, gpu::OutOfMemoryError> {
         let mut queue_families = SmallVec::<[u32; 3]>::new();
         let mut sharing_mode = vk::SharingMode::EXCLUSIVE;
-        if info.sharing_mode == gpu::QueueSharingMode::Concurrent && (device.transfer_queue_info.is_some() || device.compute_queue_info.is_some()) {
+        if info.sharing_mode == gpu::QueueSharingMode::Concurrent
+            && (device.transfer_queue_info.is_some() || device.compute_queue_info.is_some())
+        {
             sharing_mode = vk::SharingMode::CONCURRENT;
             queue_families.push(device.graphics_queue_info.queue_family_index as u32);
             if let Some(info) = device.transfer_queue_info.as_ref() {
@@ -53,10 +60,7 @@ impl VkBuffer {
 
         let buffer_info = vk::BufferCreateInfo {
             size: info.size as u64,
-            usage: buffer_usage_to_vk(
-                info.usage,
-                device.rt.is_some(),
-            ),
+            usage: buffer_usage_to_vk(info.usage, device.rt.is_some()),
             sharing_mode,
             p_queue_family_indices: queue_families.as_ptr(),
             queue_family_index_count: queue_families.len() as u32,
@@ -64,7 +68,9 @@ impl VkBuffer {
         };
         let buffer_res = device.create_buffer(&buffer_info, None);
         if let Err(e) = buffer_res {
-            if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
+            if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
+                || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
+            {
                 return Err(gpu::OutOfMemoryError {});
             }
         }
@@ -77,16 +83,17 @@ impl VkBuffer {
         let mut is_memory_owned = false;
 
         match memory {
-            ResourceMemory::Dedicated {
-                memory_type_index
-            } => {
+            ResourceMemory::Dedicated { memory_type_index } => {
                 let requirements_info = vk::BufferMemoryRequirementsInfo2 {
                     buffer: buffer,
                     ..Default::default()
                 };
                 let mut requirements = vk::MemoryRequirements2::default();
                 device.get_buffer_memory_requirements2(&requirements_info, &mut requirements);
-                assert!((requirements.memory_requirements.memory_type_bits & (1 << memory_type_index)) != 0);
+                assert!(
+                    (requirements.memory_requirements.memory_type_bits & (1 << memory_type_index))
+                        != 0
+                );
 
                 let dedicated_alloc = vk::MemoryDedicatedAllocateInfo {
                     buffer: buffer,
@@ -95,7 +102,8 @@ impl VkBuffer {
                 let mut flags_info = vk::MemoryAllocateFlagsInfo {
                     flags: vk::MemoryAllocateFlags::DEVICE_ADDRESS,
                     device_mask: 0u32,
-                    p_next: &dedicated_alloc as *const vk::MemoryDedicatedAllocateInfo as *const c_void,
+                    p_next: &dedicated_alloc as *const vk::MemoryDedicatedAllocateInfo
+                        as *const c_void,
                     ..Default::default()
                 };
                 if device.features_12.buffer_device_address == vk::FALSE {
@@ -107,59 +115,73 @@ impl VkBuffer {
                     p_next: &flags_info as *const vk::MemoryAllocateFlagsInfo as *const c_void,
                     ..Default::default()
                 };
-                let memory_result: Result<vk::DeviceMemory, vk::Result> = device.allocate_memory(&memory_info, None);
+                let memory_result: Result<vk::DeviceMemory, vk::Result> =
+                    device.allocate_memory(&memory_info, None);
                 if let Err(e) = memory_result {
-                    if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
+                    if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
+                        || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
+                    {
                         return Err(gpu::OutOfMemoryError {});
                     }
                 }
                 vk_memory = memory_result.unwrap();
 
-                let bind_result = device.bind_buffer_memory2(&[
-                    vk::BindBufferMemoryInfo {
-                        buffer,
-                        memory: vk_memory,
-                        memory_offset: 0u64,
-                        ..Default::default()
-                    }
-                ]);
+                let bind_result = device.bind_buffer_memory2(&[vk::BindBufferMemoryInfo {
+                    buffer,
+                    memory: vk_memory,
+                    memory_offset: 0u64,
+                    ..Default::default()
+                }]);
                 if let Err(e) = bind_result {
-                    if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
+                    if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
+                        || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
+                    {
                         return Err(gpu::OutOfMemoryError {});
                     }
                 }
 
                 let mut memory_info = vk::PhysicalDeviceMemoryProperties2::default();
-                device.instance.get_physical_device_memory_properties2(device.physical_device, &mut memory_info);
-                let memory_type_info = &memory_info.memory_properties.memory_types[memory_type_index as usize];
-                let is_host_visible = memory_type_info.property_flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE);
-                is_host_coherent = memory_type_info.property_flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT);
+                device.instance.get_physical_device_memory_properties2(
+                    device.physical_device,
+                    &mut memory_info,
+                );
+                let memory_type_info =
+                    &memory_info.memory_properties.memory_types[memory_type_index as usize];
+                let is_host_visible = memory_type_info
+                    .property_flags
+                    .contains(vk::MemoryPropertyFlags::HOST_VISIBLE);
+                is_host_coherent = memory_type_info.property_flags.contains(
+                    vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+                );
 
                 if is_host_visible {
-                    map_ptr = Some(device.map_memory(vk_memory, 0, info.size, vk::MemoryMapFlags::empty()).unwrap());
+                    map_ptr = Some(
+                        device
+                            .map_memory(vk_memory, 0, info.size, vk::MemoryMapFlags::empty())
+                            .unwrap(),
+                    );
                 }
                 is_memory_owned = true;
             }
 
-            ResourceMemory::Suballocated {
-                memory,
-                offset
-            } => {
-                let bind_result = device.bind_buffer_memory2(&[
-                    vk::BindBufferMemoryInfo {
-                        buffer,
-                        memory: memory.handle(),
-                        memory_offset: offset,
-                        ..Default::default()
-                    }
-                ]);
+            ResourceMemory::Suballocated { memory, offset } => {
+                let bind_result = device.bind_buffer_memory2(&[vk::BindBufferMemoryInfo {
+                    buffer,
+                    memory: memory.handle(),
+                    memory_offset: offset,
+                    ..Default::default()
+                }]);
                 if let Err(e) = bind_result {
-                    if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
+                    if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
+                        || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
+                    {
                         return Err(gpu::OutOfMemoryError {});
                     }
                 }
 
-                is_host_coherent = memory.properties().contains(vk::MemoryPropertyFlags::HOST_VISIBLE);
+                is_host_coherent = memory
+                    .properties()
+                    .contains(vk::MemoryPropertyFlags::HOST_VISIBLE);
 
                 map_ptr = memory.map_ptr(offset);
                 suballocation_offset = offset;
@@ -171,14 +193,12 @@ impl VkBuffer {
             if let Some(debug_utils) = device.debug_utils.as_ref() {
                 let name_cstring = CString::new(name).unwrap();
                 debug_utils
-                    .set_debug_utils_object_name(
-                        &vk::DebugUtilsObjectNameInfoEXT {
-                            object_type: vk::ObjectType::BUFFER,
-                            object_handle: buffer.as_raw(),
-                            p_object_name: name_cstring.as_ptr(),
-                            ..Default::default()
-                        },
-                    )
+                    .set_debug_utils_object_name(&vk::DebugUtilsObjectNameInfoEXT {
+                        object_type: vk::ObjectType::BUFFER,
+                        object_handle: buffer.as_raw(),
+                        p_object_name: name_cstring.as_ptr(),
+                        ..Default::default()
+                    })
                     .unwrap();
             }
         }
@@ -206,7 +226,7 @@ impl VkBuffer {
             memory_offset: suballocation_offset,
             memory: vk_memory,
             is_coherent: is_host_coherent,
-            is_memory_owned
+            is_memory_owned,
         })
     }
 
@@ -222,8 +242,7 @@ impl VkBuffer {
 
     #[inline(always)]
     pub fn va_offset(&self, offset: u64) -> Option<vk::DeviceAddress> {
-        self.va
-            .map(|va| va + offset as vk::DeviceSize)
+        self.va.map(|va| va + offset as vk::DeviceSize)
     }
 }
 
@@ -264,16 +283,24 @@ impl gpu::Buffer for VkBuffer {
     unsafe fn map(&self, offset: u64, length: u64, invalidate: bool) -> Option<*mut c_void> {
         let map_ptr = self.map_ptr?;
         if invalidate && !self.is_coherent {
-            let aligned_offset = align_down_64(offset + self.memory_offset, self.device.properties.limits.non_coherent_atom_size as u64);
-            let aligned_end = align_up_64((offset + length).min(self.info.size), self.device.properties.limits.non_coherent_atom_size as u64);
+            let aligned_offset = align_down_64(
+                offset + self.memory_offset,
+                self.device.properties.limits.non_coherent_atom_size as u64,
+            );
+            let aligned_end = align_up_64(
+                (offset + length).min(self.info.size),
+                self.device.properties.limits.non_coherent_atom_size as u64,
+            );
             let aligned_length = aligned_end - aligned_offset;
 
-            self.device.invalidate_mapped_memory_ranges(&[vk::MappedMemoryRange {
-                memory: self.memory,
-                offset: aligned_offset,
-                size: aligned_length,
-                ..Default::default()
-            }]).unwrap();
+            self.device
+                .invalidate_mapped_memory_ranges(&[vk::MappedMemoryRange {
+                    memory: self.memory,
+                    offset: aligned_offset,
+                    size: aligned_length,
+                    ..Default::default()
+                }])
+                .unwrap();
         }
         Some(map_ptr.add(offset as usize))
     }
@@ -283,16 +310,24 @@ impl gpu::Buffer for VkBuffer {
             return;
         }
 
-        let aligned_offset = align_down_64(offset + self.memory_offset, self.device.properties.limits.non_coherent_atom_size as u64);
-        let aligned_end = align_up_64((offset + length).min(self.info.size), self.device.properties.limits.non_coherent_atom_size as u64);
+        let aligned_offset = align_down_64(
+            offset + self.memory_offset,
+            self.device.properties.limits.non_coherent_atom_size as u64,
+        );
+        let aligned_end = align_up_64(
+            (offset + length).min(self.info.size),
+            self.device.properties.limits.non_coherent_atom_size as u64,
+        );
         let aligned_length = aligned_end - aligned_offset;
 
-        self.device.flush_mapped_memory_ranges(&[vk::MappedMemoryRange {
-            memory: self.memory,
-            offset: aligned_offset,
-            size: aligned_length,
-            ..Default::default()
-        }]).unwrap();
+        self.device
+            .flush_mapped_memory_ranges(&[vk::MappedMemoryRange {
+                memory: self.memory,
+                offset: aligned_offset,
+                size: aligned_length,
+                ..Default::default()
+            }])
+            .unwrap();
     }
 }
 

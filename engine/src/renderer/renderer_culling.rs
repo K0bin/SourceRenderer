@@ -1,11 +1,19 @@
 use bevy_tasks::ParallelSlice;
 use bitset_core::BitSet;
 use smallvec::SmallVec;
-use sourcerenderer_core::{Matrix4, Vec3};
+use sourcerenderer_core::{
+    Matrix4,
+    Vec3,
+};
 
-use crate::{math::{BoundingBox, Frustum}, renderer::DrawablePart};
-
-use super::{asset::RendererAssetsReadOnly, drawable::RendererStaticDrawable, renderer_scene::RendererScene};
+use super::asset::RendererAssetsReadOnly;
+use super::drawable::RendererStaticDrawable;
+use super::renderer_scene::RendererScene;
+use crate::math::{
+    BoundingBox,
+    Frustum,
+};
+use crate::renderer::DrawablePart;
 
 const CHUNK_SIZE: usize = 64;
 
@@ -43,7 +51,6 @@ pub(crate) fn update_visibility(scene: &mut RendererScene, assets: &RendererAsse
         );
         let camera_matrix = view_mut.view_matrix;
         let camera_position = view_mut.camera_position;
-
 
         let map_func = |chunk_index: usize, chunk: &[RendererStaticDrawable]| {
             let mut chunk_visible_parts = SmallVec::<[DrawablePart; CHUNK_SIZE]>::new();
@@ -84,8 +91,8 @@ pub(crate) fn update_visibility(scene: &mut RendererScene, assets: &RendererAsse
                     bb_scale.x = bb_scale.x.max(0.4f32);
                     bb_scale.y = bb_scale.y.max(0.4f32);
                     bb_scale.z = bb_scale.z.max(0.4f32);
-                    let bb_transform = Matrix4::from_translation(bb_translation)
-                        * Matrix4::from_scale(bb_scale);
+                    let bb_transform =
+                        Matrix4::from_translation(bb_translation) * Matrix4::from_scale(bb_scale);
                     let transformed_bb = BoundingBox::new(
                         Vec3::new(-0.5f32, -0.5f32, -0.5f32),
                         Vec3::new(0.5f32, 0.5f32, 0.5f32),
@@ -123,13 +130,15 @@ pub(crate) fn update_visibility(scene: &mut RendererScene, assets: &RendererAsse
         };
 
         #[allow(unused_mut)]
-        let mut iter_func = |(chunk_index, (chunk_visible_parts, visible_drawables)): (usize, &(SmallVec<[DrawablePart; 64]>, [u32; 2]))| {
+        let mut iter_func = |(chunk_index, (chunk_visible_parts, visible_drawables)): (
+            usize,
+            &(SmallVec<[DrawablePart; 64]>, [u32; 2]),
+        )| {
             let global_drawable_bit_offset = chunk_index * visible_drawables.len();
             let global_drawable_bit_end = ((chunk_index + 1) * visible_drawables.len())
                 .min(visible_drawables_bitset.len() - 1);
             let slice_len = global_drawable_bit_end - global_drawable_bit_offset + 1;
-            visible_drawables_bitset
-                [global_drawable_bit_offset..global_drawable_bit_end]
+            visible_drawables_bitset[global_drawable_bit_offset..global_drawable_bit_end]
                 .copy_from_slice(&visible_drawables[..(slice_len - 1)]);
 
             visible_parts.extend_from_slice(&chunk_visible_parts[..]);
@@ -146,16 +155,13 @@ pub(crate) fn update_visibility(scene: &mut RendererScene, assets: &RendererAsse
         }
 
         #[cfg(target_arch = "wasm32")]
-        static_meshes.chunks(CHUNK_SIZE)
+        static_meshes
+            .chunks(CHUNK_SIZE)
             .into_iter()
             .enumerate()
-            .map(|(index, chunk)| {
-                map_func(index, chunk)
-            })
+            .map(|(index, chunk)| map_func(index, chunk))
             .enumerate()
-            .for_each(|(chunk_index, tuple)| {
-                iter_func((chunk_index, &(tuple)))
-            });
+            .for_each(|(chunk_index, tuple)| iter_func((chunk_index, &(tuple))));
 
         view_mut.drawable_parts = visible_parts;
         view_mut.visible_drawables_bitset = visible_drawables_bitset;

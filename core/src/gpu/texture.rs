@@ -24,144 +24,142 @@ bitflags! {
 }
 
 impl TextureUsage {
-  pub fn gpu_writable(&self) -> bool {
-    self.intersects(Self::GPU_WRITABLE)
-  }
+    pub fn gpu_writable(&self) -> bool {
+        self.intersects(Self::GPU_WRITABLE)
+    }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum TextureLayout {
-  Undefined,
-  General,
-  Sampled,
-  Present,
-  RenderTarget,
-  DepthStencilRead,
-  DepthStencilReadWrite,
-  Storage,
-  CopySrc,
-  CopyDst,
-  ResolveSrc,
-  ResolveDst
+    Undefined,
+    General,
+    Sampled,
+    Present,
+    RenderTarget,
+    DepthStencilRead,
+    DepthStencilReadWrite,
+    Storage,
+    CopySrc,
+    CopyDst,
+    ResolveSrc,
+    ResolveDst,
 }
 
 impl Default for TextureLayout {
-  fn default() -> Self {
-    Self::Undefined
-  }
+    fn default() -> Self {
+        Self::Undefined
+    }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum TextureDimension {
-  Dim1D,
-  Dim2D,
-  Dim3D,
-  Dim1DArray,
-  Dim2DArray,
-  Cube,
-  CubeArray
+    Dim1D,
+    Dim2D,
+    Dim3D,
+    Dim1DArray,
+    Dim2DArray,
+    Cube,
+    CubeArray,
 }
 
 impl TextureDimension {
-  pub fn has_y_dimension(&self) -> bool {
-    match self {
-      Self::Dim1D | Self::Dim1DArray => false,
-      _ => true
+    pub fn has_y_dimension(&self) -> bool {
+        match self {
+            Self::Dim1D | Self::Dim1DArray => false,
+            _ => true,
+        }
     }
-  }
 
-  pub fn has_z_dimension(&self) -> bool {
-    match self {
-      Self::Dim3D => true,
-      _ => false
+    pub fn has_z_dimension(&self) -> bool {
+        match self {
+            Self::Dim3D => true,
+            _ => false,
+        }
     }
-  }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct TextureInfo {
-  pub dimension: TextureDimension,
-  pub format: Format,
-  pub width: u32,
-  pub height: u32,
-  pub depth: u32,
-  pub mip_levels: u32,
-  pub array_length: u32,
-  pub samples: SampleCount,
-  pub usage: TextureUsage,
-  pub supports_srgb: bool
+    pub dimension: TextureDimension,
+    pub format: Format,
+    pub width: u32,
+    pub height: u32,
+    pub depth: u32,
+    pub mip_levels: u32,
+    pub array_length: u32,
+    pub samples: SampleCount,
+    pub usage: TextureUsage,
+    pub supports_srgb: bool,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Filter {
-  Linear,
-  Nearest,
-  Min,
-  Max,
+    Linear,
+    Nearest,
+    Min,
+    Max,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum AddressMode {
-  Repeat,
-  MirroredRepeat,
-  ClampToEdge,
-  ClampToBorder
+    Repeat,
+    MirroredRepeat,
+    ClampToEdge,
+    ClampToBorder,
 }
-
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct TextureViewInfo {
-  pub base_mip_level: u32,
-  pub mip_level_length: u32,
-  pub base_array_layer: u32,
-  pub array_layer_length: u32,
-  pub format: Option<Format>,
+    pub base_mip_level: u32,
+    pub mip_level_length: u32,
+    pub base_array_layer: u32,
+    pub array_layer_length: u32,
+    pub format: Option<Format>,
 }
 
 impl Default for TextureViewInfo {
-  fn default() -> Self {
-    Self {
-      base_mip_level: 0,
-      mip_level_length: 1,
-      base_array_layer: 0,
-      array_layer_length: 1,
-      format: None,
+    fn default() -> Self {
+        Self {
+            base_mip_level: 0,
+            mip_level_length: 1,
+            base_array_layer: 0,
+            array_layer_length: 1,
+            format: None,
+        }
     }
-  }
 }
-
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct TextureSubresource {
-  pub array_layer: u32,
-  pub mip_level: u32
+    pub array_layer: u32,
+    pub mip_level: u32,
 }
 
 #[derive(Clone)]
 pub struct SamplerInfo {
-  pub mag_filter: Filter,
-  pub min_filter: Filter,
-  pub mip_filter: Filter,
-  pub address_mode_u: AddressMode,
-  pub address_mode_v: AddressMode,
-  pub address_mode_w: AddressMode,
-  pub mip_bias: f32,
-  pub max_anisotropy: f32,
-  pub compare_op: Option<CompareFunc>,
-  pub min_lod: f32,
-  pub max_lod: Option<f32>,
+    pub mag_filter: Filter,
+    pub min_filter: Filter,
+    pub mip_filter: Filter,
+    pub address_mode_u: AddressMode,
+    pub address_mode_v: AddressMode,
+    pub address_mode_w: AddressMode,
+    pub mip_bias: f32,
+    pub max_anisotropy: f32,
+    pub compare_op: Option<CompareFunc>,
+    pub min_lod: f32,
+    pub max_lod: Option<f32>,
 }
 
-pub trait Texture : PartialEq + Eq {
-  fn info(&self) -> &TextureInfo;
-  unsafe fn can_be_written_directly(&self) -> bool;
+pub trait Texture: PartialEq + Eq {
+    fn info(&self) -> &TextureInfo;
+    unsafe fn can_be_written_directly(&self) -> bool;
 }
 
-pub trait TextureView : PartialEq + Eq {
-  fn texture_info(&self) -> &TextureInfo;
-  fn info(&self) -> &TextureViewInfo;
+pub trait TextureView: PartialEq + Eq {
+    fn texture_info(&self) -> &TextureInfo;
+    fn info(&self) -> &TextureViewInfo;
 }
 
 pub trait Sampler {
-  fn info(&self) -> &SamplerInfo;
+    fn info(&self) -> &SamplerInfo;
 }

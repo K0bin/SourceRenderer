@@ -1,7 +1,10 @@
-use std::io::{ErrorKind, Result as IOResult, Error as IOError};
+use std::io::{
+    Error as IOError,
+    ErrorKind,
+    Result as IOResult,
+};
 
 use bevy_tasks::futures_lite::io::AsyncRead;
-
 use io_util::PrimitiveReadAsync;
 
 pub struct GlbHeader {
@@ -54,7 +57,10 @@ impl GlbChunkHeader {
             return Err(IOError::new(ErrorKind::Other, "Invalid chunk type"));
         }
 
-        Ok(Self { length, _chunk_type: chunk_type })
+        Ok(Self {
+            length,
+            _chunk_type: chunk_type,
+        })
     }
 
     pub fn size() -> u64 {

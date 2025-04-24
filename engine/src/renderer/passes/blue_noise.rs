@@ -4,8 +4,12 @@ use std::sync::Arc;
 #[allow(deprecated)]
 use image::io::Reader as ImageReader;
 
-use crate::graphics::*;
-use crate::graphics::{Device, SamplerInfo, TextureInfo};
+use crate::graphics::{
+    Device,
+    SamplerInfo,
+    TextureInfo,
+    *,
+};
 
 pub struct BlueNoise {
     frames: [Arc<TextureView>; 8],
@@ -59,21 +63,25 @@ impl BlueNoise {
 
         let dev = device.as_ref() as &crate::graphics::Device;
 
-        let texture = dev.create_texture(
-            &TextureInfo {
-                dimension: TextureDimension::Dim2D,
-                format: Format::RGBA8UNorm,
-                width: 128,
-                height: 128,
-                depth: 1,
-                mip_levels: 1,
-                array_length: 1,
-                samples: SampleCount::Samples1,
-                usage: TextureUsage::INITIAL_COPY | TextureUsage::SAMPLED | TextureUsage::STORAGE,
-                supports_srgb: false,
-            },
-            Some(&format!("STBlueNoise{}", index)),
-        ).unwrap();
+        let texture = dev
+            .create_texture(
+                &TextureInfo {
+                    dimension: TextureDimension::Dim2D,
+                    format: Format::RGBA8UNorm,
+                    width: 128,
+                    height: 128,
+                    depth: 1,
+                    mip_levels: 1,
+                    array_length: 1,
+                    samples: SampleCount::Samples1,
+                    usage: TextureUsage::INITIAL_COPY
+                        | TextureUsage::SAMPLED
+                        | TextureUsage::STORAGE,
+                    supports_srgb: false,
+                },
+                Some(&format!("STBlueNoise{}", index)),
+            )
+            .unwrap();
 
         dev.init_texture(&rgba_data[..], &texture, 0, 0).unwrap();
 

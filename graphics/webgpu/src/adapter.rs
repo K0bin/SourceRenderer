@@ -11,11 +11,16 @@ pub struct WebGPUAdapter {
     debug: bool,
     features: WebGPUFeatures,
     limits: WebGPULimits,
-    adapter_type: gpu::AdapterType
+    adapter_type: gpu::AdapterType,
 }
 
 impl WebGPUAdapter {
-    pub fn new(adapter: GpuAdapter, device: GpuDevice, adapter_type: gpu::AdapterType, debug: bool) -> Self {
+    pub fn new(
+        adapter: GpuAdapter,
+        device: GpuDevice,
+        adapter_type: gpu::AdapterType,
+        debug: bool,
+    ) -> Self {
         let mut features = WebGPUFeatures::empty();
         let js_features = adapter.features();
         if js_features.has("bgra8unorm-storage") {
@@ -75,16 +80,23 @@ impl WebGPUAdapter {
         limits.max_texture_array_layers = js_limits.max_texture_array_layers();
         limits.max_bind_groups = js_limits.max_bind_groups();
         limits.max_bindings_per_bind_groups = js_limits.max_bindings_per_bind_group();
-        limits.max_dynamic_uniform_buffers_per_pipeline_layout = js_limits.max_dynamic_uniform_buffers_per_pipeline_layout();
-        limits.max_dynamic_storage_buffers_per_pipeline_layout = js_limits.max_dynamic_storage_buffers_per_pipeline_layout();
-        limits.max_sampled_textures_per_shader_stage = js_limits.max_sampled_textures_per_shader_stage();
+        limits.max_dynamic_uniform_buffers_per_pipeline_layout =
+            js_limits.max_dynamic_uniform_buffers_per_pipeline_layout();
+        limits.max_dynamic_storage_buffers_per_pipeline_layout =
+            js_limits.max_dynamic_storage_buffers_per_pipeline_layout();
+        limits.max_sampled_textures_per_shader_stage =
+            js_limits.max_sampled_textures_per_shader_stage();
         limits.max_samplers_per_shader_stage = js_limits.max_samplers_per_shader_stage();
-        limits.max_storage_buffers_per_shader_stage = js_limits.max_storage_buffers_per_shader_stage();
-        limits.max_uniform_buffers_per_shader_stage = js_limits.max_uniform_buffers_per_shader_stage();
-        limits.max_storage_textures_per_shader_stage = js_limits.max_storage_textures_per_shader_stage();
+        limits.max_storage_buffers_per_shader_stage =
+            js_limits.max_storage_buffers_per_shader_stage();
+        limits.max_uniform_buffers_per_shader_stage =
+            js_limits.max_uniform_buffers_per_shader_stage();
+        limits.max_storage_textures_per_shader_stage =
+            js_limits.max_storage_textures_per_shader_stage();
         limits.max_uniform_buffer_binding_size = js_limits.max_uniform_buffer_binding_size() as u32;
         limits.max_storage_buffer_binding_size = js_limits.max_storage_buffer_binding_size() as u32;
-        limits.min_uniform_buffer_offset_alignment = js_limits.min_uniform_buffer_offset_alignment();
+        limits.min_uniform_buffer_offset_alignment =
+            js_limits.min_uniform_buffer_offset_alignment();
         limits.max_vertex_buffers = js_limits.max_vertex_buffers();
         limits.max_buffer_size = js_limits.max_buffer_size() as u32;
         limits.max_vertex_attributes = js_limits.max_vertex_attributes();
@@ -92,14 +104,18 @@ impl WebGPUAdapter {
         //limits.max_inter_stage_shader_components = js_limits.max_inter_stage_shader_components(); // missing for some reason
         limits.max_inter_stage_shader_variables = js_limits.max_inter_stage_shader_variables();
         limits.max_color_attachments = js_limits.max_color_attachments();
-        limits.max_color_attachment_bytes_per_sample = js_limits.max_color_attachment_bytes_per_sample();
-        limits.max_color_attachment_bytes_per_sample = js_limits.max_color_attachment_bytes_per_sample();
+        limits.max_color_attachment_bytes_per_sample =
+            js_limits.max_color_attachment_bytes_per_sample();
+        limits.max_color_attachment_bytes_per_sample =
+            js_limits.max_color_attachment_bytes_per_sample();
         limits.max_compute_workgroup_storage_size = js_limits.max_compute_workgroup_storage_size();
-        limits.max_compute_invocations_per_workgroup = js_limits.max_compute_invocations_per_workgroup();
+        limits.max_compute_invocations_per_workgroup =
+            js_limits.max_compute_invocations_per_workgroup();
         limits.max_compute_workgroup_size_x = js_limits.max_compute_workgroup_size_x();
         limits.max_compute_workgroup_size_y = js_limits.max_compute_workgroup_size_y();
         limits.max_compute_workgroup_size_z = js_limits.max_compute_workgroup_size_z();
-        limits.max_compute_workgroups_per_dimension = js_limits.max_compute_workgroups_per_dimension();
+        limits.max_compute_workgroups_per_dimension =
+            js_limits.max_compute_workgroups_per_dimension();
 
         log::info!("Adapter features: {:?}", &features);
         log::info!("Adapter limits: {:?}", &limits);
@@ -110,7 +126,7 @@ impl WebGPUAdapter {
             debug,
             features,
             limits,
-            adapter_type
+            adapter_type,
         }
     }
 }
@@ -121,7 +137,12 @@ impl gpu::Adapter<WebGPUBackend> for WebGPUAdapter {
     }
 
     unsafe fn create_device(&self, _surface: &WebGPUSurface) -> WebGPUDevice {
-        WebGPUDevice::new(self.device.clone(), &self.features, &self.limits, self.debug)
+        WebGPUDevice::new(
+            self.device.clone(),
+            &self.features,
+            &self.limits,
+            self.debug,
+        )
     }
 }
 
@@ -216,7 +237,7 @@ impl Default for WebGPULimits {
             max_compute_workgroup_size_x: 256,
             max_compute_workgroup_size_y: 256,
             max_compute_workgroup_size_z: 64,
-            max_compute_workgroups_per_dimension: 65535
+            max_compute_workgroups_per_dimension: 65535,
         }
     }
 }

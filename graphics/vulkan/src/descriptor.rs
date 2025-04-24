@@ -1,26 +1,23 @@
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    ffi::c_void,
-    hash::{
-        Hash,
-        Hasher,
-    },
-    marker::PhantomData,
-    sync::{
-        Arc,
-        Mutex,
-        MutexGuard,
-    },
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::ffi::c_void;
+use std::hash::{
+    Hash,
+    Hasher,
+};
+use std::marker::PhantomData;
+use std::sync::{
+    Arc,
+    Mutex,
+    MutexGuard,
 };
 
 use ash::vk;
+use bitflags::bitflags;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu;
 
 use super::*;
-
-use bitflags::bitflags;
 
 // TODO: clean up descriptor management
 // TODO: determine descriptor and set counts
@@ -73,7 +70,7 @@ pub(crate) struct VkDescriptorSetLayout {
     binding_infos: SmallVec<[Option<VkDescriptorSetEntryInfo>; DEFAULT_PER_SET_PREALLOCATED_SIZE]>,
     is_empty: bool,
     template: Option<vk::DescriptorUpdateTemplate>,
-    max_used_binding: u32
+    max_used_binding: u32,
 }
 
 impl VkDescriptorSetLayout {
@@ -85,8 +82,9 @@ impl VkDescriptorSetLayout {
         let mut vk_bindings: Vec<vk::DescriptorSetLayoutBinding> = Vec::new();
         let mut vk_binding_flags: Vec<vk::DescriptorBindingFlags> = Vec::new();
         let mut vk_template_entries: Vec<vk::DescriptorUpdateTemplateEntry> = Vec::new();
-        let mut binding_infos: SmallVec<[Option<VkDescriptorSetEntryInfo>; DEFAULT_PER_SET_PREALLOCATED_SIZE]> =
-            SmallVec::with_capacity(bindings.len());
+        let mut binding_infos: SmallVec<
+            [Option<VkDescriptorSetEntryInfo>; DEFAULT_PER_SET_PREALLOCATED_SIZE],
+        > = SmallVec::with_capacity(bindings.len());
 
         let mut max_used_binding = 0u32;
 
@@ -102,7 +100,7 @@ impl VkDescriptorSetLayout {
                 descriptor_type: binding.descriptor_type,
                 stage_flags: binding.shader_stage,
                 p_immutable_samplers: std::ptr::null(),
-                _marker: PhantomData
+                _marker: PhantomData,
             });
             vk_binding_flags.push(binding.flags);
 
@@ -149,7 +147,7 @@ impl VkDescriptorSetLayout {
             pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
             pipeline_layout: vk::PipelineLayout::null(),
             set: 0,
-            _marker: PhantomData
+            _marker: PhantomData,
         };
         let template = if !flags
             .contains(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT)
@@ -166,7 +164,7 @@ impl VkDescriptorSetLayout {
             binding_infos,
             template,
             is_empty: bindings.is_empty(),
-            max_used_binding
+            max_used_binding,
         }
     }
 
@@ -353,19 +351,23 @@ impl VkDescriptorSet {
             .pop()
             .unwrap();
 
-        let mut stored_bindings = SmallVec::<[VkBoundResource; DEFAULT_PER_SET_PREALLOCATED_SIZE]>::default();
+        let mut stored_bindings =
+            SmallVec::<[VkBoundResource; DEFAULT_PER_SET_PREALLOCATED_SIZE]>::default();
         for binding in bindings {
             stored_bindings.push(binding.into());
         }
 
         match Option::<vk::DescriptorUpdateTemplate>::None {
             None => {
-                let mut writes: SmallVec<[vk::WriteDescriptorSet; DEFAULT_PER_SET_PREALLOCATED_SIZE]> =
-                    SmallVec::with_capacity(bindings.len());
-                let mut image_writes: SmallVec<[vk::DescriptorImageInfo; DEFAULT_PER_SET_PREALLOCATED_SIZE]> =
-                    SmallVec::with_capacity(bindings.len());
-                let mut buffer_writes: SmallVec<[vk::DescriptorBufferInfo; DEFAULT_PER_SET_PREALLOCATED_SIZE]> =
-                    SmallVec::with_capacity(bindings.len());
+                let mut writes: SmallVec<
+                    [vk::WriteDescriptorSet; DEFAULT_PER_SET_PREALLOCATED_SIZE],
+                > = SmallVec::with_capacity(bindings.len());
+                let mut image_writes: SmallVec<
+                    [vk::DescriptorImageInfo; DEFAULT_PER_SET_PREALLOCATED_SIZE],
+                > = SmallVec::with_capacity(bindings.len());
+                let mut buffer_writes: SmallVec<
+                    [vk::DescriptorBufferInfo; DEFAULT_PER_SET_PREALLOCATED_SIZE],
+                > = SmallVec::with_capacity(bindings.len());
                 let mut acceleration_structures: SmallVec<[vk::AccelerationStructureKHR; 2]> =
                     Default::default();
                 let mut acceleration_structure_writes: SmallVec<
@@ -975,7 +977,9 @@ pub(crate) enum VkBoundResource {
     SampledTexture(vk::ImageView),
     SampledTextureArray(SmallVec<[vk::ImageView; DEFAULT_DESCRIPTOR_ARRAY_SIZE]>),
     SampledTextureAndSampler(vk::ImageView, vk::Sampler),
-    SampledTextureAndSamplerArray(SmallVec<[(vk::ImageView, vk::Sampler); DEFAULT_DESCRIPTOR_ARRAY_SIZE]>),
+    SampledTextureAndSamplerArray(
+        SmallVec<[(vk::ImageView, vk::Sampler); DEFAULT_DESCRIPTOR_ARRAY_SIZE]>,
+    ),
     Sampler(vk::Sampler),
     AccelerationStructure(vk::AccelerationStructureKHR),
 }
@@ -1335,7 +1339,7 @@ enum CacheMode {
 
 struct DescriptorPools {
     pools: Vec<Arc<VkDescriptorPool>>,
-    next_non_full_pool_index: u32
+    next_non_full_pool_index: u32,
 }
 
 pub(crate) struct VkBindingManager {
@@ -1345,7 +1349,8 @@ pub(crate) struct VkBindingManager {
     device: Arc<RawVkDevice>,
     current_sets: [Option<Arc<VkDescriptorSet>>; gpu::NON_BINDLESS_SET_COUNT as usize],
     dirty: DirtyDescriptorSets,
-    bindings: [[VkBoundResource; gpu::PER_SET_BINDINGS as usize]; gpu::NON_BINDLESS_SET_COUNT as usize],
+    bindings:
+        [[VkBoundResource; gpu::PER_SET_BINDINGS as usize]; gpu::NON_BINDLESS_SET_COUNT as usize],
     transient_cache: RefCell<HashMap<Arc<VkDescriptorSetLayout>, Vec<VkDescriptorSetCacheEntry>>>,
     permanent_cache: RefCell<HashMap<Arc<VkDescriptorSetLayout>, Vec<VkDescriptorSetCacheEntry>>>,
     last_cleanup_frame: u64,
@@ -1362,11 +1367,11 @@ impl VkBindingManager {
             cache_mode,
             transient_pools: RefCell::new(DescriptorPools {
                 pools: vec![transient_pool],
-                next_non_full_pool_index: 0
+                next_non_full_pool_index: 0,
             }),
             permanent_pools: RefCell::new(DescriptorPools {
                 pools: vec![permanent_pool],
-                next_non_full_pool_index: 0
+                next_non_full_pool_index: 0,
             }),
             device: device.clone(),
             current_sets: Default::default(),
@@ -1452,7 +1457,8 @@ impl VkBindingManager {
         let layout = layout_option.unwrap();
 
         let mut set: Option<Arc<VkDescriptorSet>> = None;
-        let bindings = &self.bindings[frequency as usize][..(layout.max_used_binding() + 1) as usize];
+        let bindings =
+            &self.bindings[frequency as usize][..(layout.max_used_binding() + 1) as usize];
         if let Some(current_set) = &self.current_sets[frequency as usize] {
             // This should cover the hottest case.
             if current_set.is_compatible(layout, bindings) {
@@ -1468,7 +1474,7 @@ impl VkBindingManager {
     fn get_descriptor_set_binding_info(
         &self,
         set: Arc<VkDescriptorSet>,
-        bindings: &[VkBoundResource]
+        bindings: &[VkBoundResource],
     ) -> VkDescriptorSetBinding {
         let mut set_binding = VkDescriptorSetBinding {
             set: set.clone(),
@@ -1554,7 +1560,7 @@ impl VkBindingManager {
             };
             let mut new_set = Option::<VkDescriptorSet>::None;
 
-            'pools_iter: for i in (pools.next_non_full_pool_index as usize) .. pools.pools.len() {
+            'pools_iter: for i in (pools.next_non_full_pool_index as usize)..pools.pools.len() {
                 let pool = &pools.pools[i];
                 let set_res = VkDescriptorSet::new(pool, &self.device, layout, transient, bindings);
                 match set_res {
@@ -1575,7 +1581,7 @@ impl VkBindingManager {
                 let pool = Arc::new(VkDescriptorPool::new(&self.device, transient));
                 new_set =
                     VkDescriptorSet::new(&pool, &self.device, layout, transient, bindings).ok();
-                    pools.pools.push(pool);
+                pools.pools.push(pool);
             }
             let new_set = Arc::new(new_set.unwrap());
 
@@ -1604,7 +1610,6 @@ impl VkBindingManager {
         self.dirty |= DirtyDescriptorSets::FRAME;
     }
 
-
     #[allow(unused)]
     #[inline(always)]
     pub fn dirty_sets(&self) -> DirtyDescriptorSets {
@@ -1620,7 +1625,8 @@ impl VkBindingManager {
             return Default::default();
         }
 
-        let mut set_bindings: [Option<VkDescriptorSetBinding>; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
+        let mut set_bindings: [Option<VkDescriptorSetBinding>;
+            gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
         set_bindings[gpu::BindingFrequency::VeryFrequent as usize] =
             self.finish_set(frame, pipeline_layout, gpu::BindingFrequency::VeryFrequent);
         set_bindings[gpu::BindingFrequency::Frame as usize] =

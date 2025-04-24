@@ -1,15 +1,25 @@
 use std::sync::Arc;
 
-use sourcerenderer_core::{Vec4, Matrix4};
+use sourcerenderer_core::{
+    Matrix4,
+    Vec4,
+};
 
-use crate::graphics::GraphicsContext;
-use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
+use crate::graphics::{
+    GraphicsContext,
+    *,
+};
+use crate::renderer::asset::{
+    RendererAssets,
+    RendererAssetsReadOnly,
+};
 use crate::renderer::render_path::{
-    FrameInfo, RenderPath, RenderPathResult, SceneInfo
+    FrameInfo,
+    RenderPath,
+    RenderPathResult,
+    SceneInfo,
 };
 use crate::renderer::renderer_resources::RendererResources;
-
-use crate::graphics::*;
 
 mod geometry;
 
@@ -45,27 +55,31 @@ impl WebRenderer {
         assets: &RendererAssets,
     ) -> Self {
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
-        let geometry_pass = GeometryPass::new(
-            device,
-            assets,
-            swapchain,
-            &mut init_cmd_buffer,
-            resources,
-        );
+        let geometry_pass =
+            GeometryPass::new(device, assets, swapchain, &mut init_cmd_buffer, resources);
 
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
 
-        device.submit(QueueType::Graphics, QueueSubmission {
-            command_buffer: init_cmd_buffer.finish(),
-            wait_fences: &[],
-            signal_fences: &[],
-            acquire_swapchain: None,
-            release_swapchain: None
-        });
+        device.submit(
+            QueueType::Graphics,
+            QueueSubmission {
+                command_buffer: init_cmd_buffer.finish(),
+                wait_fences: &[],
+                signal_fences: &[],
+                acquire_swapchain: None,
+                release_swapchain: None,
+            },
+        );
         let c_device = device.clone();
         let task_pool = bevy_tasks::ComputeTaskPool::get();
-        task_pool.spawn(async move { crate::autoreleasepool(|| { c_device.flush(QueueType::Graphics); }) }).detach();
+        task_pool
+            .spawn(async move {
+                crate::autoreleasepool(|| {
+                    c_device.flush(QueueType::Graphics);
+                })
+            })
+            .detach();
 
         Self {
             geometry: geometry_pass,
@@ -82,11 +96,7 @@ impl RenderPath for WebRenderer {
         bitset.fill(!0u32);
     }
 
-    fn on_swapchain_changed(
-        &mut self,
-        _swapchain: &Swapchain,
-    ) {
-    }
+    fn on_swapchain_changed(&mut self, _swapchain: &Swapchain) {}
 
     fn is_ready(&self, assets: &RendererAssetsReadOnly) -> bool {
         self.geometry.is_ready(&assets)
@@ -99,7 +109,7 @@ impl RenderPath for WebRenderer {
         scene: &SceneInfo,
         _frame_info: &FrameInfo,
         resources: &mut RendererResources,
-        assets: &RendererAssetsReadOnly<'_>
+        assets: &RendererAssetsReadOnly<'_>,
     ) -> Result<RenderPathResult, sourcerenderer_core::gpu::SwapchainError> {
         let backbuffer = swapchain.next_backbuffer()?;
 
@@ -121,7 +131,12 @@ impl RenderPath for WebRenderer {
             fov: main_view.camera_fov
         }], BufferUsage::CONSTANT).unwrap();*/
 
-        let camera_buffer = cmd_buffer.upload_dynamic_data(&[main_view.proj_matrix * main_view.view_matrix], BufferUsage::CONSTANT).unwrap();
+        let camera_buffer = cmd_buffer
+            .upload_dynamic_data(
+                &[main_view.proj_matrix * main_view.view_matrix],
+                BufferUsage::CONSTANT,
+            )
+            .unwrap();
 
         let backbuffer_view = swapchain.backbuffer_view(&backbuffer);
         let backbuffer_handle = swapchain.backbuffer_handle(&backbuffer);
@@ -140,10 +155,9 @@ impl RenderPath for WebRenderer {
 
         return Ok(RenderPathResult {
             cmd_buffer: cmd_buffer.finish(),
-            backbuffer: Some(backbuffer)
+            backbuffer: Some(backbuffer),
         });
     }
 
-    fn set_ui_data(&mut self, _data: crate::ui::UIDrawData) {
-    }
+    fn set_ui_data(&mut self, _data: crate::ui::UIDrawData) {}
 }

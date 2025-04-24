@@ -3,16 +3,17 @@ use std::sync::Arc;
 
 use sourcerenderer_core::Vec2UI;
 
+use crate::graphics::*;
+use crate::renderer::asset::{
+    ComputePipelineHandle,
+    *,
+};
 use crate::renderer::passes::modern::VisibilityBufferPass;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::asset::*;
-use crate::renderer::asset::ComputePipelineHandle;
-
-use crate::graphics::*;
 
 pub struct SsrPass {
     pipeline: ComputePipelineHandle,
@@ -99,10 +100,8 @@ impl SsrPass {
             HistoryResourceEntry::Current,
         );
 
-        let mut ids =
-            Option::<Ref<Arc<TextureView>>>::None;
-        let mut barycentrics =
-            Option::<Ref<Arc<TextureView>>>::None;
+        let mut ids = Option::<Ref<Arc<TextureView>>>::None;
+        let mut barycentrics = Option::<Ref<Arc<TextureView>>>::None;
 
         if visibility_buffer {
             ids = Some(params.resources.access_view(

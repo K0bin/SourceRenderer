@@ -8,7 +8,10 @@ use std::slice;
 use std::sync::Arc;
 
 use sourcerenderer_core::platform::Platform;
-use sourcerenderer_core::{Vec2, Vec3};
+use sourcerenderer_core::{
+    Vec2,
+    Vec3,
+};
 use sourcerenderer_mdl::{
     BodyPart,
     Header,

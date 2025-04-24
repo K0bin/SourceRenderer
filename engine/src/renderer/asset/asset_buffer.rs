@@ -1,7 +1,9 @@
-use std::sync::{atomic::AtomicU64, Arc};
+use std::sync::atomic::AtomicU64;
+use std::sync::Arc;
 
 use smallvec::SmallVec;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
+
 use crate::graphics::*;
 
 const DEBUG: bool = false;
@@ -18,7 +20,7 @@ struct AssetBufferInternal {
     reuse_ranges: AtomicRefCell<Vec<(BufferRange, u32)>>,
 
     debug_offset: AtomicU64,
-    debug_size: u32
+    debug_size: u32,
 }
 
 pub struct AssetBufferSlice {
@@ -38,15 +40,17 @@ impl AssetBuffer {
     pub const SIZE_SMALL: u32 = 64 << 20;
 
     pub fn new(device: &Arc<Device>, size: u32, usage: BufferUsage) -> Self {
-        let buffer = device.create_buffer(
-            &BufferInfo {
-                size: size as u64,
-                usage: usage,
-                sharing_mode: QueueSharingMode::Exclusive
-            },
-            MemoryUsage::GPUMemory,
-            Some("AssetBuffer"),
-        ).expect("Failed to allocate geometry buffer.");
+        let buffer = device
+            .create_buffer(
+                &BufferInfo {
+                    size: size as u64,
+                    usage: usage,
+                    sharing_mode: QueueSharingMode::Exclusive,
+                },
+                MemoryUsage::GPUMemory,
+                Some("AssetBuffer"),
+            )
+            .expect("Failed to allocate geometry buffer.");
         let free_range = BufferRange {
             offset: 0,
             aligned_offset: 0,
@@ -59,14 +63,17 @@ impl AssetBuffer {
                 free_ranges: AtomicRefCell::new(vec![free_range]),
                 reuse_ranges: AtomicRefCell::new(Vec::new()),
                 debug_offset: AtomicU64::new(0u64),
-                debug_size: size as u32
+                debug_size: size as u32,
             }),
         }
     }
 
     pub fn get_slice(&self, length: usize, alignment: usize) -> AssetBufferSlice {
         if DEBUG {
-            let offset = self.internal.debug_offset.fetch_add(length as u64 + alignment as u64, std::sync::atomic::Ordering::SeqCst);
+            let offset = self.internal.debug_offset.fetch_add(
+                length as u64 + alignment as u64,
+                std::sync::atomic::Ordering::SeqCst,
+            );
             let aligned_offset = align_up_64(offset, alignment as u64);
             if aligned_offset + length as u64 > self.internal.debug_size as u64 {
                 panic!("Ran out of space.");

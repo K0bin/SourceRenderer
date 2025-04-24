@@ -1,12 +1,12 @@
-use std::{mem::ManuallyDrop, sync::Arc};
-
-use super::*;
+use std::mem::ManuallyDrop;
+use std::sync::Arc;
 
 use super::gpu::Fence as _;
+use super::*;
 
 pub struct Fence {
     fence: ManuallyDrop<active_gpu_backend::Fence>,
-    destroyer: Arc<DeferredDestroyer>
+    destroyer: Arc<DeferredDestroyer>,
 }
 
 impl Drop for Fence {
@@ -17,11 +17,14 @@ impl Drop for Fence {
 }
 
 impl Fence {
-    pub(super) fn new(device: &active_gpu_backend::Device, destoryer: &Arc<DeferredDestroyer>) -> Self {
-        let fence = unsafe {device.create_fence(true) };
+    pub(super) fn new(
+        device: &active_gpu_backend::Device,
+        destoryer: &Arc<DeferredDestroyer>,
+    ) -> Self {
+        let fence = unsafe { device.create_fence(true) };
         Self {
             fence: ManuallyDrop::new(fence),
-            destroyer: destoryer.clone()
+            destroyer: destoryer.clone(),
         }
     }
 
@@ -46,7 +49,7 @@ impl Fence {
 pub struct SharedFenceValuePairRef<'a> {
     pub fence: &'a Arc<super::Fence>,
     pub value: u64,
-    pub sync_before: BarrierSync
+    pub sync_before: BarrierSync,
 }
 
 impl<'a> SharedFenceValuePairRef<'a> {
@@ -64,7 +67,7 @@ impl<'a> SharedFenceValuePairRef<'a> {
 pub struct SharedFenceValuePair {
     pub fence: Arc<super::Fence>,
     pub value: u64,
-    pub sync_before: BarrierSync
+    pub sync_before: BarrierSync,
 }
 
 impl Clone for SharedFenceValuePair {
@@ -72,7 +75,7 @@ impl Clone for SharedFenceValuePair {
         Self {
             fence: self.fence.clone(),
             value: self.value,
-            sync_before: self.sync_before
+            sync_before: self.sync_before,
         }
     }
 }
@@ -93,7 +96,7 @@ impl SharedFenceValuePair {
         SharedFenceValuePairRef {
             fence: &self.fence,
             value: self.value,
-            sync_before: self.sync_before
+            sync_before: self.sync_before,
         }
     }
 
@@ -102,7 +105,7 @@ impl SharedFenceValuePair {
         super::gpu::FenceValuePairRef {
             fence: self.fence.handle(),
             value: self.value,
-            sync_before: self.sync_before
+            sync_before: self.sync_before,
         }
     }
 }
@@ -112,7 +115,7 @@ impl<'a> From<&SharedFenceValuePairRef<'a>> for SharedFenceValuePair {
         Self {
             fence: other.fence.clone(),
             value: other.value,
-            sync_before: other.sync_before
+            sync_before: other.sync_before,
         }
     }
 }

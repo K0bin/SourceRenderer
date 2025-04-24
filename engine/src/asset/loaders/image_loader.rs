@@ -1,17 +1,23 @@
 use std::sync::Arc;
 
 use image::{
-    ImageReader,
     GenericImageView,
     ImageFormat,
+    ImageReader,
 };
 
-use crate::graphics::*;
-
-use crate::asset::asset_manager::{AssetFile, AssetLoader};
+use crate::asset::asset_manager::{
+    AssetFile,
+    AssetLoader,
+};
 use crate::asset::{
-    AssetData, AssetLoadPriority, AssetLoaderProgress, AssetManager, TextureData
+    AssetData,
+    AssetLoadPriority,
+    AssetLoaderProgress,
+    AssetManager,
+    TextureData,
 };
+use crate::graphics::*;
 
 pub struct ImageLoader {}
 
@@ -23,7 +29,9 @@ impl ImageLoader {
 
 impl AssetLoader for ImageLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
-        file.path().ends_with(".png") || file.path().ends_with(".jpg") || file.path().ends_with(".jpeg")
+        file.path().ends_with(".png")
+            || file.path().ends_with(".jpg")
+            || file.path().ends_with(".jpeg")
     }
 
     async fn load(
@@ -46,18 +54,14 @@ impl AssetLoader for ImageLoader {
                 ImageFormat::Jpeg
             },
         );
-        let img = image_reader.decode().map_err(|e| log::error!("Image decoding error: {:?}", e))?;
+        let img = image_reader
+            .decode()
+            .map_err(|e| log::error!("Image decoding error: {:?}", e))?;
         let (width, height) = img.dimensions();
 
         let (format, data) = match img {
-            image::DynamicImage::ImageRgba8(data) => (
-                Format::RGBA8UNorm,
-                data.as_raw().clone(),
-            ),
-            _ => (
-                Format::RGBA8UNorm,
-                img.into_rgba8().as_raw().clone(),
-            ),
+            image::DynamicImage::ImageRgba8(data) => (Format::RGBA8UNorm, data.as_raw().clone()),
+            _ => (Format::RGBA8UNorm, img.into_rgba8().as_raw().clone()),
         };
 
         manager.add_asset_data_with_progress(

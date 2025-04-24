@@ -1,14 +1,20 @@
 use sourcerenderer_core::{
-    Vec2UI, Vec3UI, Vec4
+    Vec2UI,
+    Vec3UI,
+    Vec4,
 };
 
-use crate::renderer::asset::{ComputePipelineHandle, RendererAssets, RendererAssetsReadOnly};
+use crate::graphics::*;
+use crate::renderer::asset::{
+    ComputePipelineHandle,
+    RendererAssets,
+    RendererAssetsReadOnly,
+};
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::graphics::*;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -27,10 +33,7 @@ impl ClusteringPass {
     pub const CLUSTERS_BUFFER_NAME: &'static str = "clusters";
 
     #[allow(unused)]
-    pub fn new(
-        barriers: &mut RendererResources,
-        assets: &RendererAssets,
-    ) -> Self {
+    pub fn new(barriers: &mut RendererResources, assets: &RendererAssets) -> Self {
         let pipeline = assets.request_compute_pipeline("shaders/clustering.comp.json");
 
         barriers.create_buffer(
@@ -38,7 +41,7 @@ impl ClusteringPass {
             &BufferInfo {
                 size: (std::mem::size_of::<Vec4>() * 2 * 16 * 9 * 24) as u64,
                 usage: BufferUsage::STORAGE,
-                sharing_mode: QueueSharingMode::Exclusive
+                sharing_mode: QueueSharingMode::Exclusive,
             },
             MemoryUsage::GPUMemory,
             false,
@@ -57,7 +60,7 @@ impl ClusteringPass {
         command_buffer: &mut CommandBuffer,
         pass_params: &RenderPassParameters<'_>,
         rt_size: Vec2UI,
-        camera_buffer: &TransientBufferSlice
+        camera_buffer: &TransientBufferSlice,
     ) {
         command_buffer.begin_label("Clustering pass");
 
@@ -74,8 +77,9 @@ impl ClusteringPass {
             z_far: view.far_plane,
         };
 
-        let screen_to_view_cbuffer =
-            command_buffer.upload_dynamic_data(&[screen_to_view], BufferUsage::STORAGE).unwrap();
+        let screen_to_view_cbuffer = command_buffer
+            .upload_dynamic_data(&[screen_to_view], BufferUsage::STORAGE)
+            .unwrap();
         let clusters_buffer = pass_params.resources.access_buffer(
             command_buffer,
             Self::CLUSTERS_BUFFER_NAME,
@@ -94,7 +98,10 @@ impl ClusteringPass {
         debug_assert_eq!(cluster_count.x % 8, 0);
         debug_assert_eq!(cluster_count.y % 1, 0);
         debug_assert_eq!(cluster_count.z % 8, 0); // Ensure the cluster count fits with the work group size
-        let pipeline = pass_params.assets.get_compute_pipeline(self.pipeline).unwrap();
+        let pipeline = pass_params
+            .assets
+            .get_compute_pipeline(self.pipeline)
+            .unwrap();
         command_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         command_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,

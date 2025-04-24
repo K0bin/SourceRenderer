@@ -1,27 +1,25 @@
 mod raw;
 
+pub use self::adapter::*;
+pub use self::backend::*;
+pub use self::bindless::*;
+pub use self::buffer::*;
+pub use self::command::*;
+pub use self::descriptor::*;
+pub use self::device::*;
+pub use self::format::*;
+pub use self::heap::*;
+pub use self::instance::*;
+pub use self::pipeline::*;
+pub use self::query::*;
 pub use self::queue::*;
-pub use self::{
-    adapter::*,
-    backend::*,
-    buffer::*,
-    command::*,
-    descriptor::*,
-    device::*,
-    format::*,
-    instance::*,
-    pipeline::*,
-    shared::*,
-    surface::*,
-    swapchain::*,
-    sync::*,
-    texture::*,
-    heap::*,
-    bindless::*,
-    rt::*,
-    query::*
-};
 pub(crate) use self::renderpass::*;
+pub use self::rt::*;
+pub use self::shared::*;
+pub use self::surface::*;
+pub use self::swapchain::*;
+pub use self::sync::*;
+pub use self::texture::*;
 pub(crate) use crate::raw::*;
 
 mod adapter;
@@ -32,6 +30,7 @@ mod command;
 mod descriptor;
 mod device;
 mod format;
+mod heap;
 mod instance;
 mod pipeline;
 mod query;
@@ -43,7 +42,6 @@ mod surface;
 mod swapchain;
 mod sync;
 mod texture;
-mod heap;
 
 /*pub trait GraphicsPlatform : sourcerenderer_core::platform::GraphicsPlatform<VkBackend> {
     fn create_instance(&self, debug_layers: bool) -> Result<VkInstance, Box<dyn std::error::Error>>;

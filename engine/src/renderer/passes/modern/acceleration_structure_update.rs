@@ -4,9 +4,9 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 use sourcerenderer_core::Matrix4;
 
-use crate::renderer::render_path::RenderPassParameters;
 use crate::asset::ModelHandle;
 use crate::graphics::*;
+use crate::renderer::render_path::RenderPassParameters;
 
 pub struct AccelerationStructureUpdatePass {
     blas_map: HashMap<ModelHandle, Arc<AccelerationStructure>>,
@@ -14,16 +14,11 @@ pub struct AccelerationStructureUpdatePass {
 }
 
 impl AccelerationStructureUpdatePass {
-    pub fn new(
-        _device: &Arc<Device>,
-        init_cmd_buffer: &mut CommandBuffer
-    ) -> Self {
-        let info = TopLevelAccelerationStructureInfo {
-            instances: &[]
-        };
-        let acceleration_structure = init_cmd_buffer.create_top_level_acceleration_structure(
-            &info, true
-        ).unwrap();
+    pub fn new(_device: &Arc<Device>, init_cmd_buffer: &mut CommandBuffer) -> Self {
+        let info = TopLevelAccelerationStructureInfo { instances: &[] };
+        let acceleration_structure = init_cmd_buffer
+            .create_top_level_acceleration_structure(&info, true)
+            .unwrap();
 
         Self {
             blas_map: HashMap::new(),
@@ -34,7 +29,7 @@ impl AccelerationStructureUpdatePass {
     pub fn execute(
         &mut self,
         cmd_buffer: &mut CommandBuffer,
-        pass_params: &RenderPassParameters<'_>
+        pass_params: &RenderPassParameters<'_>,
     ) {
         // We never reuse handles, so this works.
         let mut removed_models = SmallVec::<[ModelHandle; 4]>::new();
@@ -50,8 +45,7 @@ impl AccelerationStructureUpdatePass {
         let static_drawables = pass_params.scene.scene.static_drawables();
 
         let mut created_blas = false;
-        let mut bl_acceleration_structures =
-            Vec::<Arc<AccelerationStructure>>::new();
+        let mut bl_acceleration_structures = Vec::<Arc<AccelerationStructure>>::new();
 
         for drawable in static_drawables {
             let blas = self.blas_map.get(&drawable.model).cloned().or_else(|| {
@@ -95,7 +89,11 @@ impl AccelerationStructureUpdatePass {
                         max_vertex: mesh.vertex_count - 1,
                     };
 
-                    Arc::new(cmd_buffer.create_bottom_level_acceleration_structure(&info, true).unwrap())
+                    Arc::new(
+                        cmd_buffer
+                            .create_bottom_level_acceleration_structure(&info, true)
+                            .unwrap(),
+                    )
                 };
                 self.blas_map.insert(drawable.model, blas.clone());
                 created_blas = true;
@@ -118,9 +116,8 @@ impl AccelerationStructureUpdatePass {
             cmd_buffer.flush_barriers();
         }
 
-        let mut instances = Vec::<AccelerationStructureInstance>::with_capacity(
-            static_drawables.len(),
-        );
+        let mut instances =
+            Vec::<AccelerationStructureInstance>::with_capacity(static_drawables.len());
         for ((index, bl), drawable) in bl_acceleration_structures
             .iter()
             .enumerate()
@@ -130,17 +127,19 @@ impl AccelerationStructureUpdatePass {
                 acceleration_structure: bl,
                 transform: Matrix4::from(drawable.transform),
                 front_face: FrontFace::Clockwise,
-                id: index as u32
+                id: index as u32,
             });
         }
 
         let tl_info = TopLevelAccelerationStructureInfo {
-            instances: &instances[..]
+            instances: &instances[..],
         };
 
-        self.acceleration_structure = Arc::new(cmd_buffer.create_top_level_acceleration_structure(
-            &tl_info, true
-        ).unwrap());
+        self.acceleration_structure = Arc::new(
+            cmd_buffer
+                .create_top_level_acceleration_structure(&tl_info, true)
+                .unwrap(),
+        );
 
         cmd_buffer.barrier(&[Barrier::GlobalBarrier {
             old_sync: BarrierSync::ACCELERATION_STRUCTURE_BUILD,
@@ -151,9 +150,7 @@ impl AccelerationStructureUpdatePass {
     }
 
     #[inline(always)]
-    pub fn acceleration_structure(
-        &self,
-    ) -> &Arc<AccelerationStructure> {
+    pub fn acceleration_structure(&self) -> &Arc<AccelerationStructure> {
         &self.acceleration_structure
     }
 }

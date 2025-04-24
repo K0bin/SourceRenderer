@@ -15,12 +15,17 @@ pub struct WebGPUHeap {
 }
 
 impl WebGPUHeap {
-    pub(crate) fn new(device: &GpuDevice, memory_type_index: u32, size: u64, mappable: bool) -> Self {
+    pub(crate) fn new(
+        device: &GpuDevice,
+        memory_type_index: u32,
+        size: u64,
+        mappable: bool,
+    ) -> Self {
         Self {
             device: device.clone(),
             memory_type_index,
             mappable,
-            _size: size
+            _size: size,
         }
     }
 }
@@ -30,11 +35,22 @@ impl gpu::Heap<WebGPUBackend> for WebGPUHeap {
         self.memory_type_index
     }
 
-    unsafe fn create_buffer(&self, info: &gpu::BufferInfo, _offset: u64, name: Option<&str>) -> Result<WebGPUBuffer, gpu::OutOfMemoryError> {
-        WebGPUBuffer::new(&self.device, info, self.mappable, name).map_err(|_| gpu::OutOfMemoryError {})
+    unsafe fn create_buffer(
+        &self,
+        info: &gpu::BufferInfo,
+        _offset: u64,
+        name: Option<&str>,
+    ) -> Result<WebGPUBuffer, gpu::OutOfMemoryError> {
+        WebGPUBuffer::new(&self.device, info, self.mappable, name)
+            .map_err(|_| gpu::OutOfMemoryError {})
     }
 
-    unsafe fn create_texture(&self, info: &gpu::TextureInfo, _offset: u64, name: Option<&str>) -> Result<WebGPUTexture, gpu::OutOfMemoryError> {
+    unsafe fn create_texture(
+        &self,
+        info: &gpu::TextureInfo,
+        _offset: u64,
+        name: Option<&str>,
+    ) -> Result<WebGPUTexture, gpu::OutOfMemoryError> {
         WebGPUTexture::new(&self.device, info, name).map_err(|_| gpu::OutOfMemoryError {})
     }
 }

@@ -8,8 +8,10 @@ use ash::vk::{
     DeviceOrHostAddressConstKHR,
 };
 use smallvec::SmallVec;
-
-use sourcerenderer_core::gpu::{self, Buffer as _};
+use sourcerenderer_core::gpu::{
+    self,
+    Buffer as _,
+};
 
 use super::*;
 
@@ -34,8 +36,7 @@ impl VkAccelerationStructure {
                 let data = instance.transform.transpose().to_cols_array();
 
                 let mut transform_data = [0f32; 12];
-                transform_data
-                    .copy_from_slice(&data[0..12]);
+                transform_data.copy_from_slice(&data[0..12]);
 
                 vk::AccelerationStructureInstanceKHR {
                     transform: vk::TransformMatrixKHR {
@@ -59,7 +60,10 @@ impl VkAccelerationStructure {
             .collect();
 
         let size: u64 = std::mem::size_of_val(&instances) as u64;
-        let ptr = target_buffer.map(target_buffer_offset, size, false).expect("Failed to map buffer.") as *mut vk::AccelerationStructureInstanceKHR;
+        let ptr = target_buffer
+            .map(target_buffer_offset, size, false)
+            .expect("Failed to map buffer.")
+            as *mut vk::AccelerationStructureInstanceKHR;
         ptr.copy_from(instances.as_ptr(), instances.len());
         target_buffer.unmap(target_buffer_offset, size, true);
     }
@@ -104,13 +108,12 @@ impl VkAccelerationStructure {
         let size_info = unsafe {
             let mut size_info = AccelerationStructureBuildSizesInfoKHR::default();
 
-            acceleration_structure_funcs
-                .get_acceleration_structure_build_sizes(
-                    vk::AccelerationStructureBuildTypeKHR::DEVICE,
-                    &build_info,
-                    &[info.instances_count],
-                    &mut size_info
-                );
+            acceleration_structure_funcs.get_acceleration_structure_build_sizes(
+                vk::AccelerationStructureBuildTypeKHR::DEVICE,
+                &build_info,
+                &[info.instances_count],
+                &mut size_info,
+            );
 
             size_info
         };
@@ -150,19 +153,21 @@ impl VkAccelerationStructure {
         .unwrap();
 
         let va = unsafe {
-            acceleration_structure_funcs
-                .get_acceleration_structure_device_address(
-                    &vk::AccelerationStructureDeviceAddressInfoKHR {
-                        acceleration_structure,
-                        ..Default::default()
-                    },
-                )
+            acceleration_structure_funcs.get_acceleration_structure_device_address(
+                &vk::AccelerationStructureDeviceAddressInfoKHR {
+                    acceleration_structure,
+                    ..Default::default()
+                },
+            )
         };
 
         let instances_data = vk::AccelerationStructureGeometryInstancesDataKHR {
             array_of_pointers: vk::FALSE,
             data: DeviceOrHostAddressConstKHR {
-                device_address: info.instances_buffer.va_offset(info.instances_buffer_offset).unwrap(),
+                device_address: info
+                    .instances_buffer
+                    .va_offset(info.instances_buffer_offset)
+                    .unwrap(),
             },
             ..Default::default()
         };
@@ -293,13 +298,12 @@ impl VkAccelerationStructure {
         let size_info = unsafe {
             let mut size_info = AccelerationStructureBuildSizesInfoKHR::default();
 
-            acceleration_structure_funcs
-                .get_acceleration_structure_build_sizes(
-                    vk::AccelerationStructureBuildTypeKHR::DEVICE,
-                    &build_info,
-                    &max_primitive_counts[..],
-                    &mut size_info
-                );
+            acceleration_structure_funcs.get_acceleration_structure_build_sizes(
+                vk::AccelerationStructureBuildTypeKHR::DEVICE,
+                &build_info,
+                &max_primitive_counts[..],
+                &mut size_info,
+            );
 
             size_info
         };
@@ -339,13 +343,12 @@ impl VkAccelerationStructure {
         .unwrap();
 
         let va = unsafe {
-            acceleration_structure_funcs
-                .get_acceleration_structure_device_address(
-                    &vk::AccelerationStructureDeviceAddressInfoKHR {
-                        acceleration_structure,
-                        ..Default::default()
-                    },
-                )
+            acceleration_structure_funcs.get_acceleration_structure_device_address(
+                &vk::AccelerationStructureDeviceAddressInfoKHR {
+                    acceleration_structure,
+                    ..Default::default()
+                },
+            )
         };
 
         let geometry_data = vk::AccelerationStructureGeometryTrianglesDataKHR {
@@ -420,7 +423,9 @@ impl VkAccelerationStructure {
             p_geometries: std::ptr::null(),
             pp_geometries: geometries.as_ptr(),
             scratch_data: vk::DeviceOrHostAddressKHR {
-                device_address: scratch_buffer.va_offset(scratch_buffer_offset as u64).unwrap(),
+                device_address: scratch_buffer
+                    .va_offset(scratch_buffer_offset as u64)
+                    .unwrap(),
             },
             ..Default::default()
         };

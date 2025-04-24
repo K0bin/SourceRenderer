@@ -1,4 +1,4 @@
-use std::{hash::Hash, ffi::c_void};
+use std::{ffi::c_void, hash::Hash};
 
 use bitflags::bitflags;
 
@@ -24,30 +24,30 @@ bitflags! {
 }
 
 impl BufferUsage {
-  pub fn gpu_writable(&self) -> bool {
-    self.intersects(Self::GPU_WRITABLE)
-  }
-  pub fn gpu_readable(&self) -> bool {
-    self.intersects(Self::GPU_READABLE)
-  }
+    pub fn gpu_writable(&self) -> bool {
+        self.intersects(Self::GPU_WRITABLE)
+    }
+    pub fn gpu_readable(&self) -> bool {
+        self.intersects(Self::GPU_READABLE)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum QueueSharingMode {
-  Exclusive,
-  Concurrent
+    Exclusive,
+    Concurrent,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BufferInfo {
-  pub size: u64,
-  pub usage: BufferUsage,
-  pub sharing_mode: QueueSharingMode
+    pub size: u64,
+    pub usage: BufferUsage,
+    pub sharing_mode: QueueSharingMode,
 }
 
-pub trait Buffer : Hash + PartialEq + Eq {
-  fn info(&self) -> &BufferInfo;
+pub trait Buffer: Hash + PartialEq + Eq {
+    fn info(&self) -> &BufferInfo;
 
-  unsafe fn map(&self, offset: u64, length: u64, invalidate: bool) -> Option<*mut c_void>;
-  unsafe fn unmap(&self, offset: u64, length: u64, flush: bool);
+    unsafe fn map(&self, offset: u64, length: u64, invalidate: bool) -> Option<*mut c_void>;
+    unsafe fn unmap(&self, offset: u64, length: u64, flush: bool);
 }

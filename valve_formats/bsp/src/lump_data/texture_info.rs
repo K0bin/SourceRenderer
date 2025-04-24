@@ -26,42 +26,62 @@ bitflags! {
 }
 
 pub struct TextureInfo {
-  pub texture_vecs_s: Vec4,
-  pub texture_vecs_t: Vec4,
-  pub lightmap_vecs_s: Vec4,
-  pub lightmap_vecs_t: Vec4,
-  pub flags: SurfaceFlags,
-  pub texture_data: i32
+    pub texture_vecs_s: Vec4,
+    pub texture_vecs_t: Vec4,
+    pub lightmap_vecs_s: Vec4,
+    pub lightmap_vecs_t: Vec4,
+    pub flags: SurfaceFlags,
+    pub texture_data: i32,
 }
 
 impl LumpData for TextureInfo {
-  fn lump_type() -> LumpType {
-    LumpType::TextureInfo
-  }
-  fn lump_type_hdr() -> Option<LumpType> {
-    None
-  }
+    fn lump_type() -> LumpType {
+        LumpType::TextureInfo
+    }
+    fn lump_type_hdr() -> Option<LumpType> {
+        None
+    }
 
-  fn element_size(_version: i32) -> usize {
-    72
-  }
+    fn element_size(_version: i32) -> usize {
+        72
+    }
 
-  fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
-    let texture_vecs_s = Vec4::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);
-    let texture_vecs_t = Vec4::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);
-    let lightmap_vecs_s = Vec4::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);
-    let lightmap_vecs_t = Vec4::new(reader.read_f32()?, reader.read_f32()?, reader.read_f32()?, reader.read_f32()?);
-    let flags_bits = reader.read_i32()?;
-    let flags = SurfaceFlags::from_bits(flags_bits).unwrap();
-    let texture_data = reader.read_i32()?;
+    fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
+        let texture_vecs_s = Vec4::new(
+            reader.read_f32()?,
+            reader.read_f32()?,
+            reader.read_f32()?,
+            reader.read_f32()?,
+        );
+        let texture_vecs_t = Vec4::new(
+            reader.read_f32()?,
+            reader.read_f32()?,
+            reader.read_f32()?,
+            reader.read_f32()?,
+        );
+        let lightmap_vecs_s = Vec4::new(
+            reader.read_f32()?,
+            reader.read_f32()?,
+            reader.read_f32()?,
+            reader.read_f32()?,
+        );
+        let lightmap_vecs_t = Vec4::new(
+            reader.read_f32()?,
+            reader.read_f32()?,
+            reader.read_f32()?,
+            reader.read_f32()?,
+        );
+        let flags_bits = reader.read_i32()?;
+        let flags = SurfaceFlags::from_bits(flags_bits).unwrap();
+        let texture_data = reader.read_i32()?;
 
-    Ok(Self {
-      texture_vecs_s,
-      texture_vecs_t,
-      lightmap_vecs_s,
-      lightmap_vecs_t,
-      flags,
-      texture_data
-    })
-  }
+        Ok(Self {
+            texture_vecs_s,
+            texture_vecs_t,
+            lightmap_vecs_s,
+            lightmap_vecs_t,
+            flags,
+            texture_data,
+        })
+    }
 }

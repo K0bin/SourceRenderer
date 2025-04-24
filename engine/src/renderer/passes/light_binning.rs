@@ -1,14 +1,20 @@
-use sourcerenderer_core::{Vec3, Vec3UI};
+use sourcerenderer_core::{
+    Vec3,
+    Vec3UI,
+};
 
 use super::clustering::ClusteringPass;
-use crate::renderer::asset::{ComputePipelineHandle, RendererAssets, RendererAssetsReadOnly};
+use crate::graphics::*;
+use crate::renderer::asset::{
+    ComputePipelineHandle,
+    RendererAssets,
+    RendererAssetsReadOnly,
+};
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-
-use crate::graphics::*;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -34,10 +40,7 @@ impl LightBinningPass {
     pub const LIGHT_BINNING_BUFFER_NAME: &'static str = "binned_lights";
 
     #[allow(unused)]
-    pub fn new(
-        barriers: &mut RendererResources,
-        assets: &RendererAssets,
-    ) -> Self {
+    pub fn new(barriers: &mut RendererResources, assets: &RendererAssets) -> Self {
         let pipeline = assets.request_compute_pipeline("shaders/light_binning.comp.json");
 
         barriers.create_buffer(
@@ -45,7 +48,7 @@ impl LightBinningPass {
             &BufferInfo {
                 size: (std::mem::size_of::<u32>() * 16 * 9 * 24) as u64,
                 usage: BufferUsage::STORAGE | BufferUsage::CONSTANT,
-                sharing_mode: QueueSharingMode::Exclusive
+                sharing_mode: QueueSharingMode::Exclusive,
             },
             MemoryUsage::GPUMemory,
             false,
@@ -58,14 +61,16 @@ impl LightBinningPass {
 
     #[inline(always)]
     pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
-        assets.get_compute_pipeline(self.light_binning_pipeline).is_some()
+        assets
+            .get_compute_pipeline(self.light_binning_pipeline)
+            .is_some()
     }
 
     pub fn execute(
         &mut self,
         cmd_buffer: &mut CommandBuffer,
         pass_params: &RenderPassParameters<'_>,
-        camera_buffer: &TransientBufferSlice
+        camera_buffer: &TransientBufferSlice,
     ) {
         cmd_buffer.begin_label("Light binning");
         let cluster_count = Vec3UI::new(16, 9, 24);
@@ -73,7 +78,9 @@ impl LightBinningPass {
             point_light_count: pass_params.scene.scene.point_lights().len() as u32,
             cluster_count: cluster_count.x * cluster_count.y * cluster_count.z,
         };
-        let point_lights: Vec<CullingPointLight> = pass_params.scene.scene
+        let point_lights: Vec<CullingPointLight> = pass_params
+            .scene
+            .scene
             .point_lights()
             .iter()
             .map(|l| CullingPointLight {
@@ -82,9 +89,12 @@ impl LightBinningPass {
             })
             .collect();
 
-        let light_info_buffer = cmd_buffer.upload_dynamic_data(&[setup_info], BufferUsage::STORAGE).unwrap();
-        let point_lights_buffer =
-            cmd_buffer.upload_dynamic_data(&point_lights[..], BufferUsage::STORAGE).unwrap();
+        let light_info_buffer = cmd_buffer
+            .upload_dynamic_data(&[setup_info], BufferUsage::STORAGE)
+            .unwrap();
+        let point_lights_buffer = cmd_buffer
+            .upload_dynamic_data(&point_lights[..], BufferUsage::STORAGE)
+            .unwrap();
 
         cmd_buffer.barrier(&[Barrier::BufferBarrier {
             old_sync: BarrierSync::COMPUTE_SHADER,
@@ -94,7 +104,7 @@ impl LightBinningPass {
             old_access: BarrierAccess::STORAGE_WRITE,
             new_access: BarrierAccess::CONSTANT_READ | BarrierAccess::STORAGE_READ,
             buffer: BufferRef::Transient(camera_buffer),
-            queue_ownership: None
+            queue_ownership: None,
         }]);
 
         let light_bitmask_buffer = pass_params.resources.access_buffer(
@@ -112,7 +122,10 @@ impl LightBinningPass {
             HistoryResourceEntry::Current,
         );
 
-        let pipeline = pass_params.assets.get_compute_pipeline(self.light_binning_pipeline).unwrap();
+        let pipeline = pass_params
+            .assets
+            .get_compute_pipeline(self.light_binning_pipeline)
+            .unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buffer.bind_uniform_buffer(
             BindingFrequency::VeryFrequent,

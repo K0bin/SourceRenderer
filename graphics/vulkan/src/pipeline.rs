@@ -1,17 +1,28 @@
-use std::{
-    ffi::CString,
-    hash::{
-        Hash,
-        Hasher,
-    },
-    os::raw::{c_char, c_void},
-    sync::Arc,
+use std::ffi::CString;
+use std::hash::{
+    Hash,
+    Hasher,
 };
+use std::os::raw::{
+    c_char,
+    c_void,
+};
+use std::sync::Arc;
 
-use ash::vk::{self, Handle as _};
+use ash::vk::{
+    self,
+    Handle as _,
+};
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, Buffer as _, Shader as _};
-use sourcerenderer_core::{align_up_32, align_up_64};
+use sourcerenderer_core::gpu::{
+    self,
+    Buffer as _,
+    Shader as _,
+};
+use sourcerenderer_core::{
+    align_up_32,
+    align_up_64,
+};
 
 use super::*;
 
@@ -27,7 +38,8 @@ pub struct VkShader {
     shader_type: gpu::ShaderType,
     shader_module: vk::ShaderModule,
     device: Arc<RawVkDevice>,
-    descriptor_set_bindings: [SmallVec<[VkDescriptorSetEntryInfo; 8]>; gpu::NON_BINDLESS_SET_COUNT as usize],
+    descriptor_set_bindings:
+        [SmallVec<[VkDescriptorSetEntryInfo; 8]>; gpu::NON_BINDLESS_SET_COUNT as usize],
     push_constants_range: Option<vk::PushConstantRange>,
     uses_bindless_texture_set: bool,
 }
@@ -48,11 +60,7 @@ impl Hash for VkShader {
 
 impl VkShader {
     #[allow(clippy::size_of_in_element_count)]
-    pub fn new(
-        device: &Arc<RawVkDevice>,
-        shader: &gpu::PackedShader,
-        name: Option<&str>,
-    ) -> Self {
+    pub fn new(device: &Arc<RawVkDevice>, shader: &gpu::PackedShader, name: Option<&str>) -> Self {
         assert_ne!(shader.shader_spirv.len(), 0);
 
         // TODO: Handle VK_SHADER_CREATE_NO_TASK_SHADER_BIT_EXT
@@ -63,7 +71,8 @@ impl VkShader {
         };
         let vk_device = &device.device;
         let shader_module = unsafe { vk_device.create_shader_module(&create_info, None).unwrap() };
-        let mut sets: [SmallVec<[VkDescriptorSetEntryInfo; 8]>; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
+        let mut sets: [SmallVec<[VkDescriptorSetEntryInfo; 8]>;
+            gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
         let vk_shader_stage = shader_type_to_vk(shader.shader_type);
 
         for (set_index, set_metadata) in shader.resources.iter().enumerate() {
@@ -80,8 +89,12 @@ impl VkShader {
                         gpu::ResourceType::SampledTexture => vk::DescriptorType::SAMPLED_IMAGE,
                         gpu::ResourceType::StorageTexture => vk::DescriptorType::STORAGE_IMAGE,
                         gpu::ResourceType::Sampler => vk::DescriptorType::SAMPLER,
-                        gpu::ResourceType::CombinedTextureSampler => vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                        gpu::ResourceType::AccelerationStructure => vk::DescriptorType::ACCELERATION_STRUCTURE_KHR,
+                        gpu::ResourceType::CombinedTextureSampler => {
+                            vk::DescriptorType::COMBINED_IMAGE_SAMPLER
+                        }
+                        gpu::ResourceType::AccelerationStructure => {
+                            vk::DescriptorType::ACCELERATION_STRUCTURE_KHR
+                        }
                     },
                     shader_stage: vk_shader_stage,
                     count: binding_metadata.array_size,
@@ -106,14 +119,12 @@ impl VkShader {
                 let name_cstring = CString::new(name).unwrap();
                 unsafe {
                     debug_utils
-                        .set_debug_utils_object_name(
-                            &vk::DebugUtilsObjectNameInfoEXT {
-                                object_type: vk::ObjectType::SHADER_MODULE,
-                                object_handle: shader_module.as_raw(),
-                                p_object_name: name_cstring.as_ptr(),
-                                ..Default::default()
-                            },
-                        )
+                        .set_debug_utils_object_name(&vk::DebugUtilsObjectNameInfoEXT {
+                            object_type: vk::ObjectType::SHADER_MODULE,
+                            object_handle: shader_module.as_raw(),
+                            p_object_name: name_cstring.as_ptr(),
+                            ..Default::default()
+                        })
                         .unwrap();
                 }
             }
@@ -186,7 +197,9 @@ pub(super) fn shader_type_to_vk(shader_type: gpu::ShaderType) -> vk::ShaderStage
         gpu::ShaderType::FragmentShader => vk::ShaderStageFlags::FRAGMENT,
         gpu::ShaderType::GeometryShader => vk::ShaderStageFlags::GEOMETRY,
         gpu::ShaderType::TessellationControlShader => vk::ShaderStageFlags::TESSELLATION_CONTROL,
-        gpu::ShaderType::TessellationEvaluationShader => vk::ShaderStageFlags::TESSELLATION_EVALUATION,
+        gpu::ShaderType::TessellationEvaluationShader => {
+            vk::ShaderStageFlags::TESSELLATION_EVALUATION
+        }
         gpu::ShaderType::ComputeShader => vk::ShaderStageFlags::COMPUTE,
         gpu::ShaderType::RayClosestHit => vk::ShaderStageFlags::CLOSEST_HIT_KHR,
         gpu::ShaderType::RayGen => vk::ShaderStageFlags::RAYGEN_KHR,
@@ -285,7 +298,9 @@ pub(super) fn blend_op_to_vk(blend_op: gpu::BlendOp) -> vk::BlendOp {
     }
 }
 
-pub(super) fn color_components_to_vk(color_components: gpu::ColorComponents) -> vk::ColorComponentFlags {
+pub(super) fn color_components_to_vk(
+    color_components: gpu::ColorComponents,
+) -> vk::ColorComponentFlags {
     let components_bits = color_components.bits() as u32;
     let mut colors = 0u32;
     colors |= components_bits.rotate_left(
@@ -314,10 +329,14 @@ struct DescriptorSetLayoutSetupContext {
     dynamic_uniform_buffers: [u32; gpu::TOTAL_SET_COUNT as usize],
     push_constants_ranges: [Option<VkConstantRange>; 3],
     uses_bindless_texture_set: bool,
-    shader_stages: vk::ShaderStageFlags
+    shader_stages: vk::ShaderStageFlags,
 }
 
-fn add_shader_to_descriptor_set_layout_setup(device: &Arc<RawVkDevice>, shader: &VkShader, context: &mut DescriptorSetLayoutSetupContext) {
+fn add_shader_to_descriptor_set_layout_setup(
+    device: &Arc<RawVkDevice>,
+    shader: &VkShader,
+    context: &mut DescriptorSetLayoutSetupContext,
+) {
     for (index, shader_set) in shader.descriptor_set_bindings.iter().enumerate() {
         let set = &mut context.descriptor_set_layouts[index as usize];
         for binding in shader_set {
@@ -326,9 +345,7 @@ fn add_shader_to_descriptor_set_layout_setup(device: &Arc<RawVkDevice>, shader: 
                 .iter_mut()
                 .find(|existing_binding| existing_binding.index == binding.index);
             if let Some(existing_binding) = existing_binding_option {
-                if existing_binding.descriptor_type
-                    == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
-                {
+                if existing_binding.descriptor_type == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC {
                     assert_eq!(binding.descriptor_type, vk::DescriptorType::STORAGE_BUFFER);
                 } else if existing_binding.descriptor_type
                     == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
@@ -352,8 +369,7 @@ fn add_shader_to_descriptor_set_layout_setup(device: &Arc<RawVkDevice>, shader: 
                             .max_descriptor_set_storage_buffers_dynamic
                 {
                     context.dynamic_storage_buffers[index as usize] += binding_clone.count;
-                    binding_clone.descriptor_type =
-                        vk::DescriptorType::STORAGE_BUFFER_DYNAMIC;
+                    binding_clone.descriptor_type = vk::DescriptorType::STORAGE_BUFFER_DYNAMIC;
                 }
                 if binding_clone.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER
                     && context.dynamic_uniform_buffers[index as usize] + binding_clone.count
@@ -363,8 +379,7 @@ fn add_shader_to_descriptor_set_layout_setup(device: &Arc<RawVkDevice>, shader: 
                             .max_descriptor_set_uniform_buffers_dynamic
                 {
                     context.dynamic_uniform_buffers[index as usize] += binding_clone.count;
-                    binding_clone.descriptor_type =
-                        vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC;
+                    binding_clone.descriptor_type = vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC;
                 }
                 set.bindings.push(binding_clone);
             }
@@ -384,7 +399,11 @@ fn add_shader_to_descriptor_set_layout_setup(device: &Arc<RawVkDevice>, shader: 
     context.shader_stages |= shader_stage_flags;
 }
 
-fn add_bindless_set_if_used(device: &Arc<RawVkDevice>, context: &mut DescriptorSetLayoutSetupContext, pipeline_name: Option<&str>) {
+fn add_bindless_set_if_used(
+    device: &Arc<RawVkDevice>,
+    context: &mut DescriptorSetLayoutSetupContext,
+    pipeline_name: Option<&str>,
+) {
     if !context.uses_bindless_texture_set {
         return;
     }
@@ -393,7 +412,8 @@ fn add_bindless_set_if_used(device: &Arc<RawVkDevice>, context: &mut DescriptorS
         panic!("Pipeline {:?} is trying to use the bindless texture descriptor set but the Vulkan device does not support descriptor indexing.", pipeline_name);
     }
 
-    let mut bindless_bindings = SmallVec::<[VkDescriptorSetEntryInfo; gpu::PER_SET_BINDINGS as usize]>::new();
+    let mut bindless_bindings =
+        SmallVec::<[VkDescriptorSetEntryInfo; gpu::PER_SET_BINDINGS as usize]>::new();
     bindless_bindings.push(VkDescriptorSetEntryInfo {
         name: "bindless_textures".to_string(),
         shader_stage: device.supported_shader_stages,
@@ -413,7 +433,8 @@ fn add_bindless_set_if_used(device: &Arc<RawVkDevice>, context: &mut DescriptorS
         };
 }
 
-fn remap_push_constant_ranges(context: &mut DescriptorSetLayoutSetupContext) {let mut offset = 0u32;
+fn remap_push_constant_ranges(context: &mut DescriptorSetLayoutSetupContext) {
+    let mut offset = 0u32;
     let mut remapped_push_constant_ranges = <[Option<VkConstantRange>; 3]>::default();
     for i in 0..context.push_constants_ranges.len() {
         if let Some(range) = &context.push_constants_ranges[i] {
@@ -543,9 +564,7 @@ impl VkPipeline {
             front: vk::StencilOpState {
                 pass_op: stencil_op_to_vk(info.depth_stencil.stencil_front.pass_op),
                 fail_op: stencil_op_to_vk(info.depth_stencil.stencil_front.fail_op),
-                depth_fail_op: stencil_op_to_vk(
-                    info.depth_stencil.stencil_front.depth_fail_op,
-                ),
+                depth_fail_op: stencil_op_to_vk(info.depth_stencil.stencil_front.depth_fail_op),
                 compare_op: compare_func_to_vk(info.depth_stencil.stencil_front.func),
                 write_mask: info.depth_stencil.stencil_write_mask as u32,
                 compare_mask: info.depth_stencil.stencil_read_mask as u32,
@@ -627,7 +646,8 @@ impl VkPipeline {
             ..Default::default()
         };
 
-        let color_attachment_formats: SmallVec<[vk::Format; 8]> = info.render_target_formats
+        let color_attachment_formats: SmallVec<[vk::Format; 8]> = info
+            .render_target_formats
             .iter()
             .map(|f| format_to_vk(*f, false))
             .collect();
@@ -638,13 +658,22 @@ impl VkPipeline {
             view_mask: 0u32,
             color_attachment_count: color_attachment_formats.len() as u32,
             p_color_attachment_formats: color_attachment_formats.as_ptr(),
-            depth_attachment_format: if info.depth_stencil_format.is_depth() { dsv_format } else { vk::Format::UNDEFINED },
-            stencil_attachment_format: if info.depth_stencil_format.is_stencil() { dsv_format } else { vk::Format::UNDEFINED },
+            depth_attachment_format: if info.depth_stencil_format.is_depth() {
+                dsv_format
+            } else {
+                vk::Format::UNDEFINED
+            },
+            stencil_attachment_format: if info.depth_stencil_format.is_stencil() {
+                dsv_format
+            } else {
+                vk::Format::UNDEFINED
+            },
             ..Default::default()
         };
 
         let pipeline_create_info = vk::GraphicsPipelineCreateInfo {
-            p_next: &pipeline_rendering_create_info as *const vk::PipelineRenderingCreateInfo as *const c_void,
+            p_next: &pipeline_rendering_create_info as *const vk::PipelineRenderingCreateInfo
+                as *const c_void,
             stage_count: shader_stages.len() as u32,
             p_stages: shader_stages.as_ptr(),
             p_vertex_input_state: &vertex_input_create_info,
@@ -675,14 +704,12 @@ impl VkPipeline {
                 let name_cstring = CString::new(name).unwrap();
                 unsafe {
                     debug_utils
-                        .set_debug_utils_object_name(
-                            &vk::DebugUtilsObjectNameInfoEXT {
-                                object_type: vk::ObjectType::PIPELINE,
-                                object_handle: pipeline.as_raw(),
-                                p_object_name: name_cstring.as_ptr(),
-                                ..Default::default()
-                            },
-                        )
+                        .set_debug_utils_object_name(&vk::DebugUtilsObjectNameInfoEXT {
+                            object_type: vk::ObjectType::PIPELINE,
+                            object_handle: pipeline.as_raw(),
+                            p_object_name: name_cstring.as_ptr(),
+                            ..Default::default()
+                        })
                         .unwrap();
                 }
             }
@@ -697,7 +724,6 @@ impl VkPipeline {
             sbt: None,
         }
     }
-
 
     pub fn new_mesh_graphics(
         device: &Arc<RawVkDevice>,
@@ -785,9 +811,7 @@ impl VkPipeline {
             front: vk::StencilOpState {
                 pass_op: stencil_op_to_vk(info.depth_stencil.stencil_front.pass_op),
                 fail_op: stencil_op_to_vk(info.depth_stencil.stencil_front.fail_op),
-                depth_fail_op: stencil_op_to_vk(
-                    info.depth_stencil.stencil_front.depth_fail_op,
-                ),
+                depth_fail_op: stencil_op_to_vk(info.depth_stencil.stencil_front.depth_fail_op),
                 compare_op: compare_func_to_vk(info.depth_stencil.stencil_front.func),
                 write_mask: info.depth_stencil.stencil_write_mask as u32,
                 compare_mask: info.depth_stencil.stencil_read_mask as u32,
@@ -869,7 +893,8 @@ impl VkPipeline {
             ..Default::default()
         };
 
-        let color_attachment_formats: SmallVec<[vk::Format; 8]> = info.render_target_formats
+        let color_attachment_formats: SmallVec<[vk::Format; 8]> = info
+            .render_target_formats
             .iter()
             .map(|f| format_to_vk(*f, false))
             .collect();
@@ -880,13 +905,22 @@ impl VkPipeline {
             view_mask: 0u32,
             color_attachment_count: color_attachment_formats.len() as u32,
             p_color_attachment_formats: color_attachment_formats.as_ptr(),
-            depth_attachment_format: if info.depth_stencil_format.is_depth() { dsv_format } else { vk::Format::UNDEFINED },
-            stencil_attachment_format: if info.depth_stencil_format.is_stencil() { dsv_format } else { vk::Format::UNDEFINED },
+            depth_attachment_format: if info.depth_stencil_format.is_depth() {
+                dsv_format
+            } else {
+                vk::Format::UNDEFINED
+            },
+            stencil_attachment_format: if info.depth_stencil_format.is_stencil() {
+                dsv_format
+            } else {
+                vk::Format::UNDEFINED
+            },
             ..Default::default()
         };
 
         let pipeline_create_info = vk::GraphicsPipelineCreateInfo {
-            p_next: &pipeline_rendering_create_info as *const vk::PipelineRenderingCreateInfo as *const c_void,
+            p_next: &pipeline_rendering_create_info as *const vk::PipelineRenderingCreateInfo
+                as *const c_void,
             stage_count: shader_stages.len() as u32,
             p_stages: shader_stages.as_ptr(),
             p_vertex_input_state: std::ptr::null(),
@@ -917,14 +951,12 @@ impl VkPipeline {
                 let name_cstring = CString::new(name).unwrap();
                 unsafe {
                     debug_utils
-                        .set_debug_utils_object_name(
-                            &vk::DebugUtilsObjectNameInfoEXT {
-                                object_type: vk::ObjectType::PIPELINE,
-                                object_handle: pipeline.as_raw(),
-                                p_object_name: name_cstring.as_ptr(),
-                                ..Default::default()
-                            },
-                        )
+                        .set_debug_utils_object_name(&vk::DebugUtilsObjectNameInfoEXT {
+                            object_type: vk::ObjectType::PIPELINE,
+                            object_handle: pipeline.as_raw(),
+                            p_object_name: name_cstring.as_ptr(),
+                            ..Default::default()
+                        })
                         .unwrap();
                 }
             }
@@ -984,14 +1016,12 @@ impl VkPipeline {
                 let name_cstring = CString::new(name).unwrap();
                 unsafe {
                     debug_utils
-                        .set_debug_utils_object_name(
-                            &vk::DebugUtilsObjectNameInfoEXT {
-                                object_type: vk::ObjectType::PIPELINE,
-                                object_handle: pipeline.as_raw(),
-                                p_object_name: name_cstring.as_ptr(),
-                                ..Default::default()
-                            },
-                        )
+                        .set_debug_utils_object_name(&vk::DebugUtilsObjectNameInfoEXT {
+                            object_type: vk::ObjectType::PIPELINE,
+                            object_handle: pipeline.as_raw(),
+                            p_object_name: name_cstring.as_ptr(),
+                            ..Default::default()
+                        })
                         .unwrap();
                 }
             }
@@ -1024,8 +1054,8 @@ impl VkPipeline {
 
         add_shader_to_descriptor_set_layout_setup(device, shader, &mut context);
 
-        let mut descriptor_set_layouts: [Option<Arc<VkDescriptorSetLayout>>; gpu::TOTAL_SET_COUNT as usize] =
-            Default::default();
+        let mut descriptor_set_layouts: [Option<Arc<VkDescriptorSetLayout>>;
+            gpu::TOTAL_SET_COUNT as usize] = Default::default();
         for (i, set_key) in context.descriptor_set_layouts.iter().enumerate() {
             descriptor_set_layouts[i] = Some(Arc::new(VkDescriptorSetLayout::new(
                 &set_key.bindings,
@@ -1059,14 +1089,12 @@ impl VkPipeline {
                 let name_cstring = CString::new(name).unwrap();
                 unsafe {
                     debug_utils
-                        .set_debug_utils_object_name(
-                            &vk::DebugUtilsObjectNameInfoEXT {
-                                object_type: vk::ObjectType::PIPELINE,
-                                object_handle: pipeline.as_raw(),
-                                p_object_name: name_cstring.as_ptr(),
-                                ..Default::default()
-                            },
-                        )
+                        .set_debug_utils_object_name(&vk::DebugUtilsObjectNameInfoEXT {
+                            object_type: vk::ObjectType::PIPELINE,
+                            object_handle: pipeline.as_raw(),
+                            p_object_name: name_cstring.as_ptr(),
+                            ..Default::default()
+                        })
                         .unwrap();
                 }
             }
@@ -1085,7 +1113,7 @@ impl VkPipeline {
     pub fn ray_tracing_buffer_size(
         device: &Arc<RawVkDevice>,
         info: &gpu::RayTracingPipelineInfo<VkBackend>,
-        _shared: &VkShared
+        _shared: &VkShared,
     ) -> u64 {
         let shader_count = 1 + info.closest_hit_shaders.len() + info.miss_shaders.len();
 
@@ -1104,7 +1132,7 @@ impl VkPipeline {
         shared: &VkShared,
         buffer: &VkBuffer,
         buffer_offset: u64,
-        name: Option<&str>
+        name: Option<&str>,
     ) -> Self {
         let rt = device.rt.as_ref().unwrap();
         let rt_device = rt.rt_pipelines.as_ref().unwrap();
@@ -1242,14 +1270,12 @@ impl VkPipeline {
                 let name_cstring = CString::new(name).unwrap();
                 unsafe {
                     debug_utils
-                        .set_debug_utils_object_name(
-                            &vk::DebugUtilsObjectNameInfoEXT {
-                                object_type: vk::ObjectType::PIPELINE,
-                                object_handle: pipeline.as_raw(),
-                                p_object_name: name_cstring.as_ptr(),
-                                ..Default::default()
-                            },
-                        )
+                        .set_debug_utils_object_name(&vk::DebugUtilsObjectNameInfoEXT {
+                            object_type: vk::ObjectType::PIPELINE,
+                            object_handle: pipeline.as_raw(),
+                            p_object_name: name_cstring.as_ptr(),
+                            ..Default::default()
+                        })
                         .unwrap();
                 }
             }
@@ -1432,7 +1458,9 @@ impl gpu::ComputePipeline for VkPipeline {
                     vk::DescriptorType::STORAGE_IMAGE => gpu::BindingType::StorageTexture,
                     vk::DescriptorType::SAMPLED_IMAGE => gpu::BindingType::SampledTexture,
                     vk::DescriptorType::SAMPLER => gpu::BindingType::Sampler,
-                    vk::DescriptorType::COMBINED_IMAGE_SAMPLER => gpu::BindingType::TextureAndSampler,
+                    vk::DescriptorType::COMBINED_IMAGE_SAMPLER => {
+                        gpu::BindingType::TextureAndSampler
+                    }
                     _ => unreachable!(),
                 },
             })
@@ -1448,7 +1476,8 @@ pub(super) struct VkPipelineLayout {
 
 impl VkPipelineLayout {
     pub fn new(
-        descriptor_set_layouts: &[Option<Arc<VkDescriptorSetLayout>>; gpu::TOTAL_SET_COUNT as usize],
+        descriptor_set_layouts: &[Option<Arc<VkDescriptorSetLayout>>;
+             gpu::TOTAL_SET_COUNT as usize],
         push_constant_ranges: &[Option<VkConstantRange>; 3],
         device: &Arc<RawVkDevice>,
     ) -> Self {
@@ -1516,8 +1545,12 @@ impl VkPipelineLayout {
         }
     }
 
-    pub(super) fn push_constant_range(&self, shader_type: gpu::ShaderType) -> Option<&VkConstantRange> {
-        Self::push_constant_range_index(shader_type).and_then(|index| self.push_constant_ranges[index].as_ref())
+    pub(super) fn push_constant_range(
+        &self,
+        shader_type: gpu::ShaderType,
+    ) -> Option<&VkConstantRange> {
+        Self::push_constant_range_index(shader_type)
+            .and_then(|index| self.push_constant_ranges[index].as_ref())
     }
 }
 

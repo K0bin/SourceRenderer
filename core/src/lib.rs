@@ -1,8 +1,8 @@
+pub mod console;
 pub mod gpu;
+pub mod input;
 pub mod platform;
 pub mod pool;
-pub mod input;
-pub mod console;
 
 pub mod atomic_refcell;
 

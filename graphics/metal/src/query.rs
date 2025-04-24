@@ -13,13 +13,14 @@ unsafe impl Sync for MTLQueryPool {}
 
 impl MTLQueryPool {
     pub(crate) fn new(device: &ProtocolObject<dyn objc2_metal::MTLDevice>, count: u32) -> Self {
-        let buffer = device.newBufferWithLength_options((count as NSUInteger) * std::mem::size_of::<u64>(),
-            objc2_metal::MTLResourceOptions::StorageModeShared).unwrap();
+        let buffer = device
+            .newBufferWithLength_options(
+                (count as NSUInteger) * std::mem::size_of::<u64>(),
+                objc2_metal::MTLResourceOptions::StorageModeShared,
+            )
+            .unwrap();
 
-        let result = Self {
-            buffer,
-            count,
-        };
+        let result = Self { buffer, count };
 
         unsafe {
             result.reset();
@@ -36,7 +37,8 @@ impl MTLQueryPool {
 impl gpu::QueryPool for MTLQueryPool {
     unsafe fn reset(&self) {
         let ptr = self.buffer.contents();
-        let slice: &mut [u64] = std::slice::from_raw_parts_mut(ptr.as_ptr() as *mut u64, self.count as usize);
+        let slice: &mut [u64] =
+            std::slice::from_raw_parts_mut(ptr.as_ptr() as *mut u64, self.count as usize);
         slice.fill(0u64);
     }
 }

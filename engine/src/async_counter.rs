@@ -1,16 +1,28 @@
-use std::{future::{poll_fn, Future}, sync::{atomic::{AtomicU32, Ordering}, Mutex}, task::{Poll, Waker}};
+use std::future::{
+    poll_fn,
+    Future,
+};
+use std::sync::atomic::{
+    AtomicU32,
+    Ordering,
+};
+use std::sync::Mutex;
+use std::task::{
+    Poll,
+    Waker,
+};
 
 pub struct AsyncCounter {
     counter: AtomicU32,
     wakers: Mutex<Vec<Waker>>,
-    max_value_for_waking: u32
+    max_value_for_waking: u32,
 }
 impl AsyncCounter {
     pub fn new(max_value_for_waking: u32) -> Self {
         Self {
             counter: AtomicU32::new(0u32),
             wakers: Mutex::new(Vec::new()),
-            max_value_for_waking
+            max_value_for_waking,
         }
     }
 

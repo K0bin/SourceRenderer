@@ -162,7 +162,8 @@ impl RendererResources {
                         subresources,
                         texture: self
                             .device
-                            .create_texture(info, Some(&(name.to_string() + "_b"))).unwrap(),
+                            .create_texture(info, Some(&(name.to_string() + "_b")))
+                            .unwrap(),
                         views: HashMap::new(),
                     })
                 }),
@@ -184,17 +185,19 @@ impl RendererResources {
                 a: RefCell::new(TrackedBuffer {
                     stages: BarrierSync::empty(),
                     access: BarrierAccess::empty(),
-                    buffer: self.device.create_buffer(info, memory_usage, Some(name)).unwrap(),
+                    buffer: self
+                        .device
+                        .create_buffer(info, memory_usage, Some(name))
+                        .unwrap(),
                 }),
                 b: has_history.then(|| {
                     RefCell::new(TrackedBuffer {
                         stages: BarrierSync::empty(),
                         access: BarrierAccess::empty(),
-                        buffer: self.device.create_buffer(
-                            info,
-                            memory_usage,
-                            Some(&(name.to_string() + "_b")),
-                        ).unwrap(),
+                        buffer: self
+                            .device
+                            .create_buffer(info, memory_usage, Some(&(name.to_string() + "_b")))
+                            .unwrap(),
                     })
                 }),
             },
@@ -281,7 +284,9 @@ impl RendererResources {
                     {
                         log::warn!(
                             "READ TO READ BARRIER: Texture: \"{}\", stage: {:?}, access: {:?}",
-                            name, stages, access
+                            name,
+                            stages,
+                            access
                         );
                     }
 
@@ -307,7 +312,7 @@ impl RendererResources {
                             base_mip_level: mip_index,
                             mip_level_length: 1,
                         },
-                        queue_ownership: None
+                        queue_ownership: None,
                     }]);
                     if access.is_write()
                         || subresource_clone.access.is_write()
@@ -513,7 +518,9 @@ impl RendererResources {
                 {
                     log::warn!(
                         "READ TO READ BARRIER: Buffer: \"{}\", stage: {:?}, access: {:?}",
-                        name, stages, access
+                        name,
+                        stages,
+                        access
                     );
                 }
 
@@ -523,7 +530,7 @@ impl RendererResources {
                     old_access: buffer_mut.access & BarrierAccess::write_mask(),
                     new_access: access,
                     buffer: BufferRef::Regular(&buffer_mut.buffer),
-                    queue_ownership: None
+                    queue_ownership: None,
                 }]);
                 if access.is_write() || buffer_mut.access.is_write() {
                     buffer_mut.access = access;
@@ -545,7 +552,9 @@ impl RendererResources {
                 {
                     log::warn!(
                         "READ TO READ BARRIER: Buffer: \"{}\", stage: {:?}, access: {:?}",
-                        name, stages, access
+                        name,
+                        stages,
+                        access
                     );
                 }
 

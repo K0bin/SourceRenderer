@@ -4,10 +4,7 @@ use web_sys::OffscreenCanvas;
 
 enum CanvasKind {
     Canvas(OffscreenCanvas),
-    Fake {
-        width: u32,
-        height: u32,
-    }
+    Fake { width: u32, height: u32 },
 }
 
 pub struct WebWindow {
@@ -30,7 +27,9 @@ impl WebWindow {
 impl Window<WebGPUBackend> for WebWindow {
     fn create_surface(&self, graphics_instance: &WebGPUInstance) -> WebGPUSurface {
         match &self.canvas {
-            CanvasKind::Canvas(canvas) => WebGPUSurface::new(graphics_instance, canvas.clone()).unwrap(),
+            CanvasKind::Canvas(canvas) => {
+                WebGPUSurface::new(graphics_instance, canvas.clone()).unwrap()
+            }
             CanvasKind::Fake { .. } => WebGPUSurface::new_fake(graphics_instance).unwrap(),
         }
     }

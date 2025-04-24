@@ -2,18 +2,18 @@ use std::cell::Ref;
 use std::sync::Arc;
 
 use rand::random;
-use crate::graphics::*;
 use sourcerenderer_core::{
     Vec2UI,
     Vec4,
 };
 
+use crate::graphics::*;
+use crate::renderer::asset::*;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::asset::*;
 
 pub struct SsaoPass {
     pipeline: ComputePipelineHandle,
@@ -91,10 +91,7 @@ impl SsaoPass {
     }
 
     #[allow(unused)]
-    fn create_hemisphere(
-        device: &Arc<Device>,
-        samples: u32,
-    ) -> Arc<BufferSlice> {
+    fn create_hemisphere(device: &Arc<Device>, samples: u32) -> Arc<BufferSlice> {
         let mut ssao_kernel = Vec::<Vec4>::with_capacity(samples as usize);
         const BIAS: f32 = 0.15f32;
         for i in 0..samples {
@@ -112,15 +109,17 @@ impl SsaoPass {
             ssao_kernel.push(sample);
         }
 
-        let buffer = device.create_buffer(
-            &BufferInfo {
-                size: std::mem::size_of_val(&ssao_kernel[..]) as u64,
-                usage: BufferUsage::INITIAL_COPY | BufferUsage::CONSTANT,
-                sharing_mode: QueueSharingMode::Exclusive
-            },
-            MemoryUsage::GPUMemory,
-            Some("SSAOKernel"),
-        ).unwrap();
+        let buffer = device
+            .create_buffer(
+                &BufferInfo {
+                    size: std::mem::size_of_val(&ssao_kernel[..]) as u64,
+                    usage: BufferUsage::INITIAL_COPY | BufferUsage::CONSTANT,
+                    sharing_mode: QueueSharingMode::Exclusive,
+                },
+                MemoryUsage::GPUMemory,
+                Some("SSAOKernel"),
+            )
+            .unwrap();
 
         device.init_buffer(&ssao_kernel[..], &buffer, 0).unwrap();
         buffer
@@ -128,7 +127,8 @@ impl SsaoPass {
 
     #[inline(always)]
     pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
-        assets.get_compute_pipeline(self.pipeline).is_some() && assets.get_compute_pipeline(self.blur_pipeline).is_some()
+        assets.get_compute_pipeline(self.pipeline).is_some()
+            && assets.get_compute_pipeline(self.blur_pipeline).is_some()
     }
 
     pub fn execute(
@@ -164,12 +164,9 @@ impl SsaoPass {
             HistoryResourceEntry::Current,
         );
 
-        let mut motion_srv =
-            Option::<Ref<Arc<TextureView>>>::None;
-        let mut id_view =
-            Option::<Ref<Arc<TextureView>>>::None;
-        let mut barycentrics_view =
-            Option::<Ref<Arc<TextureView>>>::None;
+        let mut motion_srv = Option::<Ref<Arc<TextureView>>>::None;
+        let mut id_view = Option::<Ref<Arc<TextureView>>>::None;
+        let mut barycentrics_view = Option::<Ref<Arc<TextureView>>>::None;
         if !visibility_buffer {
             motion_srv = Some(pass_params.resources.access_view(
                 cmd_buffer,
@@ -205,7 +202,10 @@ impl SsaoPass {
         }
 
         cmd_buffer.begin_label("SSAO pass");
-        let pipeline = pass_params.assets.get_compute_pipeline(self.pipeline).unwrap();
+        let pipeline = pass_params
+            .assets
+            .get_compute_pipeline(self.pipeline)
+            .unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buffer.flush_barriers();
         cmd_buffer.bind_uniform_buffer(
@@ -227,7 +227,13 @@ impl SsaoPass {
             &*depth_srv,
             pass_params.resources.linear_sampler(),
         );
-        cmd_buffer.bind_uniform_buffer(BindingFrequency::VeryFrequent, 3, BufferRef::Transient(camera), 0, WHOLE_BUFFER);
+        cmd_buffer.bind_uniform_buffer(
+            BindingFrequency::VeryFrequent,
+            3,
+            BufferRef::Transient(camera),
+            0,
+            WHOLE_BUFFER,
+        );
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 4, &*ssao_uav);
         cmd_buffer.finish_binding();
         let ssao_info = ssao_uav.texture().unwrap().info();
@@ -271,7 +277,10 @@ impl SsaoPass {
             HistoryResourceEntry::Past,
         );
 
-        let blur_pipeline = pass_params.assets.get_compute_pipeline(self.blur_pipeline).unwrap();
+        let blur_pipeline = pass_params
+            .assets
+            .get_compute_pipeline(self.blur_pipeline)
+            .unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&blur_pipeline));
         cmd_buffer.flush_barriers();
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0, &*blurred_uav);

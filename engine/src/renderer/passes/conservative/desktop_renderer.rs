@@ -5,7 +5,9 @@ use sourcerenderer_core::{
     Matrix4,
     Vec2,
     Vec2UI,
-    Vec3, Vec3UI, Vec4,
+    Vec3,
+    Vec3UI,
+    Vec4,
 };
 
 use super::acceleration_structure_update::AccelerationStructureUpdatePass;
@@ -18,19 +20,28 @@ use super::rt_shadows::RTShadowPass;
 use super::sharpen::SharpenPass;
 use super::ssao::SsaoPass;
 use super::taa::TAAPass;
-use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
+use crate::graphics::*;
+use crate::renderer::asset::{
+    RendererAssets,
+    RendererAssetsReadOnly,
+};
 use crate::renderer::passes::blit::BlitPass;
 use crate::renderer::passes::blue_noise::BlueNoise;
-use crate::renderer::passes::modern::gpu_scene::{BufferBinding, SceneBuffers};
+use crate::renderer::passes::modern::gpu_scene::{
+    BufferBinding,
+    SceneBuffers,
+};
 use crate::renderer::render_path::{
-    FrameInfo, RenderPassParameters, RenderPath, RenderPathResult, SceneInfo
+    FrameInfo,
+    RenderPassParameters,
+    RenderPath,
+    RenderPathResult,
+    SceneInfo,
 };
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-
-use crate::graphics::*;
 
 pub struct ConservativeRenderer {
     device: Arc<crate::graphics::Device>,
@@ -44,7 +55,7 @@ pub struct ConservativeRenderer {
     //occlusion: OcclusionPass,
     rt_passes: Option<RTPasses>,
     blue_noise: BlueNoise,
-    blit_pass: BlitPass
+    blit_pass: BlitPass,
 }
 
 pub struct RTPasses {
@@ -52,7 +63,7 @@ pub struct RTPasses {
     shadows: RTShadowPass,
 }
 
-pub struct FrameBindings<'a>{
+pub struct FrameBindings<'a> {
     gpu_scene_buffer: BufferRef<'a>,
     camera_buffer: BufferRef<'a>,
     camera_history_buffer: BufferRef<'a>,
@@ -113,16 +124,25 @@ impl ConservativeRenderer {
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
 
-        device.submit(QueueType::Graphics, QueueSubmission {
-            command_buffer: init_cmd_buffer.finish(),
-            wait_fences: &[],
-            signal_fences: &[],
-            acquire_swapchain: None,
-            release_swapchain: None
-        });
+        device.submit(
+            QueueType::Graphics,
+            QueueSubmission {
+                command_buffer: init_cmd_buffer.finish(),
+                wait_fences: &[],
+                signal_fences: &[],
+                acquire_swapchain: None,
+                release_swapchain: None,
+            },
+        );
         let c_device = device.clone();
         let task_pool = bevy_tasks::ComputeTaskPool::get();
-        task_pool.spawn(async move { crate::autoreleasepool(|| { c_device.flush(QueueType::Graphics); }) }).detach();
+        task_pool
+            .spawn(async move {
+                crate::autoreleasepool(|| {
+                    c_device.flush(QueueType::Graphics);
+                })
+            })
+            .detach();
 
         Self {
             device: device.clone(),
@@ -136,7 +156,7 @@ impl ConservativeRenderer {
             //occlusion,
             rt_passes,
             blue_noise,
-            blit_pass: blit
+            blit_pass: blit,
         }
     }
 
@@ -151,7 +171,9 @@ impl ConservativeRenderer {
         rendering_resolution: &Vec2UI,
         frame: u64,
     ) -> FrameBindings<'a>
-        where 'a: 'b {
+    where
+        'a: 'b,
+    {
         let view = &scene.scene.views()[scene.active_view_index];
 
         let cluster_count = self.clustering_pass.cluster_count();
@@ -170,34 +192,37 @@ impl ConservativeRenderer {
             swapchain_transform: Matrix4,
             halton_point: Vec2,
             rt_size: Vec2UI,
-            frame: u32
+            frame: u32,
         }
-        let setup_buffer = cmd_buf.upload_dynamic_data(
-            &[SetupBuffer {
-                point_light_count: scene.scene.point_lights().len() as u32,
-                directional_light_count: scene.scene.directional_lights().len() as u32,
-                cluster_z_bias,
-                cluster_z_scale,
-                cluster_count,
-                _padding: 0,
-                swapchain_transform: swapchain.transform(),
-                halton_point: super::taa::scaled_halton_point(
-                    rendering_resolution.x,
-                    rendering_resolution.y,
-                    (frame % 8) as u32 + 1,
-                ),
-                rt_size: *rendering_resolution,
-                frame: frame as u32
-            }],
-            BufferUsage::CONSTANT,
-        ).unwrap();
+        let setup_buffer = cmd_buf
+            .upload_dynamic_data(
+                &[SetupBuffer {
+                    point_light_count: scene.scene.point_lights().len() as u32,
+                    directional_light_count: scene.scene.directional_lights().len() as u32,
+                    cluster_z_bias,
+                    cluster_z_scale,
+                    cluster_count,
+                    _padding: 0,
+                    swapchain_transform: swapchain.transform(),
+                    halton_point: super::taa::scaled_halton_point(
+                        rendering_resolution.x,
+                        rendering_resolution.y,
+                        (frame % 8) as u32 + 1,
+                    ),
+                    rt_size: *rendering_resolution,
+                    frame: frame as u32,
+                }],
+                BufferUsage::CONSTANT,
+            )
+            .unwrap();
         #[repr(C)]
         #[derive(Debug, Clone)]
         struct PointLight {
             position: Vec3,
             intensity: f32,
         }
-        let point_lights: SmallVec<[PointLight; 16]> = scene.scene
+        let point_lights: SmallVec<[PointLight; 16]> = scene
+            .scene
             .point_lights()
             .iter()
             .map(|l| PointLight {
@@ -205,14 +230,17 @@ impl ConservativeRenderer {
                 intensity: l.intensity,
             })
             .collect();
-        let point_lights_buffer = cmd_buf.upload_dynamic_data(&point_lights, BufferUsage::CONSTANT).unwrap();
+        let point_lights_buffer = cmd_buf
+            .upload_dynamic_data(&point_lights, BufferUsage::CONSTANT)
+            .unwrap();
         #[repr(C)]
         #[derive(Debug, Clone)]
         struct DirectionalLight {
             direction: Vec3,
             intensity: f32,
         }
-        let directional_lights: SmallVec<[DirectionalLight; 16]> = scene.scene
+        let directional_lights: SmallVec<[DirectionalLight; 16]> = scene
+            .scene
             .directional_lights()
             .iter()
             .map(|l| DirectionalLight {
@@ -220,8 +248,9 @@ impl ConservativeRenderer {
                 intensity: l.intensity,
             })
             .collect();
-        let directional_lights_buffer =
-            cmd_buf.upload_dynamic_data(&directional_lights, BufferUsage::CONSTANT).unwrap();
+        let directional_lights_buffer = cmd_buf
+            .upload_dynamic_data(&directional_lights, BufferUsage::CONSTANT)
+            .unwrap();
 
         FrameBindings {
             gpu_scene_buffer: BufferRef::Transient(&gpu_scene_buffers.buffer),
@@ -245,23 +274,24 @@ impl RenderPath for ConservativeRenderer {
         //self.occlusion.write_occlusion_query_results(frame, bitset);
     }
 
-    fn on_swapchain_changed(
-        &mut self,
-        _swapchain: &Swapchain,
-    ) {
+    fn on_swapchain_changed(&mut self, _swapchain: &Swapchain) {
         // TODO: resize render targets
     }
 
     fn is_ready(&self, assets: &RendererAssetsReadOnly) -> bool {
         self.clustering_pass.is_ready(&assets)
-        && self.light_binning_pass.is_ready(&assets)
-        && self.prepass.is_ready(&assets)
-        && self.ssao.is_ready(&assets)
-        && self.rt_passes.as_ref().map(|passes| passes.shadows.is_ready(&assets)).unwrap_or(true)
-        && self.geometry.is_ready(&assets)
-        && self.blit_pass.is_ready(&assets)
-        && self.taa.is_ready(&assets)
-        && self.sharpen.is_ready(&assets)
+            && self.light_binning_pass.is_ready(&assets)
+            && self.prepass.is_ready(&assets)
+            && self.ssao.is_ready(&assets)
+            && self
+                .rt_passes
+                .as_ref()
+                .map(|passes| passes.shadows.is_ready(&assets))
+                .unwrap_or(true)
+            && self.geometry.is_ready(&assets)
+            && self.blit_pass.is_ready(&assets)
+            && self.taa.is_ready(&assets)
+            && self.sharpen.is_ready(&assets)
     }
 
     #[profiling::function]
@@ -272,45 +302,78 @@ impl RenderPath for ConservativeRenderer {
         scene: &SceneInfo,
         frame_info: &FrameInfo,
         resources: &mut RendererResources,
-        assets: &RendererAssetsReadOnly<'_>
+        assets: &RendererAssetsReadOnly<'_>,
     ) -> Result<RenderPathResult, SwapchainError> {
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
         let main_view = &scene.scene.views()[scene.active_view_index];
 
-        let camera_buffer = cmd_buf.upload_dynamic_data(&[CameraBuffer {
-            view_proj: main_view.proj_matrix * main_view.view_matrix,
-            inv_proj: main_view.proj_matrix.inverse(),
-            view: main_view.view_matrix,
-            proj: main_view.proj_matrix,
-            inv_view: main_view.view_matrix.inverse(),
-            position: Vec4::new(main_view.camera_position.x, main_view.camera_position.y, main_view.camera_position.z, 1.0f32),
-            inv_proj_view: (main_view.proj_matrix * main_view.view_matrix).inverse(),
-            z_near: main_view.near_plane,
-            z_far: main_view.far_plane,
-            aspect_ratio: main_view.aspect_ratio,
-            fov: main_view.camera_fov
-        }], BufferUsage::CONSTANT).unwrap();
+        let camera_buffer = cmd_buf
+            .upload_dynamic_data(
+                &[CameraBuffer {
+                    view_proj: main_view.proj_matrix * main_view.view_matrix,
+                    inv_proj: main_view.proj_matrix.inverse(),
+                    view: main_view.view_matrix,
+                    proj: main_view.proj_matrix,
+                    inv_view: main_view.view_matrix.inverse(),
+                    position: Vec4::new(
+                        main_view.camera_position.x,
+                        main_view.camera_position.y,
+                        main_view.camera_position.z,
+                        1.0f32,
+                    ),
+                    inv_proj_view: (main_view.proj_matrix * main_view.view_matrix).inverse(),
+                    z_near: main_view.near_plane,
+                    z_far: main_view.far_plane,
+                    aspect_ratio: main_view.aspect_ratio,
+                    fov: main_view.camera_fov,
+                }],
+                BufferUsage::CONSTANT,
+            )
+            .unwrap();
 
         let camera_history_buffer = &camera_buffer;
 
-        let empty_buffer = cmd_buf.create_temporary_buffer(
-            &BufferInfo {
-                size: 16,
-                usage: BufferUsage::STORAGE,
-                sharing_mode: QueueSharingMode::Concurrent
-            },
-            MemoryUsage::GPUMemory,
-        ).unwrap();
+        let empty_buffer = cmd_buf
+            .create_temporary_buffer(
+                &BufferInfo {
+                    size: 16,
+                    usage: BufferUsage::STORAGE,
+                    sharing_mode: QueueSharingMode::Concurrent,
+                },
+                MemoryUsage::GPUMemory,
+            )
+            .unwrap();
         let gpu_scene = SceneBuffers {
             buffer: empty_buffer,
-            scene_buffer: BufferBinding { offset: 0, length: 0 },
-            draws_buffer: BufferBinding { offset: 0, length: 0 },
-            meshes_buffer:  BufferBinding { offset: 0, length: 0 },
-            drawables_buffer: BufferBinding { offset: 0, length: 0 },
-            parts_buffer: BufferBinding { offset: 0, length: 0 },
-            materials_buffer: BufferBinding { offset: 0, length: 0 },
-            lights_buffer: BufferBinding { offset: 0, length: 0 }
+            scene_buffer: BufferBinding {
+                offset: 0,
+                length: 0,
+            },
+            draws_buffer: BufferBinding {
+                offset: 0,
+                length: 0,
+            },
+            meshes_buffer: BufferBinding {
+                offset: 0,
+                length: 0,
+            },
+            drawables_buffer: BufferBinding {
+                offset: 0,
+                length: 0,
+            },
+            parts_buffer: BufferBinding {
+                offset: 0,
+                length: 0,
+            },
+            materials_buffer: BufferBinding {
+                offset: 0,
+                length: 0,
+            },
+            lights_buffer: BufferBinding {
+                offset: 0,
+                length: 0,
+            },
         };
 
         let frame_bindings = self.create_frame_bindings(
@@ -329,7 +392,7 @@ impl RenderPath for ConservativeRenderer {
             device: self.device.as_ref(),
             scene,
             resources,
-            assets
+            assets,
         };
 
         if let Some(rt_passes) = self.rt_passes.as_mut() {
@@ -350,13 +413,10 @@ impl RenderPath for ConservativeRenderer {
             &mut cmd_buf,
             &params,
             Vec2UI::new(swapchain.width(), swapchain.height()),
-            &camera_buffer
+            &camera_buffer,
         );
-        self.light_binning_pass.execute(
-            &mut cmd_buf,
-            &params,
-            &camera_buffer
-        );
+        self.light_binning_pass
+            .execute(&mut cmd_buf, &params, &camera_buffer);
         self.prepass.execute(
             context,
             &mut cmd_buf,
@@ -364,7 +424,7 @@ impl RenderPath for ConservativeRenderer {
             swapchain.transform(),
             frame_info.frame,
             &camera_buffer,
-            &camera_history_buffer
+            &camera_history_buffer,
         );
         self.ssao.execute(
             &mut cmd_buf,
@@ -374,7 +434,7 @@ impl RenderPath for ConservativeRenderer {
             &camera_buffer,
             self.blue_noise.frame(frame_info.frame),
             self.blue_noise.sampler(),
-            false
+            false,
         );
         if let Some(rt_passes) = self.rt_passes.as_mut() {
             rt_passes.shadows.execute(
@@ -393,7 +453,7 @@ impl RenderPath for ConservativeRenderer {
             &mut cmd_buf,
             &params,
             Prepass::DEPTH_TEXTURE_NAME,
-            &frame_bindings
+            &frame_bindings,
         );
         self.taa.execute(
             &mut cmd_buf,
@@ -401,10 +461,9 @@ impl RenderPath for ConservativeRenderer {
             GeometryPass::GEOMETRY_PASS_TEXTURE_NAME,
             Prepass::DEPTH_TEXTURE_NAME,
             Some("TODO"),
-            false
+            false,
         );
-        self.sharpen
-            .execute(&mut cmd_buf, &params);
+        self.sharpen.execute(&mut cmd_buf, &params);
 
         let sharpened_texture = params.resources.access_texture(
             &mut cmd_buf,
@@ -430,12 +489,14 @@ impl RenderPath for ConservativeRenderer {
             new_layout: TextureLayout::RenderTarget, // TextureLayout::CopyDst,
             texture: backbuffer_handle,
             range: BarrierTextureRange::default(),
-            queue_ownership: None
+            queue_ownership: None,
         }]);
         //cmd_buf.flush_barriers();
         //cmd_buf.blit_to_handle(&*sharpened_texture, 0, 0, swapchain.backbuffer_handle(), 0, 0);
         std::mem::drop(sharpened_texture);
-        let sharpened_view = params.resources.access_view(&mut cmd_buf, SharpenPass::SHAPENED_TEXTURE_NAME,
+        let sharpened_view = params.resources.access_view(
+            &mut cmd_buf,
+            SharpenPass::SHAPENED_TEXTURE_NAME,
             BarrierSync::FRAGMENT_SHADER,
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,
@@ -445,13 +506,23 @@ impl RenderPath for ConservativeRenderer {
                 mip_level_length: 1,
                 base_array_layer: 0,
                 array_layer_length: 1,
-                format: None
-            }, HistoryResourceEntry::Current);
+                format: None,
+            },
+            HistoryResourceEntry::Current,
+        );
         let sampler = params.resources.linear_sampler();
         cmd_buf.flush_barriers();
 
         let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
-        self.blit_pass.execute(context, &mut cmd_buf, &params.assets, &sharpened_view, &backbuffer_view, sampler, resolution);
+        self.blit_pass.execute(
+            context,
+            &mut cmd_buf,
+            &params.assets,
+            &sharpened_view,
+            &backbuffer_view,
+            sampler,
+            resolution,
+        );
         std::mem::drop(sharpened_view);
         cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::RENDER_TARGET, // BarrierSync::COPY,
@@ -462,17 +533,16 @@ impl RenderPath for ConservativeRenderer {
             new_layout: TextureLayout::Present,
             texture: backbuffer_handle,
             range: BarrierTextureRange::default(),
-            queue_ownership: None
+            queue_ownership: None,
         }]);
 
         Ok(RenderPathResult {
             cmd_buffer: cmd_buf.finish(),
-            backbuffer: Some(backbuffer)
+            backbuffer: Some(backbuffer),
         })
     }
 
-    fn set_ui_data(&mut self, _data: crate::ui::UIDrawData) {
-    }
+    fn set_ui_data(&mut self, _data: crate::ui::UIDrawData) {}
 }
 
 pub fn setup_frame(cmd_buf: &mut CommandBuffer, frame_bindings: &FrameBindings) {
@@ -532,6 +602,6 @@ pub fn setup_frame(cmd_buf: &mut CommandBuffer, frame_bindings: &FrameBindings) 
         13,
         BufferRef::Transient(&frame_bindings.directional_lights),
         0,
-          WHOLE_BUFFER,
+        WHOLE_BUFFER,
     );
 }

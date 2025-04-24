@@ -1,13 +1,15 @@
-
-use sourcerenderer_core::{gpu, Matrix4};
 use js_sys::wasm_bindgen::JsValue;
+use sourcerenderer_core::{gpu, Matrix4};
 use web_sys::{gpu_texture_usage, GpuCanvasConfiguration, GpuCanvasContext, GpuDevice};
 
-use crate::{surface::WebGPUSurface, texture::WebGPUTexture, WebGPUBackend, texture::format_from_webgpu, texture::format_to_webgpu};
+use crate::{
+    surface::WebGPUSurface, texture::format_from_webgpu, texture::format_to_webgpu,
+    texture::WebGPUTexture, WebGPUBackend,
+};
 
 pub struct WebGPUBackbuffer {
     texture: WebGPUTexture,
-    key: u64
+    key: u64,
 }
 
 impl gpu::Backbuffer for WebGPUBackbuffer {
@@ -26,7 +28,9 @@ pub struct WebGPUSwapchain {
 
 impl WebGPUSwapchain {
     pub fn new(device: &GpuDevice, surface: WebGPUSurface) -> Self {
-        let context_obj: JsValue = surface.canvas().get_context("webgpu")
+        let context_obj: JsValue = surface
+            .canvas()
+            .get_context("webgpu")
             .expect("Failed to retrieve context from OffscreenCanvas")
             .expect("Failed to retrieve context from OffscreenCanvas")
             .into();
@@ -43,8 +47,8 @@ impl WebGPUSwapchain {
             array_length: 1,
             samples: gpu::SampleCount::Samples1,
             usage: gpu::TextureUsage::RENDER_TARGET
-            | gpu::TextureUsage::COPY_DST
-            | gpu::TextureUsage::BLIT_DST,
+                | gpu::TextureUsage::COPY_DST
+                | gpu::TextureUsage::BLIT_DST,
             supports_srgb: false,
         };
 
@@ -57,7 +61,7 @@ impl WebGPUSwapchain {
             surface,
             backbuffer_counter: 0u64,
             texture_info,
-            canvas_context: context
+            canvas_context: context,
         }
     }
 }
@@ -72,26 +76,31 @@ impl gpu::Swapchain<WebGPUBackend> for WebGPUSwapchain {
     }
 
     unsafe fn next_backbuffer(&mut self) -> Result<WebGPUBackbuffer, gpu::SwapchainError> {
-        let web_texture = self.canvas_context.get_current_texture()
+        let web_texture = self
+            .canvas_context
+            .get_current_texture()
             .map_err(|_e| gpu::SwapchainError::Other)?;
 
-        if web_texture.width() != self.texture_info.width || web_texture.height() != self.texture_info.height
-            || self.surface.canvas().width() != self.texture_info.width || self.surface.canvas().height() != self.texture_info.height {
+        if web_texture.width() != self.texture_info.width
+            || web_texture.height() != self.texture_info.height
+            || self.surface.canvas().width() != self.texture_info.width
+            || self.surface.canvas().height() != self.texture_info.height
+        {
             return Err(gpu::SwapchainError::NeedsRecreation);
         }
 
         let key = self.backbuffer_counter;
         self.backbuffer_counter += 1;
         let texture = WebGPUTexture::from_texture(&self.device, web_texture);
-        let backbuffer = WebGPUBackbuffer {
-            texture,
-            key
-        };
+        let backbuffer = WebGPUBackbuffer { texture, key };
 
         Ok(backbuffer)
     }
 
-    unsafe fn texture_for_backbuffer<'a>(&'a self, backbuffer: &'a WebGPUBackbuffer) -> &'a WebGPUTexture {
+    unsafe fn texture_for_backbuffer<'a>(
+        &'a self,
+        backbuffer: &'a WebGPUBackbuffer,
+    ) -> &'a WebGPUTexture {
         &backbuffer.texture
     }
 

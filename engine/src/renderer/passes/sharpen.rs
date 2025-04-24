@@ -1,13 +1,13 @@
 use sourcerenderer_core::Vec2UI;
 
 use super::taa::TAAPass;
+use crate::graphics::*;
+use crate::renderer::asset::*;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::graphics::*;
-use crate::renderer::asset::*;
 
 const USE_CAS: bool = true;
 
@@ -41,7 +41,10 @@ impl SharpenPass {
                 mip_levels: 1,
                 array_length: 1,
                 samples: SampleCount::Samples1,
-                usage: TextureUsage::STORAGE | TextureUsage::COPY_SRC | TextureUsage::RENDER_TARGET | TextureUsage::SAMPLED,
+                usage: TextureUsage::STORAGE
+                    | TextureUsage::COPY_SRC
+                    | TextureUsage::RENDER_TARGET
+                    | TextureUsage::SAMPLED,
                 supports_srgb: false,
             },
             false,
@@ -58,7 +61,7 @@ impl SharpenPass {
     pub fn execute(
         &mut self,
         cmd_buffer: &mut CommandBuffer,
-        pass_params: &RenderPassParameters<'_>
+        pass_params: &RenderPassParameters<'_>,
     ) {
         let input_image_uav = pass_params.resources.access_view(
             cmd_buffer,
@@ -84,9 +87,14 @@ impl SharpenPass {
 
         cmd_buffer.begin_label("Sharpening pass");
 
-        let pipeline = pass_params.assets.get_compute_pipeline(self.pipeline).unwrap();
+        let pipeline = pass_params
+            .assets
+            .get_compute_pipeline(self.pipeline)
+            .unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
-        let sharpen_setup_ubo = cmd_buffer.upload_dynamic_data(&[0.3f32], BufferUsage::CONSTANT).unwrap();
+        let sharpen_setup_ubo = cmd_buffer
+            .upload_dynamic_data(&[0.3f32], BufferUsage::CONSTANT)
+            .unwrap();
         cmd_buffer.bind_uniform_buffer(
             BindingFrequency::VeryFrequent,
             2,

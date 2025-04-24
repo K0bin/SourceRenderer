@@ -1,23 +1,23 @@
 use core::panic;
-use std::{
-    cmp::{
-        max,
-        min,
-    }, fmt::Debug, hash::Hash, sync::{
-        Arc, Condvar
-    }
+use std::cmp::{
+    max,
+    min,
+};
+use std::fmt::Debug;
+use std::hash::Hash;
+use std::sync::{
+    Arc,
+    Condvar,
 };
 
-use ash::{
-    khr::swapchain::Device as SwapchainDevice,
-    vk,
-};
+use ash::khr::swapchain::Device as SwapchainDevice;
+use ash::vk;
 use smallvec::SmallVec;
+use sourcerenderer_core::gpu::*;
 use sourcerenderer_core::{
-    gpu::*,
+    EulerRot,
     Matrix4,
     Vec3,
-    EulerRot
 };
 
 use super::*;
@@ -34,19 +34,18 @@ pub enum VkSwapchainState {
 pub struct VkBackbufferIndices {
     pub(crate) texture_index: u32,
     pub(crate) acquire_semaphore_index: u32,
-    pub(crate) present_semaphore_index: u32
+    pub(crate) present_semaphore_index: u32,
 }
 
 impl Backbuffer for VkBackbufferIndices {
     fn key(&self) -> u64 {
         (self.texture_index as u64) & 255u64
-        | (((self.acquire_semaphore_index as u64) & 255u64) << 8)
-        | (((self.present_semaphore_index as u64) & 255u64) << 16)
+            | (((self.acquire_semaphore_index as u64) & 255u64) << 8)
+            | (((self.present_semaphore_index as u64) & 255u64) << 16)
     }
 }
 
-pub struct VkSwapchainInner {
-}
+pub struct VkSwapchainInner {}
 
 pub struct VkSwapchain {
     textures: SmallVec<[VkTexture; 5]>,
@@ -73,7 +72,7 @@ impl VkSwapchain {
         width: u32,
         height: u32,
         vsync: bool,
-        old_swapchain: Option<&vk::SwapchainKHR>
+        old_swapchain: Option<&vk::SwapchainKHR>,
     ) -> (vk::SwapchainKHR, SmallVec<[VkTexture; 5]>, Matrix4, u32) {
         unsafe {
             let physical_device = device.physical_device;
@@ -140,7 +139,12 @@ impl VkSwapchain {
                     vk::SurfaceTransformFlagsKHR::ROTATE_180,
                 ),
                 vk::SurfaceTransformFlagsKHR::ROTATE_270 => (
-                    Matrix4::from_euler(EulerRot::XYZ, 0f32, 0f32, -std::f32::consts::FRAC_PI_2 * 3f32),
+                    Matrix4::from_euler(
+                        EulerRot::XYZ,
+                        0f32,
+                        0f32,
+                        -std::f32::consts::FRAC_PI_2 * 3f32,
+                    ),
                     vk::SurfaceTransformFlagsKHR::ROTATE_270,
                 ),
                 vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR => (
@@ -149,7 +153,12 @@ impl VkSwapchain {
                 ),
                 vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_90 => (
                     Matrix4::from_scale(Vec3::new(-1f32, 1f32, 1f32))
-                        * Matrix4::from_euler(EulerRot::XYZ, 0f32, 0f32, -std::f32::consts::FRAC_PI_2),
+                        * Matrix4::from_euler(
+                            EulerRot::XYZ,
+                            0f32,
+                            0f32,
+                            -std::f32::consts::FRAC_PI_2,
+                        ),
                     vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_90,
                 ),
                 vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_180 => (
@@ -159,7 +168,8 @@ impl VkSwapchain {
                 ),
                 vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_270 => (
                     Matrix4::from_scale(Vec3::new(-1f32, 1f32, 1f32))
-                        * Matrix4::from_euler(EulerRot::XYZ,
+                        * Matrix4::from_euler(
+                            EulerRot::XYZ,
                             0f32,
                             0f32,
                             -std::f32::consts::FRAC_PI_2 * 3f32,
@@ -200,7 +210,9 @@ impl VkSwapchain {
                         vk::CompositeAlphaFlagsKHR::INHERIT
                     },
                     clipped: vk::TRUE,
-                    old_swapchain: old_swapchain.copied().unwrap_or(vk::SwapchainKHR::default()),
+                    old_swapchain: old_swapchain
+                        .copied()
+                        .unwrap_or(vk::SwapchainKHR::default()),
                     ..Default::default()
                 };
 
@@ -216,7 +228,8 @@ impl VkSwapchain {
                                 e, swapchain_create_info.old_swapchain
                             );
                         }
-                    }).unwrap()
+                    })
+                    .unwrap()
             };
 
             let swapchain_images = swapchain_device.get_swapchain_images(swapchain).unwrap();
@@ -257,12 +270,13 @@ impl VkSwapchain {
     ) -> Result<Self, SwapchainError> {
         let swapchain_device = SwapchainDevice::new(&device.instance.instance, &device.device);
         let (swapchain, textures, matrix, max_image_count) = Self::create_swapchain_and_textures(
-            device, &swapchain_device,
+            device,
+            &swapchain_device,
             &surface,
             width,
             height,
             vsync,
-            None
+            None,
         );
 
         let acquire_semaphores: SmallVec<[VkBinarySemaphore; 5]> = (0..max_image_count)
@@ -312,7 +326,7 @@ impl VkSwapchain {
                 height: min(
                     max(preferred_height, capabilities.min_image_extent.height),
                     capabilities.max_image_extent.height,
-                )
+                ),
             }
         }
     }
@@ -382,7 +396,9 @@ impl VkSwapchain {
         {
             let present_info = vk::PresentInfoKHR {
                 wait_semaphore_count: 1,
-                p_wait_semaphores: &self.present_semaphores[backbuffer_indices.present_semaphore_index as usize].handle() as *const vk::Semaphore,
+                p_wait_semaphores: &self.present_semaphores
+                    [backbuffer_indices.present_semaphore_index as usize]
+                    .handle() as *const vk::Semaphore,
                 swapchain_count: 1,
                 p_swapchains: &self.swapchain as *const vk::SwapchainKHR,
                 p_image_indices: &backbuffer_indices.texture_index as *const u32,
@@ -398,25 +414,20 @@ impl VkSwapchain {
                         self.state = VkSwapchainState::Suboptimal;
                     }
                 }
-                Err(err) => {
-                    match err {
-                        vk::Result::ERROR_SURFACE_LOST_KHR => {
-                            panic!("Vulkan surface lost");
-                        }
-                        vk::Result::ERROR_OUT_OF_DATE_KHR => {
-                            self.state = VkSwapchainState::OutOfDate;
-                        }
-                        vk::Result::NOT_READY => {
-                            todo!("Figure out not ready");
-                        }
-                        _ => {
-                            panic!(
-                                "Unknown error in present: {:?}",
-                                result.err().unwrap()
-                            );
-                        }
+                Err(err) => match err {
+                    vk::Result::ERROR_SURFACE_LOST_KHR => {
+                        panic!("Vulkan surface lost");
                     }
-                }
+                    vk::Result::ERROR_OUT_OF_DATE_KHR => {
+                        self.state = VkSwapchainState::OutOfDate;
+                    }
+                    vk::Result::NOT_READY => {
+                        todo!("Figure out not ready");
+                    }
+                    _ => {
+                        panic!("Unknown error in present: {:?}", result.err().unwrap());
+                    }
+                },
             }
         }
         self.cond_var.notify_all();
@@ -456,7 +467,10 @@ impl Swapchain<VkBackend> for VkSwapchain {
         self.transform_matrix
     }
 
-    unsafe fn texture_for_backbuffer<'a>(&'a self, backbuffer: &'a VkBackbufferIndices) -> &'a VkTexture {
+    unsafe fn texture_for_backbuffer<'a>(
+        &'a self,
+        backbuffer: &'a VkBackbufferIndices,
+    ) -> &'a VkTexture {
         &self.textures[backbuffer.texture_index as usize]
     }
 
@@ -471,7 +485,15 @@ impl Swapchain<VkBackend> for VkSwapchain {
         let width = info.width;
         let height = info.height;
 
-        let (swapchain, textures, matrix, _) = Self::create_swapchain_and_textures(&self.device, &self.swapchain_device, &self.surface, width, height, self.vsync, Some(&self.swapchain));
+        let (swapchain, textures, matrix, _) = Self::create_swapchain_and_textures(
+            &self.device,
+            &self.swapchain_device,
+            &self.surface,
+            width,
+            height,
+            self.vsync,
+            Some(&self.swapchain),
+        );
         self.swapchain = swapchain;
         self.textures = textures;
         self.transform_matrix = matrix;
@@ -479,11 +501,13 @@ impl Swapchain<VkBackend> for VkSwapchain {
 
     unsafe fn next_backbuffer(&mut self) -> Result<VkBackbufferIndices, SwapchainError> {
         let max_distance = self.textures.len();
-        assert!(self.acquire_semaphore_counter - self.present_semaphore_counter < max_distance as u64);
+        assert!(
+            self.acquire_semaphore_counter - self.present_semaphore_counter < max_distance as u64
+        );
 
         let needs_recreate = match self.state {
             VkSwapchainState::OutOfDate => true,
-            VkSwapchainState::Okay | VkSwapchainState::Suboptimal => false
+            VkSwapchainState::Okay | VkSwapchainState::Suboptimal => false,
         };
         if needs_recreate {
             return Err(SwapchainError::NeedsRecreation);
@@ -491,7 +515,8 @@ impl Swapchain<VkBackend> for VkSwapchain {
 
         let acquire_counter = self.acquire_semaphore_counter;
         self.acquire_semaphore_counter += 1;
-        let acquire_semaphore_index: usize = (acquire_counter % self.acquire_semaphores.len() as u64) as usize;
+        let acquire_semaphore_index: usize =
+            (acquire_counter % self.acquire_semaphores.len() as u64) as usize;
         let acquire_semaphore = &self.acquire_semaphores[acquire_semaphore_index];
 
         let result = unsafe {
@@ -503,7 +528,8 @@ impl Swapchain<VkBackend> for VkSwapchain {
             )
         };
 
-        let present_semaphore_index = (self.present_semaphore_counter % self.present_semaphores.len() as u64) as usize;
+        let present_semaphore_index =
+            (self.present_semaphore_counter % self.present_semaphores.len() as u64) as usize;
 
         if let Ok((image_index, is_optimal)) = result {
             if !is_optimal && false {

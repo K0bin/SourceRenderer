@@ -1,7 +1,5 @@
-use std::{
-    ffi::c_void,
-    sync::Arc,
-};
+use std::ffi::c_void;
+use std::sync::Arc;
 
 use ash::vk;
 use sourcerenderer_core::gpu;
@@ -89,7 +87,9 @@ impl gpu::Fence for VkTimelineSemaphore {
                 p_values: &value as *const u64,
                 ..Default::default()
             };
-            self.device.wait_semaphores(&wait_info, std::u64::MAX).unwrap();
+            self.device
+                .wait_semaphores(&wait_info, std::u64::MAX)
+                .unwrap();
         }
     }
 }

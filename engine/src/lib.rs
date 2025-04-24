@@ -6,8 +6,8 @@ pub use camera::{
 pub use self::engine::{
     Engine,
     EngineLoopFuncResult,
+    WindowState,
 };
-pub use self::engine::WindowState;
 
 mod engine;
 
@@ -18,9 +18,9 @@ pub mod transform;
 
 mod input;
 //mod physics;
+pub mod graphics;
 pub mod renderer;
 mod ui;
-pub mod graphics;
 
 mod async_counter;
 pub use async_counter::*;
@@ -28,17 +28,26 @@ pub use async_counter::*;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
 
-#[allow(unused_imports)]
-use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{
+    Condvar,
+    Mutex,
+    MutexGuard,
+};
 
-use std::sync::{Mutex, MutexGuard, Condvar};
+#[allow(unused_imports)]
+use parking_lot::{
+    RwLock,
+    RwLockReadGuard,
+    RwLockWriteGuard,
+};
 
 pub mod tasks;
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 fn autoreleasepool<T, F>(func: F) -> T
-    where
-        for<'pool> F: objc2::rc::AutoreleaseSafe + FnOnce() -> T {
+where
+    for<'pool> F: objc2::rc::AutoreleaseSafe + FnOnce() -> T,
+{
     objc2::rc::autoreleasepool(|_| func())
 }
 

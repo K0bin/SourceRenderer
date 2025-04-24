@@ -1,14 +1,12 @@
-use std::{
-    ffi::{
-        CStr,
-        CString,
-    },
-    os::raw::{
-        c_char,
-        c_void,
-    },
-    sync::Arc,
+use std::ffi::{
+    CStr,
+    CString,
 };
+use std::os::raw::{
+    c_char,
+    c_void,
+};
+use std::sync::Arc;
 
 use ash::vk;
 use sourcerenderer_core::gpu;
@@ -71,7 +69,8 @@ impl VkInstance {
             println!("Validation layers not installed");
         }
 
-        let supported_extensions = unsafe { entry.enumerate_instance_extension_properties(None) }.unwrap();
+        let supported_extensions =
+            unsafe { entry.enumerate_instance_extension_properties(None) }.unwrap();
         let surface_extensions = [
             SURFACE_WAYLAND_EXT_NAME,
             SURFACE_XCB_EXT_NAME,
@@ -129,7 +128,6 @@ impl VkInstance {
             .iter()
             .map(|ext_c| ext_c.as_ptr())
             .collect();
-
 
         let app_name = CString::new("Dreieck").unwrap();
         let engine_name = CString::new("Dreieck").unwrap();
@@ -225,7 +223,9 @@ impl VkInstance {
             return vk::FALSE;
         }
 
-        if message_severity != vk::DebugUtilsMessageSeverityFlagsEXT::INFO || message_severity.contains(vk::DebugUtilsMessageSeverityFlagsEXT::ERROR) {
+        if message_severity != vk::DebugUtilsMessageSeverityFlagsEXT::INFO
+            || message_severity.contains(vk::DebugUtilsMessageSeverityFlagsEXT::ERROR)
+        {
             println!(
                 "VK: {:?} - {:?}: {:?}",
                 message_severity,

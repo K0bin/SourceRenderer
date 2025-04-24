@@ -3,11 +3,14 @@ extern crate lazy_static;
 
 pub use sdl_platform::SDLPlatform;
 use sdl_platform::StdIO;
-use sourcerenderer_engine::{Engine, EngineLoopFuncResult};
+use sourcerenderer_engine::{
+    Engine,
+    EngineLoopFuncResult,
+};
 
-mod sdl_platform;
 #[cfg(target_os = "macos")]
 mod sdl_metal;
+mod sdl_platform;
 #[cfg(target_os = "macos")]
 pub(crate) use sdl_metal as sdl_gpu;
 
@@ -24,8 +27,9 @@ use sourcerenderer_game::GamePlugin;
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 fn autoreleasepool<T, F>(func: F) -> T
-    where
-        for<'pool> F: objc2::rc::AutoreleaseSafe + FnOnce() -> T {
+where
+    for<'pool> F: objc2::rc::AutoreleaseSafe + FnOnce() -> T,
+{
     objc2::rc::autoreleasepool(|_| func())
 }
 
@@ -36,7 +40,10 @@ fn autoreleasepool<T, F: FnOnce() -> T>(func: F) -> T {
 
 pub fn main() {
     let mut platform = SDLPlatform::new();
-    let mut engine = Box::new(Engine::run::<_, StdIO, SDLPlatform>(platform.window(), GamePlugin::<StdIO>::default()));
+    let mut engine = Box::new(Engine::run::<_, StdIO, SDLPlatform>(
+        platform.window(),
+        GamePlugin::<StdIO>::default(),
+    ));
 
     'event_loop: loop {
         let engine_loop_result = autoreleasepool(|| {

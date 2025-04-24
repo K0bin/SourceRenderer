@@ -6,7 +6,9 @@ use std::{
 use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;
 use sourcerenderer_core::{
-    Matrix4, Quaternion, Vec3
+    Matrix4,
+    Quaternion,
+    Vec3,
 };
 
 use crate::asset::ModelHandle;

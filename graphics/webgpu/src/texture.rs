@@ -1,6 +1,9 @@
-use std::hash::Hash;
 use sourcerenderer_core::gpu::{self, Texture as _};
-use web_sys::{js_sys, wasm_bindgen::JsValue, GpuDevice, GpuExtent3dDict, GpuTexture, GpuTextureDescriptor, GpuTextureFormat, GpuTextureView, GpuTextureViewDescriptor, GpuTextureViewDimension};
+use std::hash::Hash;
+use web_sys::{
+    js_sys, wasm_bindgen::JsValue, GpuDevice, GpuExtent3dDict, GpuTexture, GpuTextureDescriptor,
+    GpuTextureFormat, GpuTextureView, GpuTextureViewDescriptor, GpuTextureViewDimension,
+};
 
 pub(crate) fn format_to_webgpu(format: gpu::Format) -> GpuTextureFormat {
     match format {
@@ -51,7 +54,9 @@ pub(crate) fn format_from_webgpu(format: GpuTextureFormat) -> gpu::Format {
     }
 }
 
-pub(crate) fn texture_dimension_to_webgpu_view(texture_dimension: gpu::TextureDimension) -> GpuTextureViewDimension {
+pub(crate) fn texture_dimension_to_webgpu_view(
+    texture_dimension: gpu::TextureDimension,
+) -> GpuTextureViewDimension {
     match texture_dimension {
         gpu::TextureDimension::Dim1D => GpuTextureViewDimension::N1d,
         gpu::TextureDimension::Dim2D => GpuTextureViewDimension::N2d,
@@ -65,7 +70,7 @@ pub(crate) fn texture_dimension_to_webgpu_view(texture_dimension: gpu::TextureDi
 
 pub struct WebGPUTexture {
     texture: GpuTexture,
-    info: gpu::TextureInfo
+    info: gpu::TextureInfo,
 }
 
 impl PartialEq for WebGPUTexture {
@@ -90,27 +95,46 @@ impl Drop for WebGPUTexture {
 }
 
 impl WebGPUTexture {
-    pub fn new(device: &GpuDevice, info: &gpu::TextureInfo, name: Option<&str>) -> Result<Self, ()> {
-
+    pub fn new(
+        device: &GpuDevice,
+        info: &gpu::TextureInfo,
+        name: Option<&str>,
+    ) -> Result<Self, ()> {
         let size = GpuExtent3dDict::new(info.width);
-        if info.dimension != gpu::TextureDimension::Dim1D && info.dimension != gpu::TextureDimension::Dim1DArray {
+        if info.dimension != gpu::TextureDimension::Dim1D
+            && info.dimension != gpu::TextureDimension::Dim1DArray
+        {
             size.set_height(info.height);
         }
-        size.set_depth_or_array_layers(if info.dimension == gpu::TextureDimension::Dim3D { info.depth } else { info.array_length });
+        size.set_depth_or_array_layers(if info.dimension == gpu::TextureDimension::Dim3D {
+            info.depth
+        } else {
+            info.array_length
+        });
         let mut usage = 0u32;
         if info.usage.contains(gpu::TextureUsage::SAMPLED) {
             usage |= web_sys::gpu_texture_usage::TEXTURE_BINDING;
         }
-        if info.usage.intersects(gpu::TextureUsage::RENDER_TARGET | gpu::TextureUsage::DEPTH_STENCIL) {
+        if info
+            .usage
+            .intersects(gpu::TextureUsage::RENDER_TARGET | gpu::TextureUsage::DEPTH_STENCIL)
+        {
             usage |= web_sys::gpu_texture_usage::RENDER_ATTACHMENT;
         }
         if info.usage.contains(gpu::TextureUsage::STORAGE) {
             usage |= web_sys::gpu_texture_usage::STORAGE_BINDING;
         }
-        if info.usage.intersects(gpu::TextureUsage::COPY_DST | gpu::TextureUsage::INITIAL_COPY | gpu::TextureUsage::BLIT_DST) {
+        if info.usage.intersects(
+            gpu::TextureUsage::COPY_DST
+                | gpu::TextureUsage::INITIAL_COPY
+                | gpu::TextureUsage::BLIT_DST,
+        ) {
             usage |= web_sys::gpu_texture_usage::COPY_DST;
         }
-        if info.usage.intersects(gpu::TextureUsage::COPY_SRC | gpu::TextureUsage::BLIT_SRC) {
+        if info
+            .usage
+            .intersects(gpu::TextureUsage::COPY_SRC | gpu::TextureUsage::BLIT_SRC)
+        {
             usage |= web_sys::gpu_texture_usage::COPY_SRC;
         }
         if info.usage.contains(gpu::TextureUsage::RESOLVE_SRC) {
@@ -119,7 +143,8 @@ impl WebGPUTexture {
         if info.usage.contains(gpu::TextureUsage::RESOLVE_DST) {
             usage |= web_sys::gpu_texture_usage::COPY_DST;
         }
-        let descriptor = GpuTextureDescriptor::new(format_to_webgpu(info.format), &JsValue::from(&size), usage);
+        let descriptor =
+            GpuTextureDescriptor::new(format_to_webgpu(info.format), &JsValue::from(&size), usage);
         descriptor.set_mip_level_count(info.mip_levels);
         descriptor.set_sample_count(match info.samples {
             gpu::SampleCount::Samples1 => 1,
@@ -128,15 +153,23 @@ impl WebGPUTexture {
             gpu::SampleCount::Samples8 => 8,
         });
         descriptor.set_dimension(match info.dimension {
-            gpu::TextureDimension::Dim1D | gpu::TextureDimension::Dim1DArray => web_sys::GpuTextureDimension::N1d,
-            gpu::TextureDimension::Dim2D | gpu::TextureDimension::Dim2DArray | gpu::TextureDimension::Cube | gpu::TextureDimension::CubeArray => web_sys::GpuTextureDimension::N2d,
+            gpu::TextureDimension::Dim1D | gpu::TextureDimension::Dim1DArray => {
+                web_sys::GpuTextureDimension::N1d
+            }
+            gpu::TextureDimension::Dim2D
+            | gpu::TextureDimension::Dim2DArray
+            | gpu::TextureDimension::Cube
+            | gpu::TextureDimension::CubeArray => web_sys::GpuTextureDimension::N2d,
             gpu::TextureDimension::Dim3D => web_sys::GpuTextureDimension::N3d,
         });
         if let Some(name) = name {
             descriptor.set_label(name);
         }
 
-        let srgb_format = info.supports_srgb.then_some(true).and_then(|_| info.format.srgb_format());
+        let srgb_format = info
+            .supports_srgb
+            .then_some(true)
+            .and_then(|_| info.format.srgb_format());
         if let Some(srgb_format) = srgb_format {
             let formats_array = js_sys::Array::new_with_length(2);
             formats_array.set(0, JsValue::from(format_to_webgpu(info.format)));
@@ -151,7 +184,7 @@ impl WebGPUTexture {
 
         Ok(Self {
             texture,
-            info: info.clone()
+            info: info.clone(),
         })
     }
 
@@ -171,7 +204,6 @@ impl WebGPUTexture {
             } else {
                 usage |= gpu::TextureUsage::RENDER_TARGET;
             }
-
         }
         if web_usage & web_sys::gpu_texture_usage::STORAGE_BINDING != 0 {
             usage |= gpu::TextureUsage::STORAGE;
@@ -206,16 +238,13 @@ impl WebGPUTexture {
                 2 => gpu::SampleCount::Samples2,
                 4 => gpu::SampleCount::Samples4,
                 8 => gpu::SampleCount::Samples8,
-                _ => panic!("Unsupported sample count")
+                _ => panic!("Unsupported sample count"),
             },
             usage,
             supports_srgb: false,
         };
 
-        Self {
-            texture,
-            info
-        }
+        Self { texture, info }
     }
 
     #[inline(always)]
@@ -237,7 +266,7 @@ impl gpu::Texture for WebGPUTexture {
 pub struct WebGPUTextureView {
     view: GpuTextureView,
     texture_info: gpu::TextureInfo,
-    info: gpu::TextureViewInfo
+    info: gpu::TextureViewInfo,
 }
 
 impl PartialEq for WebGPUTextureView {
@@ -256,7 +285,12 @@ impl Hash for WebGPUTextureView {
 }
 
 impl WebGPUTextureView {
-    pub fn new(_device: &GpuDevice, texture: &WebGPUTexture, info: &gpu::TextureViewInfo, name: Option<&str>) -> Result<Self, ()> {
+    pub fn new(
+        _device: &GpuDevice,
+        texture: &WebGPUTexture,
+        info: &gpu::TextureViewInfo,
+        name: Option<&str>,
+    ) -> Result<Self, ()> {
         let descriptor = GpuTextureViewDescriptor::new();
         descriptor.set_array_layer_count(info.array_layer_length);
         descriptor.set_base_array_layer(info.base_array_layer);
@@ -269,11 +303,14 @@ impl WebGPUTextureView {
         if let Some(name) = name {
             descriptor.set_label(name);
         }
-        let view = texture.handle().create_view_with_descriptor(&descriptor).map_err(|_| ())?;
+        let view = texture
+            .handle()
+            .create_view_with_descriptor(&descriptor)
+            .map_err(|_| ())?;
         Ok(Self {
             view,
             texture_info: texture.info().clone(),
-            info: info.clone()
+            info: info.clone(),
         })
     }
 

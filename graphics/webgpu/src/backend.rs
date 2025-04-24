@@ -1,19 +1,8 @@
 use sourcerenderer_core::gpu;
 
 pub use crate::{
-    adapter::*,
-    buffer::*,
-    command::*,
-    pipeline::*,
-    queue::*,
-    sampler::*,
-    stubs::*,
-    surface::*,
-    swapchain::*,
-    texture::*,
-    device::*,
-    instance::*,
-    query::*,
+    adapter::*, buffer::*, command::*, device::*, instance::*, pipeline::*, query::*, queue::*,
+    sampler::*, stubs::*, surface::*, swapchain::*, texture::*,
 };
 
 pub struct WebGPUBackend();

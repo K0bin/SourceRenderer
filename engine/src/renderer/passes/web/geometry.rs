@@ -2,19 +2,27 @@ use std::sync::Arc;
 
 use smallvec::SmallVec;
 use sourcerenderer_core::{
-    Matrix4, Vec2, Vec2I, Vec2UI
+    Matrix4,
+    Vec2,
+    Vec2I,
+    Vec2UI,
 };
 
-use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly, RendererMaterial, RendererMaterialValue};
+use crate::graphics::*;
+use crate::renderer::asset::{
+    GraphicsPipelineHandle,
+    GraphicsPipelineInfo,
+    RendererAssets,
+    RendererAssetsReadOnly,
+    RendererMaterial,
+    RendererMaterialValue,
+};
 use crate::renderer::drawable::View;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
 use crate::renderer::renderer_scene::RendererScene;
-use crate::renderer::asset::{GraphicsPipelineHandle, GraphicsPipelineInfo};
-
-use crate::graphics::*;
 
 pub struct GeometryPass {
     pipeline: GraphicsPipelineHandle,
@@ -134,11 +142,14 @@ impl GeometryPass {
                 attachments: &[AttachmentBlendInfo::default()],
             },
             render_target_formats: &[swapchain.format()],
-            depth_stencil_format: Format::D32
+            depth_stencil_format: Format::D32,
         };
         let pipeline = assets.request_graphics_pipeline(&pipeline_info);
 
-        Self { pipeline, sampler: Arc::new(sampler) }
+        Self {
+            pipeline,
+            sampler: Arc::new(sampler),
+        }
     }
 
     #[inline(always)]
@@ -157,7 +168,7 @@ impl GeometryPass {
         backbuffer_handle: &BackendTexture,
         width: u32,
         height: u32,
-        assets: &RendererAssetsReadOnly<'_>
+        assets: &RendererAssetsReadOnly<'_>,
     ) {
         cmd_buffer.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::empty(),
@@ -168,7 +179,7 @@ impl GeometryPass {
             new_layout: TextureLayout::RenderTarget,
             texture: backbuffer_handle,
             range: BarrierTextureRange::default(),
-            queue_ownership: None
+            queue_ownership: None,
         }]);
 
         let dsv = resources.access_view(
@@ -183,23 +194,23 @@ impl GeometryPass {
         );
 
         cmd_buffer.flush_barriers();
-        cmd_buffer.begin_render_pass(
-            &RenderPassBeginInfo {
-                render_targets: &[RenderTarget {
-                    view: &backbuffer,
-                    load_op: LoadOpColor::Clear(ClearColor::from_u32([0, 0, 0, 255])),
-                    store_op: StoreOp::Store,
-                }],
-                depth_stencil: Some(&DepthStencilAttachment {
-                    view: &dsv,
-                    load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
-                    store_op: StoreOp::Store,
-                }),
-                query_range: None,
-            },
-        );
+        cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
+            render_targets: &[RenderTarget {
+                view: &backbuffer,
+                load_op: LoadOpColor::Clear(ClearColor::from_u32([0, 0, 0, 255])),
+                store_op: StoreOp::Store,
+            }],
+            depth_stencil: Some(&DepthStencilAttachment {
+                view: &dsv,
+                load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
+                store_op: StoreOp::Store,
+            }),
+            query_range: None,
+        });
 
-        let pipeline: &Arc<GraphicsPipeline> = assets.get_graphics_pipeline(self.pipeline).expect("Pipeline is not compiled yet");
+        let pipeline: &Arc<GraphicsPipeline> = assets
+            .get_graphics_pipeline(self.pipeline)
+            .expect("Pipeline is not compiled yet");
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         cmd_buffer.set_viewports(&[Viewport {
             position: Vec2::new(0.0f32, 0.0f32),
@@ -213,13 +224,22 @@ impl GeometryPass {
         }]);
 
         //let camera_buffer = cmd_buffer.upload_dynamic_data(&[view.proj_matrix * view.view_matrix], BufferUsage::CONSTANT);
-        cmd_buffer.bind_uniform_buffer(BindingFrequency::Frame, 0, BufferRef::Transient(camera_buffer), 0, WHOLE_BUFFER);
+        cmd_buffer.bind_uniform_buffer(
+            BindingFrequency::Frame,
+            0,
+            BufferRef::Transient(camera_buffer),
+            0,
+            WHOLE_BUFFER,
+        );
 
         let drawables = scene.static_drawables();
         let parts = &view.drawable_parts;
         for part in parts {
             let drawable = &drawables[part.drawable_index];
-            cmd_buffer.set_push_constant_data(&[Matrix4::from(drawable.transform)], ShaderType::VertexShader);
+            cmd_buffer.set_push_constant_data(
+                &[Matrix4::from(drawable.transform)],
+                ShaderType::VertexShader,
+            );
             let model = assets.get_model(drawable.model);
             if model.is_none() {
                 log::info!("Skipping draw because of missing model");
@@ -260,12 +280,15 @@ impl GeometryPass {
                         albedo_view,
                         &self.sampler,
                     );
-                }
-                //_ => unimplemented!(),
+                } //_ => unimplemented!(),
             }
             cmd_buffer.finish_binding();
 
-            cmd_buffer.set_vertex_buffer(0, BufferRef::Regular(mesh.vertices.buffer()), mesh.vertices.offset() as u64);
+            cmd_buffer.set_vertex_buffer(
+                0,
+                BufferRef::Regular(mesh.vertices.buffer()),
+                mesh.vertices.offset() as u64,
+            );
             if let Some(indices) = mesh.indices.as_ref() {
                 cmd_buffer.set_index_buffer(
                     BufferRef::Regular(indices.buffer()),

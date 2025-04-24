@@ -1,11 +1,15 @@
-use std::{error::Error, ffi::c_void};
+use std::error::Error;
+use std::ffi::c_void;
 
 use objc2::rc::Retained;
+use raw_window_handle::HasWindowHandle;
 use sdl3::video::WindowBuilder;
 use sourcerenderer_core::platform::GraphicsPlatform;
-use sourcerenderer_metal::{MTLBackend, MTLInstance, MTLSurface};
-
-use raw_window_handle::HasWindowHandle;
+use sourcerenderer_metal::{
+    MTLBackend,
+    MTLInstance,
+    MTLSurface,
+};
 
 use crate::SDLPlatform;
 
@@ -17,7 +21,10 @@ impl GraphicsPlatform<MTLBackend> for SDLPlatform {
     }
 }
 
-pub(crate) fn create_surface(sdl_window_handle: &sdl3::video::Window, graphics_instance: &MTLInstance) -> MTLSurface {
+pub(crate) fn create_surface(
+    sdl_window_handle: &sdl3::video::Window,
+    graphics_instance: &MTLInstance,
+) -> MTLSurface {
     let has_handle: &dyn HasWindowHandle = sdl_window_handle;
     let handle = has_handle.window_handle();
     let view = match handle.expect("Failed to get window handle").as_raw() {
@@ -39,7 +46,8 @@ pub(crate) fn create_surface(sdl_window_handle: &sdl3::video::Window, graphics_i
         }
     }
 
-    let layer_ref: Retained<objc2_quartz_core::CAMetalLayer> = unsafe { Retained::from_raw(layer as *mut objc2_quartz_core::CAMetalLayer).unwrap() };
+    let layer_ref: Retained<objc2_quartz_core::CAMetalLayer> =
+        unsafe { Retained::from_raw(layer as *mut objc2_quartz_core::CAMetalLayer).unwrap() };
     std::mem::forget(layer_ref.clone()); // Increase ref count, Retained::from_raw doesn't do that.
     MTLSurface::new(graphics_instance, layer_ref)
 }

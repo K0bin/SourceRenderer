@@ -4,7 +4,6 @@ use std::collections::{
 };
 
 use bevy_transform::components::Transform;
-use web_time::Duration;
 use legion::systems::Builder;
 use legion::world::SubWorld;
 use legion::{
@@ -20,6 +19,7 @@ use rapier3d::prelude::{
     *,
 };
 use sourcerenderer_core::Vec3;
+use web_time::Duration;
 
 #[derive(Clone, Default, Debug)]
 pub struct ActiveRigidBodies(HashSet<Entity>);

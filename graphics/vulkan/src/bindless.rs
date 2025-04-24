@@ -6,10 +6,9 @@ use std::sync::{
 
 use ash::vk::{
     self,
-    Handle as _
+    Handle as _,
 };
 use smallvec::SmallVec;
-
 use sourcerenderer_core::gpu;
 
 use super::*;
@@ -29,7 +28,8 @@ pub struct VkBindlessInner {
 
 impl VkBindlessDescriptorSet {
     pub fn new(device: &Arc<RawVkDevice>) -> Self {
-        let mut bindings = SmallVec::<[VkDescriptorSetEntryInfo; gpu::PER_SET_BINDINGS as usize]>::new();
+        let mut bindings =
+            SmallVec::<[VkDescriptorSetEntryInfo; gpu::PER_SET_BINDINGS as usize]>::new();
         bindings.push(VkDescriptorSetEntryInfo {
             name: "bindless_textures".to_string(),
             shader_stage: device.supported_shader_stages,
@@ -71,14 +71,12 @@ impl VkBindlessDescriptorSet {
             let name_cstring = CString::new("BindlessTexturesPool").unwrap();
             unsafe {
                 debug_utils
-                    .set_debug_utils_object_name(
-                        &vk::DebugUtilsObjectNameInfoEXT {
-                            object_type: vk::ObjectType::DESCRIPTOR_POOL,
-                            object_handle: descriptor_pool.as_raw(),
-                            p_object_name: name_cstring.as_ptr(),
-                            ..Default::default()
-                        },
-                    )
+                    .set_debug_utils_object_name(&vk::DebugUtilsObjectNameInfoEXT {
+                        object_type: vk::ObjectType::DESCRIPTOR_POOL,
+                        object_handle: descriptor_pool.as_raw(),
+                        p_object_name: name_cstring.as_ptr(),
+                        ..Default::default()
+                    })
                     .unwrap();
             }
         }
@@ -100,14 +98,12 @@ impl VkBindlessDescriptorSet {
             let name_cstring = CString::new("BindlessTextures").unwrap();
             unsafe {
                 debug_utils
-                    .set_debug_utils_object_name(
-                        &vk::DebugUtilsObjectNameInfoEXT {
-                            object_type: vk::ObjectType::DESCRIPTOR_SET,
-                            object_handle: descriptor_set.as_raw(),
-                            p_object_name: name_cstring.as_ptr(),
-                            ..Default::default()
-                        },
-                    )
+                    .set_debug_utils_object_name(&vk::DebugUtilsObjectNameInfoEXT {
+                        object_type: vk::ObjectType::DESCRIPTOR_SET,
+                        object_handle: descriptor_set.as_raw(),
+                        p_object_name: name_cstring.as_ptr(),
+                        ..Default::default()
+                    })
                     .unwrap();
             }
         }

@@ -2,17 +2,17 @@
 
 #[macro_use]
 extern crate bitflags;
-pub extern crate zip;
 extern crate io_util;
+pub extern crate zip;
 
 pub use self::lump::Lump;
-pub use self::map_header::MapHeader;
-pub use self::map::Map;
 pub use self::lump_data::*;
+pub use self::map::Map;
+pub use self::map_header::MapHeader;
 
 mod lump;
 mod lump_data;
-mod map_header;
 mod map;
+mod map_header;
 
 pub(crate) use io_util::*;

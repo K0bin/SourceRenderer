@@ -1,20 +1,20 @@
-use std::{sync::Arc, ffi::c_void};
+use std::ffi::c_void;
+use std::sync::Arc;
 
+use ash::vk;
 use sourcerenderer_core::gpu;
 
 use super::*;
 
-use ash::vk;
-
 #[derive(Clone)]
 pub(crate) enum ResourceMemory<'a> {
     Dedicated {
-        memory_type_index: u32
+        memory_type_index: u32,
     },
     Suballocated {
         memory: &'a VkMemoryHeap,
-        offset: u64
-    }
+        offset: u64,
+    },
 }
 
 pub struct VkMemoryHeap {
@@ -22,7 +22,7 @@ pub struct VkMemoryHeap {
     memory: vk::DeviceMemory,
     memory_type_index: u32,
     memory_properties: vk::MemoryPropertyFlags,
-    map_ptr: Option<*mut c_void>
+    map_ptr: Option<*mut c_void>,
 }
 
 unsafe impl Send for VkMemoryHeap {}
@@ -41,13 +41,17 @@ impl Drop for VkMemoryHeap {
 }
 
 impl VkMemoryHeap {
-    pub unsafe fn new(device: &Arc<RawVkDevice>, memory_type_index: u32, size: u64) -> Result<Self, gpu::OutOfMemoryError> {
+    pub unsafe fn new(
+        device: &Arc<RawVkDevice>,
+        memory_type_index: u32,
+        size: u64,
+    ) -> Result<Self, gpu::OutOfMemoryError> {
         let mut flags_info = vk::MemoryAllocateFlagsInfo {
             flags: vk::MemoryAllocateFlags::DEVICE_ADDRESS,
             device_mask: 0u32,
             ..Default::default()
         };
-        if device.features_12.buffer_device_address == vk::FALSE  {
+        if device.features_12.buffer_device_address == vk::FALSE {
             flags_info.flags &= !vk::MemoryAllocateFlags::DEVICE_ADDRESS;
         }
 
@@ -59,18 +63,30 @@ impl VkMemoryHeap {
         };
         let memory_result = device.allocate_memory(&memory_info, None);
         if let Err(e) = memory_result {
-            if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
+            if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
+                || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
+            {
                 return Err(gpu::OutOfMemoryError {});
             }
         }
         let memory = memory_result.unwrap();
 
         let mut memory_info = vk::PhysicalDeviceMemoryProperties2::default();
-        device.instance.get_physical_device_memory_properties2(device.physical_device, &mut memory_info);
-        let memory_type_info = &memory_info.memory_properties.memory_types[memory_type_index as usize];
+        device
+            .instance
+            .get_physical_device_memory_properties2(device.physical_device, &mut memory_info);
+        let memory_type_info =
+            &memory_info.memory_properties.memory_types[memory_type_index as usize];
 
-        let map_ptr: Option<*mut c_void> = if memory_type_info.property_flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE) {
-            Some(device.map_memory(memory, 0u64, size, vk::MemoryMapFlags::empty()).unwrap())
+        let map_ptr: Option<*mut c_void> = if memory_type_info
+            .property_flags
+            .contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
+        {
+            Some(
+                device
+                    .map_memory(memory, 0u64, size, vk::MemoryMapFlags::empty())
+                    .unwrap(),
+            )
         } else {
             None
         };
@@ -80,7 +96,7 @@ impl VkMemoryHeap {
             memory,
             memory_type_index,
             memory_properties: memory_type_info.property_flags,
-            map_ptr
+            map_ptr,
         })
     }
 
@@ -110,11 +126,37 @@ impl gpu::Heap<VkBackend> for VkMemoryHeap {
         self.memory_type_index
     }
 
-    unsafe fn create_buffer(&self, info: &gpu::BufferInfo, offset: u64, name: Option<&str>) -> Result<VkBuffer, gpu::OutOfMemoryError> {
-        VkBuffer::new(&self.device, ResourceMemory::Suballocated { memory: self, offset }, info, name)
+    unsafe fn create_buffer(
+        &self,
+        info: &gpu::BufferInfo,
+        offset: u64,
+        name: Option<&str>,
+    ) -> Result<VkBuffer, gpu::OutOfMemoryError> {
+        VkBuffer::new(
+            &self.device,
+            ResourceMemory::Suballocated {
+                memory: self,
+                offset,
+            },
+            info,
+            name,
+        )
     }
 
-    unsafe fn create_texture(&self, info: &gpu::TextureInfo, offset: u64, name: Option<&str>) -> Result<VkTexture, gpu::OutOfMemoryError> {
-        VkTexture::new(&self.device, info, ResourceMemory::Suballocated { memory: self, offset }, name)
+    unsafe fn create_texture(
+        &self,
+        info: &gpu::TextureInfo,
+        offset: u64,
+        name: Option<&str>,
+    ) -> Result<VkTexture, gpu::OutOfMemoryError> {
+        VkTexture::new(
+            &self.device,
+            info,
+            ResourceMemory::Suballocated {
+                memory: self,
+                offset,
+            },
+            name,
+        )
     }
 }

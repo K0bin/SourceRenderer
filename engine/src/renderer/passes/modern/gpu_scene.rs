@@ -1,15 +1,24 @@
 use std::collections::HashMap;
+
+use bitflags::bitflags;
 use smallvec::SmallVec;
 use sourcerenderer_core::{
     Matrix4,
     Vec3,
     Vec4,
 };
-use bitflags::bitflags;
 
+use crate::asset::{
+    MaterialHandle,
+    MeshHandle,
+    ModelHandle,
+};
 use crate::graphics::*;
-use crate::asset::{MaterialHandle, MeshHandle, ModelHandle};
-use crate::renderer::asset::{RendererAssetsReadOnly, RendererMaterial, RendererMaterialValue};
+use crate::renderer::asset::{
+    RendererAssetsReadOnly,
+    RendererMaterial,
+    RendererMaterialValue,
+};
 use crate::renderer::renderer_scene::RendererScene;
 
 pub const DRAWABLE_CAPACITY: u32 = 4096;
@@ -102,7 +111,7 @@ struct GPUMesh {
 enum GPULightType {
     PointLight,
     DirectionalLight,
-    SpotLight
+    SpotLight,
 }
 
 #[repr(C)]
@@ -113,7 +122,7 @@ struct GPULight {
     direction: Vec3,
     intensity: f32,
     color: Vec3,
-    _padding: u32
+    _padding: u32,
 }
 
 struct ModelEntry {
@@ -124,7 +133,7 @@ struct ModelEntry {
 
 pub struct BufferBinding {
     pub offset: u64,
-    pub length: u64
+    pub length: u64,
 }
 
 pub struct SceneBuffers {
@@ -135,7 +144,7 @@ pub struct SceneBuffers {
     pub drawables_buffer: BufferBinding,
     pub parts_buffer: BufferBinding,
     pub materials_buffer: BufferBinding,
-    pub lights_buffer: BufferBinding
+    pub lights_buffer: BufferBinding,
 }
 
 #[profiling::function]
@@ -156,7 +165,8 @@ pub fn upload(
     let mut model_map = HashMap::<ModelHandle, ModelEntry>::new();
 
     let mut draws = Vec::<GPUDraw>::with_capacity(scene.static_drawables().len());
-    let mut drawables = SmallVec::<[GPUDrawable; 16]>::with_capacity(scene.static_drawables().len());
+    let mut drawables =
+        SmallVec::<[GPUDrawable; 16]>::with_capacity(scene.static_drawables().len());
     let mut parts = SmallVec::<[GPUMeshPart; 16]>::with_capacity(scene.static_drawables().len());
     let mut materials = SmallVec::<[GPUMaterial; 16]>::new();
     let mut meshes = SmallVec::<[GPUMesh; 16]>::new();
@@ -189,56 +199,59 @@ pub fn upload(
                 let model_part_start = parts.len() as u32;
                 for (index, part) in mesh.parts.iter().enumerate() {
                     let material_handle = model.material_handles()[index];
-                    let material_index = if let Some(material_index) =
-                        material_map.get(&material_handle)
-                    {
-                        *material_index
-                    } else {
-                        let material = model_materials[index];
-                        let material_index = materials.len() as u32;
-                        let mut gpu_material = GPUMaterial {
-                            albedo: Vec4::new(1f32, 1f32, 1f32, 1f32),
-                            roughness_factor: 1f32,
-                            metalness_factor: 0f32,
-                            albedo_texture_index: zero_view_index,
-                            _padding: 0,
-                        };
+                    let material_index =
+                        if let Some(material_index) = material_map.get(&material_handle) {
+                            *material_index
+                        } else {
+                            let material = model_materials[index];
+                            let material_index = materials.len() as u32;
+                            let mut gpu_material = GPUMaterial {
+                                albedo: Vec4::new(1f32, 1f32, 1f32, 1f32),
+                                roughness_factor: 1f32,
+                                metalness_factor: 0f32,
+                                albedo_texture_index: zero_view_index,
+                                _padding: 0,
+                            };
 
-                        let albedo_value = material.get("albedo").unwrap();
-                        match albedo_value {
-                            RendererMaterialValue::Texture(handle) => {
-                                let texture = assets.get_texture(*handle);
-                                gpu_material.albedo_texture_index = texture.bindless_index.as_ref().map(|b| b.slot()).unwrap_or(zero_view_index)
+                            let albedo_value = material.get("albedo").unwrap();
+                            match albedo_value {
+                                RendererMaterialValue::Texture(handle) => {
+                                    let texture = assets.get_texture(*handle);
+                                    gpu_material.albedo_texture_index = texture
+                                        .bindless_index
+                                        .as_ref()
+                                        .map(|b| b.slot())
+                                        .unwrap_or(zero_view_index)
+                                }
+                                RendererMaterialValue::Vec4(val) => gpu_material.albedo = *val,
+                                RendererMaterialValue::Float(_) => unimplemented!(),
                             }
-                            RendererMaterialValue::Vec4(val) => gpu_material.albedo = *val,
-                            RendererMaterialValue::Float(_) => unimplemented!(),
-                        }
-                        let roughness_value = material.get("roughness");
-                        match roughness_value {
-                            Some(RendererMaterialValue::Texture(_texture)) => {
-                                unimplemented!()
+                            let roughness_value = material.get("roughness");
+                            match roughness_value {
+                                Some(RendererMaterialValue::Texture(_texture)) => {
+                                    unimplemented!()
+                                }
+                                Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
+                                Some(RendererMaterialValue::Float(val)) => {
+                                    gpu_material.roughness_factor = *val;
+                                }
+                                None => {}
                             }
-                            Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
-                            Some(RendererMaterialValue::Float(val)) => {
-                                gpu_material.roughness_factor = *val;
+                            let metalness_value = material.get("metalness");
+                            match metalness_value {
+                                Some(RendererMaterialValue::Texture(_texture)) => {
+                                    unimplemented!()
+                                }
+                                Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
+                                Some(RendererMaterialValue::Float(val)) => {
+                                    gpu_material.metalness_factor = *val;
+                                }
+                                None => {}
                             }
-                            None => {}
-                        }
-                        let metalness_value = material.get("metalness");
-                        match metalness_value {
-                            Some(RendererMaterialValue::Texture(_texture)) => {
-                                unimplemented!()
-                            }
-                            Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
-                            Some(RendererMaterialValue::Float(val)) => {
-                                gpu_material.metalness_factor = *val;
-                            }
-                            None => {}
-                        }
-                        materials.push(gpu_material);
-                        material_map.insert(material_handle, material_index);
-                        material_index
-                    };
+                            materials.push(gpu_material);
+                            material_map.insert(material_handle, material_index);
+                            material_index
+                        };
 
                     let indices = mesh
                         .indices
@@ -252,9 +265,11 @@ pub fn upload(
                     );
                     let gpu_part = GPUMeshPart {
                         material_index: material_index,
-                        mesh_first_index: part.start + indices.offset() / std::mem::size_of::<u32>() as u32,
+                        mesh_first_index: part.start
+                            + indices.offset() / std::mem::size_of::<u32>() as u32,
                         mesh_index_count: part.count,
-                        mesh_vertex_offset: vertices.offset() / (std::mem::size_of::<crate::renderer::Vertex>() as u32), // TODO: hardcoded vertex size
+                        mesh_vertex_offset: vertices.offset()
+                            / (std::mem::size_of::<crate::renderer::Vertex>() as u32), // TODO: hardcoded vertex size
                     };
                     parts.push(gpu_part);
                 }
@@ -322,11 +337,11 @@ pub fn upload(
             }
 
             for part_index in
-            model_entry.part_start..(model_entry.part_start + model_entry.part_count)
+                model_entry.part_start..(model_entry.part_start + model_entry.part_count)
             {
                 let gpu_draw = GPUDraw {
                     drawable_index,
-                    part_index: part_index as u16
+                    part_index: part_index as u16,
                 };
                 draws.push(gpu_draw);
             }
@@ -336,14 +351,10 @@ pub fn upload(
         for light in scene.directional_lights() {
             let gpu_light = GPULight {
                 light_type: GPULightType::DirectionalLight,
-                position: Vec3::new(0f32,
-                                    0f32,
-                                    0f32),
+                position: Vec3::new(0f32, 0f32, 0f32),
                 direction: light.direction,
                 intensity: light.intensity,
-                color: Vec3::new(1f32,
-                                 1f32,
-                                 1f32),
+                color: Vec3::new(1f32, 1f32, 1f32),
                 _padding: 0,
             };
             lights.push(gpu_light);
@@ -352,13 +363,9 @@ pub fn upload(
             let gpu_light = GPULight {
                 light_type: GPULightType::PointLight,
                 position: light.position,
-                direction: Vec3::new(0f32,
-                                     0f32,
-                                     0f32),
+                direction: Vec3::new(0f32, 0f32, 0f32),
                 intensity: light.intensity,
-                color: Vec3::new(1f32,
-                                 1f32,
-                                 1f32),
+                color: Vec3::new(1f32, 1f32, 1f32),
                 _padding: 0,
             };
             lights.push(gpu_light);
@@ -368,7 +375,6 @@ pub fn upload(
         local.drawable_count = drawables.len() as u32;
         local.draw_count = draws.len() as u32;
     }
-
 
     let scene_size = std::mem::size_of::<GPUScene>() as u64;
     let drawables_size = (drawables.len() * std::mem::size_of::<GPUDrawable>()) as u64;
@@ -387,14 +393,16 @@ pub fn upload(
     let lights_offset = (align_up(materials_offset + materials_size, 256)) as u64;
     let buffer_size = lights_offset + lights_size.max(std::mem::size_of::<GPULight>() as u64);
 
-    let scene_buffer = cmd_buffer.create_temporary_buffer(
-        &BufferInfo {
-            size: buffer_size as u64,
-            usage: BufferUsage::STORAGE,
-            sharing_mode: QueueSharingMode::Concurrent
-        },
-        MemoryUsage::MappableGPUMemory,
-    ).unwrap();
+    let scene_buffer = cmd_buffer
+        .create_temporary_buffer(
+            &BufferInfo {
+                size: buffer_size as u64,
+                usage: BufferUsage::STORAGE,
+                sharing_mode: QueueSharingMode::Concurrent,
+            },
+            MemoryUsage::MappableGPUMemory,
+        )
+        .unwrap();
     unsafe {
         profiling::scope!("Copying scene data to VRAM");
 
@@ -404,7 +412,10 @@ pub fn upload(
         ptr.copy_from(std::mem::transmute(&local), scene_size as usize);
 
         ptr = base_ptr.add(drawables_offset as usize);
-        ptr.copy_from(std::mem::transmute(drawables.as_ptr()), drawables_size as usize);
+        ptr.copy_from(
+            std::mem::transmute(drawables.as_ptr()),
+            drawables_size as usize,
+        );
 
         ptr = base_ptr.add(draws_offset as usize);
         ptr.copy_from(std::mem::transmute(draws.as_ptr()), draws_size as usize);
@@ -416,7 +427,10 @@ pub fn upload(
         ptr.copy_from(std::mem::transmute(parts.as_ptr()), parts_size as usize);
 
         ptr = base_ptr.add(materials_offset as usize);
-        ptr.copy_from(std::mem::transmute(materials.as_ptr()), materials_size as usize);
+        ptr.copy_from(
+            std::mem::transmute(materials.as_ptr()),
+            materials_size as usize,
+        );
 
         ptr = base_ptr.add(lights_offset as usize);
         ptr.copy_from(std::mem::transmute(lights.as_ptr()), lights_size as usize);
@@ -428,31 +442,31 @@ pub fn upload(
         buffer: scene_buffer,
         scene_buffer: BufferBinding {
             offset: scene_offset,
-            length: scene_size.max(16)
+            length: scene_size.max(16),
         },
         draws_buffer: BufferBinding {
             offset: draws_offset,
-            length: draws_size.max(16)
+            length: draws_size.max(16),
         },
         meshes_buffer: BufferBinding {
             offset: meshes_offset,
-            length: meshes_size.max(16)
+            length: meshes_size.max(16),
         },
         drawables_buffer: BufferBinding {
             offset: drawables_offset,
-            length: drawables_size.max(16)
+            length: drawables_size.max(16),
         },
         parts_buffer: BufferBinding {
             offset: parts_offset,
-            length: parts_size.max(16)
+            length: parts_size.max(16),
         },
         materials_buffer: BufferBinding {
             offset: materials_offset,
-            length: materials_size.max(16)
+            length: materials_size.max(16),
         },
         lights_buffer: BufferBinding {
             offset: lights_offset,
-            length: lights_size.max(16)
+            length: lights_size.max(16),
         },
     }
 }

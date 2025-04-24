@@ -1,42 +1,25 @@
-pub(crate) use self::{
-    format::*,
-    renderpass::*,
-    binding::*,
-    bindless::*,
-    shared::*,
-};
+pub(crate) use self::{binding::*, bindless::*, format::*, renderpass::*, shared::*};
 
 pub use self::{
-    backend::*,
-    instance::*,
-    buffer::*,
-    heap::*,
-    texture::*,
-    queue::*,
-    command::*,
-    sync::*,
-    pipeline::*,
-    rt::*,
-    swapchain::*,
-    device::*,
-    query::*,
+    backend::*, buffer::*, command::*, device::*, heap::*, instance::*, pipeline::*, query::*,
+    queue::*, rt::*, swapchain::*, sync::*, texture::*,
 };
 
 mod backend;
-mod instance;
-mod device;
-mod buffer;
-mod swapchain;
-mod heap;
-mod texture;
-mod format;
-mod queue;
-mod command;
-mod sync;
-mod pipeline;
-mod rt;
 mod binding;
-mod renderpass;
-mod shared;
 mod bindless;
+mod buffer;
+mod command;
+mod device;
+mod format;
+mod heap;
+mod instance;
+mod pipeline;
 mod query;
+mod queue;
+mod renderpass;
+mod rt;
+mod shared;
+mod swapchain;
+mod sync;
+mod texture;

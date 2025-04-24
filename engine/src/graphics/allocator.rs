@@ -1,9 +1,10 @@
-use std::sync::{atomic::AtomicU64, Arc};
-use crate::Mutex;
+use std::sync::atomic::AtomicU64;
+use std::sync::Arc;
 
 use smallvec::SmallVec;
 
 use super::align_up_64;
+use crate::Mutex;
 
 // TODO: Implement Two Level Seggregate Fit allocator
 
@@ -11,7 +12,7 @@ const DEBUG: bool = false;
 
 pub(super) struct Chunk<T> {
     inner: Arc<ChunkInner<T>>,
-    size: u64
+    size: u64,
 }
 
 struct ChunkInner<T> {
@@ -19,16 +20,16 @@ struct ChunkInner<T> {
     data: T,
     free_callback: Option<Box<dyn Fn(&[Range]) + Send + Sync>>,
 
-    debug_offset: AtomicU64
+    debug_offset: AtomicU64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Range {
     pub offset: u64,
-    pub length: u64
+    pub length: u64,
 }
 
-pub(super) struct Allocation<T>{
+pub(super) struct Allocation<T> {
     inner: Arc<ChunkInner<T>>,
     pub range: Range,
 }
@@ -57,41 +58,46 @@ impl<T> Chunk<T> {
         let mut free_list = SmallVec::<[Range; 16]>::new();
         free_list.push(Range {
             offset: 0u64,
-            length: chunk_size
+            length: chunk_size,
         });
         Self {
             inner: Arc::new(ChunkInner {
                 free_list: Mutex::new(free_list),
                 data,
                 free_callback: None,
-                debug_offset: AtomicU64::new(0u64)
+                debug_offset: AtomicU64::new(0u64),
             }),
-            size: chunk_size
+            size: chunk_size,
         }
     }
 
     #[allow(unused)]
     pub fn with_callback<F>(data: T, chunk_size: u64, free_callback: F) -> Self
-        where F: Fn(&[Range]) + Send + Sync + 'static {
+    where
+        F: Fn(&[Range]) + Send + Sync + 'static,
+    {
         let mut free_list = SmallVec::<[Range; 16]>::new();
         free_list.push(Range {
             offset: 0u64,
-            length: chunk_size
+            length: chunk_size,
         });
         Self {
             inner: Arc::new(ChunkInner {
                 free_list: Mutex::new(free_list),
                 data,
                 free_callback: Some(Box::new(free_callback)),
-                debug_offset: AtomicU64::new(0u64)
+                debug_offset: AtomicU64::new(0u64),
             }),
-            size: chunk_size
+            size: chunk_size,
         }
     }
 
     pub fn allocate(&self, size: u64, alignment: u64) -> Option<Allocation<T>> {
         if DEBUG {
-            let offset = self.inner.debug_offset.fetch_add(size + alignment, std::sync::atomic::Ordering::SeqCst);
+            let offset = self
+                .inner
+                .debug_offset
+                .fetch_add(size + alignment, std::sync::atomic::Ordering::SeqCst);
             let aligned_offset = align_up_64(offset, alignment);
             if aligned_offset + size > self.size {
                 return None;
@@ -100,8 +106,8 @@ impl<T> Chunk<T> {
                 inner: self.inner.clone(),
                 range: Range {
                     offset: aligned_offset,
-                    length: size
-                }
+                    length: size,
+                },
             });
         }
 
@@ -143,10 +149,13 @@ impl<T> Chunk<T> {
 
             if alignment_diff != 0 {
                 // Push chosen range back to fit alignment and add a new one before that
-                free_list.insert(free_index, Range {
-                    offset: range.offset,
-                    length: alignment_diff
-                });
+                free_list.insert(
+                    free_index,
+                    Range {
+                        offset: range.offset,
+                        length: alignment_diff,
+                    },
+                );
                 range.offset += alignment_diff;
                 free_index += 1;
             }
@@ -162,7 +171,7 @@ impl<T> Chunk<T> {
 
             Allocation {
                 inner: self.inner.clone(),
-                range
+                range,
             }
         })
     }

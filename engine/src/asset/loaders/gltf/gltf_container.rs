@@ -1,10 +1,24 @@
-use std::io::{Error as IOError, ErrorKind, Result as IOResult, SeekFrom};
+use std::io::{
+    Error as IOError,
+    ErrorKind,
+    Result as IOResult,
+    SeekFrom,
+};
 use std::path::Path;
 use std::usize;
 
-use bevy_tasks::futures_lite::io::{BufReader, Cursor};
-use bevy_tasks::futures_lite::{AsyncReadExt, AsyncSeekExt};
-use futures_io::{AsyncRead, AsyncSeek};
+use bevy_tasks::futures_lite::io::{
+    BufReader,
+    Cursor,
+};
+use bevy_tasks::futures_lite::{
+    AsyncReadExt,
+    AsyncSeekExt,
+};
+use futures_io::{
+    AsyncRead,
+    AsyncSeek,
+};
 use sourcerenderer_core::platform::PlatformIO;
 
 use crate::asset::asset_manager::AssetFile;
@@ -22,7 +36,10 @@ pub struct GltfContainer<R: AsyncRead + AsyncSeek + Unpin> {
     texture_base_path: String,
 }
 
-pub async fn load_memory_gltf_container<IO: PlatformIO>(path: &str, external: bool) -> IOResult<GltfContainer<Cursor<Box<[u8]>>>> {
+pub async fn load_memory_gltf_container<IO: PlatformIO>(
+    path: &str,
+    external: bool,
+) -> IOResult<GltfContainer<Cursor<Box<[u8]>>>> {
     let mut file = if external {
         IO::open_external_asset(path).await?
     } else {
@@ -33,7 +50,10 @@ pub async fn load_memory_gltf_container<IO: PlatformIO>(path: &str, external: bo
     GltfContainer::<Cursor<Box<[u8]>>>::new(path, Cursor::new(data.into_boxed_slice())).await
 }
 
-pub async fn load_file_gltf_container<IO: PlatformIO>(path: &str, external: bool) -> IOResult<GltfContainer<BufReader<IO::File>>> {
+pub async fn load_file_gltf_container<IO: PlatformIO>(
+    path: &str,
+    external: bool,
+) -> IOResult<GltfContainer<BufReader<IO::File>>> {
     let file = BufReader::new(if external {
         IO::open_external_asset(path).await?
     } else {
@@ -48,7 +68,9 @@ impl<R: AsyncRead + AsyncSeek + Unpin> GltfContainer<R> {
 
         let json_chunk_header = glb::GlbChunkHeader::read(&mut reader).await?;
         let json_offset = reader.seek(SeekFrom::Current(0)).await?;
-        reader.seek(SeekFrom::Current(json_chunk_header.length as i64)).await?;
+        reader
+            .seek(SeekFrom::Current(json_chunk_header.length as i64))
+            .await?;
 
         let data_chunk_header = glb::GlbChunkHeader::read(&mut reader).await?;
         let data_offset = reader.seek(SeekFrom::Current(0)).await?;
@@ -114,7 +136,11 @@ impl<R: AsyncRead + AsyncSeek + Unpin + Send + Sync + 'static> AssetContainer fo
                 &self.texture_base_path
             };
             let parts: Vec<&str> = path[base_path.len()..].split('-').collect();
-            let offset: u64 = if !parts[0].is_empty() { parts[0].parse().unwrap() } else { 0 };
+            let offset: u64 = if !parts[0].is_empty() {
+                parts[0].parse().unwrap()
+            } else {
+                0
+            };
             let length: u64;
             if parts.len() > 1 {
                 let mut end = parts[1];

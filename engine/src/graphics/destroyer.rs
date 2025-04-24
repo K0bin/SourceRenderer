@@ -1,10 +1,13 @@
 use std::sync::Arc;
-use crate::{Mutex, MutexGuard};
 
 use super::*;
+use crate::{
+    Mutex,
+    MutexGuard,
+};
 
 pub(super) struct DeferredDestroyer {
-    inner: Mutex<DeferredDestroyerInner>
+    inner: Mutex<DeferredDestroyerInner>,
 }
 
 struct DeferredDestroyerInner {
@@ -30,29 +33,30 @@ struct DeferredDestroyerInner {
 impl DeferredDestroyer {
     pub(super) fn new() -> Self {
         Self {
-            inner: Mutex::new(
-                DeferredDestroyerInner {
-                    current_counter: 0u64,
-                    allocations: Vec::new(),
-                    textures: Vec::new(),
-                    texture_views: Vec::new(),
-                    buffers: Vec::new(),
-                    samplers: Vec::new(),
-                    fences: Vec::new(),
-                    acceleration_structures: Vec::new(),
-                    buffer_slice_refs: Vec::new(),
-                    graphics_pipelines: Vec::new(),
-                    mesh_graphics_pipelines: Vec::new(),
-                    compute_pipelines: Vec::new(),
-                    raytracing_pipelines: Vec::new(),
-                    buffer_allocations: Vec::new(),
-                    query_pools: Vec::new(),
-                }
-            )
+            inner: Mutex::new(DeferredDestroyerInner {
+                current_counter: 0u64,
+                allocations: Vec::new(),
+                textures: Vec::new(),
+                texture_views: Vec::new(),
+                buffers: Vec::new(),
+                samplers: Vec::new(),
+                fences: Vec::new(),
+                acceleration_structures: Vec::new(),
+                buffer_slice_refs: Vec::new(),
+                graphics_pipelines: Vec::new(),
+                mesh_graphics_pipelines: Vec::new(),
+                compute_pipelines: Vec::new(),
+                raytracing_pipelines: Vec::new(),
+                buffer_allocations: Vec::new(),
+                query_pools: Vec::new(),
+            }),
         }
     }
 
-    pub(super) fn destroy_allocation(&self, allocation: MemoryAllocation<active_gpu_backend::Heap>) {
+    pub(super) fn destroy_allocation(
+        &self,
+        allocation: MemoryAllocation<active_gpu_backend::Heap>,
+    ) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.allocations.push((frame, allocation));
@@ -88,10 +92,15 @@ impl DeferredDestroyer {
         guard.fences.push((frame, fence));
     }
 
-    pub(super) fn destroy_acceleration_structure(&self, acceleration_structure: active_gpu_backend::AccelerationStructure) {
+    pub(super) fn destroy_acceleration_structure(
+        &self,
+        acceleration_structure: active_gpu_backend::AccelerationStructure,
+    ) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
-        guard.acceleration_structures.push((frame, acceleration_structure));
+        guard
+            .acceleration_structures
+            .push((frame, acceleration_structure));
     }
 
     pub(super) fn destroy_graphics_pipeline(&self, pipeline: active_gpu_backend::GraphicsPipeline) {
@@ -100,7 +109,10 @@ impl DeferredDestroyer {
         guard.graphics_pipelines.push((frame, pipeline));
     }
 
-    pub(super) fn destroy_mesh_graphics_pipeline(&self, pipeline: active_gpu_backend::MeshGraphicsPipeline) {
+    pub(super) fn destroy_mesh_graphics_pipeline(
+        &self,
+        pipeline: active_gpu_backend::MeshGraphicsPipeline,
+    ) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.mesh_graphics_pipelines.push((frame, pipeline));
@@ -112,7 +124,10 @@ impl DeferredDestroyer {
         guard.compute_pipelines.push((frame, pipeline));
     }
 
-    pub(super) fn destroy_raytracing_pipeline(&self, pipeline: active_gpu_backend::RayTracingPipeline) {
+    pub(super) fn destroy_raytracing_pipeline(
+        &self,
+        pipeline: active_gpu_backend::RayTracingPipeline,
+    ) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.raytracing_pipelines.push((frame, pipeline));
@@ -124,7 +139,10 @@ impl DeferredDestroyer {
         guard.query_pools.push((frame, query_pool));
     }
 
-    pub(super) fn destroy_buffer_allocation(&self, buffer_allocation: Allocation<BufferAndAllocation>) {
+    pub(super) fn destroy_buffer_allocation(
+        &self,
+        buffer_allocation: Allocation<BufferAndAllocation>,
+    ) {
         let mut guard = self.inner.lock().unwrap();
         let frame = guard.current_counter;
         guard.buffer_allocations.push((frame, buffer_allocation));
@@ -149,20 +167,48 @@ impl DeferredDestroyer {
 
     fn destroy_unused_locked(guard: &mut MutexGuard<'_, DeferredDestroyerInner>, counter: u64) {
         assert!(guard.current_counter >= counter);
-        guard.acceleration_structures.retain(|(resource_counter, _)| *resource_counter > counter);
-        guard.buffer_slice_refs.retain(|(resource_counter, _)| *resource_counter > counter);
-        guard.textures.retain(|(resource_counter, _)| *resource_counter > counter);
-        guard.texture_views.retain(|(resource_counter, _)| *resource_counter > counter);
-        guard.buffers.retain(|(resource_counter, _)| *resource_counter > counter);
-        guard.samplers.retain(|(resource_counter, _)| *resource_counter > counter);
-        guard.fences.retain(|(resource_counter, _)| *resource_counter > counter);
-        guard.allocations.retain(|(resource_counter, _)| *resource_counter > counter);
-        guard.graphics_pipelines.retain(|(resource_counter, _)| *resource_counter > counter);
-        guard.mesh_graphics_pipelines.retain(|(resource_counter, _)| *resource_counter > counter);
-        guard.compute_pipelines.retain(|(resource_counter, _)| *resource_counter > counter);
-        guard.raytracing_pipelines.retain(|(resource_counter, _)| *resource_counter > counter);
-        guard.query_pools.retain(|(resource_counter, _)| *resource_counter > counter);
-        guard.buffer_allocations.retain(|(resource_counter, _)| *resource_counter > counter);
+        guard
+            .acceleration_structures
+            .retain(|(resource_counter, _)| *resource_counter > counter);
+        guard
+            .buffer_slice_refs
+            .retain(|(resource_counter, _)| *resource_counter > counter);
+        guard
+            .textures
+            .retain(|(resource_counter, _)| *resource_counter > counter);
+        guard
+            .texture_views
+            .retain(|(resource_counter, _)| *resource_counter > counter);
+        guard
+            .buffers
+            .retain(|(resource_counter, _)| *resource_counter > counter);
+        guard
+            .samplers
+            .retain(|(resource_counter, _)| *resource_counter > counter);
+        guard
+            .fences
+            .retain(|(resource_counter, _)| *resource_counter > counter);
+        guard
+            .allocations
+            .retain(|(resource_counter, _)| *resource_counter > counter);
+        guard
+            .graphics_pipelines
+            .retain(|(resource_counter, _)| *resource_counter > counter);
+        guard
+            .mesh_graphics_pipelines
+            .retain(|(resource_counter, _)| *resource_counter > counter);
+        guard
+            .compute_pipelines
+            .retain(|(resource_counter, _)| *resource_counter > counter);
+        guard
+            .raytracing_pipelines
+            .retain(|(resource_counter, _)| *resource_counter > counter);
+        guard
+            .query_pools
+            .retain(|(resource_counter, _)| *resource_counter > counter);
+        guard
+            .buffer_allocations
+            .retain(|(resource_counter, _)| *resource_counter > counter);
     }
 }
 

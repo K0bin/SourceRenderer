@@ -1,6 +1,6 @@
 use core::panic;
 use std::collections::HashMap;
-use std::ffi::{c_char, CStr, c_void};
+use std::ffi::{c_char, c_void, CStr};
 use std::fs::*;
 use std::io::{Read, Write};
 use std::path::*;
@@ -54,21 +54,43 @@ pub fn compile_shaders<F>(
         })
         .for_each(|file| {
             let file_path = file.path();
-            if shading_languages.intersects(ShadingLanguage::SpirV | ShadingLanguage::Air | ShadingLanguage::Dxil | ShadingLanguage::Wgsl) {
+            if shading_languages.intersects(
+                ShadingLanguage::SpirV
+                    | ShadingLanguage::Air
+                    | ShadingLanguage::Dxil
+                    | ShadingLanguage::Wgsl,
+            ) {
                 compile_shader(
                     &file_path,
                     out_dir,
-                    shading_languages & (ShadingLanguage::SpirV | ShadingLanguage::Air | ShadingLanguage::Dxil | ShadingLanguage::Wgsl),
+                    shading_languages
+                        & (ShadingLanguage::SpirV
+                            | ShadingLanguage::Air
+                            | ShadingLanguage::Dxil
+                            | ShadingLanguage::Wgsl),
                     CompiledShaderFileType::Packed,
                     include_debug_info,
                     arguments,
                 );
             }
-            if dump_separate_files || shading_languages.intersects(ShadingLanguage::Msl | ShadingLanguage::Hlsl | ShadingLanguage::SpirVPreprocessedForWgsl) {
+            if dump_separate_files
+                || shading_languages.intersects(
+                    ShadingLanguage::Msl
+                        | ShadingLanguage::Hlsl
+                        | ShadingLanguage::SpirVPreprocessedForWgsl,
+                )
+            {
                 compile_shader(
                     &file_path,
                     out_dir,
-                    if dump_separate_files { shading_languages } else { shading_languages & (ShadingLanguage::Msl | ShadingLanguage::Hlsl | ShadingLanguage::SpirVPreprocessedForWgsl) },
+                    if dump_separate_files {
+                        shading_languages
+                    } else {
+                        shading_languages
+                            & (ShadingLanguage::Msl
+                                | ShadingLanguage::Hlsl
+                                | ShadingLanguage::SpirVPreprocessedForWgsl)
+                    },
                     CompiledShaderFileType::SingleShader,
                     include_debug_info,
                     arguments,
@@ -106,10 +128,7 @@ fn compile_shader_glsl(
     println!("cargo:rerun-if-changed={}", (file_path).to_str().unwrap());
 
     let mut command = Command::new("glslangValidator");
-    command
-        .arg("--target-env")
-        .arg("spirv1.6")
-        .arg("-V");
+    command.arg("--target-env").arg("spirv1.6").arg("-V");
 
     let mut compiled_spv_file_name = file_path.file_stem().unwrap().to_str().unwrap().to_string();
     compiled_spv_file_name.push_str(".spv");
@@ -137,11 +156,10 @@ fn compile_shader_glsl(
     let output_res = command.output();
     match &output_res {
         Err(e) => {
-            error!("Failed to compile shader: {}",
-                file_path.to_str().unwrap());
+            error!("Failed to compile shader: {}", file_path.to_str().unwrap());
             error!("{}", e.to_string());
             return Err(());
-        },
+        }
         Ok(output) => {
             if !output.status.success() {
                 error!("Failed to compile shader: {}", file_path.to_str().unwrap());
@@ -155,13 +173,19 @@ fn compile_shader_glsl(
     {
         let file_res = std::fs::File::open(&compiled_spv_file_path);
         if let Err(e) = file_res {
-            error!("Failed to open SPIR-V file: {:?} {:?}", compiled_spv_file_path, e);
+            error!(
+                "Failed to open SPIR-V file: {:?} {:?}",
+                compiled_spv_file_path, e
+            );
             return Err(());
         }
         let mut file = file_res.unwrap();
         let read_res = file.read_to_end(&mut spirv_bytecode);
         if let Err(e) = read_res {
-            error!("Failed to read SPIR-V file: {:?} {:?}", compiled_spv_file_path, e);
+            error!(
+                "Failed to read SPIR-V file: {:?} {:?}",
+                compiled_spv_file_path, e
+            );
             return Err(());
         }
     }
@@ -172,15 +196,25 @@ fn compile_shader_glsl(
 struct CallbackInfo {
     shader_name: String,
     shading_lang: ShadingLanguage,
-    do_panic: bool
+    do_panic: bool,
 }
 unsafe extern "C" fn spirv_cross_error_callback(userdata: *mut c_void, error: *const c_char) {
     let info = userdata as *const CallbackInfo;
     let msg_cstr = CStr::from_ptr(error);
     if (*info).do_panic {
-        panic!("SPIR-V-CROSS ERROR in shader: {} {:?}: {:?}", (*info).shader_name, (*info).shading_lang, msg_cstr);
+        panic!(
+            "SPIR-V-CROSS ERROR in shader: {} {:?}: {:?}",
+            (*info).shader_name,
+            (*info).shading_lang,
+            msg_cstr
+        );
     } else {
-        error!("SPIR-V-CROSS ERROR in shader: {} {:?}: {:?}", (*info).shader_name, (*info).shading_lang, msg_cstr);
+        error!(
+            "SPIR-V-CROSS ERROR in shader: {} {:?}: {:?}",
+            (*info).shader_name,
+            (*info).shading_lang,
+            msg_cstr
+        );
     }
 }
 
@@ -189,7 +223,8 @@ fn read_metadata(
     shader_name: &str,
     shader_type: gpu::ShaderType,
 ) -> gpu::PackedShader {
-    let mut resources: [Vec<gpu::Resource>; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
+    let mut resources: [Vec<gpu::Resource>; gpu::NON_BINDLESS_SET_COUNT as usize] =
+        Default::default();
     let mut push_constant_size = 0u32;
     let mut uses_bindless_texture_set = false;
     let stage_input_count: u32;
@@ -208,13 +243,19 @@ fn read_metadata(
             spirv_cross_sys::spvc_result_SPVC_SUCCESS
         );
 
-        let do_panic = std::env::var("SHADER_COMPILER_PANIC").map(|s| s == "1").unwrap_or(false);
+        let do_panic = std::env::var("SHADER_COMPILER_PANIC")
+            .map(|s| s == "1")
+            .unwrap_or(false);
         let mut info = CallbackInfo {
             shader_name: shader_name.to_string(),
             shading_lang: ShadingLanguage::empty(),
-            do_panic
+            do_panic,
         };
-        spirv_cross_sys::spvc_context_set_error_callback(context, Some(spirv_cross_error_callback), &mut info as *mut CallbackInfo as *mut c_void);
+        spirv_cross_sys::spvc_context_set_error_callback(
+            context,
+            Some(spirv_cross_error_callback),
+            &mut info as *mut CallbackInfo as *mut c_void,
+        );
 
         assert_eq!(
             spirv_cross_sys::spvc_context_parse_spirv(
@@ -237,18 +278,14 @@ fn read_metadata(
         );
 
         assert_eq!(
-            spirv_cross_sys::spvc_compiler_create_shader_resources(
-                compiler,
-                &mut spv_resources
-            ),
+            spirv_cross_sys::spvc_compiler_create_shader_resources(compiler, &mut spv_resources),
             spirv_cross_sys::spvc_result_SPVC_SUCCESS
         );
     }
 
     // PUSH CONSTANTS
     let push_constant_buffers = unsafe {
-        let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
-            std::ptr::null();
+        let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource = std::ptr::null();
         let mut resources_count: usize = 0;
         assert_eq!(
             spirv_cross_sys::spvc_resources_get_resource_list_for_type(
@@ -286,24 +323,42 @@ fn read_metadata(
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba16f => gpu::Format::RGBA16Float,
             spirv_cross_sys::SpvImageFormat__SpvImageFormatR32f => gpu::Format::R32Float,
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba8 => gpu::Format::RGBA8UNorm,
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba8Snorm => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba8Snorm => {
+                panic!("Unimplemented format")
+            }
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRg32f => gpu::Format::RG32Float,
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRg16f => gpu::Format::RG16Float,
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatR11fG11fB10f => gpu::Format::R11G11B10Float,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR11fG11fB10f => {
+                gpu::Format::R11G11B10Float
+            }
             spirv_cross_sys::SpvImageFormat__SpvImageFormatR16f => gpu::Format::R16Float,
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba16 => gpu::Format::RGBA16Float,
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgb10A2 => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgb10A2 => {
+                panic!("Unimplemented format")
+            }
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRg16 => gpu::Format::RG16UNorm,
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRg8 => gpu::Format::RG8UNorm,
             spirv_cross_sys::SpvImageFormat__SpvImageFormatR16 => gpu::Format::R16UNorm,
             spirv_cross_sys::SpvImageFormat__SpvImageFormatR8 => gpu::Format::R8Unorm,
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba16Snorm => panic!("Unimplemented format"),
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg16Snorm => panic!("Unimplemented format"),
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg8Snorm => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba16Snorm => {
+                panic!("Unimplemented format")
+            }
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg16Snorm => {
+                panic!("Unimplemented format")
+            }
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg8Snorm => {
+                panic!("Unimplemented format")
+            }
             spirv_cross_sys::SpvImageFormat__SpvImageFormatR16Snorm => gpu::Format::R16SNorm,
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatR8Snorm => panic!("Unimplemented format"),
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba32i => panic!("Unimplemented format"),
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba16i => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR8Snorm => {
+                panic!("Unimplemented format")
+            }
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba32i => {
+                panic!("Unimplemented format")
+            }
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba16i => {
+                panic!("Unimplemented format")
+            }
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba8i => panic!("Unimplemented format"),
             spirv_cross_sys::SpvImageFormat__SpvImageFormatR32i => panic!("Unimplemented format"),
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRg32i => panic!("Unimplemented format"),
@@ -311,11 +366,19 @@ fn read_metadata(
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRg8i => panic!("Unimplemented format"),
             spirv_cross_sys::SpvImageFormat__SpvImageFormatR16i => panic!("Unimplemented format"),
             spirv_cross_sys::SpvImageFormat__SpvImageFormatR8i => panic!("Unimplemented format"),
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba32ui => panic!("Unimplemented format"),
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba16ui => panic!("Unimplemented format"),
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba8ui => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba32ui => {
+                panic!("Unimplemented format")
+            }
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba16ui => {
+                panic!("Unimplemented format")
+            }
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba8ui => {
+                panic!("Unimplemented format")
+            }
             spirv_cross_sys::SpvImageFormat__SpvImageFormatR32ui => gpu::Format::R32UInt,
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgb10a2ui => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRgb10a2ui => {
+                panic!("Unimplemented format")
+            }
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRg32ui => panic!("Unimplemented format"),
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRg16ui => gpu::Format::RG16UInt,
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRg8ui => panic!("Unimplemented format"),
@@ -325,7 +388,7 @@ fn read_metadata(
             spirv_cross_sys::SpvImageFormat__SpvImageFormatR64i => panic!("Unimplemented format"),
             spirv_cross_sys::SpvImageFormat__SpvImageFormatMax => panic!("Unimplemented format"),
             spirv_cross_sys::SpvImageFormat__SpvImageFormatUnknown => gpu::Format::Unknown,
-            _ => panic!("Unrecognized format")
+            _ => panic!("Unrecognized format"),
         }
     }
 
@@ -335,13 +398,10 @@ fn read_metadata(
         resource_type: gpu::ResourceType,
         can_be_writable: bool,
         resources: &mut [Vec<gpu::Resource>; gpu::NON_BINDLESS_SET_COUNT as usize],
-        uses_bindless_texture_set: &mut bool
+        uses_bindless_texture_set: &mut bool,
     ) {
         let mut spv_resources_ptr: spirv_cross_sys::spvc_resources = std::ptr::null_mut();
-        spirv_cross_sys::spvc_compiler_create_shader_resources(
-            compiler,
-            &mut spv_resources_ptr,
-        );
+        spirv_cross_sys::spvc_compiler_create_shader_resources(compiler, &mut spv_resources_ptr);
 
         let spv_resources = {
             let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
@@ -392,10 +452,8 @@ fn read_metadata(
                 false
             };
 
-            let type_handle = spirv_cross_sys::spvc_compiler_get_type_handle(
-                compiler,
-                resource.type_id,
-            );
+            let type_handle =
+                spirv_cross_sys::spvc_compiler_get_type_handle(compiler, resource.type_id);
 
             let array_size = {
                 let array_dimensions =
@@ -403,10 +461,7 @@ fn read_metadata(
                 assert!(array_dimensions == 1 || array_dimensions == 0);
                 if array_dimensions != 0 {
                     assert!(
-                        spirv_cross_sys::spvc_type_array_dimension_is_literal(
-                            type_handle,
-                            0
-                        ) == 1
+                        spirv_cross_sys::spvc_type_array_dimension_is_literal(type_handle, 0) == 1
                     );
                     spirv_cross_sys::spvc_type_get_array_dimension(type_handle, 0)
                 } else {
@@ -417,8 +472,10 @@ fn read_metadata(
             let spv_base_type = spirv_cross_sys::spvc_type_get_basetype(type_handle);
             let is_image = spv_base_type == spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_IMAGE
                 || spv_base_type == spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_SAMPLED_IMAGE;
-            let is_buffer = spv_resource_type == spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_UNIFORM_BUFFER
-                || spv_resource_type == spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_STORAGE_BUFFER;
+            let is_buffer = spv_resource_type
+                == spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_UNIFORM_BUFFER
+                || spv_resource_type
+                    == spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_STORAGE_BUFFER;
 
             let mut dim = gpu::TextureDimension::Dim1D;
             let mut multisampled = false;
@@ -430,42 +487,86 @@ fn read_metadata(
                 let spv_dim = spirv_cross_sys::spvc_type_get_image_dimension(type_handle);
                 let is_storage = spirv_cross_sys::spvc_type_get_image_is_storage(type_handle) != 0;
                 if is_storage {
-                    storage_format = spvc_format_to_format(spirv_cross_sys::spvc_type_get_image_storage_format(type_handle));
+                    storage_format = spvc_format_to_format(
+                        spirv_cross_sys::spvc_type_get_image_storage_format(type_handle),
+                    );
                 }
                 dim = match spv_dim {
-                    spirv_cross_sys::SpvDim__SpvDim1D => if !spvc_is_array { gpu::TextureDimension::Dim1D } else { gpu::TextureDimension::Dim1DArray },
-                    spirv_cross_sys::SpvDim__SpvDim2D => if !spvc_is_array { gpu::TextureDimension::Dim2D } else { gpu::TextureDimension::Dim2DArray },
-                    spirv_cross_sys::SpvDim__SpvDim3D => if !spvc_is_array { gpu::TextureDimension::Dim3D } else { panic!("3D Arrays are not supported") },
-                    spirv_cross_sys::SpvDim__SpvDimCube => if !spvc_is_array { gpu::TextureDimension::Cube } else { gpu::TextureDimension::CubeArray },
-                    _ => gpu::TextureDimension::Dim1D
+                    spirv_cross_sys::SpvDim__SpvDim1D => {
+                        if !spvc_is_array {
+                            gpu::TextureDimension::Dim1D
+                        } else {
+                            gpu::TextureDimension::Dim1DArray
+                        }
+                    }
+                    spirv_cross_sys::SpvDim__SpvDim2D => {
+                        if !spvc_is_array {
+                            gpu::TextureDimension::Dim2D
+                        } else {
+                            gpu::TextureDimension::Dim2DArray
+                        }
+                    }
+                    spirv_cross_sys::SpvDim__SpvDim3D => {
+                        if !spvc_is_array {
+                            gpu::TextureDimension::Dim3D
+                        } else {
+                            panic!("3D Arrays are not supported")
+                        }
+                    }
+                    spirv_cross_sys::SpvDim__SpvDimCube => {
+                        if !spvc_is_array {
+                            gpu::TextureDimension::Cube
+                        } else {
+                            gpu::TextureDimension::CubeArray
+                        }
+                    }
+                    _ => gpu::TextureDimension::Dim1D,
                 };
                 multisampled = spirv_cross_sys::spvc_type_get_image_multisampled(type_handle) != 0;
                 let is_depth = spirv_cross_sys::spvc_type_get_image_is_depth(type_handle) != 0;
                 if is_depth {
                     sampling_type = gpu::SamplingType::Depth;
                 } else {
-                    let spv_smapled_type_id = spirv_cross_sys::spvc_type_get_image_sampled_type(type_handle);
-                    let sampled_type_handle = spirv_cross_sys::spvc_compiler_get_type_handle(compiler, spv_smapled_type_id);
-                    let sampled_base_type = spirv_cross_sys::spvc_type_get_basetype(sampled_type_handle);
+                    let spv_smapled_type_id =
+                        spirv_cross_sys::spvc_type_get_image_sampled_type(type_handle);
+                    let sampled_type_handle = spirv_cross_sys::spvc_compiler_get_type_handle(
+                        compiler,
+                        spv_smapled_type_id,
+                    );
+                    let sampled_base_type =
+                        spirv_cross_sys::spvc_type_get_basetype(sampled_type_handle);
                     sampling_type = match sampled_base_type {
                         spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_FP16
-                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_FP32
-                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_FP64 => gpu::SamplingType::Float,
+                        | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_FP32
+                        | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_FP64 => {
+                            gpu::SamplingType::Float
+                        }
                         spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT16
-                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT8
-                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT32
-                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT64
-                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT_MAX => gpu::SamplingType::SInt,
+                        | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT8
+                        | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT32
+                        | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT64
+                        | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT_MAX => {
+                            gpu::SamplingType::SInt
+                        }
                         spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT16
-                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT8
-                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT32
-                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT64 => gpu::SamplingType::UInt,
-                        _ => gpu::SamplingType::Float
+                        | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT8
+                        | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT32
+                        | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT64 => {
+                            gpu::SamplingType::UInt
+                        }
+                        _ => gpu::SamplingType::Float,
                     };
                 }
             } else if is_buffer {
                 let mut size: usize = 0usize;
-                assert_eq!(spirv_cross_sys::spvc_compiler_get_declared_struct_size(compiler, type_handle, &mut size as *mut usize), spirv_cross_sys::spvc_result_SPVC_SUCCESS);
+                assert_eq!(
+                    spirv_cross_sys::spvc_compiler_get_declared_struct_size(
+                        compiler,
+                        type_handle,
+                        &mut size as *mut usize
+                    ),
+                    spirv_cross_sys::spvc_result_SPVC_SUCCESS
+                );
                 struct_size = size as u32;
             }
 
@@ -480,7 +581,7 @@ fn read_metadata(
                 is_multisampled: multisampled,
                 sampling_type,
                 storage_format,
-                struct_size
+                struct_size,
             });
         }
     }
@@ -493,7 +594,7 @@ fn read_metadata(
             gpu::ResourceType::SampledTexture,
             false,
             &mut resources,
-            &mut uses_bindless_texture_set
+            &mut uses_bindless_texture_set,
         );
         read_resources(
             compiler,
@@ -501,7 +602,7 @@ fn read_metadata(
             gpu::ResourceType::Sampler,
             false,
             &mut resources,
-            &mut uses_bindless_texture_set
+            &mut uses_bindless_texture_set,
         );
         read_resources(
             compiler,
@@ -509,7 +610,7 @@ fn read_metadata(
             gpu::ResourceType::CombinedTextureSampler,
             false,
             &mut resources,
-            &mut uses_bindless_texture_set
+            &mut uses_bindless_texture_set,
         );
         read_resources(
             compiler,
@@ -517,7 +618,7 @@ fn read_metadata(
             gpu::ResourceType::SubpassInput,
             false,
             &mut resources,
-            &mut uses_bindless_texture_set
+            &mut uses_bindless_texture_set,
         );
         read_resources(
             compiler,
@@ -525,7 +626,7 @@ fn read_metadata(
             gpu::ResourceType::UniformBuffer,
             false,
             &mut resources,
-            &mut uses_bindless_texture_set
+            &mut uses_bindless_texture_set,
         );
         read_resources(
             compiler,
@@ -533,7 +634,7 @@ fn read_metadata(
             gpu::ResourceType::StorageBuffer,
             true,
             &mut resources,
-            &mut uses_bindless_texture_set
+            &mut uses_bindless_texture_set,
         );
         read_resources(
             compiler,
@@ -541,7 +642,7 @@ fn read_metadata(
             gpu::ResourceType::StorageTexture,
             true,
             &mut resources,
-            &mut uses_bindless_texture_set
+            &mut uses_bindless_texture_set,
         );
         read_resources(
             compiler,
@@ -549,17 +650,14 @@ fn read_metadata(
             gpu::ResourceType::AccelerationStructure,
             false,
             &mut resources,
-            &mut uses_bindless_texture_set
+            &mut uses_bindless_texture_set,
         );
     }
 
     // Stage inputs
     unsafe {
         let mut spv_resources_ptr: spirv_cross_sys::spvc_resources = std::ptr::null_mut();
-        spirv_cross_sys::spvc_compiler_create_shader_resources(
-            compiler,
-            &mut spv_resources_ptr,
-        );
+        spirv_cross_sys::spvc_compiler_create_shader_resources(compiler, &mut spv_resources_ptr);
 
         let spv_resources = {
             let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
@@ -578,7 +676,11 @@ fn read_metadata(
         };
         stage_input_count = spv_resources.len() as u32;
         for input in spv_resources {
-            let location = spirv_cross_sys::spvc_compiler_get_decoration(compiler, input.id, spirv_cross_sys::SpvDecoration__SpvDecorationLocation);
+            let location = spirv_cross_sys::spvc_compiler_get_decoration(
+                compiler,
+                input.id,
+                spirv_cross_sys::SpvDecoration__SpvDecorationLocation,
+            );
             max_stage_input = max_stage_input.max(location);
         }
     }
@@ -598,26 +700,44 @@ fn read_metadata(
         stage_input_count,
         max_stage_input,
         uses_bindless_texture_set,
-        workgroup_size: Vec3UI::new(8,8,8), // TODO get workgroup sizes from SPIRV-CROSS
+        workgroup_size: Vec3UI::new(8, 8, 8), // TODO get workgroup sizes from SPIRV-CROSS
         shader_spirv: Box::new([]),
         shader_air: Box::new([]),
         shader_dxil: Box::new([]),
-        shader_wgsl: String::new()
+        shader_wgsl: String::new(),
     }
 }
 
 fn shader_type_to_spirv_cross(shader_type: gpu::ShaderType) -> spirv_cross_sys::SpvExecutionModel_ {
     match shader_type {
-        gpu::ShaderType::VertexShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelVertex,
-        gpu::ShaderType::FragmentShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelFragment,
-        gpu::ShaderType::GeometryShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelGeometry,
-        gpu::ShaderType::TessellationControlShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelTessellationControl,
-        gpu::ShaderType::TessellationEvaluationShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelTessellationEvaluation,
-        gpu::ShaderType::ComputeShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelGLCompute,
-        gpu::ShaderType::RayGen => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelRayGenerationKHR,
-        gpu::ShaderType::RayAnyHit => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelAnyHitKHR,
+        gpu::ShaderType::VertexShader => {
+            spirv_cross_sys::SpvExecutionModel__SpvExecutionModelVertex
+        }
+        gpu::ShaderType::FragmentShader => {
+            spirv_cross_sys::SpvExecutionModel__SpvExecutionModelFragment
+        }
+        gpu::ShaderType::GeometryShader => {
+            spirv_cross_sys::SpvExecutionModel__SpvExecutionModelGeometry
+        }
+        gpu::ShaderType::TessellationControlShader => {
+            spirv_cross_sys::SpvExecutionModel__SpvExecutionModelTessellationControl
+        }
+        gpu::ShaderType::TessellationEvaluationShader => {
+            spirv_cross_sys::SpvExecutionModel__SpvExecutionModelTessellationEvaluation
+        }
+        gpu::ShaderType::ComputeShader => {
+            spirv_cross_sys::SpvExecutionModel__SpvExecutionModelGLCompute
+        }
+        gpu::ShaderType::RayGen => {
+            spirv_cross_sys::SpvExecutionModel__SpvExecutionModelRayGenerationKHR
+        }
+        gpu::ShaderType::RayAnyHit => {
+            spirv_cross_sys::SpvExecutionModel__SpvExecutionModelAnyHitKHR
+        }
         gpu::ShaderType::RayMiss => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelMissKHR,
-        gpu::ShaderType::RayClosestHit => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelClosestHitKHR,
+        gpu::ShaderType::RayClosestHit => {
+            spirv_cross_sys::SpvExecutionModel__SpvExecutionModelClosestHitKHR
+        }
         gpu::ShaderType::TaskShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelTaskEXT,
         gpu::ShaderType::MeshShader => spirv_cross_sys::SpvExecutionModel__SpvExecutionModelMeshEXT,
     }
@@ -628,7 +748,7 @@ fn compile_shader_spirv_cross(
     shader_name: &str,
     shader_type: gpu::ShaderType,
     metadata: &gpu::PackedShader,
-    output_shading_language: ShadingLanguage
+    output_shading_language: ShadingLanguage,
 ) -> Result<String, ()> {
     let mut compiled_code_cstr_ptr: *const c_char = std::ptr::null();
 
@@ -647,13 +767,19 @@ fn compile_shader_spirv_cross(
             spirv_cross_sys::spvc_result_SPVC_SUCCESS
         );
 
-        let do_panic = std::env::var("SHADER_COMPILER_PANIC").map(|s| s == "1").unwrap_or(false);
+        let do_panic = std::env::var("SHADER_COMPILER_PANIC")
+            .map(|s| s == "1")
+            .unwrap_or(false);
         let mut info = CallbackInfo {
             shader_name: shader_name.to_string(),
             shading_lang: output_shading_language,
-            do_panic
+            do_panic,
         };
-        spirv_cross_sys::spvc_context_set_error_callback(context, Some(spirv_cross_error_callback), &mut info as *mut CallbackInfo as *mut c_void);
+        spirv_cross_sys::spvc_context_set_error_callback(
+            context,
+            Some(spirv_cross_error_callback),
+            &mut info as *mut CallbackInfo as *mut c_void,
+        );
 
         assert_eq!(
             spirv_cross_sys::spvc_context_parse_spirv(
@@ -685,7 +811,7 @@ fn compile_shader_spirv_cross(
         let mut options: spirv_cross_sys::spvc_compiler_options = std::ptr::null_mut();
         spirv_cross_sys::spvc_compiler_create_compiler_options(compiler, &mut options);
         match output_shading_language {
-            ShadingLanguage::SpirV => {},
+            ShadingLanguage::SpirV => {}
             ShadingLanguage::Hlsl | ShadingLanguage::Dxil => {
                 assert_eq!(
                     spirv_cross_sys::spvc_compiler_options_set_uint(options, spirv_cross_sys::spvc_compiler_option_SPVC_COMPILER_OPTION_HLSL_SHADER_MODEL, 65),
@@ -699,10 +825,14 @@ fn compile_shader_spirv_cross(
                     spirv_cross_sys::spvc_compiler_options_set_bool(options, spirv_cross_sys::spvc_compiler_option_SPVC_COMPILER_OPTION_HLSL_FORCE_STORAGE_BUFFER_AS_UAV, 1),
                     spirv_cross_sys::spvc_result_SPVC_SUCCESS
                 );
-            },
+            }
             ShadingLanguage::Msl | ShadingLanguage::Air => {
                 assert_eq!(
-                    spirv_cross_sys::spvc_compiler_options_set_uint(options, spirv_cross_sys::spvc_compiler_option_SPVC_COMPILER_OPTION_MSL_VERSION, make_spirv_cross_msl_version(3, 1, 0)),
+                    spirv_cross_sys::spvc_compiler_options_set_uint(
+                        options,
+                        spirv_cross_sys::spvc_compiler_option_SPVC_COMPILER_OPTION_MSL_VERSION,
+                        make_spirv_cross_msl_version(3, 1, 0)
+                    ),
                     spirv_cross_sys::spvc_result_SPVC_SUCCESS
                 );
                 assert_eq!(
@@ -721,12 +851,18 @@ fn compile_shader_spirv_cross(
                 }
                 // The bindless argument buffer will get remapped to the first buffer after the stage inputs
                 assert_eq!(
-                    spirv_cross_sys::spvc_compiler_msl_set_argument_buffer_device_address_space(compiler, metadata.max_stage_input + 1, 1),
+                    spirv_cross_sys::spvc_compiler_msl_set_argument_buffer_device_address_space(
+                        compiler,
+                        metadata.max_stage_input + 1,
+                        1
+                    ),
                     spirv_cross_sys::spvc_result_SPVC_SUCCESS
                 );
-            },
-            ShadingLanguage::Wgsl => {},
-            _ => panic!("compile_shader_spirv_cross only supports one output shading language at a time")
+            }
+            ShadingLanguage::Wgsl => {}
+            _ => panic!(
+                "compile_shader_spirv_cross only supports one output shading language at a time"
+            ),
         }
         assert_eq!(
             spirv_cross_sys::spvc_compiler_install_compiler_options(compiler, options),
@@ -772,7 +908,12 @@ fn compile_shader_spirv_cross(
                         spirv_cross_sys::SpvDecoration__SpvDecorationDescriptorSet,
                     );
                     if set_index == gpu::BINDLESS_TEXTURE_SET_INDEX {
-                        spirv_cross_sys::spvc_compiler_set_decoration(compiler, resource.id, spirv_cross_sys::SpvDecoration__SpvDecorationDescriptorSet, buffer_count);
+                        spirv_cross_sys::spvc_compiler_set_decoration(
+                            compiler,
+                            resource.id,
+                            spirv_cross_sys::SpvDecoration__SpvDecorationDescriptorSet,
+                            buffer_count,
+                        );
                         buffer_count += 1;
                         break;
                     }
@@ -793,16 +934,19 @@ fn compile_shader_spirv_cross(
                     assert!(resource.binding < gpu::PER_SET_BINDINGS);
                     assert!(resource.set < gpu::TOTAL_SET_COUNT);
                     match resource.resource_type {
-                        gpu::ResourceType::UniformBuffer | gpu::ResourceType::StorageBuffer
-                            | gpu::ResourceType::AccelerationStructure => {
+                        gpu::ResourceType::UniformBuffer
+                        | gpu::ResourceType::StorageBuffer
+                        | gpu::ResourceType::AccelerationStructure => {
                             msl_binding.msl_buffer = buffer_count;
                             buffer_count += resource.array_size;
                         }
-                        gpu::ResourceType::SubpassInput | gpu::ResourceType::SampledTexture | gpu::ResourceType::StorageTexture => {
+                        gpu::ResourceType::SubpassInput
+                        | gpu::ResourceType::SampledTexture
+                        | gpu::ResourceType::StorageTexture => {
                             msl_binding.msl_texture = texture_count;
                             texture_count += resource.array_size;
                         }
-                        gpu::ResourceType::Sampler =>  {
+                        gpu::ResourceType::Sampler => {
                             msl_binding.msl_sampler = sampler_count;
                             sampler_count += resource.array_size;
                         }
@@ -811,9 +955,12 @@ fn compile_shader_spirv_cross(
                             msl_binding.msl_texture = texture_count;
                             sampler_count += resource.array_size;
                             texture_count += resource.array_size;
-                        },
+                        }
                     }
-                    spirv_cross_sys::spvc_compiler_msl_add_resource_binding(compiler, &msl_binding as *const spirv_cross_sys::spvc_msl_resource_binding);
+                    spirv_cross_sys::spvc_compiler_msl_add_resource_binding(
+                        compiler,
+                        &msl_binding as *const spirv_cross_sys::spvc_msl_resource_binding,
+                    );
                 }
             }
 
@@ -826,7 +973,10 @@ fn compile_shader_spirv_cross(
                     msl_texture: u32::MAX,
                     msl_sampler: u32::MAX,
                 };
-                spirv_cross_sys::spvc_compiler_msl_add_resource_binding(compiler, &msl_binding as *const spirv_cross_sys::spvc_msl_resource_binding);
+                spirv_cross_sys::spvc_compiler_msl_add_resource_binding(
+                    compiler,
+                    &msl_binding as *const spirv_cross_sys::spvc_msl_resource_binding,
+                );
             }
 
             if metadata.uses_bindless_texture_set {
@@ -838,13 +988,16 @@ fn compile_shader_spirv_cross(
                     msl_texture: 0,
                     msl_sampler: u32::MAX,
                 };
-                spirv_cross_sys::spvc_compiler_msl_add_resource_binding(compiler, &msl_binding as *const spirv_cross_sys::spvc_msl_resource_binding);
+                spirv_cross_sys::spvc_compiler_msl_add_resource_binding(
+                    compiler,
+                    &msl_binding as *const spirv_cross_sys::spvc_msl_resource_binding,
+                );
             }
         }
 
         let result = spirv_cross_sys::spvc_compiler_compile(
             compiler,
-            &mut compiled_code_cstr_ptr as *mut *const c_char
+            &mut compiled_code_cstr_ptr as *mut *const c_char,
         );
         if result != spirv_cross_sys::spvc_result_SPVC_SUCCESS {
             return Err(());
@@ -858,16 +1011,21 @@ fn compile_shader_spirv_cross(
 enum CompiledShaderType<'a> {
     Packed(&'a gpu::PackedShader),
     Source(&'a String),
-    Bytecode(&'a [u8])
+    Bytecode(&'a [u8]),
 }
 
 fn write_shader(
     input_shader_path: &Path,
     output_dir: &Path,
     output_shading_language: ShadingLanguage,
-    shader: CompiledShaderType
+    shader: CompiledShaderType,
 ) {
-    let mut compiled_file_name = input_shader_path.file_stem().unwrap().to_str().unwrap().to_string();
+    let mut compiled_file_name = input_shader_path
+        .file_stem()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
     match &shader {
         CompiledShaderType::Packed(_) => compiled_file_name.push_str(".json"),
         CompiledShaderType::Bytecode(_) | CompiledShaderType::Source(_) => match output_shading_language {
@@ -886,14 +1044,16 @@ fn write_shader(
     match shader {
         CompiledShaderType::Bytecode(bytecode) => {
             let mut file = std::fs::File::create(compiled_file_path).expect("Failed to open file");
-            file.write_all(bytecode).expect("Failed to write shader file");
+            file.write_all(bytecode)
+                .expect("Failed to write shader file");
         }
         CompiledShaderType::Source(source) => {
             let mut file = std::fs::File::create(compiled_file_path).expect("Failed to open file");
             write!(file, "{}", source).expect("Failed to write shader file");
         }
         CompiledShaderType::Packed(packed_shader) => {
-            let serialized_str = serde_json::to_string(&packed_shader).expect("Failed to serialize");
+            let serialized_str =
+                serde_json::to_string(&packed_shader).expect("Failed to serialize");
             let mut file = std::fs::File::create(compiled_file_path).expect("Failed to open file");
             write!(file, "{}", serialized_str).expect("Failed to write shader file");
         }
@@ -904,7 +1064,7 @@ fn compile_msl_to_air(
     msl: String,
     shader_name: &str,
     output_dir: &Path,
-    include_debug_info: bool
+    include_debug_info: bool,
 ) -> Result<Box<[u8]>, ()> {
     // xcrun -sdk macosx metal -o Shadow.ir  -c Shadow.metal
 
@@ -919,7 +1079,10 @@ fn compile_msl_to_air(
 
     let temp_source_file_res = std::fs::File::create(&temp_metal_path);
     if let Err(e) = temp_source_file_res {
-        error!("Error creating temporary file for MSL source: {:?} {:?}", &temp_metal_path, e);
+        error!(
+            "Error creating temporary file for MSL source: {:?} {:?}",
+            &temp_metal_path, e
+        );
         return Err(());
     }
     let mut temp_source_file = temp_source_file_res.unwrap();
@@ -952,10 +1115,13 @@ fn compile_msl_to_air(
 
     match &cmd_result {
         Err(e) => {
-            error!("Result-Error compiling Metal shader: {}", output_path.to_str().unwrap());
+            error!(
+                "Result-Error compiling Metal shader: {}",
+                output_path.to_str().unwrap()
+            );
             error!("{}", e.to_string());
             return Err(());
-        },
+        }
         Ok(output) => {
             if !output.status.success() {
                 let text = std::str::from_utf8(&output.stderr).unwrap();
@@ -969,8 +1135,14 @@ fn compile_msl_to_air(
     }
 
     if !output_path.exists() {
-        error!("Compiled Metal shader file does not exist: {:?}", output_path);
-        error!("Output of compile command: {}", String::from_utf8(cmd_result.unwrap().stderr).unwrap());
+        error!(
+            "Compiled Metal shader file does not exist: {:?}",
+            output_path
+        );
+        error!(
+            "Output of compile command: {}",
+            String::from_utf8(cmd_result.unwrap().stderr).unwrap()
+        );
         return Err(());
     }
 
@@ -990,13 +1162,19 @@ fn compile_msl_to_air(
 
     match &cmd_result {
         Err(e) => {
-            error!("Error creating Metal library: {:?}", output_path.to_str().unwrap());
+            error!(
+                "Error creating Metal library: {:?}",
+                output_path.to_str().unwrap()
+            );
             error!("{:?}", e.to_string());
             return Err(());
-        },
+        }
         Ok(output) => {
             if !output.status.success() {
-                error!("Error creating Metal library: {:?}", output_path.to_str().unwrap());
+                error!(
+                    "Error creating Metal library: {:?}",
+                    output_path.to_str().unwrap()
+                );
                 error!("{:?}", std::str::from_utf8(&output.stderr).unwrap());
                 return Err(());
             }
@@ -1005,14 +1183,20 @@ fn compile_msl_to_air(
 
     let air_file_res = File::open(&output_library_path);
     if let Err(e) = air_file_res {
-        error!("Failed to open file containing compiled Metal library code: {:?} {:?}", &output_library_path, e);
+        error!(
+            "Failed to open file containing compiled Metal library code: {:?} {:?}",
+            &output_library_path, e
+        );
         return Err(());
     }
     let mut air_file = air_file_res.unwrap();
     let mut air_bytecode = Vec::<u8>::new();
     let read_res = air_file.read_to_end(&mut air_bytecode);
     if let Err(e) = read_res {
-        error!("Failed to read file containing compiled Metal library code: {:?}", e);
+        error!(
+            "Failed to read file containing compiled Metal library code: {:?}",
+            e
+        );
         return Err(());
     }
 
@@ -1063,7 +1247,10 @@ pub fn compile_shader(
         gpu::ShaderType::ComputeShader
     };
 
-    if shader_type != gpu::ShaderType::VertexShader && shader_type != gpu::ShaderType::FragmentShader && shader_type != gpu::ShaderType::ComputeShader {
+    if shader_type != gpu::ShaderType::VertexShader
+        && shader_type != gpu::ShaderType::FragmentShader
+        && shader_type != gpu::ShaderType::ComputeShader
+    {
         output_shading_languages.remove(ShadingLanguage::Air);
         output_shading_languages.remove(ShadingLanguage::Msl);
         output_shading_languages.remove(ShadingLanguage::Wgsl);
@@ -1074,7 +1261,13 @@ pub fn compile_shader(
 
     // Compile GLSL to SPIR-V
     //
-    let spirv_bytecode_res = compile_shader_glsl(file_path, output_dir, shader_type, include_debug_info, arguments);
+    let spirv_bytecode_res = compile_shader_glsl(
+        file_path,
+        output_dir,
+        shader_type,
+        include_debug_info,
+        arguments,
+    );
     if spirv_bytecode_res.is_err() {
         error!("Failed to compile GLSL for {:?}", file_path);
         return;
@@ -1088,45 +1281,95 @@ pub fn compile_shader(
         if output_file_type == CompiledShaderFileType::Packed {
             panic!("Storing MSL in a packed shader is unsupported.");
         }
-        let source = compile_shader_spirv_cross(&spirv_bytecode_boxed, shader_name, shader_type, &metadata, ShadingLanguage::Msl);
+        let source = compile_shader_spirv_cross(
+            &spirv_bytecode_boxed,
+            shader_name,
+            shader_type,
+            &metadata,
+            ShadingLanguage::Msl,
+        );
         if let Ok(source) = source {
-            write_shader(file_path, output_dir, ShadingLanguage::Msl, CompiledShaderType::Source(&source));
+            write_shader(
+                file_path,
+                output_dir,
+                ShadingLanguage::Msl,
+                CompiledShaderType::Source(&source),
+            );
         }
     }
     if output_shading_languages.contains(ShadingLanguage::Hlsl) {
         if output_file_type == CompiledShaderFileType::Packed {
             panic!("Storing HLSL in a packed shader is unsupported.");
         }
-        let source = compile_shader_spirv_cross(&spirv_bytecode_boxed, shader_name, shader_type, &metadata, ShadingLanguage::Hlsl);
+        let source = compile_shader_spirv_cross(
+            &spirv_bytecode_boxed,
+            shader_name,
+            shader_type,
+            &metadata,
+            ShadingLanguage::Hlsl,
+        );
         if let Ok(source) = source {
-            write_shader(file_path, output_dir, ShadingLanguage::Hlsl, CompiledShaderType::Source(&source));
+            write_shader(
+                file_path,
+                output_dir,
+                ShadingLanguage::Hlsl,
+                CompiledShaderType::Source(&source),
+            );
         }
     }
     if output_shading_languages.contains(ShadingLanguage::Air) {
-        let msl = compile_shader_spirv_cross(&spirv_bytecode_boxed, shader_name, shader_type, &metadata, ShadingLanguage::Msl);
-        let bytecode = msl.and_then(|msl| compile_msl_to_air(msl, shader_name, &std::env::temp_dir(), include_debug_info));
+        let msl = compile_shader_spirv_cross(
+            &spirv_bytecode_boxed,
+            shader_name,
+            shader_type,
+            &metadata,
+            ShadingLanguage::Msl,
+        );
+        let bytecode = msl.and_then(|msl| {
+            compile_msl_to_air(msl, shader_name, &std::env::temp_dir(), include_debug_info)
+        });
         if let Ok(bytecode) = bytecode {
             if output_file_type == CompiledShaderFileType::SingleShader {
-                write_shader(file_path, output_dir, ShadingLanguage::Air, CompiledShaderType::Bytecode(&bytecode));
+                write_shader(
+                    file_path,
+                    output_dir,
+                    ShadingLanguage::Air,
+                    CompiledShaderType::Bytecode(&bytecode),
+                );
             } else if output_file_type == CompiledShaderFileType::Packed {
                 metadata.shader_air = bytecode;
             }
         }
     }
     if output_shading_languages.contains(ShadingLanguage::Dxil) {
-        let _hlsl = compile_shader_spirv_cross(&spirv_bytecode_boxed, shader_name, shader_type, &metadata, ShadingLanguage::Hlsl);
+        let _hlsl = compile_shader_spirv_cross(
+            &spirv_bytecode_boxed,
+            shader_name,
+            shader_type,
+            &metadata,
+            ShadingLanguage::Hlsl,
+        );
         error!("Compiling HLSL to DXIL is unimplemented.");
         let bytecode = Result::<Box<[u8]>, ()>::Err(());
         if let Ok(bytecode) = bytecode {
             if output_file_type == CompiledShaderFileType::SingleShader {
-                write_shader(file_path, output_dir, ShadingLanguage::Dxil, CompiledShaderType::Bytecode(&bytecode));
+                write_shader(
+                    file_path,
+                    output_dir,
+                    ShadingLanguage::Dxil,
+                    CompiledShaderType::Bytecode(&bytecode),
+                );
             } else if output_file_type == CompiledShaderFileType::Packed {
                 metadata.shader_dxil = bytecode;
             }
         }
     }
-    if output_shading_languages.intersects(ShadingLanguage::Wgsl | ShadingLanguage::SpirVPreprocessedForWgsl) {
-        if !output_shading_languages.contains(ShadingLanguage::Wgsl) && output_file_type == CompiledShaderFileType::Packed {
+    if output_shading_languages
+        .intersects(ShadingLanguage::Wgsl | ShadingLanguage::SpirVPreprocessedForWgsl)
+    {
+        if !output_shading_languages.contains(ShadingLanguage::Wgsl)
+            && output_file_type == CompiledShaderFileType::Packed
+        {
             panic!("Storing SPIR-V preprocessed for WGSL in a packed shader is unsupported.");
         }
 
@@ -1136,27 +1379,49 @@ pub fn compile_shader(
         spirv_remove_decoration(&mut prepared_spirv, 25); // naga doesn't support NonReadable (writeonly in GLSL)
         spirv_remap_bindings(&mut prepared_spirv, |binding| Binding {
             descriptor_set: binding.descriptor_set,
-            binding: binding.binding * 2 + if binding.descriptor_set == gpu::BindingFrequency::VeryFrequent as u32 {
-                if shader_type == gpu::ShaderType::ComputeShader { 1 } else { 2 }
-            } else { 0 }
+            binding: binding.binding * 2
+                + if binding.descriptor_set == gpu::BindingFrequency::VeryFrequent as u32 {
+                    if shader_type == gpu::ShaderType::ComputeShader {
+                        1
+                    } else {
+                        2
+                    }
+                } else {
+                    0
+                },
         });
-        spirv_turn_push_const_into_ubo_pass(&mut prepared_spirv, gpu::BindingFrequency::VeryFrequent as u32, 0);
-        spirv_separate_combined_image_samplers(&mut prepared_spirv, Some(|image_binding: &Binding| {
-            Binding {
+        spirv_turn_push_const_into_ubo_pass(
+            &mut prepared_spirv,
+            gpu::BindingFrequency::VeryFrequent as u32,
+            0,
+        );
+        spirv_separate_combined_image_samplers(
+            &mut prepared_spirv,
+            Some(|image_binding: &Binding| Binding {
                 descriptor_set: image_binding.descriptor_set,
-                binding: image_binding.binding + 1
-            }
-        }));
+                binding: image_binding.binding + 1,
+            }),
+        );
 
         if output_shading_languages.contains(ShadingLanguage::SpirVPreprocessedForWgsl) {
-            write_shader(file_path, output_dir, ShadingLanguage::SpirVPreprocessedForWgsl, CompiledShaderType::Bytecode(&prepared_spirv));
+            write_shader(
+                file_path,
+                output_dir,
+                ShadingLanguage::SpirVPreprocessedForWgsl,
+                CompiledShaderType::Bytecode(&prepared_spirv),
+            );
         }
 
         if output_shading_languages.contains(ShadingLanguage::Wgsl) {
             let wgsl = compile_shader_naga(shader_name, &prepared_spirv);
             if let Ok(bytecode) = wgsl {
                 if output_file_type == CompiledShaderFileType::SingleShader {
-                    write_shader(file_path, output_dir, ShadingLanguage::Wgsl, CompiledShaderType::Source(&bytecode));
+                    write_shader(
+                        file_path,
+                        output_dir,
+                        ShadingLanguage::Wgsl,
+                        CompiledShaderType::Source(&bytecode),
+                    );
                 } else if output_file_type == CompiledShaderFileType::Packed {
                     metadata.shader_wgsl = bytecode;
                 }
@@ -1165,31 +1430,57 @@ pub fn compile_shader(
     }
     if output_shading_languages.contains(ShadingLanguage::SpirV) {
         if output_file_type == CompiledShaderFileType::SingleShader {
-            write_shader(file_path, output_dir, ShadingLanguage::SpirV, CompiledShaderType::Bytecode(&spirv_bytecode_boxed));
+            write_shader(
+                file_path,
+                output_dir,
+                ShadingLanguage::SpirV,
+                CompiledShaderType::Bytecode(&spirv_bytecode_boxed),
+            );
         } else if output_file_type == CompiledShaderFileType::Packed {
             metadata.shader_spirv = spirv_bytecode_boxed;
         }
     }
 
     if output_file_type == CompiledShaderFileType::Packed {
-        write_shader(file_path, output_dir, output_shading_languages, CompiledShaderType::Packed(&metadata));
+        write_shader(
+            file_path,
+            output_dir,
+            output_shading_languages,
+            CompiledShaderType::Packed(&metadata),
+        );
     }
 }
 
-fn compile_shader_naga(
-    shader_name: &str,
-    spirv: &[u8]
-) -> Result<String, ()> {
-    let module = naga::front::spv::parse_u8_slice(spirv, &Options {
-        adjust_coordinate_space: false,
-        strict_capabilities: true,
-        block_ctx_dump_prefix: None,
-    }).map_err(|e| { error!("Error parsing SPIR-V when compiling WGSL: {} - {}", shader_name, e); ()})?;
+fn compile_shader_naga(shader_name: &str, spirv: &[u8]) -> Result<String, ()> {
+    let module = naga::front::spv::parse_u8_slice(
+        spirv,
+        &Options {
+            adjust_coordinate_space: false,
+            strict_capabilities: true,
+            block_ctx_dump_prefix: None,
+        },
+    )
+    .map_err(|e| {
+        error!(
+            "Error parsing SPIR-V when compiling WGSL: {} - {}",
+            shader_name, e
+        );
+        ()
+    })?;
 
     let mut validator = Validator::new(ValidationFlags::all(), Capabilities::empty());
-    let module_info = validator.validate(&module).map_err(|e| { error!("Error validating module when compiling WGSL: {} - {}", shader_name, e); ()})?;
+    let module_info = validator.validate(&module).map_err(|e| {
+        error!(
+            "Error validating module when compiling WGSL: {} - {}",
+            shader_name, e
+        );
+        ()
+    })?;
 
-    let wgsl = naga::back::wgsl::write_string(&module, &module_info, WriterFlags::empty()).map_err(|e| { error!("Error compiling WGSL: {} - {}", shader_name, e); ()})?;
+    let wgsl = naga::back::wgsl::write_string(&module, &module_info, WriterFlags::empty())
+        .map_err(|e| {
+            error!("Error compiling WGSL: {} - {}", shader_name, e);
+            ()
+        })?;
     Ok(wgsl)
 }
-

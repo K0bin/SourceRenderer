@@ -1,13 +1,22 @@
 use sourcerenderer_core::Vec4;
 
+use crate::graphics::*;
 use crate::math::Frustum;
-use crate::renderer::passes::modern::gpu_scene::{DRAWABLE_CAPACITY, PART_CAPACITY};
+use crate::renderer::asset::{
+    ComputePipelineHandle,
+    RendererAssets,
+    RendererAssetsReadOnly,
+};
+use crate::renderer::passes::modern::gpu_scene::{
+    DRAWABLE_CAPACITY,
+    PART_CAPACITY,
+};
 use crate::renderer::passes::modern::hi_z::HierarchicalZPass;
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
-use crate::renderer::asset::{ComputePipelineHandle, RendererAssets, RendererAssetsReadOnly};
-
-use crate::graphics::*;
+use crate::renderer::renderer_resources::{
+    HistoryResourceEntry,
+    RendererResources,
+};
 
 pub struct DrawPrepPass {
     culling_pipeline: ComputePipelineHandle,
@@ -19,10 +28,7 @@ impl DrawPrepPass {
     pub const INDIRECT_DRAW_BUFFER: &'static str = "IndirectDraws";
 
     #[allow(unused)]
-    pub fn new(
-        resources: &mut RendererResources,
-        assets: &RendererAssets,
-    ) -> Self {
+    pub fn new(resources: &mut RendererResources, assets: &RendererAssets) -> Self {
         let culling_pipeline = assets.request_compute_pipeline("shaders/culling.comp.json");
         let prep_pipeline = assets.request_compute_pipeline("shaders/draw_prep.comp.json");
         resources.create_buffer(
@@ -31,7 +37,7 @@ impl DrawPrepPass {
                 size: (DRAWABLE_CAPACITY as u64 + std::mem::size_of::<u32>() as u64 - 1)
                     / std::mem::size_of::<u32>() as u64,
                 usage: BufferUsage::STORAGE,
-                sharing_mode: QueueSharingMode::Exclusive
+                sharing_mode: QueueSharingMode::Exclusive,
             },
             MemoryUsage::GPUMemory,
             false,
@@ -41,7 +47,7 @@ impl DrawPrepPass {
             &BufferInfo {
                 size: 4 + 20 * PART_CAPACITY as u64,
                 usage: BufferUsage::STORAGE | BufferUsage::INDIRECT,
-                sharing_mode: QueueSharingMode::Exclusive
+                sharing_mode: QueueSharingMode::Exclusive,
             },
             MemoryUsage::GPUMemory,
             false,
@@ -54,14 +60,11 @@ impl DrawPrepPass {
 
     #[inline(always)]
     pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
-        assets.get_compute_pipeline(self.culling_pipeline).is_some() && assets.get_compute_pipeline(self.prep_pipeline).is_some()
+        assets.get_compute_pipeline(self.culling_pipeline).is_some()
+            && assets.get_compute_pipeline(self.prep_pipeline).is_some()
     }
 
-    pub fn execute(
-        &self,
-        cmd_buffer: &mut CommandBuffer,
-        pass_params: &RenderPassParameters<'_>
-    ) {
+    pub fn execute(&self, cmd_buffer: &mut CommandBuffer, pass_params: &RenderPassParameters<'_>) {
         {
             let view = &pass_params.scene.scene.views()[pass_params.scene.active_view_index];
 
@@ -75,7 +78,9 @@ impl DrawPrepPass {
             );
 
             let hi_z_mips = {
-                let hi_z_info = pass_params.resources.texture_info(HierarchicalZPass::HI_Z_BUFFER_NAME);
+                let hi_z_info = pass_params
+                    .resources
+                    .texture_info(HierarchicalZPass::HI_Z_BUFFER_NAME);
                 hi_z_info.mip_levels
             };
             let hi_z = pass_params.resources.access_view(
@@ -119,16 +124,18 @@ impl DrawPrepPass {
                 0,
                 WHOLE_BUFFER,
             );
-            let frustum_buffer = cmd_buffer.upload_dynamic_data(
-                &[GPUFrustum {
-                    near_half_width: frustum.near_half_width,
-                    near_half_height: frustum.near_half_height,
-                    _padding: 0,
-                    _padding1: 0,
-                    planes: Vec4::new(frustum_x.x, frustum_x.z, frustum_y.y, frustum_y.z),
-                }],
-                BufferUsage::CONSTANT,
-            ).unwrap();
+            let frustum_buffer = cmd_buffer
+                .upload_dynamic_data(
+                    &[GPUFrustum {
+                        near_half_width: frustum.near_half_width,
+                        near_half_height: frustum.near_half_height,
+                        _padding: 0,
+                        _padding1: 0,
+                        planes: Vec4::new(frustum_x.x, frustum_x.z, frustum_y.y, frustum_y.z),
+                    }],
+                    BufferUsage::CONSTANT,
+                )
+                .unwrap();
             cmd_buffer.bind_uniform_buffer(
                 BindingFrequency::VeryFrequent,
                 1,
@@ -142,11 +149,18 @@ impl DrawPrepPass {
                 &*hi_z,
                 pass_params.resources.nearest_sampler(),
             );
-            let culling_pipeline = pass_params.assets.get_compute_pipeline(self.culling_pipeline).unwrap();
+            let culling_pipeline = pass_params
+                .assets
+                .get_compute_pipeline(self.culling_pipeline)
+                .unwrap();
             cmd_buffer.set_pipeline(PipelineBinding::Compute(&culling_pipeline));
             cmd_buffer.flush_barriers();
             cmd_buffer.finish_binding();
-            cmd_buffer.dispatch((pass_params.scene.scene.static_drawables().len() as u32 + 63) / 64, 1, 1);
+            cmd_buffer.dispatch(
+                (pass_params.scene.scene.static_drawables().len() as u32 + 63) / 64,
+                1,
+                1,
+            );
             cmd_buffer.end_label();
         }
 
@@ -164,11 +178,14 @@ impl DrawPrepPass {
         }
 
         assert!(pass_params.scene.scene.static_drawables().len() as u32 <= DRAWABLE_CAPACITY);
-        let part_count = pass_params.scene.scene
+        let part_count = pass_params
+            .scene
+            .scene
             .static_drawables()
             .iter()
             .map(|d| {
-                pass_params.assets
+                pass_params
+                    .assets
                     .get_model(d.model)
                     .and_then(|m| pass_params.assets.get_mesh(m.mesh_handle()))
                     .map(|mesh| mesh.parts.len())
@@ -205,7 +222,10 @@ impl DrawPrepPass {
             0,
             WHOLE_BUFFER,
         );
-        let prep_pipeline = pass_params.assets.get_compute_pipeline(self.prep_pipeline).unwrap();
+        let prep_pipeline = pass_params
+            .assets
+            .get_compute_pipeline(self.prep_pipeline)
+            .unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&prep_pipeline));
         cmd_buffer.flush_barriers();
         cmd_buffer.finish_binding();

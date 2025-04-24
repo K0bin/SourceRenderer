@@ -1,6 +1,6 @@
 pub(crate) mod geometry;
+use super::modern::acceleration_structure_update;
 use super::{
-    modern::acceleration_structure_update,
     clustering,
     light_binning,
     prepass,

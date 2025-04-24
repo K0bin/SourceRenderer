@@ -1,6 +1,19 @@
-use std::{sync::Arc, collections::HashMap, fmt::{Debug, Formatter}, hash::Hash, mem::ManuallyDrop, ffi::c_void};
+use std::collections::HashMap;
+use std::ffi::c_void;
+use std::fmt::{
+    Debug,
+    Formatter,
+};
+use std::hash::Hash;
+use std::mem::ManuallyDrop;
+use std::sync::Arc;
 
-use sourcerenderer_core::{gpu::*, atomic_refcell::{AtomicRefCell, AtomicRefMut}, extend_lifetime};
+use sourcerenderer_core::atomic_refcell::{
+    AtomicRefCell,
+    AtomicRefMut,
+};
+use sourcerenderer_core::extend_lifetime;
+use sourcerenderer_core::gpu::*;
 
 use super::*;
 
@@ -63,7 +76,7 @@ const UNIQUE_ALLOCATION_THRESHOLD: u64 = 8192;
 struct BufferKey {
     buffer_usage: BufferUsage,
     memory_usage: MemoryUsage,
-    sharing_mode: QueueSharingMode
+    sharing_mode: QueueSharingMode,
 }
 
 struct TransientBuffer {
@@ -71,7 +84,7 @@ struct TransientBuffer {
     offset: u64,
     buffer: ManuallyDrop<active_gpu_backend::Buffer>,
     allocation: Option<MemoryAllocation<active_gpu_backend::Heap>>,
-    destroyer: Arc<DeferredDestroyer>
+    destroyer: Arc<DeferredDestroyer>,
 }
 
 impl Drop for TransientBuffer {
@@ -96,19 +109,19 @@ pub(super) struct TransientBufferAllocator {
     allocator: Arc<MemoryAllocator>,
     destroyer: Arc<DeferredDestroyer>,
     inner: AtomicRefCell<TransientBufferAllocatorInner>,
-    is_uma: bool
+    is_uma: bool,
 }
 
 struct BufferCollection {
     buffers: Vec<Box<TransientBuffer>>,
-    first_free_index: usize
+    first_free_index: usize,
 }
 
 impl Default for BufferCollection {
     fn default() -> Self {
         Self {
             buffers: Vec::new(),
-            first_free_index: 0
+            first_free_index: 0,
         }
     }
 }
@@ -124,7 +137,7 @@ impl TransientBufferAllocator {
         device: &Arc<active_gpu_backend::Device>,
         allocator: &Arc<MemoryAllocator>,
         destroyer: &Arc<DeferredDestroyer>,
-        is_uma: bool
+        is_uma: bool,
     ) -> Self {
         Self {
             device: device.clone(),
@@ -133,18 +146,18 @@ impl TransientBufferAllocator {
             inner: AtomicRefCell::new(TransientBufferAllocatorInner {
                 buffer_collections: HashMap::new(),
                 retained_size_host_memory: None,
-                retained_size_gpu_memory: None
+                retained_size_gpu_memory: None,
             }),
-            is_uma
+            is_uma,
         }
     }
 
     pub fn get_slice(
-      &self,
-      info: &BufferInfo,
-      memory_usage: MemoryUsage,
-      frame: u64,
-      _name: Option<&str>,
+        &self,
+        info: &BufferInfo,
+        memory_usage: MemoryUsage,
+        frame: u64,
+        _name: Option<&str>,
     ) -> Result<TransientBufferSlice, OutOfMemoryError> {
         let heap_info = unsafe { self.device.get_buffer_heap_info(info) };
         let alignment: u64 = heap_info.alignment;
@@ -153,7 +166,13 @@ impl TransientBufferAllocator {
 
         if info.size > UNIQUE_ALLOCATION_THRESHOLD {
             // Don't do one-off buffers for command lists
-            let BufferAndAllocation { buffer, allocation } = BufferAllocator::create_buffer(&self.device, &self.allocator, info, memory_usage, None)?;
+            let BufferAndAllocation { buffer, allocation } = BufferAllocator::create_buffer(
+                &self.device,
+                &self.allocator,
+                info,
+                memory_usage,
+                None,
+            )?;
             let boxed_buffer = Box::new(TransientBuffer {
                 size: info.size,
                 offset: 0,
@@ -161,7 +180,8 @@ impl TransientBufferAllocator {
                 allocation,
                 destroyer: self.destroyer.clone(),
             });
-            let boxed_buffer_ref: &'static active_gpu_backend::Buffer = unsafe { extend_lifetime(&boxed_buffer.as_ref().buffer) };
+            let boxed_buffer_ref: &'static active_gpu_backend::Buffer =
+                unsafe { extend_lifetime(&boxed_buffer.as_ref().buffer) };
             let slice = TransientBufferSlice {
                 _owned_buffer: Some(boxed_buffer),
                 buffer: boxed_buffer_ref,
@@ -178,12 +198,16 @@ impl TransientBufferAllocator {
         let key = BufferKey {
             memory_usage,
             buffer_usage: info.usage,
-            sharing_mode: info.sharing_mode
+            sharing_mode: info.sharing_mode,
         };
         let matching_buffers = buffers.entry(key).or_default();
 
         let mut slice_opt: Option<TransientBufferSlice> = None;
-        for (index, sliced_buffer) in (&mut matching_buffers.buffers[matching_buffers.first_free_index..]).iter_mut().enumerate() {
+        for (index, sliced_buffer) in (&mut matching_buffers.buffers
+            [matching_buffers.first_free_index..])
+            .iter_mut()
+            .enumerate()
+        {
             let actual_index = index + matching_buffers.first_free_index;
             let aligned_offset = align_up_64(sliced_buffer.offset, alignment);
             let alignment_diff = aligned_offset - sliced_buffer.offset;
@@ -214,7 +238,13 @@ impl TransientBufferAllocator {
         let mut new_buffer_info = info.clone();
         new_buffer_info.size = BUFFER_SIZE.max(info.size);
 
-        let BufferAndAllocation { buffer, allocation } = BufferAllocator::create_buffer(&self.device, &self.allocator, info, memory_usage, None)?;
+        let BufferAndAllocation { buffer, allocation } = BufferAllocator::create_buffer(
+            &self.device,
+            &self.allocator,
+            info,
+            memory_usage,
+            None,
+        )?;
         let mut sliced_buffer = Box::new(TransientBuffer {
             size: new_buffer_info.size,
             offset: 0,
@@ -251,7 +281,9 @@ impl TransientBufferAllocator {
 
                 let (counted_memory, limit) = if self.is_uma {
                     (&mut counted_host_memory, retained_host_memory)
-                } else if key.memory_usage == MemoryUsage::GPUMemory || key.memory_usage == MemoryUsage::MappableGPUMemory {
+                } else if key.memory_usage == MemoryUsage::GPUMemory
+                    || key.memory_usage == MemoryUsage::MappableGPUMemory
+                {
                     (&mut counted_gpu_memory, retained_gpu_memory)
                 } else {
                     (&mut counted_host_memory, retained_host_memory)

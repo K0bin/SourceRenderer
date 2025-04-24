@@ -1,14 +1,22 @@
-use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
-use std::fmt::{Debug, Formatter};
-use std::hash::Hash;
 use std::ffi::c_void;
+use std::fmt::{
+    Debug,
+    Formatter,
+};
+use std::hash::Hash;
 use std::mem::ManuallyDrop;
+use std::sync::{
+    Arc,
+    Mutex,
+};
 
 use log::trace;
-use super::gpu::Buffer as _;
-use super::gpu::Heap as _;
 
+use super::gpu::{
+    Buffer as _,
+    Heap as _,
+};
 use super::*;
 
 pub struct BufferAndAllocation {
@@ -57,25 +65,43 @@ impl BufferSlice {
     }
 
     #[inline(always)]
-    pub unsafe fn map_part(&self, offset: u64, length: u64, invalidate: bool) -> Option<*mut c_void> {
+    pub unsafe fn map_part(
+        &self,
+        offset: u64,
+        length: u64,
+        invalidate: bool,
+    ) -> Option<*mut c_void> {
         debug_assert!(self.buffer_allocation.range.length >= offset + length);
-        self.handle().map(self.buffer_allocation.range.offset + offset, length, invalidate)
+        self.handle().map(
+            self.buffer_allocation.range.offset + offset,
+            length,
+            invalidate,
+        )
     }
 
     #[inline(always)]
     pub unsafe fn unmap_part(&self, offset: u64, length: u64, flush: bool) {
         debug_assert!(self.buffer_allocation.range.length >= offset + length);
-        self.handle().unmap(self.buffer_allocation.range.offset + offset, length, flush)
+        self.handle()
+            .unmap(self.buffer_allocation.range.offset + offset, length, flush)
     }
 
     #[inline(always)]
     pub unsafe fn map(&self, invalidate: bool) -> Option<*mut c_void> {
-        self.handle().map(self.buffer_allocation.range.offset, self.buffer_allocation.range.length, invalidate)
+        self.handle().map(
+            self.buffer_allocation.range.offset,
+            self.buffer_allocation.range.length,
+            invalidate,
+        )
     }
 
     #[inline(always)]
     pub unsafe fn unmap(&self, flush: bool) {
-        self.handle().unmap(self.buffer_allocation.range.offset, self.buffer_allocation.range.length, flush);
+        self.handle().unmap(
+            self.buffer_allocation.range.offset,
+            self.buffer_allocation.range.length,
+            flush,
+        );
     }
 
     pub fn write<T: Clone>(&self, src: &T) -> Option<()> {
@@ -104,7 +130,7 @@ const UNIQUE_ALLOCATION_THRESHOLD: u64 = 65536;
 struct BufferKey {
     memory_usage: MemoryUsage,
     buffer_usage: BufferUsage,
-    sharing_mode: QueueSharingMode
+    sharing_mode: QueueSharingMode,
 }
 
 pub struct BufferAllocator {
@@ -115,29 +141,41 @@ pub struct BufferAllocator {
 }
 
 impl BufferAllocator {
-    pub(super) fn new(device: &Arc<active_gpu_backend::Device>, memory_allocator: &Arc<MemoryAllocator>, destroyer: &Arc<DeferredDestroyer>) -> Self {
+    pub(super) fn new(
+        device: &Arc<active_gpu_backend::Device>,
+        memory_allocator: &Arc<MemoryAllocator>,
+        destroyer: &Arc<DeferredDestroyer>,
+    ) -> Self {
         Self {
             device: device.clone(),
             allocator: memory_allocator.clone(),
             destroyer: destroyer.clone(),
-            buffers: Mutex::new(HashMap::new())
+            buffers: Mutex::new(HashMap::new()),
         }
     }
 
     pub fn get_slice(
-      &self,
-      info: &BufferInfo,
-      memory_usage: MemoryUsage,
-      name: Option<&str>,
+        &self,
+        info: &BufferInfo,
+        memory_usage: MemoryUsage,
+        name: Option<&str>,
     ) -> Result<Arc<BufferSlice>, OutOfMemoryError> {
         let heap_info = unsafe { self.device.get_buffer_heap_info(info) };
         let alignment: u64 = heap_info.alignment;
 
         if info.size > UNIQUE_ALLOCATION_THRESHOLD {
             // Don't do one-off buffers for command lists
-            let buffer_and_allocation = BufferAllocator::create_buffer(&self.device, &self.allocator, info, memory_usage, name)?;
+            let buffer_and_allocation = BufferAllocator::create_buffer(
+                &self.device,
+                &self.allocator,
+                info,
+                memory_usage,
+                name,
+            )?;
             let chunk = Chunk::new(buffer_and_allocation, info.size);
-            let suballocation = chunk.allocate(info.size, alignment).ok_or(OutOfMemoryError {})?;
+            let suballocation = chunk
+                .allocate(info.size, alignment)
+                .ok_or(OutOfMemoryError {})?;
             return Ok(Arc::new(BufferSlice {
                 buffer_allocation: ManuallyDrop::new(suballocation),
                 destroyer: self.destroyer.clone(),
@@ -147,7 +185,7 @@ impl BufferAllocator {
         let key = BufferKey {
             memory_usage,
             buffer_usage: info.usage,
-            sharing_mode: info.sharing_mode
+            sharing_mode: info.sharing_mode,
         };
         let mut guard = self.buffers.lock().unwrap();
         let matching_chunks = guard.entry(key).or_insert(Vec::new());
@@ -164,7 +202,13 @@ impl BufferAllocator {
         let mut sliced_buffer_info = info.clone();
         sliced_buffer_info.size = SLICED_BUFFER_SIZE.max(info.size);
 
-        let buffer_and_allocation = BufferAllocator::create_buffer(&self.device, &self.allocator, &sliced_buffer_info, memory_usage, None)?;
+        let buffer_and_allocation = BufferAllocator::create_buffer(
+            &self.device,
+            &self.allocator,
+            &sliced_buffer_info,
+            memory_usage,
+            None,
+        )?;
         let chunk = Chunk::new(buffer_and_allocation, sliced_buffer_info.size);
         let allocation = chunk.allocate(info.size, alignment).unwrap();
         matching_chunks.push(chunk);
@@ -174,13 +218,26 @@ impl BufferAllocator {
         }));
     }
 
-    pub(super) fn create_buffer(device: &Arc<active_gpu_backend::Device>, allocator: &MemoryAllocator, info: &BufferInfo, memory_usage: MemoryUsage, name: Option<&str>) -> Result<BufferAndAllocation, OutOfMemoryError> {
+    pub(super) fn create_buffer(
+        device: &Arc<active_gpu_backend::Device>,
+        allocator: &MemoryAllocator,
+        info: &BufferInfo,
+        memory_usage: MemoryUsage,
+        name: Option<&str>,
+    ) -> Result<BufferAndAllocation, OutOfMemoryError> {
         let heap_info = unsafe { device.get_buffer_heap_info(info) };
-        if heap_info.dedicated_allocation_preference == DedicatedAllocationPreference::RequireDedicated || heap_info.dedicated_allocation_preference == DedicatedAllocationPreference::PreferDedicated {
+        if heap_info.dedicated_allocation_preference
+            == DedicatedAllocationPreference::RequireDedicated
+            || heap_info.dedicated_allocation_preference
+                == DedicatedAllocationPreference::PreferDedicated
+        {
             let memory_types = unsafe { device.memory_type_infos() };
-            let mut buffer: Result<active_gpu_backend::Buffer, OutOfMemoryError> = Err(OutOfMemoryError {});
+            let mut buffer: Result<active_gpu_backend::Buffer, OutOfMemoryError> =
+                Err(OutOfMemoryError {});
 
-            let mask = allocator.find_memory_type_mask(memory_usage, MemoryTypeMatchingStrictness::Strict) & heap_info.memory_type_mask;
+            let mask = allocator
+                .find_memory_type_mask(memory_usage, MemoryTypeMatchingStrictness::Strict)
+                & heap_info.memory_type_mask;
             for i in 0..memory_types.len() as u32 {
                 if (mask & (1 << i)) == 0 {
                     continue;
@@ -192,7 +249,9 @@ impl BufferAllocator {
             }
 
             if buffer.is_err() {
-                let mask = allocator.find_memory_type_mask(memory_usage, MemoryTypeMatchingStrictness::Normal) & heap_info.memory_type_mask;
+                let mask = allocator
+                    .find_memory_type_mask(memory_usage, MemoryTypeMatchingStrictness::Normal)
+                    & heap_info.memory_type_mask;
                 for i in 0..memory_types.len() as u32 {
                     if (mask & (1 << i)) == 0 {
                         continue;
@@ -205,7 +264,9 @@ impl BufferAllocator {
             }
 
             if buffer.is_err() {
-                let mask = allocator.find_memory_type_mask(memory_usage, MemoryTypeMatchingStrictness::Fallback) & heap_info.memory_type_mask;
+                let mask = allocator
+                    .find_memory_type_mask(memory_usage, MemoryTypeMatchingStrictness::Fallback)
+                    & heap_info.memory_type_mask;
                 for i in 0..memory_types.len() as u32 {
                     if (mask & (1 << i)) == 0 {
                         continue;
@@ -223,7 +284,13 @@ impl BufferAllocator {
             })
         } else {
             let allocation = allocator.allocate(memory_usage, &heap_info)?;
-            let buffer = unsafe { allocation.as_ref().data().create_buffer(info, allocation.as_ref().range.offset, name) }?;
+            let buffer = unsafe {
+                allocation.as_ref().data().create_buffer(
+                    info,
+                    allocation.as_ref().range.offset,
+                    name,
+                )
+            }?;
             Ok(BufferAndAllocation {
                 buffer: buffer,
                 allocation: Some(allocation),
@@ -244,7 +311,11 @@ impl BufferAllocator {
                 retained_empty < 2
             });
             if buffers.len() != buffer_count_before {
-                trace!("Freed {} buffers in buffer type {:?}", buffer_count_before - buffers.len(), buffer_key);
+                trace!(
+                    "Freed {} buffers in buffer type {:?}",
+                    buffer_count_before - buffers.len(),
+                    buffer_key
+                );
             }
         }
     }

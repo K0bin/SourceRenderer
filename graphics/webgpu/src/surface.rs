@@ -8,7 +8,7 @@ use crate::{WebGPUBackend, WebGPUDevice, WebGPUInstance, WebGPUSwapchain};
 #[derive(PartialEq, Debug)]
 enum WebGPUSurfaceCanvas {
     Fake,
-    Canvas(OffscreenCanvas)
+    Canvas(OffscreenCanvas),
 }
 
 pub struct WebGPUSurface {
@@ -62,7 +62,6 @@ impl WebGPUSurface {
         }
     }
 
-
     #[inline(always)]
     pub fn take_js_val(self) -> JsValue {
         if let WebGPUSurfaceCanvas::Canvas(canvas) = self.canvas {
@@ -80,7 +79,13 @@ impl WebGPUSurface {
 }
 
 impl gpu::Surface<WebGPUBackend> for WebGPUSurface {
-    unsafe fn create_swapchain(self, _width: u32, _height: u32, _vsync: bool, device: &WebGPUDevice) -> Result<WebGPUSwapchain, gpu::SwapchainError> {
+    unsafe fn create_swapchain(
+        self,
+        _width: u32,
+        _height: u32,
+        _vsync: bool,
+        device: &WebGPUDevice,
+    ) -> Result<WebGPUSwapchain, gpu::SwapchainError> {
         Ok(WebGPUSwapchain::new(device.handle(), self))
     }
 }

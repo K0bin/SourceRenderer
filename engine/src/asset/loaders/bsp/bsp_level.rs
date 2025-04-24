@@ -9,7 +9,10 @@ use std::sync::Arc;
 use std::u8;
 
 use bevy_ecs::world::World;
-use bevy_math::{EulerRot, Quat};
+use bevy_math::{
+    EulerRot,
+    Quat,
+};
 use bevy_transform::components::Transform;
 use rapier3d::na::Matrix4;
 use regex::Regex;
@@ -28,13 +31,16 @@ use sourcerenderer_core::{
     Vec4,
 };
 
-use crate::asset::loaded_level::LevelData;
-use crate::graphics::*;
-
 use super::BspLumps;
 use crate::asset::asset_manager::{
-    AssetFile, AssetLoadPriority, AssetLoaderProgress, DirectlyLoadedAsset, MeshRange, Texture
+    AssetFile,
+    AssetLoadPriority,
+    AssetLoaderProgress,
+    DirectlyLoadedAsset,
+    MeshRange,
+    Texture,
 };
+use crate::asset::loaded_level::LevelData;
 use crate::asset::loaders::bsp::lightmap_packer::LightmapPacker;
 use crate::asset::loaders::csgo_loader::CSGO_MAP_NAME_PATTERN;
 use crate::asset::loaders::PakFileContainer;
@@ -46,6 +52,7 @@ use crate::asset::{
     Mesh,
     Model,
 };
+use crate::graphics::*;
 use crate::math::BoundingBox;
 use crate::renderer::{
     Lightmap,
@@ -574,17 +581,23 @@ impl AssetLoader for BspLevelLoader {
             manager.add_asset(&model_name, Asset::Model(model), AssetLoadPriority::Normal);
 
             let entity = world.push_entity(2);
-            world.push_component(entity, StaticRenderableComponent {
-                model_path: model_name,
-                receive_shadows: true,
-                cast_shadows: true,
-                can_move: false,
-            });
-            world.push_component(entity, Transform {
-                translation: brush_models[model_index].origin,
-                scale: Vec3::new(1.0f32, 1.0f32, 1.0f32),
-                rotation: Quat::IDENTITY,
-            });
+            world.push_component(
+                entity,
+                StaticRenderableComponent {
+                    model_path: model_name,
+                    receive_shadows: true,
+                    cast_shadows: true,
+                    can_move: false,
+                },
+            );
+            world.push_component(
+                entity,
+                Transform {
+                    translation: brush_models[model_index].origin,
+                    scale: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+                    rotation: Quat::IDENTITY,
+                },
+            );
 
             model_index += 1;
         }
@@ -598,17 +611,23 @@ impl AssetLoader for BspLevelLoader {
                 progress,
             );
             let entity = world.push_entity(2);
-            world.push_component(entity, StaticRenderableComponent {
-                model_path: name.clone(),
-                receive_shadows: true,
-                cast_shadows: true,
-                can_move: false,
-            });
-            world.push_component(entity, Transform {
-                translation: Self::fixup_position(&prop.origin),
-                scale: Vec3::new(1.0f32, 1.0f32, 1.0f32),
-                rotation: Self::fixup_rotation(&prop.angles),
-            });
+            world.push_component(
+                entity,
+                StaticRenderableComponent {
+                    model_path: name.clone(),
+                    receive_shadows: true,
+                    cast_shadows: true,
+                    can_move: false,
+                },
+            );
+            world.push_component(
+                entity,
+                Transform {
+                    translation: Self::fixup_position(&prop.origin),
+                    scale: Vec3::new(1.0f32, 1.0f32, 1.0f32),
+                    rotation: Self::fixup_rotation(&prop.angles),
+                },
+            );
         }
 
         for material in materials_to_load {

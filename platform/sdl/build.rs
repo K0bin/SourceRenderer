@@ -3,7 +3,9 @@ use std::env;
 use std::path::PathBuf;
 
 use build_util::{
-    compile_shaders, copy_directory_rec, ShadingLanguage,
+    compile_shaders,
+    copy_directory_rec,
+    ShadingLanguage,
 };
 
 fn main() {
@@ -19,11 +21,16 @@ fn main() {
     shader_dest_dir.push("shaders");
 
     if !shader_dest_dir.exists() {
-        std::fs::create_dir_all(&shader_dest_dir).expect("Failed to create shader target directory.");
+        std::fs::create_dir_all(&shader_dest_dir)
+            .expect("Failed to create shader target directory.");
     }
 
-    let mut output_shading_languages = ShadingLanguage::SpirV | ShadingLanguage::Dxil | ShadingLanguage::Air;
-    if env::var("DUMP_SHADERS").map(|envvar| envvar == "true" || envvar == "True" || envvar == "1").unwrap_or_default() {
+    let mut output_shading_languages =
+        ShadingLanguage::SpirV | ShadingLanguage::Dxil | ShadingLanguage::Air;
+    if env::var("DUMP_SHADERS")
+        .map(|envvar| envvar == "true" || envvar == "True" || envvar == "1")
+        .unwrap_or_default()
+    {
         output_shading_languages |= ShadingLanguage::Msl | ShadingLanguage::Hlsl;
     }
 
@@ -50,7 +57,8 @@ fn main() {
     assets_dest_dir.push("assets");
 
     if !assets_dest_dir.exists() {
-        std::fs::create_dir_all(&assets_dest_dir).expect("Failed to create shader target directory.");
+        std::fs::create_dir_all(&assets_dest_dir)
+            .expect("Failed to create shader target directory.");
     }
 
     let mut assets_dir = manifest_dir.clone();

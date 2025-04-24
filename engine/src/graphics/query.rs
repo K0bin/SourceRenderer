@@ -1,9 +1,14 @@
-use std::sync::Arc;
-use std::fmt::{Debug, Formatter, Error as FmtError};
+use std::fmt::{
+    Debug,
+    Error as FmtError,
+    Formatter,
+};
 use std::mem::ManuallyDrop;
-use sourcerenderer_core::extend_lifetime;
-use super::gpu::QueryPool as _;
+use std::sync::Arc;
 
+use sourcerenderer_core::extend_lifetime;
+
+use super::gpu::QueryPool as _;
 use super::*;
 
 struct QueryPool {
@@ -35,11 +40,15 @@ impl Debug for OutOfQueriesError {
 pub(super) struct QueryAllocator {
     pool: Box<QueryPool>,
     count: u32,
-    next_index: u32
+    next_index: u32,
 }
 
 impl QueryAllocator {
-    pub(super) fn new(device: &Arc<active_gpu_backend::Device>, destroyer: &Arc<DeferredDestroyer>, query_count: u32) -> Self {
+    pub(super) fn new(
+        device: &Arc<active_gpu_backend::Device>,
+        destroyer: &Arc<DeferredDestroyer>,
+        query_count: u32,
+    ) -> Self {
         let pool = unsafe { device.create_query_pool(query_count) };
         Self {
             pool: Box::new(QueryPool {
@@ -47,16 +56,20 @@ impl QueryAllocator {
                 destroyer: destroyer.clone(),
             }),
             count: query_count,
-            next_index: 0u32
+            next_index: 0u32,
         }
     }
 
-    pub(super) fn get_queries(&mut self, frame: u64, query_count: u32) -> Result<QueryRange, OutOfQueriesError> {
+    pub(super) fn get_queries(
+        &mut self,
+        frame: u64,
+        query_count: u32,
+    ) -> Result<QueryRange, OutOfQueriesError> {
         if self.next_index + query_count > self.count {
             return Err(OutOfQueriesError {
                 requested_count: query_count,
                 pool_next_index: self.next_index,
-                pool_total_count: self.count
+                pool_total_count: self.count,
             });
         }
 
@@ -71,7 +84,9 @@ impl QueryAllocator {
     }
 
     pub(super) fn reset(&mut self) {
-        unsafe { self.pool.pool.reset(); }
+        unsafe {
+            self.pool.pool.reset();
+        }
         self.next_index = 0;
     }
 }

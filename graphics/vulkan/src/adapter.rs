@@ -1,24 +1,20 @@
-use std::{
-    f32,
-    ffi::{
-        c_void,
-        CStr,
-        CString,
-    },
-    os::raw::c_char,
-    sync::{atomic::AtomicBool, Arc},
+use std::f32;
+use std::ffi::{
+    c_void,
+    CStr,
+    CString,
 };
+use std::os::raw::c_char;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
-use ash::{
-    khr::surface::Instance as KhrSurface,
-    vk,
-};
+use ash::khr::surface::Instance as KhrSurface;
+use ash::vk;
+use bitflags::bitflags;
 use parking_lot::lock_api::ReentrantMutex;
 use sourcerenderer_core::gpu;
 
 use super::*;
-
-use bitflags::bitflags;
 
 const SWAPCHAIN_EXT_NAME: &str = "VK_KHR_swapchain";
 const MEMORY_BUDGET_EXT_NAME: &str = "VK_EXT_memory_budget";
@@ -105,9 +101,11 @@ pub(crate) const BINDLESS_TEXTURE_COUNT: u32 = gpu::BINDLESS_TEXTURE_COUNT;
 impl gpu::Adapter<VkBackend> for VkAdapter {
     unsafe fn create_device(&self, surface: &VkSurface) -> VkDevice {
         let mut extensions = VkAdapterExtensionSupport::NONE;
-        let supported_extensions = self.instance
-                .instance
-                .enumerate_device_extension_properties(self.physical_device).unwrap();
+        let supported_extensions = self
+            .instance
+            .instance
+            .enumerate_device_extension_properties(self.physical_device)
+            .unwrap();
         for extension in &supported_extensions {
             let name_c = unsafe { CStr::from_ptr(&extension.extension_name as *const c_char) };
             let name_res = name_c.to_str();
@@ -118,11 +116,15 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             extensions |= match name {
                 SWAPCHAIN_EXT_NAME => VkAdapterExtensionSupport::SWAPCHAIN,
                 MEMORY_BUDGET_EXT_NAME => VkAdapterExtensionSupport::MEMORY_BUDGET,
-                ACCELERATION_STRUCTURE_EXT_NAME => VkAdapterExtensionSupport::ACCELERATION_STRUCTURE,
+                ACCELERATION_STRUCTURE_EXT_NAME => {
+                    VkAdapterExtensionSupport::ACCELERATION_STRUCTURE
+                }
                 PIPELINE_LIBRARY_EXT_NAME => VkAdapterExtensionSupport::PIPELINE_LIBRARY,
                 RAY_QUERY_EXT_NAME => VkAdapterExtensionSupport::RAY_QUERY,
                 RAY_TRACING_PIPELINE_EXT_NAME => VkAdapterExtensionSupport::RAY_TRACING_PIPELINE,
-                DEFERRED_HOST_OPERATIONS_EXT_NAME => VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS,
+                DEFERRED_HOST_OPERATIONS_EXT_NAME => {
+                    VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS
+                }
                 BARYCENTRICS_EXT_NAME => VkAdapterExtensionSupport::BARYCENTRICS,
                 MESH_SHADER_EXT_NAME => VkAdapterExtensionSupport::MESH_SHADER,
                 HOST_IMAGE_COPY_EXT_NAME => VkAdapterExtensionSupport::HOST_IMAGE_COPY,
@@ -256,56 +258,45 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             vk::PhysicalDeviceAccelerationStructurePropertiesKHR::default();
         let mut supported_features_rt_pipeline =
             vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
-        let mut supported_features_rt_query =
-            vk::PhysicalDeviceRayQueryFeaturesKHR::default();
+        let mut supported_features_rt_query = vk::PhysicalDeviceRayQueryFeaturesKHR::default();
         let mut supported_features_barycentrics =
             VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV::default();
         let mut supported_features_host_image_copy =
             vk::PhysicalDeviceHostImageCopyFeaturesEXT::default();
-        let mut supported_features_mesh_shader =
-            vk::PhysicalDeviceMeshShaderFeaturesEXT::default();
-        let mut properties_mesh_shader =
-            vk::PhysicalDeviceMeshShaderPropertiesEXT::default();
+        let mut supported_features_mesh_shader = vk::PhysicalDeviceMeshShaderFeaturesEXT::default();
+        let mut properties_mesh_shader = vk::PhysicalDeviceMeshShaderPropertiesEXT::default();
 
         supported_features_11.p_next = std::mem::replace(
             &mut supported_features.p_next,
-            &mut supported_features_11 as *mut vk::PhysicalDeviceVulkan11Features
-                as *mut c_void,
+            &mut supported_features_11 as *mut vk::PhysicalDeviceVulkan11Features as *mut c_void,
         );
 
         supported_features_12.p_next = std::mem::replace(
             &mut supported_features.p_next,
-            &mut supported_features_12 as *mut vk::PhysicalDeviceVulkan12Features
-                as *mut c_void,
+            &mut supported_features_12 as *mut vk::PhysicalDeviceVulkan12Features as *mut c_void,
         );
 
         supported_features_13.p_next = std::mem::replace(
             &mut supported_features.p_next,
-            &mut supported_features_13 as *mut vk::PhysicalDeviceVulkan13Features
-                as *mut c_void,
+            &mut supported_features_13 as *mut vk::PhysicalDeviceVulkan13Features as *mut c_void,
         );
 
         properties_11.p_next = std::mem::replace(
             &mut properties.p_next,
-            &mut properties_11 as *mut vk::PhysicalDeviceVulkan11Properties
-                as *mut c_void,
+            &mut properties_11 as *mut vk::PhysicalDeviceVulkan11Properties as *mut c_void,
         );
 
         properties_12.p_next = std::mem::replace(
             &mut properties.p_next,
-            &mut properties_12 as *mut vk::PhysicalDeviceVulkan12Properties
-                as *mut c_void,
+            &mut properties_12 as *mut vk::PhysicalDeviceVulkan12Properties as *mut c_void,
         );
 
         properties_13.p_next = std::mem::replace(
             &mut properties.p_next,
-            &mut properties_13 as *mut vk::PhysicalDeviceVulkan13Properties
-                as *mut c_void,
+            &mut properties_13 as *mut vk::PhysicalDeviceVulkan13Properties as *mut c_void,
         );
 
-        if extensions
-            .intersects(VkAdapterExtensionSupport::ACCELERATION_STRUCTURE)
-        {
+        if extensions.intersects(VkAdapterExtensionSupport::ACCELERATION_STRUCTURE) {
             properties_acceleration_structure.p_next = std::mem::replace(
                 &mut properties.p_next,
                 &mut properties_acceleration_structure
@@ -320,9 +311,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                     as *mut c_void,
             );
         }
-        if extensions
-            .intersects(VkAdapterExtensionSupport::RAY_TRACING_PIPELINE)
-        {
+        if extensions.intersects(VkAdapterExtensionSupport::RAY_TRACING_PIPELINE) {
             properties_rt_pipeline.p_next = std::mem::replace(
                 &mut properties.p_next,
                 &mut properties_rt_pipeline
@@ -337,13 +326,10 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                     as *mut c_void,
             );
         }
-        if extensions
-            .intersects(VkAdapterExtensionSupport::RAY_QUERY)
-        {
+        if extensions.intersects(VkAdapterExtensionSupport::RAY_QUERY) {
             supported_features_rt_query.p_next = std::mem::replace(
                 &mut supported_features.p_next,
-                &mut supported_features_rt_query
-                    as *mut vk::PhysicalDeviceRayQueryFeaturesKHR
+                &mut supported_features_rt_query as *mut vk::PhysicalDeviceRayQueryFeaturesKHR
                     as *mut c_void,
             );
         }
@@ -364,9 +350,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             panic!("Your Vulkan driver is not capable of running this application. Host query reset is a required feature!");
         }
 
-        if extensions
-            .intersects(VkAdapterExtensionSupport::BARYCENTRICS)
-        {
+        if extensions.intersects(VkAdapterExtensionSupport::BARYCENTRICS) {
             supported_features_barycentrics.p_next = std::mem::replace(
                 &mut supported_features.p_next,
                 &mut supported_features_barycentrics
@@ -384,25 +368,20 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             );
             properties_host_image_copy.p_next = std::mem::replace(
                 &mut properties.p_next,
-                &mut properties_host_image_copy
-                    as *mut vk::PhysicalDeviceHostImageCopyPropertiesEXT
+                &mut properties_host_image_copy as *mut vk::PhysicalDeviceHostImageCopyPropertiesEXT
                     as *mut c_void,
             );
         }
 
-        if extensions
-            .intersects(VkAdapterExtensionSupport::MESH_SHADER)
-        {
+        if extensions.intersects(VkAdapterExtensionSupport::MESH_SHADER) {
             supported_features_mesh_shader.p_next = std::mem::replace(
                 &mut supported_features.p_next,
-                &mut supported_features_mesh_shader
-                    as *mut vk::PhysicalDeviceMeshShaderFeaturesEXT
+                &mut supported_features_mesh_shader as *mut vk::PhysicalDeviceMeshShaderFeaturesEXT
                     as *mut c_void,
             );
             properties_mesh_shader.p_next = std::mem::replace(
                 &mut properties.p_next,
-                &mut properties_mesh_shader
-                    as *mut vk::PhysicalDeviceMeshShaderPropertiesEXT
+                &mut properties_mesh_shader as *mut vk::PhysicalDeviceMeshShaderPropertiesEXT
                     as *mut c_void,
             );
         }
@@ -419,37 +398,34 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
 
         let mut features_acceleration_structure =
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
-        let mut features_rt_pipeline =
-            vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
-        let mut features_rt_query =
-            vk::PhysicalDeviceRayQueryFeaturesKHR::default();
+        let mut features_rt_pipeline = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
+        let mut features_rt_query = vk::PhysicalDeviceRayQueryFeaturesKHR::default();
         let mut features_barycentrics =
             vk::PhysicalDeviceFragmentShaderBarycentricFeaturesKHR::default();
         let mut features_host_image_copy = vk::PhysicalDeviceHostImageCopyFeaturesEXT::default();
         let mut features_mesh_shader = vk::PhysicalDeviceMeshShaderFeaturesEXT::default();
         let mut enabled_extensions: Vec<&str> = vec![SWAPCHAIN_EXT_NAME];
 
-        enabled_features.features.shader_storage_image_write_without_format = vk::TRUE;
+        enabled_features
+            .features
+            .shader_storage_image_write_without_format = vk::TRUE;
         enabled_features.features.sampler_anisotropy = vk::TRUE;
         enabled_features_12.host_query_reset = vk::TRUE;
         enabled_features_13.dynamic_rendering = vk::TRUE;
 
         enabled_features_11.p_next = std::mem::replace(
             &mut enabled_features.p_next,
-            &mut enabled_features_11 as *mut vk::PhysicalDeviceVulkan11Features
-                as *mut c_void,
+            &mut enabled_features_11 as *mut vk::PhysicalDeviceVulkan11Features as *mut c_void,
         );
 
         enabled_features_12.p_next = std::mem::replace(
             &mut enabled_features.p_next,
-            &mut enabled_features_12 as *mut vk::PhysicalDeviceVulkan12Features
-                as *mut c_void,
+            &mut enabled_features_12 as *mut vk::PhysicalDeviceVulkan12Features as *mut c_void,
         );
 
         enabled_features_13.p_next = std::mem::replace(
             &mut enabled_features.p_next,
-            &mut enabled_features_13 as *mut vk::PhysicalDeviceVulkan13Features
-                as *mut c_void,
+            &mut enabled_features_13 as *mut vk::PhysicalDeviceVulkan13Features as *mut c_void,
         );
 
         if supported_features.features.shader_int16 == vk::TRUE
@@ -459,65 +435,49 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             enabled_features.features.shader_int16 = vk::TRUE;
         }
 
-        if extensions
-            .intersects(VkAdapterExtensionSupport::MEMORY_BUDGET)
-        {
+        if extensions.intersects(VkAdapterExtensionSupport::MEMORY_BUDGET) {
             enabled_extensions.push(MEMORY_BUDGET_EXT_NAME);
         }
 
         let supports_descriptor_indexing = supported_features_12
-                .shader_sampled_image_array_non_uniform_indexing
-                == vk::TRUE
-            && supported_features_12
-                .descriptor_binding_sampled_image_update_after_bind
-                == vk::TRUE
-            && supported_features_12
-                .descriptor_binding_variable_descriptor_count
-                == vk::TRUE
+            .shader_sampled_image_array_non_uniform_indexing
+            == vk::TRUE
+            && supported_features_12.descriptor_binding_sampled_image_update_after_bind == vk::TRUE
+            && supported_features_12.descriptor_binding_variable_descriptor_count == vk::TRUE
             && supported_features_12.runtime_descriptor_array == vk::TRUE
-            && supported_features_12.descriptor_binding_partially_bound
-                == vk::TRUE
-            && supported_features_12
-                .descriptor_binding_update_unused_while_pending
-                == vk::TRUE
-            && properties_12
-                .shader_sampled_image_array_non_uniform_indexing_native
-                == vk::TRUE
-            && properties_12
-                .max_descriptor_set_update_after_bind_sampled_images
+            && supported_features_12.descriptor_binding_partially_bound == vk::TRUE
+            && supported_features_12.descriptor_binding_update_unused_while_pending == vk::TRUE
+            && properties_12.shader_sampled_image_array_non_uniform_indexing_native == vk::TRUE
+            && properties_12.max_descriptor_set_update_after_bind_sampled_images
                 > BINDLESS_TEXTURE_COUNT;
 
         let supports_bda = supported_features_12.buffer_device_address == vk::TRUE;
 
-        let supports_rt_pipeline = extensions.contains(
-            VkAdapterExtensionSupport::ACCELERATION_STRUCTURE
-                | VkAdapterExtensionSupport::RAY_TRACING_PIPELINE
-                | VkAdapterExtensionSupport::PIPELINE_LIBRARY
-            )
-            && supported_features_acceleration_structure.acceleration_structure == vk::TRUE
-            && supported_features_rt_pipeline.ray_tracing_pipeline == vk::TRUE
-            && supports_bda;
+        let supports_rt_pipeline =
+            extensions.contains(
+                VkAdapterExtensionSupport::ACCELERATION_STRUCTURE
+                    | VkAdapterExtensionSupport::RAY_TRACING_PIPELINE
+                    | VkAdapterExtensionSupport::PIPELINE_LIBRARY,
+            ) && supported_features_acceleration_structure.acceleration_structure == vk::TRUE
+                && supported_features_rt_pipeline.ray_tracing_pipeline == vk::TRUE
+                && supports_bda;
 
         let supports_rt_query = supports_descriptor_indexing
             && extensions.contains(
                 VkAdapterExtensionSupport::ACCELERATION_STRUCTURE
-                    | VkAdapterExtensionSupport::RAY_QUERY
+                    | VkAdapterExtensionSupport::RAY_QUERY,
             )
             && supported_features_rt_query.ray_query == vk::TRUE
             && supports_bda;
 
         if supports_descriptor_indexing {
             println!("Bindless supported.");
-            enabled_features_12.shader_sampled_image_array_non_uniform_indexing =
-                vk::TRUE;
-            enabled_features_12.descriptor_binding_sampled_image_update_after_bind =
-                vk::TRUE;
-            enabled_features_12.descriptor_binding_variable_descriptor_count =
-                vk::TRUE;
+            enabled_features_12.shader_sampled_image_array_non_uniform_indexing = vk::TRUE;
+            enabled_features_12.descriptor_binding_sampled_image_update_after_bind = vk::TRUE;
+            enabled_features_12.descriptor_binding_variable_descriptor_count = vk::TRUE;
             enabled_features_12.runtime_descriptor_array = vk::TRUE;
             enabled_features_12.descriptor_binding_partially_bound = vk::TRUE;
-            enabled_features_12.descriptor_binding_update_unused_while_pending =
-                vk::TRUE;
+            enabled_features_12.descriptor_binding_update_unused_while_pending = vk::TRUE;
             enabled_features_12.descriptor_indexing = vk::TRUE;
         }
 
@@ -543,8 +503,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             features_rt_pipeline.ray_tracing_pipeline = vk::TRUE;
             features_rt_pipeline.p_next = std::mem::replace(
                 &mut enabled_features.p_next,
-                &mut features_rt_pipeline
-                    as *mut vk::PhysicalDeviceRayTracingPipelineFeaturesKHR
+                &mut features_rt_pipeline as *mut vk::PhysicalDeviceRayTracingPipelineFeaturesKHR
                     as *mut c_void,
             );
         }
@@ -555,17 +514,18 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             features_rt_query.ray_query = vk::TRUE;
             features_rt_query.p_next = std::mem::replace(
                 &mut enabled_features.p_next,
-                &mut features_rt_query
-                    as *mut vk::PhysicalDeviceRayQueryFeaturesKHR
-                    as *mut c_void,
+                &mut features_rt_query as *mut vk::PhysicalDeviceRayQueryFeaturesKHR as *mut c_void,
             );
         }
 
-        enabled_features.features.draw_indirect_first_instance = supported_features.features.draw_indirect_first_instance;
-        enabled_features.features.multi_draw_indirect = supported_features.features.multi_draw_indirect;
+        enabled_features.features.draw_indirect_first_instance =
+            supported_features.features.draw_indirect_first_instance;
+        enabled_features.features.multi_draw_indirect =
+            supported_features.features.multi_draw_indirect;
         enabled_features_12.draw_indirect_count = supported_features_12.draw_indirect_count;
 
-        let supports_filter_min_max = supported_features_12.sampler_filter_minmax == vk::TRUE && properties_12.filter_minmax_single_component_formats == vk::TRUE;
+        let supports_filter_min_max = supported_features_12.sampler_filter_minmax == vk::TRUE
+            && properties_12.filter_minmax_single_component_formats == vk::TRUE;
         if supports_filter_min_max {
             enabled_features_12.sampler_filter_minmax = vk::TRUE;
         }
@@ -600,21 +560,20 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             features_host_image_copy.host_image_copy = vk::TRUE;
             features_host_image_copy.p_next = std::mem::replace(
                 &mut enabled_features.p_next,
-                &mut features_host_image_copy
-                    as *mut vk::PhysicalDeviceHostImageCopyFeaturesEXT
+                &mut features_host_image_copy as *mut vk::PhysicalDeviceHostImageCopyFeaturesEXT
                     as *mut c_void,
             );
         }
 
         if supported_features_mesh_shader.mesh_shader == vk::TRUE
-            && supported_features_mesh_shader.task_shader == vk::TRUE {
+            && supported_features_mesh_shader.task_shader == vk::TRUE
+        {
             enabled_extensions.push(MESH_SHADER_EXT_NAME);
             features_mesh_shader.mesh_shader = vk::TRUE;
             features_mesh_shader.task_shader = vk::TRUE;
             features_mesh_shader.p_next = std::mem::replace(
                 &mut enabled_features.p_next,
-                &mut features_mesh_shader
-                    as *mut vk::PhysicalDeviceMeshShaderFeaturesEXT
+                &mut features_mesh_shader as *mut vk::PhysicalDeviceMeshShaderFeaturesEXT
                     as *mut c_void,
             );
         }
@@ -634,7 +593,8 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             p_enabled_features: std::ptr::null(),
             pp_enabled_extension_names: enabled_extension_c_ptrs.as_ptr(),
             enabled_extension_count: enabled_extensions_c.len() as u32,
-            p_next: &enabled_features as &vk::PhysicalDeviceFeatures2 as *const vk::PhysicalDeviceFeatures2 as *const c_void,
+            p_next: &enabled_features as &vk::PhysicalDeviceFeatures2
+                as *const vk::PhysicalDeviceFeatures2 as *const c_void,
             ..Default::default()
         };
         let vk_device = self
@@ -643,19 +603,12 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             .create_device(self.physical_device, &device_create_info, None)
             .unwrap();
 
-
-        let graphics_queue = unsafe {
-            vk_device.get_device_queue(
-                graphics_queue_info.queue_family_index as u32,
-                0,
-            )
-        };
-        let compute_queue = compute_queue_info.map(|info| unsafe {
-            vk_device.get_device_queue(info.queue_family_index as u32, 0)
-        });
-        let transfer_queue = transfer_queue_info.map(|info| unsafe {
-            vk_device.get_device_queue(info.queue_family_index as u32, 0)
-        });
+        let graphics_queue =
+            unsafe { vk_device.get_device_queue(graphics_queue_info.queue_family_index as u32, 0) };
+        let compute_queue = compute_queue_info
+            .map(|info| unsafe { vk_device.get_device_queue(info.queue_family_index as u32, 0) });
+        let transfer_queue = transfer_queue_info
+            .map(|info| unsafe { vk_device.get_device_queue(info.queue_family_index as u32, 0) });
 
         let mut d24_props = vk::FormatProperties2::default();
         unsafe {
@@ -671,7 +624,8 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             .contains(vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT);
 
         let mut memory_properties = vk::PhysicalDeviceMemoryProperties2::default();
-        self.instance.get_physical_device_memory_properties2(self.physical_device, &mut memory_properties);
+        self.instance
+            .get_physical_device_memory_properties2(self.physical_device, &mut memory_properties);
 
         let mut supported_shader_stages = vk::ShaderStageFlags::COMPUTE
             | vk::ShaderStageFlags::VERTEX
@@ -741,42 +695,62 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         let rt = if supports_rt_pipeline || supports_rt_query {
             Some(RawVkRTEntries {
                 rt_pipelines: if supports_rt_pipeline {
-                    Some(ash::khr::ray_tracing_pipeline::Device::new(&self.instance, &vk_device))
-                } else { None },
-                deferred_operations: if extensions.contains(VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS) {
-                    Some(ash::khr::deferred_host_operations::Device::new(&self.instance, &vk_device))
-                } else { None },
-                acceleration_structure: ash::khr::acceleration_structure::Device::new(&self.instance, &vk_device),
-                features_acceleration_structure:  std::mem::transmute(features_acceleration_structure),
-                properties_acceleration_structure:  std::mem::transmute(properties_acceleration_structure),
+                    Some(ash::khr::ray_tracing_pipeline::Device::new(
+                        &self.instance,
+                        &vk_device,
+                    ))
+                } else {
+                    None
+                },
+                deferred_operations: if extensions
+                    .contains(VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS)
+                {
+                    Some(ash::khr::deferred_host_operations::Device::new(
+                        &self.instance,
+                        &vk_device,
+                    ))
+                } else {
+                    None
+                },
+                acceleration_structure: ash::khr::acceleration_structure::Device::new(
+                    &self.instance,
+                    &vk_device,
+                ),
+                features_acceleration_structure: std::mem::transmute(
+                    features_acceleration_structure,
+                ),
+                properties_acceleration_structure: std::mem::transmute(
+                    properties_acceleration_structure,
+                ),
                 properties_rt_pipeline: std::mem::transmute(properties_rt_pipeline),
                 features_rt_pipeline: std::mem::transmute(features_rt_pipeline),
-                rt_query: supports_rt_query
+                rt_query: supports_rt_query,
             })
-        } else { None };
+        } else {
+            None
+        };
 
-        let debug_utils = self.instance.debug_utils.as_ref()
+        let debug_utils = self
+            .instance
+            .debug_utils
+            .as_ref()
             .map(|_d| ash::ext::debug_utils::Device::new(&self.instance.instance, &vk_device));
 
         let mut host_image_copy = Option::<RawVkHostImageCopyEntries>::None;
         if features_host_image_copy.host_image_copy == vk::TRUE {
-            host_image_copy = Some(
-                RawVkHostImageCopyEntries {
-                    host_image_copy: ash::ext::host_image_copy::Device::new(&self.instance, &vk_device),
-                    properties_host_image_copy: std::mem::transmute(properties_host_image_copy),
-                }
-            );
+            host_image_copy = Some(RawVkHostImageCopyEntries {
+                host_image_copy: ash::ext::host_image_copy::Device::new(&self.instance, &vk_device),
+                properties_host_image_copy: std::mem::transmute(properties_host_image_copy),
+            });
         }
 
         let mut mesh_shader = Option::<RawVkMeshShaderEntries>::None;
         if features_mesh_shader.mesh_shader == vk::TRUE {
-            mesh_shader = Some(
-                RawVkMeshShaderEntries {
-                    mesh_shader: ash::ext::mesh_shader::Device::new(&self.instance, &vk_device),
-                    features_mesh_shader: std::mem::transmute(features_mesh_shader),
-                    properties_mesh_shader: std::mem::transmute(properties_mesh_shader),
-                }
-            );
+            mesh_shader = Some(RawVkMeshShaderEntries {
+                mesh_shader: ash::ext::mesh_shader::Device::new(&self.instance, &vk_device),
+                features_mesh_shader: std::mem::transmute(features_mesh_shader),
+                properties_mesh_shader: std::mem::transmute(properties_mesh_shader),
+            });
         }
 
         let raw = Arc::new(RawVkDevice {
@@ -815,7 +789,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             raw,
             graphics_queue_info,
             compute_queue_info,
-            transfer_queue_info
+            transfer_queue_info,
         )
     }
 

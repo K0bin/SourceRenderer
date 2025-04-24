@@ -1,9 +1,10 @@
 #![allow(unused_imports)]
 #![allow(unused_import_braces)]
-use std::{sync::Arc, collections::HashMap};
+use std::sync::Arc;
 
 //use imgui::{Context, internal::RawWrapper, FontSource, TextureId};
-use sourcerenderer_core::{Vec2, Vec2I, Vec2UI};
+use sourcerenderer_core::Vec2;
+
 use crate::graphics::*;
 
 /*pub struct UI {
@@ -140,13 +141,13 @@ pub struct UIDrawData {
     pub draw_lists: Vec<UICmdList>,
     pub viewport: Viewport,
     pub scale: Vec2,
-    pub translate: Vec2
+    pub translate: Vec2,
 }
 
 pub struct UICmdList {
     pub vertex_buffer: Arc<BufferSlice>,
     pub index_buffer: Arc<BufferSlice>,
-    pub draws: Vec<UIDraw>
+    pub draws: Vec<UIDraw>,
 }
 
 pub struct UIDraw {
@@ -154,16 +155,21 @@ pub struct UIDraw {
     pub vertex_offset: u32,
     pub first_index: u32,
     pub index_count: u32,
-    pub scissor: Scissor
+    pub scissor: Scissor,
 }
 
 impl Default for UIDrawData {
     fn default() -> Self {
         Self {
             draw_lists: Vec::new(),
-            viewport: Viewport { position: Vec2::new(0f32, 0f32), extent: Vec2::new(0f32, 0f32), min_depth: 0f32, max_depth: 0f32 },
+            viewport: Viewport {
+                position: Vec2::new(0f32, 0f32),
+                extent: Vec2::new(0f32, 0f32),
+                min_depth: 0f32,
+                max_depth: 0f32,
+            },
             scale: Vec2::new(1f32, 1f32),
-            translate: Vec2::new(0f32, 0f32)
+            translate: Vec2::new(0f32, 0f32),
         }
     }
 }

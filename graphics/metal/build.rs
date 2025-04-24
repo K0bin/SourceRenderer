@@ -1,7 +1,7 @@
-use std::process::Command;
-use std::{collections::HashMap, path::Path};
 use std::env;
 use std::path::PathBuf;
+use std::process::Command;
+use std::{collections::HashMap, path::Path};
 
 use build_util::{compile_shaders, ShadingLanguage};
 
@@ -14,9 +14,11 @@ fn main() {
     let mut meta_shader_dir = manifest_dir.clone();
     meta_shader_dir.push("meta_shaders");
 
-
     let mut output_shading_languages = ShadingLanguage::Air;
-    if env::var("DUMP_SHADERS").map(|envvar| envvar == "true" || envvar == "True" || envvar == "1").unwrap_or_default() {
+    if env::var("DUMP_SHADERS")
+        .map(|envvar| envvar == "true" || envvar == "True" || envvar == "1")
+        .unwrap_or_default()
+    {
         output_shading_languages |= ShadingLanguage::Msl;
     }
 
@@ -49,7 +51,10 @@ fn compile_msl_shader(shader_path: &Path, out_path: &Path) -> Result<(), ()> {
     let mut temp_file_name = out_path.file_stem().unwrap().to_string_lossy().to_string();
     temp_file_name.push_str(".temp.ir");
 
-    let temp_ir_path = out_path.parent().unwrap_or_else(|| &Path::new("")).join(temp_file_name);
+    let temp_ir_path = out_path
+        .parent()
+        .unwrap_or_else(|| &Path::new(""))
+        .join(temp_file_name);
 
     let mut command = Command::new("xcrun");
     command
@@ -64,17 +69,28 @@ fn compile_msl_shader(shader_path: &Path, out_path: &Path) -> Result<(), ()> {
 
     match &cmd_result {
         Err(e) => {
-            panic!("Error compiling Metal shader: {}: {}", temp_ir_path.to_str().unwrap(), e.to_string());
-        },
+            panic!(
+                "Error compiling Metal shader: {}: {}",
+                temp_ir_path.to_str().unwrap(),
+                e.to_string()
+            );
+        }
         Ok(output) => {
             if !output.status.success() {
-                panic!("Error compiling Metal shader: {}: {}", temp_ir_path.to_str().unwrap(), std::str::from_utf8(&output.stderr).unwrap());
+                panic!(
+                    "Error compiling Metal shader: {}: {}",
+                    temp_ir_path.to_str().unwrap(),
+                    std::str::from_utf8(&output.stderr).unwrap()
+                );
             }
         }
     }
 
     if !temp_ir_path.exists() {
-        panic!("Compiled Metal shader file does not exist: {:?}", temp_ir_path);
+        panic!(
+            "Compiled Metal shader file does not exist: {:?}",
+            temp_ir_path
+        );
     }
 
     let mut command = Command::new("xcrun");
@@ -89,11 +105,19 @@ fn compile_msl_shader(shader_path: &Path, out_path: &Path) -> Result<(), ()> {
 
     match &cmd_result {
         Err(e) => {
-            panic!("Error creating Metal library: {}: {}", temp_ir_path.to_str().unwrap(), e.to_string());
-        },
+            panic!(
+                "Error creating Metal library: {}: {}",
+                temp_ir_path.to_str().unwrap(),
+                e.to_string()
+            );
+        }
         Ok(output) => {
             if !output.status.success() {
-                panic!("Error creating Metal library: {}: {}", temp_ir_path.to_str().unwrap(), std::str::from_utf8(&output.stderr).unwrap());
+                panic!(
+                    "Error creating Metal library: {}: {}",
+                    temp_ir_path.to_str().unwrap(),
+                    std::str::from_utf8(&output.stderr).unwrap()
+                );
             }
         }
     }

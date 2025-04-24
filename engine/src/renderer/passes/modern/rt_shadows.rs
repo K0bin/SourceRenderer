@@ -2,15 +2,18 @@ use std::sync::Arc;
 
 use sourcerenderer_core::Vec2UI;
 
+use crate::graphics::*;
+use crate::renderer::asset::{
+    RayTracingPipelineHandle,
+    RayTracingPipelineInfo,
+    RendererAssets,
+    RendererAssetsReadOnly,
+};
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::asset::{
-    RayTracingPipelineHandle, RayTracingPipelineInfo, RendererAssets, RendererAssetsReadOnly
-};
-use crate::graphics::*;
 
 pub struct RTShadowPass {
     pipeline: RayTracingPipelineHandle,
@@ -87,7 +90,10 @@ impl RTShadowPass {
             HistoryResourceEntry::Current,
         );
 
-        let pipeline = pass_params.assets.get_ray_tracing_pipeline(self.pipeline).unwrap();
+        let pipeline = pass_params
+            .assets
+            .get_ray_tracing_pipeline(self.pipeline)
+            .unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::RayTracing(&pipeline));
         cmd_buffer.bind_acceleration_structure(
             BindingFrequency::Frequent,

@@ -8,5 +8,5 @@ pub trait Fence {
 pub struct FenceValuePairRef<'a, B: GPUBackend> {
     pub fence: &'a B::Fence,
     pub value: u64,
-    pub sync_before: BarrierSync
+    pub sync_before: BarrierSync,
 }

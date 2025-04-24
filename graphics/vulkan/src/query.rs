@@ -41,7 +41,8 @@ impl VkQueryPool {
 
 impl gpu::QueryPool for VkQueryPool {
     unsafe fn reset(&self) {
-        self.device.reset_query_pool(self.query_pool, 0, self.query_count);
+        self.device
+            .reset_query_pool(self.query_pool, 0, self.query_count);
     }
 }
 

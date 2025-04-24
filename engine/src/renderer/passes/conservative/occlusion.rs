@@ -4,7 +4,6 @@ use std::sync::atomic::{
     Ordering,
 };
 use std::sync::Arc;
-use crate::Mutex;
 
 use bitset_core::BitSet;
 use smallvec::SmallVec;
@@ -19,7 +18,11 @@ use sourcerenderer_core::{
     Vec4,
 };
 
-use crate::renderer::render_path::{SceneInfo, RenderPassParameters};
+use crate::graphics::*;
+use crate::renderer::render_path::{
+    RenderPassParameters,
+    SceneInfo,
+};
 use crate::renderer::renderer_assets::RendererAssets;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
@@ -30,7 +33,7 @@ use crate::renderer::shader_manager::{
     GraphicsPipelineInfo,
     ShaderManager,
 };
-use crate::graphics::*;
+use crate::Mutex;
 
 const QUERY_COUNT: usize = 16384;
 const OCCLUDED_FRAME_COUNT: u32 = 5;
@@ -47,14 +50,11 @@ pub struct OcclusionPass {
 }
 
 impl OcclusionPass {
-    pub fn new(
-        device: &Arc<crate::graphics::Device>,
-        assets: &RendererAssets,
-    ) -> Self {
+    pub fn new(device: &Arc<crate::graphics::Device>, assets: &RendererAssets) -> Self {
         let buffer_info = BufferInfo {
             size: (std::mem::size_of::<u32>() * QUERY_COUNT) as u64,
             usage: BufferUsage::COPY_DST,
-            sharing_mode: QueueSharingMode::Exclusive
+            sharing_mode: QueueSharingMode::Exclusive,
         };
 
         let ring_size = device.prerendered_frames() as usize + 2;
@@ -62,7 +62,9 @@ impl OcclusionPass {
         let mut occlusion_query_maps = Vec::with_capacity(ring_size);
         for i in 0..ring_size {
             let name = format!("QueryBuffer{}", i);
-            let buffer = device.create_buffer(&buffer_info, MemoryUsage::GPUMemory, Some(&name)).unwrap();
+            let buffer = device
+                .create_buffer(&buffer_info, MemoryUsage::GPUMemory, Some(&name))
+                .unwrap();
             {
                 let mut map = buffer.map_mut::<[u32; QUERY_COUNT]>().unwrap();
                 *map = [!0u32; 16384];
@@ -71,41 +73,57 @@ impl OcclusionPass {
             occlusion_query_maps.push(HashMap::new());
         }
 
-        let occluder_vb = device.create_buffer(
-            &BufferInfo {
-                size: (std::mem::size_of::<Vec4>() * 8) as u64,
-                usage: BufferUsage::INITIAL_COPY | BufferUsage::VERTEX,
-                sharing_mode: QueueSharingMode::Exclusive
-            },
-            MemoryUsage::GPUMemory,
-            Some("OccluderVB"),
-        ).unwrap();
+        let occluder_vb = device
+            .create_buffer(
+                &BufferInfo {
+                    size: (std::mem::size_of::<Vec4>() * 8) as u64,
+                    usage: BufferUsage::INITIAL_COPY | BufferUsage::VERTEX,
+                    sharing_mode: QueueSharingMode::Exclusive,
+                },
+                MemoryUsage::GPUMemory,
+                Some("OccluderVB"),
+            )
+            .unwrap();
 
-        let occluder_ib = device.create_buffer(
-            &BufferInfo {
-                size: (std::mem::size_of::<u32>() * 36) as u64,
-                usage: BufferUsage::INITIAL_COPY | BufferUsage::INDEX,
-                sharing_mode: QueueSharingMode::Exclusive
-            },
-            MemoryUsage::GPUMemory,
-            Some("OccluderIB"),
-        ).unwrap();
+        let occluder_ib = device
+            .create_buffer(
+                &BufferInfo {
+                    size: (std::mem::size_of::<u32>() * 36) as u64,
+                    usage: BufferUsage::INITIAL_COPY | BufferUsage::INDEX,
+                    sharing_mode: QueueSharingMode::Exclusive,
+                },
+                MemoryUsage::GPUMemory,
+                Some("OccluderIB"),
+            )
+            .unwrap();
 
-        device.init_buffer(&[
-            Vec3::new(-0.5f32, -0.5f32, 0.5f32),
-            Vec3::new(0.5f32, -0.5f32, 0.5f32),
-            Vec3::new(0.5f32, 0.5f32, 0.5f32),
-            Vec3::new(-0.5f32, 0.5f32, 0.5f32),
-            Vec3::new(-0.5f32, -0.5f32, -0.5f32),
-            Vec3::new(0.5f32, -0.5f32, -0.5f32),
-            Vec3::new(0.5f32, 0.5f32, -0.5f32),
-            Vec3::new(-0.5f32, 0.5f32, -0.5f32),
-        ], &occluder_vb, 0).unwrap();
-        device.init_buffer(&[
-            1u32, 2u32, 3u32, 3u32, 0u32, 1u32, 5u32, 6u32, 2u32, 2u32, 1u32, 5u32, 7u32, 3u32,
-            2u32, 2u32, 6u32, 7u32, 4u32, 5u32, 1u32, 1u32, 0u32, 4u32, 7u32, 4u32, 0u32, 0u32,
-            3u32, 7u32, 5u32, 4u32, 7u32, 7u32, 6u32, 5u32,
-        ], &occluder_ib, 0).unwrap();
+        device
+            .init_buffer(
+                &[
+                    Vec3::new(-0.5f32, -0.5f32, 0.5f32),
+                    Vec3::new(0.5f32, -0.5f32, 0.5f32),
+                    Vec3::new(0.5f32, 0.5f32, 0.5f32),
+                    Vec3::new(-0.5f32, 0.5f32, 0.5f32),
+                    Vec3::new(-0.5f32, -0.5f32, -0.5f32),
+                    Vec3::new(0.5f32, -0.5f32, -0.5f32),
+                    Vec3::new(0.5f32, 0.5f32, -0.5f32),
+                    Vec3::new(-0.5f32, 0.5f32, -0.5f32),
+                ],
+                &occluder_vb,
+                0,
+            )
+            .unwrap();
+        device
+            .init_buffer(
+                &[
+                    1u32, 2u32, 3u32, 3u32, 0u32, 1u32, 5u32, 6u32, 2u32, 2u32, 1u32, 5u32, 7u32,
+                    3u32, 2u32, 2u32, 6u32, 7u32, 4u32, 5u32, 1u32, 1u32, 0u32, 4u32, 7u32, 4u32,
+                    0u32, 0u32, 3u32, 7u32, 5u32, 4u32, 7u32, 7u32, 6u32, 5u32,
+                ],
+                &occluder_ib,
+                0,
+            )
+            .unwrap();
 
         let pipeline = shader_manager.request_graphics_pipeline(
             &GraphicsPipelineInfo {
@@ -192,7 +210,7 @@ impl OcclusionPass {
         pass_params: &RenderPassParameters<'_>,
         frame: u64,
         camera_history_buffer: &Arc<BufferSlice>,
-        depth_name: &str
+        depth_name: &str,
     ) {
         let history_depth_buffer_ref = pass_params.resources.access_view(
             command_buffer,
@@ -237,120 +255,123 @@ impl OcclusionPass {
 
         command_buffer.begin_label("Occlusion query tests");
         let query_range = command_buffer.create_query_range(QUERY_COUNT as u32);
-        command_buffer.begin_render_pass(
-            &RenderPassBeginInfo {
-                attachments: &[RenderPassAttachment {
-                    view: RenderPassAttachmentView::DepthStencil(&*history_depth_buffer),
-                    load_op: LoadOp::Load,
-                    store_op: StoreOp::Store,
-                }],
-                subpasses: &[SubpassInfo {
-                    input_attachments: &[],
-                    output_color_attachments: &[],
-                    depth_stencil_attachment: Some(DepthStencilAttachmentRef {
-                        index: 0,
-                        read_only: true,
-                    }),
-                }],
-                query_range: None,
-            }
-        );
+        command_buffer.begin_render_pass(&RenderPassBeginInfo {
+            attachments: &[RenderPassAttachment {
+                view: RenderPassAttachmentView::DepthStencil(&*history_depth_buffer),
+                load_op: LoadOp::Load,
+                store_op: StoreOp::Store,
+            }],
+            subpasses: &[SubpassInfo {
+                input_attachments: &[],
+                output_color_attachments: &[],
+                depth_stencil_attachment: Some(DepthStencilAttachmentRef {
+                    index: 0,
+                    read_only: true,
+                }),
+            }],
+            query_range: None,
+        });
 
         let device = pass_params.device;
         let assets = pass_params.assets;
 
-        let pipeline = pass_params.shader_manager.get_graphics_pipeline(self.pipeline);
+        let pipeline = pass_params
+            .shader_manager
+            .get_graphics_pipeline(self.pipeline);
         let query_count = AtomicU32::new(0);
         const CHUNK_SIZE: usize = 256;
         let chunks = self.visible_drawable_indices.par_chunks(CHUNK_SIZE);
-        let inner_cmd_buffers: Vec<FinishedCommandBuffer> =
-            chunks
-                .map(|chunk| {
-                    let mut pairs: SmallVec<[(u32, u32); CHUNK_SIZE]> = SmallVec::new();
-                    let mut command_buffer = context.get_inner_command_buffer(inheritance);
-                    command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
-                    command_buffer.set_scissors(&[Scissor {
-                        position: Vec2I::new(0i32, 0i32),
-                        extent: Vec2UI::new(
-                            history_depth_buffer.texture().unwrap().info().width,
-                            history_depth_buffer.texture().unwrap().info().height
-                        ),
-                    }]);
-                    command_buffer.set_viewports(&[Viewport {
-                        position: Vec2::new(0f32, 0f32),
-                        extent: Vec2::new(
-                            history_depth_buffer.texture().unwrap().info().width as f32,
-                            history_depth_buffer.texture().unwrap().info().height as f32,
-                        ),
-                        min_depth: 0f32,
-                        max_depth: 1f32,
-                    }]);
-                    command_buffer.set_vertex_buffer(0, BufferRef::Regular(&self.occluder_vb), 0);
-                    command_buffer.set_index_buffer(BufferRef::Regular(&self.occluder_ib), 0, IndexFormat::U32);
-                    command_buffer.bind_uniform_buffer(
-                        BindingFrequency::VeryFrequent,
-                        0,
-                        BufferRef::Regular(&camera_history_buffer),
-                        0,
-                        WHOLE_BUFFER,
+        let inner_cmd_buffers: Vec<FinishedCommandBuffer> = chunks
+            .map(|chunk| {
+                let mut pairs: SmallVec<[(u32, u32); CHUNK_SIZE]> = SmallVec::new();
+                let mut command_buffer = context.get_inner_command_buffer(inheritance);
+                command_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
+                command_buffer.set_scissors(&[Scissor {
+                    position: Vec2I::new(0i32, 0i32),
+                    extent: Vec2UI::new(
+                        history_depth_buffer.texture().unwrap().info().width,
+                        history_depth_buffer.texture().unwrap().info().height,
+                    ),
+                }]);
+                command_buffer.set_viewports(&[Viewport {
+                    position: Vec2::new(0f32, 0f32),
+                    extent: Vec2::new(
+                        history_depth_buffer.texture().unwrap().info().width as f32,
+                        history_depth_buffer.texture().unwrap().info().height as f32,
+                    ),
+                    min_depth: 0f32,
+                    max_depth: 1f32,
+                }]);
+                command_buffer.set_vertex_buffer(0, BufferRef::Regular(&self.occluder_vb), 0);
+                command_buffer.set_index_buffer(
+                    BufferRef::Regular(&self.occluder_ib),
+                    0,
+                    IndexFormat::U32,
+                );
+                command_buffer.bind_uniform_buffer(
+                    BindingFrequency::VeryFrequent,
+                    0,
+                    BufferRef::Regular(&camera_history_buffer),
+                    0,
+                    WHOLE_BUFFER,
+                );
+                command_buffer.finish_binding();
+
+                for drawable_index in chunk {
+                    let drawable_index = *drawable_index;
+                    let drawable = &static_meshes[drawable_index as usize];
+
+                    let model = assets.get_model(drawable.model);
+                    if model.is_none() {
+                        log::info!("Skipping draw because of missing model");
+                        continue;
+                    }
+                    let model = model.unwrap();
+                    let mesh = assets.get_mesh(model.mesh_handle());
+                    if mesh.is_none() {
+                        log::info!("Skipping draw because of missing mesh");
+                        continue;
+                    }
+                    let mesh = mesh.unwrap();
+
+                    let bb = mesh.bounding_box.as_ref();
+                    if bb.is_none() {
+                        continue;
+                    }
+
+                    let drawable_query_index = query_count.fetch_add(1, Ordering::SeqCst);
+                    pairs.push((drawable_index as u32, drawable_query_index));
+
+                    let bb = bb.unwrap();
+                    let mut bb_scale = bb.max - bb.min;
+                    let bb_translation = bb.min + bb_scale / 2.0f32;
+                    bb_scale *= 1.1f32; // make bounding box 10% bigger to avoid getting culled by the actual geometry
+                    bb_scale.x = bb_scale.x.max(0.4f32);
+                    bb_scale.y = bb_scale.y.max(0.4f32);
+                    bb_scale.z = bb_scale.z.max(0.4f32);
+                    let bb_transform = Matrix4::new_translation(&bb_translation)
+                        * Matrix4::new_nonuniform_scaling(&bb_scale);
+
+                    command_buffer.set_push_constant_data(
+                        &[drawable.old_transform * bb_transform],
+                        ShaderType::VertexShader,
                     );
-                    command_buffer.finish_binding();
+                    command_buffer.begin_query(&query_range, drawable_query_index);
+                    command_buffer.draw_indexed(1, 0, 36, 0, 0);
+                    command_buffer.end_query(&query_range, drawable_query_index);
+                }
+                let inner_cmd_buffer = command_buffer.finish();
 
-                    for drawable_index in chunk {
-                        let drawable_index = *drawable_index;
-                        let drawable = &static_meshes[drawable_index as usize];
-
-                        let model = assets.get_model(drawable.model);
-                        if model.is_none() {
-                            log::info!("Skipping draw because of missing model");
-                            continue;
-                        }
-                        let model = model.unwrap();
-                        let mesh = assets.get_mesh(model.mesh_handle());
-                        if mesh.is_none() {
-                            log::info!("Skipping draw because of missing mesh");
-                            continue;
-                        }
-                        let mesh = mesh.unwrap();
-
-                        let bb = mesh.bounding_box.as_ref();
-                        if bb.is_none() {
-                            continue;
-                        }
-
-                        let drawable_query_index = query_count.fetch_add(1, Ordering::SeqCst);
-                        pairs.push((drawable_index as u32, drawable_query_index));
-
-                        let bb = bb.unwrap();
-                        let mut bb_scale = bb.max - bb.min;
-                        let bb_translation = bb.min + bb_scale / 2.0f32;
-                        bb_scale *= 1.1f32; // make bounding box 10% bigger to avoid getting culled by the actual geometry
-                        bb_scale.x = bb_scale.x.max(0.4f32);
-                        bb_scale.y = bb_scale.y.max(0.4f32);
-                        bb_scale.z = bb_scale.z.max(0.4f32);
-                        let bb_transform = Matrix4::new_translation(&bb_translation)
-                            * Matrix4::new_nonuniform_scaling(&bb_scale);
-
-                        command_buffer.set_push_constant_data(
-                            &[drawable.old_transform * bb_transform],
-                            ShaderType::VertexShader,
-                        );
-                        command_buffer.begin_query(&query_range, drawable_query_index);
-                        command_buffer.draw_indexed(1, 0, 36, 0, 0);
-                        command_buffer.end_query(&query_range, drawable_query_index);
+                {
+                    let mut guard = occlusion_query_map_lock.lock().unwrap();
+                    for (drawable_index, query_index) in pairs {
+                        guard.insert(drawable_index, query_index);
                     }
-                    let inner_cmd_buffer = command_buffer.finish();
+                }
 
-                    {
-                        let mut guard = occlusion_query_map_lock.lock().unwrap();
-                        for (drawable_index, query_index) in pairs {
-                            guard.insert(drawable_index, query_index);
-                        }
-                    }
-
-                    inner_cmd_buffer
-                })
-                .collect();
+                inner_cmd_buffer
+            })
+            .collect();
 
         command_buffer.execute_inner(inner_cmd_buffers);
         command_buffer.end_render_pass();
@@ -368,7 +389,7 @@ impl OcclusionPass {
                 old_access: BarrierAccess::empty(),
                 new_access: BarrierAccess::empty(),
                 buffer: BufferRef::Regular(query_buffer),
-                queue_ownership: None
+                queue_ownership: None,
             }]);
             command_buffer.flush_barriers();
             command_buffer.copy_query_results_to_buffer(

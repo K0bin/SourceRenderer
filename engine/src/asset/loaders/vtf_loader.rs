@@ -7,8 +7,6 @@ use sourcerenderer_vtf::{
     VtfTexture,
 };
 
-use crate::graphics::*;
-
 use crate::asset::asset_manager::{
     AssetFile,
     AssetLoadPriority,
@@ -21,6 +19,7 @@ use crate::asset::{
     AssetLoader,
     AssetManager,
 };
+use crate::graphics::*;
 
 pub struct VTFTextureLoader {}
 

@@ -2,17 +2,30 @@ use js_sys::{wasm_bindgen::JsValue, Array};
 use log::warn;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu;
-use web_sys::{GpuBlendComponent, GpuBlendFactor, GpuBlendOperation, GpuBlendState, GpuColorTargetState, GpuCompareFunction, GpuComputePipeline, GpuComputePipelineDescriptor, GpuCullMode, GpuDepthStencilState, GpuDevice, GpuFragmentState, GpuFrontFace, GpuMultisampleState, GpuPrimitiveState, GpuPrimitiveTopology, GpuProgrammableStage, GpuRenderPipeline, GpuRenderPipelineDescriptor, GpuShaderModule, GpuShaderModuleDescriptor, GpuStencilFaceState, GpuStencilOperation, GpuVertexAttribute, GpuVertexBufferLayout, GpuVertexFormat, GpuVertexState, GpuVertexStepMode};
 use std::{hash::Hash, sync::Arc};
+use web_sys::{
+    GpuBlendComponent, GpuBlendFactor, GpuBlendOperation, GpuBlendState, GpuColorTargetState,
+    GpuCompareFunction, GpuComputePipeline, GpuComputePipelineDescriptor, GpuCullMode,
+    GpuDepthStencilState, GpuDevice, GpuFragmentState, GpuFrontFace, GpuMultisampleState,
+    GpuPrimitiveState, GpuPrimitiveTopology, GpuProgrammableStage, GpuRenderPipeline,
+    GpuRenderPipelineDescriptor, GpuShaderModule, GpuShaderModuleDescriptor, GpuStencilFaceState,
+    GpuStencilOperation, GpuVertexAttribute, GpuVertexBufferLayout, GpuVertexFormat,
+    GpuVertexState, GpuVertexStepMode,
+};
 
-use crate::{binding::WebGPUBindGroupEntryInfo, shared::{WebGPUBindGroupLayoutKey, WebGPUShared}, texture::format_to_webgpu, WebGPUBackend, WebGPULimits, WebGPUPipelineLayout};
+use crate::{
+    binding::WebGPUBindGroupEntryInfo,
+    shared::{WebGPUBindGroupLayoutKey, WebGPUShared},
+    texture::format_to_webgpu,
+    WebGPUBackend, WebGPULimits, WebGPUPipelineLayout,
+};
 
 pub struct WebGPUShader {
     module: GpuShaderModule,
     shader_type: gpu::ShaderType,
     resources: [Box<[gpu::Resource]>; gpu::NON_BINDLESS_SET_COUNT as usize],
     bindings: [SmallVec<[WebGPUBindGroupEntryInfo; 8]>; gpu::NON_BINDLESS_SET_COUNT as usize],
-    push_constant_size: u32
+    push_constant_size: u32,
 }
 
 impl PartialEq for WebGPUShader {
@@ -25,7 +38,8 @@ impl Eq for WebGPUShader {}
 
 impl Hash for WebGPUShader {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        let ptr_val: usize = unsafe { std::mem::transmute(self.module.as_ref() as *const GpuShaderModule) };
+        let ptr_val: usize =
+            unsafe { std::mem::transmute(self.module.as_ref() as *const GpuShaderModule) };
         ptr_val.hash(state);
     }
 }
@@ -39,7 +53,8 @@ impl WebGPUShader {
         }
         let module = device.create_shader_module(&descriptor);
 
-        let mut binding_infos: [SmallVec<[WebGPUBindGroupEntryInfo; 8]>; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
+        let mut binding_infos: [SmallVec<[WebGPUBindGroupEntryInfo; 8]>;
+            gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
         for (set_index, bindings) in shader.resources.iter().enumerate() {
             for binding in bindings {
                 let mut binding_info = WebGPUBindGroupEntryInfo {
@@ -48,7 +63,7 @@ impl WebGPUShader {
                         gpu::ShaderType::VertexShader => web_sys::gpu_shader_stage::VERTEX,
                         gpu::ShaderType::FragmentShader => web_sys::gpu_shader_stage::FRAGMENT,
                         gpu::ShaderType::ComputeShader => web_sys::gpu_shader_stage::COMPUTE,
-                        _ => panic!("Unsupported shader type in WebGPU")
+                        _ => panic!("Unsupported shader type in WebGPU"),
                     },
                     index: binding.binding * 2,
                     writable: binding.writable,
@@ -58,7 +73,7 @@ impl WebGPUShader {
                     texture_dimension: binding.texture_dimension,
                     is_multisampled: binding.is_multisampled,
                     storage_format: binding.storage_format,
-                    struct_size: binding.struct_size
+                    struct_size: binding.struct_size,
                 };
                 if binding.resource_type == gpu::ResourceType::CombinedTextureSampler {
                     binding_info.resource_type = gpu::ResourceType::SampledTexture;
@@ -81,7 +96,7 @@ impl WebGPUShader {
             shader_type: shader.shader_type,
             resources: shader.resources.clone(),
             bindings: binding_infos,
-            push_constant_size: shader.push_constant_size
+            push_constant_size: shader.push_constant_size,
         }
     }
 
@@ -89,7 +104,9 @@ impl WebGPUShader {
         &self.module
     }
 
-    pub(crate) fn resources(&self) -> &[Box<[gpu::Resource]>; gpu::NON_BINDLESS_SET_COUNT as usize] {
+    pub(crate) fn resources(
+        &self,
+    ) -> &[Box<[gpu::Resource]>; gpu::NON_BINDLESS_SET_COUNT as usize] {
         &self.resources
     }
 }
@@ -102,7 +119,7 @@ impl gpu::Shader for WebGPUShader {
 
 pub struct WebGPUGraphicsPipeline {
     pipeline: GpuRenderPipeline,
-    layout: Arc<WebGPUPipelineLayout>
+    layout: Arc<WebGPUPipelineLayout>,
 }
 
 fn format_to_vertex_format(format: gpu::Format) -> GpuVertexFormat {
@@ -188,16 +205,31 @@ fn blend_op_to_webgpu(blend_op: gpu::BlendOp) -> GpuBlendOperation {
     }
 }
 
-fn blend_attachment_to_webgpu(blend_attachment: &gpu::AttachmentBlendInfo, color: bool) -> GpuBlendComponent {
+fn blend_attachment_to_webgpu(
+    blend_attachment: &gpu::AttachmentBlendInfo,
+    color: bool,
+) -> GpuBlendComponent {
     let blend_component = GpuBlendComponent::new();
     if !blend_attachment.blend_enabled {
         blend_component.set_operation(GpuBlendOperation::Add);
         blend_component.set_src_factor(GpuBlendFactor::One);
         blend_component.set_dst_factor(GpuBlendFactor::Zero);
     } else {
-        blend_component.set_dst_factor(blend_factor_to_webgpu(if color { blend_attachment.dst_color_blend_factor } else { blend_attachment.dst_alpha_blend_factor }));
-        blend_component.set_src_factor(blend_factor_to_webgpu(if color { blend_attachment.src_color_blend_factor } else { blend_attachment.src_alpha_blend_factor }));
-        blend_component.set_operation(blend_op_to_webgpu(if color { blend_attachment.color_blend_op } else { blend_attachment.alpha_blend_op }));
+        blend_component.set_dst_factor(blend_factor_to_webgpu(if color {
+            blend_attachment.dst_color_blend_factor
+        } else {
+            blend_attachment.dst_alpha_blend_factor
+        }));
+        blend_component.set_src_factor(blend_factor_to_webgpu(if color {
+            blend_attachment.src_color_blend_factor
+        } else {
+            blend_attachment.src_alpha_blend_factor
+        }));
+        blend_component.set_operation(blend_op_to_webgpu(if color {
+            blend_attachment.color_blend_op
+        } else {
+            blend_attachment.alpha_blend_op
+        }));
     }
     blend_component
 }
@@ -212,8 +244,15 @@ pub(crate) fn sample_count_to_webgpu(sample_count: gpu::SampleCount) -> u32 {
 }
 
 impl WebGPUGraphicsPipeline {
-    pub(crate) fn new(device: &GpuDevice, info: &gpu::GraphicsPipelineInfo<WebGPUBackend>, shared: &WebGPUShared, name: Option<&str>, limits: &WebGPULimits) -> Result<Self, ()> {
-        let vertex_buffers = Array::new_with_length(info.vertex_layout.input_assembler.len() as u32);
+    pub(crate) fn new(
+        device: &GpuDevice,
+        info: &gpu::GraphicsPipelineInfo<WebGPUBackend>,
+        shared: &WebGPUShared,
+        name: Option<&str>,
+        limits: &WebGPULimits,
+    ) -> Result<Self, ()> {
+        let vertex_buffers =
+            Array::new_with_length(info.vertex_layout.input_assembler.len() as u32);
         for vb_info in info.vertex_layout.input_assembler {
             let mut attributes_count = 0;
             let attributes = Array::new();
@@ -221,7 +260,11 @@ impl WebGPUGraphicsPipeline {
                 if shader_input.input_assembler_binding != vb_info.binding {
                     continue;
                 }
-                let shader_attr: GpuVertexAttribute = GpuVertexAttribute::new(format_to_vertex_format(shader_input.format), shader_input.offset as f64, shader_input.location_vk_mtl);
+                let shader_attr: GpuVertexAttribute = GpuVertexAttribute::new(
+                    format_to_vertex_format(shader_input.format),
+                    shader_input.offset as f64,
+                    shader_input.location_vk_mtl,
+                );
                 attributes.set(attributes_count, JsValue::from(shader_attr));
                 attributes_count += 1;
             }
@@ -237,7 +280,8 @@ impl WebGPUGraphicsPipeline {
         let vertex_state = GpuVertexState::new(info.vs.module());
         vertex_state.set_buffers(&JsValue::from(vertex_buffers));
 
-        let mut bind_group_layout_keys: [WebGPUBindGroupLayoutKey; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
+        let mut bind_group_layout_keys: [WebGPUBindGroupLayoutKey;
+            gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
         let entry = WebGPUBindGroupEntryInfo {
             name: "VS_PushConsts".to_string(),
             shader_stage: web_sys::gpu_shader_stage::VERTEX,
@@ -249,7 +293,7 @@ impl WebGPUGraphicsPipeline {
             texture_dimension: gpu::TextureDimension::Dim1D,
             is_multisampled: false,
             storage_format: gpu::Format::Unknown,
-            struct_size: info.vs.push_constant_size
+            struct_size: info.vs.push_constant_size,
         };
         bind_group_layout_keys[gpu::BindingFrequency::VeryFrequent as usize].push(entry);
         let entry = WebGPUBindGroupEntryInfo {
@@ -263,7 +307,7 @@ impl WebGPUGraphicsPipeline {
             texture_dimension: gpu::TextureDimension::Dim1D,
             is_multisampled: false,
             storage_format: gpu::Format::Unknown,
-            struct_size: info.fs.map(|fs| fs.push_constant_size).unwrap_or(8)
+            struct_size: info.fs.map(|fs| fs.push_constant_size).unwrap_or(8),
         };
         bind_group_layout_keys[gpu::BindingFrequency::VeryFrequent as usize].push(entry);
 
@@ -272,21 +316,25 @@ impl WebGPUGraphicsPipeline {
 
         for (set_index, shader_set) in info.vs.bindings.iter().enumerate() {
             let set = &mut bind_group_layout_keys[set_index];
-            let push_const_binding_offset = if set_index == gpu::BindingFrequency::VeryFrequent as usize {
-                2
-            } else {
-                0
-            };
+            let push_const_binding_offset =
+                if set_index == gpu::BindingFrequency::VeryFrequent as usize {
+                    2
+                } else {
+                    0
+                };
             for binding in shader_set {
-                let existing_binding_option = set
-                .iter_mut()
-                .find(|existing_binding| existing_binding.index == binding.index + push_const_binding_offset);
+                let existing_binding_option = set.iter_mut().find(|existing_binding| {
+                    existing_binding.index == binding.index + push_const_binding_offset
+                });
                 if let Some(existing_binding) = existing_binding_option {
                     assert_eq!(existing_binding.resource_type, binding.resource_type);
                     assert_eq!(existing_binding.is_multisampled, binding.is_multisampled);
                     assert_eq!(existing_binding.sampling_type, binding.sampling_type);
                     assert_eq!(existing_binding.storage_format, binding.storage_format);
-                    assert_eq!(existing_binding.texture_dimension, binding.texture_dimension);
+                    assert_eq!(
+                        existing_binding.texture_dimension,
+                        binding.texture_dimension
+                    );
                     assert!(!existing_binding.writable);
                     assert!(!binding.writable);
                     existing_binding.shader_stage |= binding.shader_stage;
@@ -295,16 +343,18 @@ impl WebGPUGraphicsPipeline {
                     adjusted_binding.index += push_const_binding_offset;
                     adjusted_binding.has_dynamic_offset = match binding.resource_type {
                         gpu::ResourceType::UniformBuffer => {
-                            let dynamic = uniform_dynamic_offsets_count < limits.max_dynamic_uniform_buffers_per_pipeline_layout;
+                            let dynamic = uniform_dynamic_offsets_count
+                                < limits.max_dynamic_uniform_buffers_per_pipeline_layout;
                             uniform_dynamic_offsets_count += 1;
                             dynamic
-                        },
+                        }
                         gpu::ResourceType::StorageBuffer => {
-                            let dynamic = storage_dynamic_offsets_count < limits.max_dynamic_storage_buffers_per_pipeline_layout;
+                            let dynamic = storage_dynamic_offsets_count
+                                < limits.max_dynamic_storage_buffers_per_pipeline_layout;
                             storage_dynamic_offsets_count += 1;
                             dynamic
-                        },
-                        _ => false
+                        }
+                        _ => false,
                     };
                     set.push(adjusted_binding);
                 }
@@ -313,21 +363,25 @@ impl WebGPUGraphicsPipeline {
         if let Some(fs) = info.fs.as_ref() {
             for (set_index, shader_set) in fs.bindings.iter().enumerate() {
                 let set = &mut bind_group_layout_keys[set_index];
-                let push_const_binding_offset = if set_index == gpu::BindingFrequency::VeryFrequent as usize {
-                    2
-                } else {
-                    0
-                };
+                let push_const_binding_offset =
+                    if set_index == gpu::BindingFrequency::VeryFrequent as usize {
+                        2
+                    } else {
+                        0
+                    };
                 for binding in shader_set {
-                    let existing_binding_option = set
-                    .iter_mut()
-                    .find(|existing_binding| existing_binding.index == binding.index + push_const_binding_offset);
+                    let existing_binding_option = set.iter_mut().find(|existing_binding| {
+                        existing_binding.index == binding.index + push_const_binding_offset
+                    });
                     if let Some(existing_binding) = existing_binding_option {
                         assert_eq!(existing_binding.resource_type, binding.resource_type);
                         assert_eq!(existing_binding.is_multisampled, binding.is_multisampled);
                         assert_eq!(existing_binding.sampling_type, binding.sampling_type);
                         assert_eq!(existing_binding.storage_format, binding.storage_format);
-                        assert_eq!(existing_binding.texture_dimension, binding.texture_dimension);
+                        assert_eq!(
+                            existing_binding.texture_dimension,
+                            binding.texture_dimension
+                        );
                         assert!(!existing_binding.writable);
                         assert!(!binding.writable);
                         existing_binding.shader_stage |= binding.shader_stage;
@@ -336,16 +390,18 @@ impl WebGPUGraphicsPipeline {
                         adjusted_binding.index += push_const_binding_offset;
                         adjusted_binding.has_dynamic_offset = match binding.resource_type {
                             gpu::ResourceType::UniformBuffer => {
-                                let dynamic = uniform_dynamic_offsets_count < limits.max_dynamic_uniform_buffers_per_pipeline_layout;
+                                let dynamic = uniform_dynamic_offsets_count
+                                    < limits.max_dynamic_uniform_buffers_per_pipeline_layout;
                                 uniform_dynamic_offsets_count += 1;
                                 dynamic
-                            },
+                            }
                             gpu::ResourceType::StorageBuffer => {
-                                let dynamic = storage_dynamic_offsets_count < limits.max_dynamic_storage_buffers_per_pipeline_layout;
+                                let dynamic = storage_dynamic_offsets_count
+                                    < limits.max_dynamic_storage_buffers_per_pipeline_layout;
                                 storage_dynamic_offsets_count += 1;
                                 dynamic
-                            },
-                            _ => false
+                            }
+                            _ => false,
                         };
                         set.push(adjusted_binding);
                     }
@@ -378,14 +434,17 @@ impl WebGPUGraphicsPipeline {
             gpu::PrimitiveType::LineStrip => GpuPrimitiveTopology::LineStrip,
             gpu::PrimitiveType::Points => GpuPrimitiveTopology::PointList,
         });
-        if info.primitive_type == gpu::PrimitiveType::TriangleStrip || info.primitive_type == gpu::PrimitiveType::LineStrip {
+        if info.primitive_type == gpu::PrimitiveType::TriangleStrip
+            || info.primitive_type == gpu::PrimitiveType::LineStrip
+        {
             primitive.set_strip_index_format(web_sys::GpuIndexFormat::Uint32);
             warn!("WebGPU requires specifying the index format at pipeline creation time. Other apis only require this at draw time. Defaulting to Uint32.");
         }
         descriptor.set_primitive(&primitive);
 
         if info.depth_stencil_format != gpu::Format::Unknown {
-            let depth_stencil = GpuDepthStencilState::new(format_to_webgpu(info.depth_stencil_format));
+            let depth_stencil =
+                GpuDepthStencilState::new(format_to_webgpu(info.depth_stencil_format));
             depth_stencil.set_depth_write_enabled(info.depth_stencil.depth_write_enabled);
             depth_stencil.set_depth_compare(if !info.depth_stencil.depth_test_enabled {
                 GpuCompareFunction::Always
@@ -430,7 +489,10 @@ impl WebGPUGraphicsPipeline {
                 let target_state = GpuColorTargetState::new(format_to_webgpu(format));
                 target_state.set_write_mask(blend_attachment.write_mask.bits() as u32);
                 if any_blending_enabled {
-                    let blend_state = GpuBlendState::new(&blend_attachment_to_webgpu(blend_attachment, false), &blend_attachment_to_webgpu(blend_attachment, true));
+                    let blend_state = GpuBlendState::new(
+                        &blend_attachment_to_webgpu(blend_attachment, false),
+                        &blend_attachment_to_webgpu(blend_attachment, true),
+                    );
                     target_state.set_blend(&blend_state);
                 }
                 targets.set(i as u32, JsValue::from(&target_state));
@@ -450,10 +512,7 @@ impl WebGPUGraphicsPipeline {
 
         let pipeline = device.create_render_pipeline(&descriptor).map_err(|_| ())?;
 
-        Ok(Self {
-            pipeline,
-            layout
-        })
+        Ok(Self { pipeline, layout })
     }
 
     #[inline(always)]
@@ -470,14 +529,21 @@ impl WebGPUGraphicsPipeline {
 pub struct WebGPUComputePipeline {
     pipeline: GpuComputePipeline,
     resources: [Box<[gpu::Resource]>; gpu::NON_BINDLESS_SET_COUNT as usize],
-    layout: Arc<WebGPUPipelineLayout>
+    layout: Arc<WebGPUPipelineLayout>,
 }
 
 impl WebGPUComputePipeline {
-    pub(crate) fn new(device: &GpuDevice, shader: &WebGPUShader, shared: &WebGPUShared, name: Option<&str>, limits: &WebGPULimits) -> Result<Self, ()> {
+    pub(crate) fn new(
+        device: &GpuDevice,
+        shader: &WebGPUShader,
+        shared: &WebGPUShared,
+        name: Option<&str>,
+        limits: &WebGPULimits,
+    ) -> Result<Self, ()> {
         let stage = GpuProgrammableStage::new(shader.module());
 
-        let mut bind_group_layout_keys: [WebGPUBindGroupLayoutKey; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
+        let mut bind_group_layout_keys: [WebGPUBindGroupLayoutKey;
+            gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
         let entry = WebGPUBindGroupEntryInfo {
             name: "CS_PushConsts".to_string(),
             shader_stage: web_sys::gpu_shader_stage::COMPUTE,
@@ -514,22 +580,26 @@ impl WebGPUComputePipeline {
 
         for (set_index, shader_set) in shader.bindings.iter().enumerate() {
             let set = &mut bind_group_layout_keys[set_index];
-            let push_const_binding_offset = if set_index == gpu::BindingFrequency::VeryFrequent as usize {
-                2
-            } else {
-                0
-            };
+            let push_const_binding_offset =
+                if set_index == gpu::BindingFrequency::VeryFrequent as usize {
+                    2
+                } else {
+                    0
+                };
 
             for binding in shader_set {
-                let existing_binding_option = set
-                .iter_mut()
-                .find(|existing_binding| existing_binding.index == binding.index + push_const_binding_offset);
+                let existing_binding_option = set.iter_mut().find(|existing_binding| {
+                    existing_binding.index == binding.index + push_const_binding_offset
+                });
                 if let Some(existing_binding) = existing_binding_option {
                     assert_eq!(existing_binding.resource_type, binding.resource_type);
                     assert_eq!(existing_binding.is_multisampled, binding.is_multisampled);
                     assert_eq!(existing_binding.sampling_type, binding.sampling_type);
                     assert_eq!(existing_binding.storage_format, binding.storage_format);
-                    assert_eq!(existing_binding.texture_dimension, binding.texture_dimension);
+                    assert_eq!(
+                        existing_binding.texture_dimension,
+                        binding.texture_dimension
+                    );
                     assert!(!existing_binding.writable);
                     assert!(!binding.writable);
                     existing_binding.shader_stage |= binding.shader_stage;
@@ -539,16 +609,18 @@ impl WebGPUComputePipeline {
 
                     adjusted_binding.has_dynamic_offset = match binding.resource_type {
                         gpu::ResourceType::UniformBuffer => {
-                            let dynamic = uniform_dynamic_offsets_count < limits.max_dynamic_uniform_buffers_per_pipeline_layout;
+                            let dynamic = uniform_dynamic_offsets_count
+                                < limits.max_dynamic_uniform_buffers_per_pipeline_layout;
                             uniform_dynamic_offsets_count += 1;
                             dynamic
-                        },
+                        }
                         gpu::ResourceType::StorageBuffer => {
-                            let dynamic = storage_dynamic_offsets_count < limits.max_dynamic_storage_buffers_per_pipeline_layout;
+                            let dynamic = storage_dynamic_offsets_count
+                                < limits.max_dynamic_storage_buffers_per_pipeline_layout;
                             storage_dynamic_offsets_count += 1;
                             dynamic
-                        },
-                        _ => false
+                        }
+                        _ => false,
                     };
 
                     set.push(adjusted_binding);
@@ -571,7 +643,7 @@ impl WebGPUComputePipeline {
         Ok(Self {
             pipeline,
             resources: shader.resources().clone(),
-            layout
+            layout,
         })
     }
 
@@ -600,10 +672,12 @@ impl gpu::ComputePipeline for WebGPUComputePipeline {
                         gpu::ResourceType::SampledTexture => gpu::BindingType::SampledTexture,
                         gpu::ResourceType::StorageTexture => gpu::BindingType::StorageTexture,
                         gpu::ResourceType::Sampler => gpu::BindingType::Sampler,
-                        gpu::ResourceType::CombinedTextureSampler => gpu::BindingType::TextureAndSampler,
+                        gpu::ResourceType::CombinedTextureSampler => {
+                            gpu::BindingType::TextureAndSampler
+                        }
                         gpu::ResourceType::AccelerationStructure => unimplemented!(),
-                    }
-                })
+                    },
+                });
             }
         }
         None

@@ -5,15 +5,23 @@ use objc2_metal::{self, MTLBuffer as _, MTLDevice, MTLResource, MTLTexture};
 use super::*;
 
 pub(crate) struct MTLBindlessArgumentBuffer {
-    argument_buffer: Retained<ProtocolObject<dyn objc2_metal::MTLBuffer>>
+    argument_buffer: Retained<ProtocolObject<dyn objc2_metal::MTLBuffer>>,
 }
 
 impl MTLBindlessArgumentBuffer {
-    pub(crate) unsafe fn new(device: &ProtocolObject<dyn objc2_metal::MTLDevice>, size: usize) -> Self {
-        let buffer = device.newBufferWithLength_options((std::mem::size_of::<objc2_metal::MTLResourceID>() * size) as NSUInteger, objc2_metal::MTLResourceOptions::StorageModeShared).unwrap();
+    pub(crate) unsafe fn new(
+        device: &ProtocolObject<dyn objc2_metal::MTLDevice>,
+        size: usize,
+    ) -> Self {
+        let buffer = device
+            .newBufferWithLength_options(
+                (std::mem::size_of::<objc2_metal::MTLResourceID>() * size) as NSUInteger,
+                objc2_metal::MTLResourceOptions::StorageModeShared,
+            )
+            .unwrap();
         buffer.setLabel(Some(&NSString::from_str("Bindless textures")));
         Self {
-            argument_buffer: buffer
+            argument_buffer: buffer,
         }
     }
 

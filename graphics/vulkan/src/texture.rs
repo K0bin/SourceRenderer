@@ -1,25 +1,28 @@
-use std::{
-    cmp::max, ffi::{
-        c_void,
-        CString,
-    }, hash::{
-        Hash,
-        Hasher,
-    }, pin::Pin, sync::Arc
+use std::cmp::max;
+use std::ffi::{
+    c_void,
+    CString,
 };
+use std::hash::{
+    Hash,
+    Hasher,
+};
+use std::pin::Pin;
+use std::sync::Arc;
 
-use ash::{
-    vk,
-    vk::Handle as _,
+use ash::vk;
+use ash::vk::Handle as _;
+use sourcerenderer_core::{
+    gpu,
+    FixedSizeSmallVec,
 };
-use sourcerenderer_core::{gpu, FixedSizeSmallVec};
 
 use super::*;
 
 pub(crate) struct VkImageCreateInfoCollection<'a> {
     pub(crate) create_info: vk::ImageCreateInfo<'a>,
     pub(crate) compatible_vk_formats: FixedSizeSmallVec<[vk::Format; 2]>,
-    pub(crate) format_list: vk::ImageFormatListCreateInfo<'a>
+    pub(crate) format_list: vk::ImageFormatListCreateInfo<'a>,
 }
 
 impl Default for VkImageCreateInfoCollection<'_> {
@@ -27,7 +30,7 @@ impl Default for VkImageCreateInfoCollection<'_> {
         Self {
             create_info: vk::ImageCreateInfo::default(),
             compatible_vk_formats: FixedSizeSmallVec::new(),
-            format_list: vk::ImageFormatListCreateInfo::default()
+            format_list: vk::ImageFormatListCreateInfo::default(),
         }
     }
 }
@@ -39,14 +42,18 @@ pub struct VkTexture {
     memory: Option<vk::DeviceMemory>,
     is_image_owned: bool,
     is_memory_owned: bool,
-    supports_direct_copy: bool
+    supports_direct_copy: bool,
 }
 
 unsafe impl Send for VkTexture {}
 unsafe impl Sync for VkTexture {}
 
 impl VkTexture {
-    pub(crate) fn build_create_info(device: &RawVkDevice, mut target: Pin<&mut VkImageCreateInfoCollection>, info: &gpu::TextureInfo) {
+    pub(crate) fn build_create_info(
+        device: &RawVkDevice,
+        mut target: Pin<&mut VkImageCreateInfoCollection>,
+        info: &gpu::TextureInfo,
+    ) {
         target.create_info = vk::ImageCreateInfo {
             flags: vk::ImageCreateFlags::empty(),
             tiling: vk::ImageTiling::OPTIMAL,
@@ -54,11 +61,13 @@ impl VkTexture {
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             usage: texture_usage_to_vk(info.usage, device.host_image_copy.is_some()),
             image_type: match info.dimension {
-                gpu::TextureDimension::Dim1DArray | gpu::TextureDimension::Dim1D => vk::ImageType::TYPE_1D,
+                gpu::TextureDimension::Dim1DArray | gpu::TextureDimension::Dim1D => {
+                    vk::ImageType::TYPE_1D
+                }
                 gpu::TextureDimension::Dim2DArray
-                    | gpu::TextureDimension::Dim2D
-                    | gpu::TextureDimension::Cube
-                    | gpu::TextureDimension::CubeArray => vk::ImageType::TYPE_2D,
+                | gpu::TextureDimension::Dim2D
+                | gpu::TextureDimension::Cube
+                | gpu::TextureDimension::CubeArray => vk::ImageType::TYPE_2D,
                 gpu::TextureDimension::Dim3D => vk::ImageType::TYPE_3D,
             },
             extent: vk::Extent3D {
@@ -91,10 +100,15 @@ impl VkTexture {
         if info.supports_srgb {
             let srgb_format_opt = info.format.srgb_format();
             if srgb_format_opt.is_none() {
-                panic!("Format {:?} does not have an equivalent srgb format", info.format);
+                panic!(
+                    "Format {:?} does not have an equivalent srgb format",
+                    info.format
+                );
             }
             let srgb_format = srgb_format_opt.unwrap();
-            target.compatible_vk_formats.push(format_to_vk(srgb_format, false));
+            target
+                .compatible_vk_formats
+                .push(format_to_vk(srgb_format, false));
             target.format_list = vk::ImageFormatListCreateInfo {
                 view_format_count: target.compatible_vk_formats.as_ref().len() as u32,
                 p_view_formats: target.compatible_vk_formats.as_ref().as_ptr(),
@@ -103,7 +117,8 @@ impl VkTexture {
 
             target.create_info.flags |= vk::ImageCreateFlags::MUTABLE_FORMAT;
             let old_p_next = target.create_info.p_next;
-            target.create_info.p_next = &target.format_list as *const vk::ImageFormatListCreateInfo as *const c_void;
+            target.create_info.p_next =
+                &target.format_list as *const vk::ImageFormatListCreateInfo as *const c_void;
             target.format_list.p_next = old_p_next;
         }
 
@@ -117,8 +132,13 @@ impl VkTexture {
             flags: target.create_info.flags,
             ..Default::default()
         };
-        if target.create_info.usage.contains(vk::ImageUsageFlags::HOST_TRANSFER_EXT) {
-            props.p_next = &mut host_image_copy_format_info as *mut vk::HostImageCopyDevicePerformanceQueryEXT
+        if target
+            .create_info
+            .usage
+            .contains(vk::ImageUsageFlags::HOST_TRANSFER_EXT)
+        {
+            props.p_next = &mut host_image_copy_format_info
+                as *mut vk::HostImageCopyDevicePerformanceQueryEXT
                 as *mut c_void;
         }
         unsafe {
@@ -132,24 +152,43 @@ impl VkTexture {
                 .unwrap()
         };
 
-        if target.create_info.usage.contains(vk::ImageUsageFlags::HOST_TRANSFER_EXT)
-            && host_image_copy_format_info.optimal_device_access != vk::TRUE {
+        if target
+            .create_info
+            .usage
+            .contains(vk::ImageUsageFlags::HOST_TRANSFER_EXT)
+            && host_image_copy_format_info.optimal_device_access != vk::TRUE
+        {
             target.create_info.usage = texture_usage_to_vk(info.usage, false);
         }
     }
 
-    pub(crate) unsafe fn new(device: &Arc<RawVkDevice>, info: &gpu::TextureInfo, memory: ResourceMemory, name: Option<&str>) -> Result<Self, gpu::OutOfMemoryError> {
+    pub(crate) unsafe fn new(
+        device: &Arc<RawVkDevice>,
+        info: &gpu::TextureInfo,
+        memory: ResourceMemory,
+        name: Option<&str>,
+    ) -> Result<Self, gpu::OutOfMemoryError> {
         let memory_type_index = match &memory {
-            ResourceMemory::Suballocated { memory, .. } => { memory.memory_type_index() },
-            ResourceMemory::Dedicated { memory_type_index } => *memory_type_index
+            ResourceMemory::Suballocated { memory, .. } => memory.memory_type_index(),
+            ResourceMemory::Dedicated { memory_type_index } => *memory_type_index,
         };
 
         let mut create_info_collection = VkImageCreateInfoCollection::default();
         let mut pinned = Pin::new(&mut create_info_collection);
         Self::build_create_info(device, pinned.as_mut(), info);
 
-        if pinned.create_info.usage.contains(vk::ImageUsageFlags::HOST_TRANSFER_EXT)
-            && device.host_image_copy.as_ref().unwrap().properties_host_image_copy.identical_memory_type_requirements == vk::FALSE {
+        if pinned
+            .create_info
+            .usage
+            .contains(vk::ImageUsageFlags::HOST_TRANSFER_EXT)
+            && device
+                .host_image_copy
+                .as_ref()
+                .unwrap()
+                .properties_host_image_copy
+                .identical_memory_type_requirements
+                == vk::FALSE
+        {
             // Memory type requirements might change based on HOST_TRANSFER, so we need to check
             // if the allocated memory (or predetermined memory type) is actually compatible.
 
@@ -158,7 +197,12 @@ impl VkTexture {
                 p_create_info: &pinned.create_info as *const vk::ImageCreateInfo,
                 ..Default::default()
             };
-            unsafe { device.get_device_image_memory_requirements(&image_requirements_info, &mut requirements); }
+            unsafe {
+                device.get_device_image_memory_requirements(
+                    &image_requirements_info,
+                    &mut requirements,
+                );
+            }
             if (requirements.memory_requirements.memory_type_bits & (1 << memory_type_index)) == 0 {
                 log::info!("Switching from HOST_IMAGE_COPY to gpu image copy because memory type is not compatible.");
                 pinned.create_info.usage |= vk::ImageUsageFlags::TRANSFER_DST;
@@ -168,7 +212,9 @@ impl VkTexture {
 
         let image_res = device.create_image(&create_info_collection.create_info, None);
         if let Err(e) = image_res {
-            if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
+            if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
+                || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
+            {
                 return Err(gpu::OutOfMemoryError {});
             }
         }
@@ -177,16 +223,17 @@ impl VkTexture {
         let mut is_memory_owned = false;
         let vk_memory: vk::DeviceMemory;
         match memory {
-            ResourceMemory::Dedicated {
-                memory_type_index
-            } => {
+            ResourceMemory::Dedicated { memory_type_index } => {
                 let requirements_info = vk::ImageMemoryRequirementsInfo2 {
                     image,
                     ..Default::default()
                 };
                 let mut requirements = vk::MemoryRequirements2::default();
                 device.get_image_memory_requirements2(&requirements_info, &mut requirements);
-                assert!((requirements.memory_requirements.memory_type_bits & (1 << memory_type_index)) != 0);
+                assert!(
+                    (requirements.memory_requirements.memory_type_bits & (1 << memory_type_index))
+                        != 0
+                );
 
                 let dedicated_alloc = vk::MemoryDedicatedAllocateInfo {
                     image: image,
@@ -195,28 +242,32 @@ impl VkTexture {
                 let memory_info = vk::MemoryAllocateInfo {
                     allocation_size: requirements.memory_requirements.size,
                     memory_type_index,
-                    p_next: &dedicated_alloc as *const vk::MemoryDedicatedAllocateInfo as *const c_void,
+                    p_next: &dedicated_alloc as *const vk::MemoryDedicatedAllocateInfo
+                        as *const c_void,
                     ..Default::default()
                 };
-                let memory_result: Result<vk::DeviceMemory, vk::Result> = device.allocate_memory(&memory_info, None);
+                let memory_result: Result<vk::DeviceMemory, vk::Result> =
+                    device.allocate_memory(&memory_info, None);
                 if let Err(e) = memory_result {
-                    if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
+                    if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
+                        || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
+                    {
                         device.destroy_image(image, None);
                         return Err(gpu::OutOfMemoryError {});
                     }
                 }
                 vk_memory = memory_result.unwrap();
 
-                let bind_result = device.bind_image_memory2(&[
-                    vk::BindImageMemoryInfo {
-                        image,
-                        memory: vk_memory,
-                        memory_offset: 0u64,
-                        ..Default::default()
-                    }
-                ]);
+                let bind_result = device.bind_image_memory2(&[vk::BindImageMemoryInfo {
+                    image,
+                    memory: vk_memory,
+                    memory_offset: 0u64,
+                    ..Default::default()
+                }]);
                 if let Err(e) = bind_result {
-                    if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
+                    if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
+                        || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
+                    {
                         device.destroy_image(image, None);
                         return Err(gpu::OutOfMemoryError {});
                     }
@@ -225,20 +276,17 @@ impl VkTexture {
                 is_memory_owned = true;
             }
 
-            ResourceMemory::Suballocated {
-                memory,
-                offset
-            } => {
-                let bind_result = device.bind_image_memory2(&[
-                    vk::BindImageMemoryInfo {
-                        image,
-                        memory: memory.handle(),
-                        memory_offset: offset,
-                        ..Default::default()
-                    }
-                ]);
+            ResourceMemory::Suballocated { memory, offset } => {
+                let bind_result = device.bind_image_memory2(&[vk::BindImageMemoryInfo {
+                    image,
+                    memory: memory.handle(),
+                    memory_offset: offset,
+                    ..Default::default()
+                }]);
                 if let Err(e) = bind_result {
-                    if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY {
+                    if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
+                        || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
+                    {
                         device.destroy_image(image, None);
                         return Err(gpu::OutOfMemoryError {});
                     }
@@ -253,14 +301,12 @@ impl VkTexture {
                 let name_cstring = CString::new(name).unwrap();
                 unsafe {
                     debug_utils
-                        .set_debug_utils_object_name(
-                            &vk::DebugUtilsObjectNameInfoEXT {
-                                object_type: vk::ObjectType::IMAGE,
-                                object_handle: image.as_raw(),
-                                p_object_name: name_cstring.as_ptr(),
-                                ..Default::default()
-                            },
-                        )
+                        .set_debug_utils_object_name(&vk::DebugUtilsObjectNameInfoEXT {
+                            object_type: vk::ObjectType::IMAGE,
+                            object_handle: image.as_raw(),
+                            p_object_name: name_cstring.as_ptr(),
+                            ..Default::default()
+                        })
                         .unwrap();
                 }
             }
@@ -273,7 +319,10 @@ impl VkTexture {
             memory: Some(vk_memory),
             is_image_owned: true,
             is_memory_owned,
-            supports_direct_copy: create_info_collection.create_info.usage.contains(vk::ImageUsageFlags::HOST_TRANSFER_EXT)
+            supports_direct_copy: create_info_collection
+                .create_info
+                .usage
+                .contains(vk::ImageUsageFlags::HOST_TRANSFER_EXT),
         })
     }
 
@@ -285,7 +334,7 @@ impl VkTexture {
             is_image_owned: false,
             is_memory_owned: false,
             memory: None,
-            supports_direct_copy: false
+            supports_direct_copy: false,
         }
     }
 
@@ -298,7 +347,10 @@ impl VkTexture {
     }
 }
 
-pub(crate) fn texture_usage_to_vk(usage: gpu::TextureUsage, host_image_copy: bool) -> vk::ImageUsageFlags {
+pub(crate) fn texture_usage_to_vk(
+    usage: gpu::TextureUsage,
+    host_image_copy: bool,
+) -> vk::ImageUsageFlags {
     let mut flags = vk::ImageUsageFlags::empty();
 
     if usage.contains(gpu::TextureUsage::STORAGE) {
@@ -435,8 +487,8 @@ impl VkTextureView {
                 gpu::TextureDimension::Dim3D => vk::ImageViewType::TYPE_3D,
                 gpu::TextureDimension::Dim1DArray => vk::ImageViewType::TYPE_1D_ARRAY,
                 gpu::TextureDimension::Dim2DArray
-                    | gpu::TextureDimension::Cube
-                    | gpu::TextureDimension::CubeArray => vk::ImageViewType::TYPE_2D_ARRAY,
+                | gpu::TextureDimension::Cube
+                | gpu::TextureDimension::CubeArray => vk::ImageViewType::TYPE_2D_ARRAY,
             },
             format: format_to_vk(format, device.supports_d24),
             components: vk::ComponentMapping {
@@ -461,14 +513,12 @@ impl VkTextureView {
                 let name_cstring = CString::new(name).unwrap();
                 unsafe {
                     debug_utils
-                        .set_debug_utils_object_name(
-                            &vk::DebugUtilsObjectNameInfoEXT {
-                                object_type: vk::ObjectType::IMAGE_VIEW,
-                                object_handle: view.as_raw(),
-                                p_object_name: name_cstring.as_ptr(),
-                                ..Default::default()
-                            },
-                        )
+                        .set_debug_utils_object_name(&vk::DebugUtilsObjectNameInfoEXT {
+                            object_type: vk::ObjectType::IMAGE_VIEW,
+                            object_handle: view.as_raw(),
+                            p_object_name: name_cstring.as_ptr(),
+                            ..Default::default()
+                        })
                         .unwrap();
                 }
             }
@@ -531,7 +581,7 @@ impl gpu::TextureView for VkTextureView {
 pub struct VkSampler {
     sampler: vk::Sampler,
     device: Arc<RawVkDevice>,
-    info: gpu::SamplerInfo
+    info: gpu::SamplerInfo,
 }
 
 impl VkSampler {
@@ -575,7 +625,7 @@ impl VkSampler {
         Self {
             sampler,
             device: device.clone(),
-            info: info.clone()
+            info: info.clone(),
         }
     }
 
@@ -614,19 +664,26 @@ impl gpu::Sampler for VkSampler {
 }
 
 #[allow(unused)]
-pub(crate) fn texture_subresource_to_vk(subresource: &gpu::TextureSubresource, texture_format: gpu::Format) -> vk::ImageSubresource {
+pub(crate) fn texture_subresource_to_vk(
+    subresource: &gpu::TextureSubresource,
+    texture_format: gpu::Format,
+) -> vk::ImageSubresource {
     vk::ImageSubresource {
         mip_level: subresource.mip_level,
         array_layer: subresource.array_layer,
-        aspect_mask: aspect_mask_from_format(texture_format)
+        aspect_mask: aspect_mask_from_format(texture_format),
     }
 }
 
-pub(crate) fn texture_subresource_to_vk_layers(subresource: &gpu::TextureSubresource, texture_format: gpu::Format, layers: u32) -> vk::ImageSubresourceLayers {
+pub(crate) fn texture_subresource_to_vk_layers(
+    subresource: &gpu::TextureSubresource,
+    texture_format: gpu::Format,
+    layers: u32,
+) -> vk::ImageSubresourceLayers {
     vk::ImageSubresourceLayers {
         mip_level: subresource.mip_level,
         base_array_layer: subresource.array_layer,
         aspect_mask: aspect_mask_from_format(texture_format),
-        layer_count: layers
+        layer_count: layers,
     }
 }

@@ -1,30 +1,35 @@
-use std::sync::{Arc, Weak};
+use std::sync::{
+    Arc,
+    Weak,
+};
 
 use smallvec::SmallVec;
-use super::gpu::{Instance as _, Adapter as _};
 
+use super::gpu::{
+    Adapter as _,
+    Instance as _,
+};
 use super::*;
 
 pub struct Instance {
     instance: Arc<active_gpu_backend::Instance>,
-    adapters: SmallVec<[Adapter; 2]>
+    adapters: SmallVec<[Adapter; 2]>,
 }
 
 impl Instance {
     pub fn new(instance: active_gpu_backend::Instance) -> Arc<Self> {
         let instance_arc = Arc::new(instance);
 
-        let result: Arc<Self> = Arc::new_cyclic(|result_weak| {
-            Self {
-                instance: instance_arc.clone(),
-                adapters: instance_arc.list_adapters()
+        let result: Arc<Self> = Arc::new_cyclic(|result_weak| Self {
+            instance: instance_arc.clone(),
+            adapters: instance_arc
+                .list_adapters()
                 .iter()
                 .map(|a| Adapter {
                     adapter: a as *const active_gpu_backend::Adapter,
-                    instance: result_weak.clone()
+                    instance: result_weak.clone(),
                 })
-                .collect()
-            }
+                .collect(),
         });
 
         result
@@ -43,7 +48,7 @@ impl Instance {
 
 pub struct Adapter {
     adapter: *const active_gpu_backend::Adapter,
-    instance: Weak<Instance>
+    instance: Weak<Instance>,
 }
 
 impl Adapter {

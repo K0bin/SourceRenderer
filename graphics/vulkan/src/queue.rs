@@ -1,7 +1,5 @@
-use std::{
-    iter::*,
-    sync::Arc,
-};
+use std::iter::*;
+use std::sync::Arc;
 
 use ash::vk;
 use parking_lot::ReentrantMutexGuard;
@@ -87,7 +85,9 @@ impl gpu::Queue<VkBackend> for VkQueue {
                 semaphores.push(vk::SemaphoreSubmitInfo {
                     semaphore: fence.fence.handle(),
                     value: fence.value,
-                    stage_mask: (barrier_sync_to_stage(fence.sync_before) & self.device.supported_pipeline_stages) & !vk::PipelineStageFlags2::HOST,
+                    stage_mask: (barrier_sync_to_stage(fence.sync_before)
+                        & self.device.supported_pipeline_stages)
+                        & !vk::PipelineStageFlags2::HOST,
                     device_index: 0u32,
                     ..Default::default()
                 });
@@ -95,9 +95,12 @@ impl gpu::Queue<VkBackend> for VkQueue {
 
             if let Some((swapchain, indices)) = &submission.acquire_swapchain {
                 semaphores.push(vk::SemaphoreSubmitInfo {
-                    semaphore: swapchain.acquire_semaphore(indices.acquire_semaphore_index).handle(),
+                    semaphore: swapchain
+                        .acquire_semaphore(indices.acquire_semaphore_index)
+                        .handle(),
                     value: 0u64,
-                    stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS & !vk::PipelineStageFlags2::HOST,
+                    stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS
+                        & !vk::PipelineStageFlags2::HOST,
                     device_index: 0u32,
                     ..Default::default()
                 });
@@ -107,7 +110,9 @@ impl gpu::Queue<VkBackend> for VkQueue {
                 semaphores.push(vk::SemaphoreSubmitInfo {
                     semaphore: fence.fence.handle(),
                     value: fence.value,
-                    stage_mask: (barrier_sync_to_stage(fence.sync_before) & self.device.supported_pipeline_stages) & !vk::PipelineStageFlags2::HOST,
+                    stage_mask: (barrier_sync_to_stage(fence.sync_before)
+                        & self.device.supported_pipeline_stages)
+                        & !vk::PipelineStageFlags2::HOST,
                     device_index: 0u32,
                     ..Default::default()
                 });
@@ -115,9 +120,12 @@ impl gpu::Queue<VkBackend> for VkQueue {
 
             if let Some((swapchain, indices)) = &submission.release_swapchain {
                 semaphores.push(vk::SemaphoreSubmitInfo {
-                    semaphore: swapchain.present_semaphore(indices.present_semaphore_index).handle(),
+                    semaphore: swapchain
+                        .present_semaphore(indices.present_semaphore_index)
+                        .handle(),
                     value: 0u64,
-                    stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS & !vk::PipelineStageFlags2::HOST,
+                    stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS
+                        & !vk::PipelineStageFlags2::HOST,
                     device_index: 0u32,
                     ..Default::default()
                 });
@@ -132,17 +140,25 @@ impl gpu::Queue<VkBackend> for VkQueue {
                 let submission_cmd_buffer_ptr = cmd_buffer_ptr;
                 cmd_buffer_ptr = cmd_buffer_ptr.add(submission.command_buffers.len());
                 let submission_wait_semaphores_ptr = semaphore_ptr;
-                semaphore_ptr = semaphore_ptr.add(submission.wait_fences.len() + submission.acquire_swapchain.as_ref().map_or(0, |_| 1));
+                semaphore_ptr = semaphore_ptr.add(
+                    submission.wait_fences.len()
+                        + submission.acquire_swapchain.as_ref().map_or(0, |_| 1),
+                );
                 let submission_signal_semaphores_ptr = semaphore_ptr;
-                semaphore_ptr = semaphore_ptr.add(submission.signal_fences.len() + submission.release_swapchain.as_ref().map_or(0, |_| 1));
+                semaphore_ptr = semaphore_ptr.add(
+                    submission.signal_fences.len()
+                        + submission.release_swapchain.as_ref().map_or(0, |_| 1),
+                );
 
                 vk::SubmitInfo2 {
                     flags: vk::SubmitFlags::empty(),
-                    wait_semaphore_info_count: submission.wait_fences.len() as u32 + submission.acquire_swapchain.as_ref().map_or(0, |_| 1),
+                    wait_semaphore_info_count: submission.wait_fences.len() as u32
+                        + submission.acquire_swapchain.as_ref().map_or(0, |_| 1),
                     p_wait_semaphore_infos: submission_wait_semaphores_ptr,
                     command_buffer_info_count: submission.command_buffers.len() as u32,
                     p_command_buffer_infos: submission_cmd_buffer_ptr,
-                    signal_semaphore_info_count: submission.signal_fences.len() as u32 + submission.release_swapchain.as_ref().map_or(0, |_| 1),
+                    signal_semaphore_info_count: submission.signal_fences.len() as u32
+                        + submission.release_swapchain.as_ref().map_or(0, |_| 1),
                     p_signal_semaphore_infos: submission_signal_semaphores_ptr,
                     ..Default::default()
                 }
@@ -154,18 +170,26 @@ impl gpu::Queue<VkBackend> for VkQueue {
             .unwrap();
     }
 
-    unsafe fn present(&self, swapchain: &mut VkSwapchain, backbuffer_indices: &VkBackbufferIndices) {
+    unsafe fn present(
+        &self,
+        swapchain: &mut VkSwapchain,
+        backbuffer_indices: &VkBackbufferIndices,
+    ) {
         let guard = self.lock_queue();
         swapchain.present(*guard, backbuffer_indices);
     }
 
-    unsafe fn create_command_pool(&self, command_pool_type: gpu::CommandPoolType, flags: gpu::CommandPoolFlags) -> VkCommandPool {
+    unsafe fn create_command_pool(
+        &self,
+        command_pool_type: gpu::CommandPoolType,
+        flags: gpu::CommandPoolFlags,
+    ) -> VkCommandPool {
         VkCommandPool::new(
             &self.device,
             self.info.queue_family_index as u32,
             flags,
             &self.shared,
-            command_pool_type
+            command_pool_type,
         )
     }
 }

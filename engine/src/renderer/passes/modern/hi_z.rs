@@ -3,13 +3,17 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 use sourcerenderer_core::Vec2;
 
+use crate::graphics::*;
+use crate::renderer::asset::{
+    ComputePipelineHandle,
+    RendererAssets,
+    RendererAssetsReadOnly,
+};
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::asset::{ComputePipelineHandle, RendererAssets, RendererAssetsReadOnly};
-use crate::graphics::*;
 
 pub struct HierarchicalZPass {
     ffx_pipeline: ComputePipelineHandle,
@@ -37,8 +41,7 @@ impl HierarchicalZPass {
 
         resources.create_texture(Self::HI_Z_BUFFER_NAME, &texture_info, false);
 
-        let ffx_pipeline =
-            assets.request_compute_pipeline("shaders/ffx_downsampler.comp.json");
+        let ffx_pipeline = assets.request_compute_pipeline("shaders/ffx_downsampler.comp.json");
         let copy_pipeline = assets.request_compute_pipeline("shaders/hi_z_copy.comp.json");
 
         let sampler = if device.supports_min_max_filter() {
@@ -92,7 +95,8 @@ impl HierarchicalZPass {
 
     #[inline(always)]
     pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
-        assets.get_compute_pipeline(self.copy_pipeline).is_some() && assets.get_compute_pipeline(self.ffx_pipeline).is_some()
+        assets.get_compute_pipeline(self.copy_pipeline).is_some()
+            && assets.get_compute_pipeline(self.ffx_pipeline).is_some()
     }
 
     pub fn execute(
@@ -119,7 +123,8 @@ impl HierarchicalZPass {
             &TextureViewInfo::default(),
             HistoryResourceEntry::Past,
         );
-        let dst_mip0 = pass_params.resources
+        let dst_mip0 = pass_params
+            .resources
             .access_view(
                 cmd_buffer,
                 Self::HI_Z_BUFFER_NAME,
@@ -131,7 +136,10 @@ impl HierarchicalZPass {
                 HistoryResourceEntry::Current,
             )
             .clone();
-        let copy_pipeline = pass_params.assets.get_compute_pipeline(self.copy_pipeline).unwrap();
+        let copy_pipeline = pass_params
+            .assets
+            .get_compute_pipeline(self.copy_pipeline)
+            .unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&copy_pipeline));
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::VeryFrequent,
@@ -151,11 +159,11 @@ impl HierarchicalZPass {
             BarrierAccess::STORAGE_READ | BarrierAccess::STORAGE_WRITE,
             HistoryResourceEntry::Current,
         );
-        let mut dst_texture_views =
-            SmallVec::<[Arc<TextureView>; 12]>::new();
+        let mut dst_texture_views = SmallVec::<[Arc<TextureView>; 12]>::new();
         for i in 1..mips {
             dst_texture_views.push(
-                pass_params.resources
+                pass_params
+                    .resources
                     .access_view(
                         cmd_buffer,
                         Self::HI_Z_BUFFER_NAME,
@@ -175,8 +183,7 @@ impl HierarchicalZPass {
                     .clone(),
             );
         }
-        let mut texture_refs =
-            SmallVec::<[&TextureView; 12]>::new();
+        let mut texture_refs = SmallVec::<[&TextureView; 12]>::new();
         for i in 0..(mips - 1) as usize {
             texture_refs.push(&dst_texture_views[i]);
         }
@@ -184,7 +191,10 @@ impl HierarchicalZPass {
             texture_refs.push(&dst_texture_views[0]); // fill the rest of the array with views that never get used, so the validation layers shut up
         }
 
-        let ffx_pipeline = pass_params.assets.get_compute_pipeline(self.ffx_pipeline).unwrap();
+        let ffx_pipeline = pass_params
+            .assets
+            .get_compute_pipeline(self.ffx_pipeline)
+            .unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&ffx_pipeline));
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::VeryFrequent,

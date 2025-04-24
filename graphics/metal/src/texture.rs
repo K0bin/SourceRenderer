@@ -8,12 +8,27 @@ use sourcerenderer_core::gpu;
 
 use super::*;
 
-fn texture_dimensions_to_mtl(dimensions: gpu::TextureDimension, samples: gpu::SampleCount) -> objc2_metal::MTLTextureType {
+fn texture_dimensions_to_mtl(
+    dimensions: gpu::TextureDimension,
+    samples: gpu::SampleCount,
+) -> objc2_metal::MTLTextureType {
     match dimensions {
         gpu::TextureDimension::Dim1D => objc2_metal::MTLTextureType::Type1D,
         gpu::TextureDimension::Dim1DArray => objc2_metal::MTLTextureType::Type1DArray,
-        gpu::TextureDimension::Dim2D => if samples == gpu::SampleCount::Samples1 { objc2_metal::MTLTextureType::Type2D } else { objc2_metal::MTLTextureType::Type2DMultisample },
-        gpu::TextureDimension::Dim2DArray => if samples == gpu::SampleCount::Samples1 { objc2_metal::MTLTextureType::Type2DArray } else { objc2_metal::MTLTextureType::Type2DMultisampleArray },
+        gpu::TextureDimension::Dim2D => {
+            if samples == gpu::SampleCount::Samples1 {
+                objc2_metal::MTLTextureType::Type2D
+            } else {
+                objc2_metal::MTLTextureType::Type2DMultisample
+            }
+        }
+        gpu::TextureDimension::Dim2DArray => {
+            if samples == gpu::SampleCount::Samples1 {
+                objc2_metal::MTLTextureType::Type2DArray
+            } else {
+                objc2_metal::MTLTextureType::Type2DMultisampleArray
+            }
+        }
         gpu::TextureDimension::Cube => objc2_metal::MTLTextureType::TypeCube,
         gpu::TextureDimension::CubeArray => objc2_metal::MTLTextureType::TypeCubeArray,
         gpu::TextureDimension::Dim3D => objc2_metal::MTLTextureType::Type3D,
@@ -66,7 +81,7 @@ pub(crate) fn format_from_metal(format: objc2_metal::MTLPixelFormat) -> gpu::For
         objc2_metal::MTLPixelFormat::RGBA16Float => gpu::Format::RGBA16Float,
         objc2_metal::MTLPixelFormat::BGRA8Unorm => gpu::Format::BGRA8UNorm,
         objc2_metal::MTLPixelFormat::RGBA8Unorm_sRGB => gpu::Format::RGBA8Srgb,
-        _ => panic!("Unsupported texture format")
+        _ => panic!("Unsupported texture format"),
     }
 }
 
@@ -79,7 +94,9 @@ unsafe impl Send for MTLTexture {}
 unsafe impl Sync for MTLTexture {}
 
 impl MTLTexture {
-    pub(crate) unsafe fn descriptor(info: &gpu::TextureInfo) -> Retained<objc2_metal::MTLTextureDescriptor> {
+    pub(crate) unsafe fn descriptor(
+        info: &gpu::TextureInfo,
+    ) -> Retained<objc2_metal::MTLTextureDescriptor> {
         let descriptor = objc2_metal::MTLTextureDescriptor::new();
         descriptor.setTextureType(texture_dimensions_to_mtl(info.dimension, info.samples));
         descriptor.setSampleCount(match info.samples {
@@ -100,9 +117,13 @@ impl MTLTexture {
             usage |= objc2_metal::MTLTextureUsage::ShaderRead;
         }
         if info.usage.contains(gpu::TextureUsage::STORAGE) {
-            usage |= objc2_metal::MTLTextureUsage::ShaderRead | objc2_metal::MTLTextureUsage::ShaderWrite;
+            usage |= objc2_metal::MTLTextureUsage::ShaderRead
+                | objc2_metal::MTLTextureUsage::ShaderWrite;
         }
-        if info.usage.intersects(gpu::TextureUsage::RENDER_TARGET | gpu::TextureUsage::DEPTH_STENCIL) {
+        if info
+            .usage
+            .intersects(gpu::TextureUsage::RENDER_TARGET | gpu::TextureUsage::DEPTH_STENCIL)
+        {
             usage |= objc2_metal::MTLTextureUsage::RenderTarget;
             descriptor.setCompressionType(objc2_metal::MTLTextureCompressionType::Lossless);
         }
@@ -115,12 +136,19 @@ impl MTLTexture {
         descriptor
     }
 
-    pub(crate) unsafe fn new(memory: ResourceMemory, info: &gpu::TextureInfo, name: Option<&str>) -> Result<Self, gpu::OutOfMemoryError> {
+    pub(crate) unsafe fn new(
+        memory: ResourceMemory,
+        info: &gpu::TextureInfo,
+        name: Option<&str>,
+    ) -> Result<Self, gpu::OutOfMemoryError> {
         let descriptor = Self::descriptor(info);
         let mut options = descriptor.resourceOptions();
 
         let texture_opt = match memory {
-            ResourceMemory::Dedicated { device, options: memory_options } => {
+            ResourceMemory::Dedicated {
+                device,
+                options: memory_options,
+            } => {
                 if info.usage.gpu_writable() {
                     options |= objc2_metal::MTLResourceOptions::HazardTrackingModeTracked;
                 } else {
@@ -133,7 +161,9 @@ impl MTLTexture {
                 options |= objc2_metal::MTLResourceOptions::HazardTrackingModeUntracked;
                 options |= memory.resource_options();
                 descriptor.setResourceOptions(options);
-                memory.handle().newTextureWithDescriptor_offset(&descriptor, offset as NSUInteger)
+                memory
+                    .handle()
+                    .newTextureWithDescriptor_offset(&descriptor, offset as NSUInteger)
             }
         };
 
@@ -152,7 +182,9 @@ impl MTLTexture {
         })
     }
 
-    pub(crate) fn from_mtl_texture(texture: Retained<ProtocolObject<dyn objc2_metal::MTLTexture>>) -> Self {
+    pub(crate) fn from_mtl_texture(
+        texture: Retained<ProtocolObject<dyn objc2_metal::MTLTexture>>,
+    ) -> Self {
         let format = format_from_metal(texture.pixelFormat());
 
         let mut usage = gpu::TextureUsage::empty();
@@ -188,8 +220,10 @@ impl MTLTexture {
                 objc2_metal::MTLTextureType::TypeCube => gpu::TextureDimension::Cube,
                 objc2_metal::MTLTextureType::TypeCubeArray => gpu::TextureDimension::CubeArray,
                 objc2_metal::MTLTextureType::Type3D => gpu::TextureDimension::Dim3D,
-                objc2_metal::MTLTextureType::Type2DMultisampleArray => gpu::TextureDimension::Dim2DArray,
-                _ => unimplemented!()
+                objc2_metal::MTLTextureType::Type2DMultisampleArray => {
+                    gpu::TextureDimension::Dim2DArray
+                }
+                _ => unimplemented!(),
             },
             format,
             mip_levels: texture.mipmapLevelCount() as u32,
@@ -199,7 +233,7 @@ impl MTLTexture {
                 2 => gpu::SampleCount::Samples2,
                 4 => gpu::SampleCount::Samples4,
                 8 => gpu::SampleCount::Samples8,
-                _ => panic!("Unsupported sample count")
+                _ => panic!("Unsupported sample count"),
             },
             usage,
             supports_srgb: mtl_usage.contains(objc2_metal::MTLTextureUsage::PixelFormatView),
@@ -245,14 +279,18 @@ impl Eq for MTLTexture {}
 pub struct MTLTextureView {
     info: gpu::TextureViewInfo,
     texture_info: gpu::TextureInfo,
-    view: Retained<ProtocolObject<dyn objc2_metal::MTLTexture>>
+    view: Retained<ProtocolObject<dyn objc2_metal::MTLTexture>>,
 }
 
 unsafe impl Send for MTLTextureView {}
 unsafe impl Sync for MTLTextureView {}
 
 impl MTLTextureView {
-    pub(crate) unsafe fn new(texture: &MTLTexture, info: &gpu::TextureViewInfo, name: Option<&str>) -> Self {
+    pub(crate) unsafe fn new(
+        texture: &MTLTexture,
+        info: &gpu::TextureViewInfo,
+        name: Option<&str>,
+    ) -> Self {
         let entire_texture = info.array_layer_length == texture.info.array_length
             && info.base_array_layer == 0
             && info.mip_level_length == texture.info.mip_levels
@@ -261,19 +299,26 @@ impl MTLTextureView {
         let view = if entire_texture && info.format.is_none() {
             Retained::from(texture.handle())
         } else if entire_texture {
-            texture.handle().newTextureViewWithPixelFormat(format_to_mtl(info.format.unwrap())).unwrap()
+            texture
+                .handle()
+                .newTextureViewWithPixelFormat(format_to_mtl(info.format.unwrap()))
+                .unwrap()
         } else {
-            texture.handle().newTextureViewWithPixelFormat_textureType_levels_slices(
-                format_to_mtl(info.format.unwrap_or(texture.info.format)),
-                texture_dimensions_to_mtl(texture.info.dimension, texture.info.samples),
-                NSRange {
-                    location: info.base_mip_level as NSUInteger,
-                    length: info.mip_level_length as NSUInteger
-                },
-                NSRange {
-                    location: info.base_array_layer as NSUInteger,
-                    length: info.array_layer_length as NSUInteger
-                }).unwrap()
+            texture
+                .handle()
+                .newTextureViewWithPixelFormat_textureType_levels_slices(
+                    format_to_mtl(info.format.unwrap_or(texture.info.format)),
+                    texture_dimensions_to_mtl(texture.info.dimension, texture.info.samples),
+                    NSRange {
+                        location: info.base_mip_level as NSUInteger,
+                        length: info.mip_level_length as NSUInteger,
+                    },
+                    NSRange {
+                        location: info.base_array_layer as NSUInteger,
+                        length: info.array_layer_length as NSUInteger,
+                    },
+                )
+                .unwrap()
         };
 
         if let Some(name) = name {
@@ -283,7 +328,7 @@ impl MTLTextureView {
         Self {
             view,
             info: info.clone(),
-            texture_info: texture.info.clone()
+            texture_info: texture.info.clone(),
         }
     }
 
@@ -311,15 +356,19 @@ impl Eq for MTLTextureView {}
 
 pub struct MTLSampler {
     sampler: Retained<ProtocolObject<dyn objc2_metal::MTLSamplerState>>,
-    info: gpu::SamplerInfo
+    info: gpu::SamplerInfo,
 }
 
 unsafe impl Send for MTLSampler {}
 unsafe impl Sync for MTLSampler {}
 
 impl MTLSampler {
-    pub(crate) fn new(device: &ProtocolObject<dyn objc2_metal::MTLDevice>, info: &gpu::SamplerInfo) -> Self {
-        let descriptor: Retained<objc2_metal::MTLSamplerDescriptor> = objc2_metal::MTLSamplerDescriptor::new();
+    pub(crate) fn new(
+        device: &ProtocolObject<dyn objc2_metal::MTLDevice>,
+        info: &gpu::SamplerInfo,
+    ) -> Self {
+        let descriptor: Retained<objc2_metal::MTLSamplerDescriptor> =
+            objc2_metal::MTLSamplerDescriptor::new();
         descriptor.setSAddressMode(address_mode_to_mtl(info.address_mode_u));
         descriptor.setTAddressMode(address_mode_to_mtl(info.address_mode_v));
         descriptor.setRAddressMode(address_mode_to_mtl(info.address_mode_w));
@@ -339,7 +388,7 @@ impl MTLSampler {
         let sampler = device.newSamplerStateWithDescriptor(&descriptor).unwrap();
         Self {
             sampler,
-            info: info.clone()
+            info: info.clone(),
         }
     }
 
@@ -353,4 +402,3 @@ impl gpu::Sampler for MTLSampler {
         &self.info
     }
 }
-

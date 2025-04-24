@@ -1,6 +1,8 @@
-use std::{mem::ManuallyDrop, sync::Arc};
+use std::mem::ManuallyDrop;
+use std::sync::Arc;
 
-use sourcerenderer_core::{gpu::*, Matrix4};
+use sourcerenderer_core::gpu::*;
+use sourcerenderer_core::Matrix4;
 
 use super::*;
 
@@ -26,7 +28,7 @@ pub struct AccelerationStructureInstance<'a> {
     pub acceleration_structure: &'a Arc<AccelerationStructure>,
     pub transform: Matrix4,
     pub front_face: FrontFace,
-    pub id: u32
+    pub id: u32,
 }
 
 pub use super::gpu::AccelerationStructureMeshRange;
@@ -34,15 +36,19 @@ pub use super::gpu::AccelerationStructureMeshRange;
 pub struct AccelerationStructure {
     acceleration_structure: ManuallyDrop<active_gpu_backend::AccelerationStructure>,
     buffer: ManuallyDrop<Arc<BufferSlice>>,
-    destroyer: Arc<DeferredDestroyer>
+    destroyer: Arc<DeferredDestroyer>,
 }
 
 impl AccelerationStructure {
-    pub(super) fn new(acceleration_structure: active_gpu_backend::AccelerationStructure, buffer: Arc<BufferSlice>, destroyer: &Arc<DeferredDestroyer>) -> Self {
+    pub(super) fn new(
+        acceleration_structure: active_gpu_backend::AccelerationStructure,
+        buffer: Arc<BufferSlice>,
+        destroyer: &Arc<DeferredDestroyer>,
+    ) -> Self {
         Self {
             acceleration_structure: ManuallyDrop::new(acceleration_structure),
             buffer: ManuallyDrop::new(buffer),
-            destroyer: destroyer.clone()
+            destroyer: destroyer.clone(),
         }
     }
 
@@ -60,8 +66,10 @@ impl AccelerationStructure {
 
 impl Drop for AccelerationStructure {
     fn drop(&mut self) {
-        let acceleration_structure = unsafe { ManuallyDrop::take(&mut self.acceleration_structure) };
-        self.destroyer.destroy_acceleration_structure(acceleration_structure);
+        let acceleration_structure =
+            unsafe { ManuallyDrop::take(&mut self.acceleration_structure) };
+        self.destroyer
+            .destroy_acceleration_structure(acceleration_structure);
         unsafe { ManuallyDrop::drop(&mut self.buffer) };
     }
 }

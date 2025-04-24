@@ -1,18 +1,23 @@
-use std::{sync::Arc, mem::ManuallyDrop};
+use std::mem::ManuallyDrop;
+use std::sync::Arc;
 
 use super::*;
 
 pub struct Sampler {
     sampler: ManuallyDrop<active_gpu_backend::Sampler>,
-    destroyer: Arc<DeferredDestroyer>
+    destroyer: Arc<DeferredDestroyer>,
 }
 
 impl Sampler {
-    pub(super) fn new(device: &Arc<active_gpu_backend::Device>, destroyer: &Arc<DeferredDestroyer>, info: &SamplerInfo) -> Self {
+    pub(super) fn new(
+        device: &Arc<active_gpu_backend::Device>,
+        destroyer: &Arc<DeferredDestroyer>,
+        info: &SamplerInfo,
+    ) -> Self {
         let sampler = unsafe { device.create_sampler(info) };
         Self {
             sampler: ManuallyDrop::new(sampler),
-            destroyer: destroyer.clone()
+            destroyer: destroyer.clone(),
         }
     }
 

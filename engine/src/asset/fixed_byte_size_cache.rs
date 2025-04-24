@@ -1,4 +1,9 @@
-use std::{borrow::Borrow, collections::{HashMap, VecDeque}, hash::Hash};
+use std::borrow::Borrow;
+use std::collections::{
+    HashMap,
+    VecDeque,
+};
+use std::hash::Hash;
 
 pub struct FixedByteSizeCache<K: Hash + PartialEq + Eq + Clone, V> {
     buffers: HashMap<K, V>,
@@ -11,7 +16,7 @@ pub struct FixedByteSizeCache<K: Hash + PartialEq + Eq + Clone, V> {
 pub struct FileTooLarge();
 
 impl<K: Hash + PartialEq + Eq + Clone, V> FixedByteSizeCache<K, V> {
-    pub fn new(max_size: usize, ) -> Self {
+    pub fn new(max_size: usize) -> Self {
         Self {
             buffers: HashMap::new(),
             queue: VecDeque::new(),
@@ -43,32 +48,37 @@ impl<K: Hash + PartialEq + Eq + Clone, V> FixedByteSizeCache<K, V> {
     }
 
     pub fn contains_key<Q: ?Sized>(&self, key: &Q) -> bool
-        where
+    where
         K: Borrow<Q>,
-        Q: Hash + Eq {
+        Q: Hash + Eq,
+    {
         self.buffers.contains_key(key)
     }
 
     pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<&V>
-        where
+    where
         K: Borrow<Q>,
-        Q: Hash + Eq {
+        Q: Hash + Eq,
+    {
         self.buffers.get(key)
     }
 
     pub fn remove<Q: ?Sized>(&mut self, key: &Q) -> Option<V>
-        where
+    where
         K: Borrow<Q>,
-        Q: Hash + Eq {
+        Q: Hash + Eq,
+    {
         let value = self.buffers.remove(key);
         if value.is_none() {
             return None;
         }
 
-        let index_to_remove = self.queue.iter().enumerate()
-            .find_map(|(idx, val)|
-                if val.borrow() == key { Some(idx) } else { None }
-            ).unwrap();
+        let index_to_remove = self
+            .queue
+            .iter()
+            .enumerate()
+            .find_map(|(idx, val)| if val.borrow() == key { Some(idx) } else { None })
+            .unwrap();
         self.queue.remove(index_to_remove).unwrap();
         value
     }

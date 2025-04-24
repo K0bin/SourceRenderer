@@ -1,26 +1,29 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::asset::*;
-use crate::graphics::{BindlessSlot, TextureView, Shader};
-use crate::math::BoundingBox;
-
-use super::*;
-
 use smallvec::SmallVec;
 use sourcerenderer_core::Vec4;
 
-pub struct RendererTexture< > {
+use super::*;
+use crate::asset::*;
+use crate::graphics::{
+    BindlessSlot,
+    Shader,
+    TextureView,
+};
+use crate::math::BoundingBox;
+
+pub struct RendererTexture {
     pub(crate) view: Arc<TextureView>,
     pub(crate) bindless_index: Option<BindlessSlot>,
 }
 
-impl< > PartialEq for RendererTexture {
+impl PartialEq for RendererTexture {
     fn eq(&self, other: &Self) -> bool {
         self.view == other.view
     }
 }
-impl< > Eq for RendererTexture {}
+impl Eq for RendererTexture {}
 
 pub struct RendererMaterial {
     pub(super) properties: HashMap<String, RendererMaterialValue>,
@@ -217,7 +220,7 @@ pub type RendererMeshGraphicsPipeline = CompiledPipeline<MeshGraphicsCompileTask
 pub type RendererComputePipeline = CompiledPipeline<ComputeCompileTask>;
 pub type RendererRayTracingPipeline = CompiledPipeline<RayTracingCompileTask>;
 
-pub struct RendererMesh< > {
+pub struct RendererMesh {
     pub vertices: AssetBufferSlice,
     pub indices: Option<AssetBufferSlice>,
     pub parts: Box<[MeshRange]>,

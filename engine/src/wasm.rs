@@ -1,14 +1,21 @@
-use std::pin::Pin;
-use std::sync::{Arc, Condvar, Mutex};
 use std::future::Future;
+use std::pin::Pin;
+use std::sync::{
+    Arc,
+    Condvar,
+    Mutex,
+};
 
-use wasm_bindgen::prelude::{wasm_bindgen, JsValue, JsCast as _};
-use wasm_bindgen::closure::Closure;
 use js_sys::WebAssembly;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::prelude::{
+    wasm_bindgen,
+    JsCast as _,
+    JsValue,
+};
 
 // Wasm thread
 pub mod thread {
-
     use super::*;
 
     pub struct JoinHandle<T: Send>(Arc<ThreadShared<T>>);
@@ -45,11 +52,11 @@ pub mod thread {
         }
     }
 
-
     pub fn spawn<F, T>(f: F)
     where
         F: FnOnce() -> T + Send + 'static,
-        T: Send + 'static {
+        T: Send + 'static,
+    {
         //spawn_with_js_val(|_| f(), JsValue::null())
         unimplemented!()
     }
@@ -58,8 +65,8 @@ pub mod thread {
     where
         F: FnOnce(JsValue) -> TF + Send + 'static,
         TF: Future<Output = T> + 'static,
-        T: Send + Unpin + 'static {
-
+        T: Send + Unpin + 'static,
+    {
         log::info!("Starting WASM thread");
 
         let shared = Arc::new(ThreadShared {
@@ -72,8 +79,8 @@ pub mod thread {
             {
                 let mut guard = c_shared.state.lock().unwrap();
                 match &*guard {
-                    ThreadState::Initialized => {},
-                    _ => panic!("Illegal thread state!")
+                    ThreadState::Initialized => {}
+                    _ => panic!("Illegal thread state!"),
                 };
                 *guard = ThreadState::Started;
             }
@@ -87,7 +94,8 @@ pub mod thread {
             }) as Pin<Box<dyn Future<Output = ()>>>
         };
 
-        let boxed: Box<dyn FnOnce(JsValue) -> Pin<Box<dyn Future<Output = ()>>> + Send + 'static> = Box::new(wrapper_callback);
+        let boxed: Box<dyn FnOnce(JsValue) -> Pin<Box<dyn Future<Output = ()>>> + Send + 'static> =
+            Box::new(wrapper_callback);
         let boxed_ptr = Box::into_raw(boxed);
         let boxed_ptr_workaround: u64 = unsafe { std::mem::transmute(boxed_ptr) };
         // wasm_bindgen doesn't support FnOnce so we have to resort to hacks.
@@ -109,14 +117,13 @@ enum ThreadState<T: Send> {
     Initialized,
     Started,
     Finished(T),
-    Joined
+    Joined,
 }
 
 pub struct ThreadShared<T: Send> {
     state: Mutex<ThreadState<T>>,
     cond_var: Condvar,
 }
-
 
 #[wasm_bindgen(raw_module = "../../www/src/web_glue.ts")]
 extern "C" {
@@ -137,11 +144,10 @@ extern "C" {
 }
 
 #[wasm_bindgen(js_name = "threadFunc")]
-pub async fn thread_func(
-    callback_ptr: u64,
-    data: JsValue,
-) {
-    let callback_ptr: *mut (dyn FnOnce(JsValue) -> Pin<Box<dyn Future<Output = ()>>> + Send + 'static) = unsafe { std::mem::transmute(callback_ptr) };
+pub async fn thread_func(callback_ptr: u64, data: JsValue) {
+    let callback_ptr: *mut (dyn FnOnce(JsValue) -> Pin<Box<dyn Future<Output = ()>>>
+         + Send
+         + 'static) = unsafe { std::mem::transmute(callback_ptr) };
     let callback = unsafe { Box::from_raw(callback_ptr) };
     callback(data).await;
     destroy_thread();

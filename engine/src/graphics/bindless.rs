@@ -1,30 +1,35 @@
-use std::{fmt::{Debug, Error, Formatter}, sync::Arc};
+use std::fmt::{
+    Debug,
+    Error,
+    Formatter,
+};
+use std::sync::Arc;
 
 use super::*;
 
 pub(super) struct BindlessSlotAllocator {
-    chunk: Chunk<()>
+    chunk: Chunk<()>,
 }
 
 pub struct BindlessSlot {
     alloc: Allocation<()>,
-    texture: Arc<super::TextureView>
+    texture: Arc<super::TextureView>,
 }
 
 impl BindlessSlotAllocator {
     pub fn new(slots: u32) -> Self {
         Self {
-            chunk: Chunk::new((), slots as u64)
+            chunk: Chunk::new((), slots as u64),
         }
     }
 
     pub fn get_slot(&self, texture: &Arc<super::TextureView>) -> Option<BindlessSlot> {
-        self.chunk.allocate(1, 1).map(|alloc: Allocation<()>| {
-            BindlessSlot {
+        self.chunk
+            .allocate(1, 1)
+            .map(|alloc: Allocation<()>| BindlessSlot {
                 alloc,
-                texture: texture.clone()
-            }
-        })
+                texture: texture.clone(),
+            })
     }
 }
 

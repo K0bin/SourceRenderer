@@ -140,7 +140,6 @@ impl ShaderHandle {
     }
 }
 
-
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
 pub struct LevelHandle(AssetHandle);
 
@@ -167,16 +166,13 @@ impl LevelHandle {
 #[derive(Eq, Clone, Copy, Debug)]
 pub struct AssetHandle {
     index: u64,
-    asset_type: AssetType
+    asset_type: AssetType,
 }
 
 impl AssetHandle {
     #[inline]
     pub fn new(index: u64, asset_type: AssetType) -> Self {
-        Self {
-            index,
-            asset_type
-        }
+        Self { index, asset_type }
     }
 }
 
@@ -221,7 +217,6 @@ impl AssetHandle {
     }
 }
 
-
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum AssetType {
     Texture,
@@ -259,5 +254,5 @@ impl AssetType {
 pub enum AssetTypeGroup {
     Rendering,
     Audio,
-    Level
+    Level,
 }

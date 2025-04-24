@@ -1,12 +1,12 @@
-use std::io::{Read, Result as IOResult};
 use crate::lump_data::{LumpData, LumpType};
 use crate::PrimitiveRead;
+use std::io::{Read, Result as IOResult};
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Brush {
-  pub first_side: i32,
-  pub sides_count: i32,
-  pub contents: BrushContents
+    pub first_side: i32,
+    pub sides_count: i32,
+    pub contents: BrushContents,
 }
 
 bitflags! {
@@ -48,25 +48,25 @@ bitflags! {
 }
 
 impl LumpData for Brush {
-  fn lump_type() -> LumpType {
-    LumpType::Brushes
-  }
-  fn lump_type_hdr() -> Option<LumpType> {
-    None
-  }
+    fn lump_type() -> LumpType {
+        LumpType::Brushes
+    }
+    fn lump_type_hdr() -> Option<LumpType> {
+        None
+    }
 
-  fn element_size(_version: i32) -> usize {
-    12
-  }
+    fn element_size(_version: i32) -> usize {
+        12
+    }
 
-  fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
-    let first_side = reader.read_i32()?;
-    let sides_count = reader.read_i32()?;
-    let contents = reader.read_u32()?;
-    Ok(Self {
-      first_side,
-      sides_count,
-      contents: BrushContents::from_bits(contents).unwrap()
-    })
-  }
+    fn read(reader: &mut dyn Read, _version: i32) -> IOResult<Self> {
+        let first_side = reader.read_i32()?;
+        let sides_count = reader.read_i32()?;
+        let contents = reader.read_u32()?;
+        Ok(Self {
+            first_side,
+            sides_count,
+            contents: BrushContents::from_bits(contents).unwrap(),
+        })
+    }
 }

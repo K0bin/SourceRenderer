@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::Vec3UI;
 
@@ -13,7 +13,7 @@ pub enum ResourceType {
     StorageTexture,
     Sampler,
     CombinedTextureSampler,
-    AccelerationStructure
+    AccelerationStructure,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy)]
@@ -21,7 +21,7 @@ pub enum SamplingType {
     Float,
     Depth,
     SInt,
-    UInt
+    UInt,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -36,7 +36,7 @@ pub struct Resource {
     pub is_multisampled: bool,
     pub sampling_type: SamplingType,
     pub storage_format: Format,
-    pub struct_size: u32
+    pub struct_size: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

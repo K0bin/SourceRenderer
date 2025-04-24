@@ -342,7 +342,8 @@ impl GltfLoader {
     ) -> LevelData {
         let mut world: LevelData = LevelData::new(4096, 64);
         assert!(CACHE_PAGE_COUNT >= (READ_AHEAD_PAGE_COUNT + 1));
-        let mut buffer_cache = FixedByteSizeCache::<FilePageKey, Box<[u8]>>::new(CACHE_PAGE_COUNT * FILE_PAGE_SIZE);
+        let mut buffer_cache =
+            FixedByteSizeCache::<FilePageKey, Box<[u8]>>::new(CACHE_PAGE_COUNT * FILE_PAGE_SIZE);
         let nodes = scene.nodes();
         for node in nodes {
             GltfLoader::visit_node(
@@ -376,21 +377,28 @@ impl GltfLoader {
             match src {
                 Source::Bin => {
                     if let Some((offset, length)) = range {
-                        (format!(
-                            "{}/buffer/{}-{}",
-                            gltf_file_name,
-                            offset,
-                            length
-                        ), 0)
+                        (
+                            format!("{}/buffer/{}-{}", gltf_file_name, offset, length),
+                            0,
+                        )
                     } else {
-                        (format!("{}/buffer/", gltf_file_name), range.map(|(offset, _)| offset).unwrap_or(0))
+                        (
+                            format!("{}/buffer/", gltf_file_name),
+                            range.map(|(offset, _)| offset).unwrap_or(0),
+                        )
                     }
                 }
                 Source::Uri(gltf_uri) => {
                     if let Some(last_slash_pos) = gltf_path.find('/') {
-                        (format!("{}/{}", &gltf_path[..last_slash_pos], &gltf_uri), range.map(|(offset, _)| offset).unwrap_or(0))
+                        (
+                            format!("{}/{}", &gltf_path[..last_slash_pos], &gltf_uri),
+                            range.map(|(offset, _)| offset).unwrap_or(0),
+                        )
                     } else {
-                        (gltf_uri.to_string(), range.map(|(offset, _)| offset).unwrap_or(0))
+                        (
+                            gltf_uri.to_string(),
+                            range.map(|(offset, _)| offset).unwrap_or(0),
+                        )
                     }
                 }
             }
@@ -405,8 +413,7 @@ impl GltfLoader {
         ) -> Box<[u8]> {
             let first_page = view.offset() / FILE_PAGE_SIZE;
             let last_page = (view.offset() + view.length()) / FILE_PAGE_SIZE;
-            let offset_in_first_page =
-                view.offset() - first_page * FILE_PAGE_SIZE;
+            let offset_in_first_page = view.offset() - first_page * FILE_PAGE_SIZE;
 
             let mut data = Vec::with_capacity(view.length());
             unsafe {
@@ -415,12 +422,18 @@ impl GltfLoader {
 
             for file_page_index in first_page..=last_page {
                 let relative_page_index = file_page_index - first_page;
-                let (buffer_uri, _) = build_uri(gltf_file_name, gltf_path, view.buffer().source(), None);
+                let (buffer_uri, _) =
+                    build_uri(gltf_file_name, gltf_path, view.buffer().source(), None);
                 let key = (buffer_uri, file_page_index);
 
                 if !buffer_cache.contains_key(&key) {
                     let read_size = FILE_PAGE_SIZE * (READ_AHEAD_PAGE_COUNT + 1);
-                    let (page_uri, offset) = build_uri(gltf_file_name, gltf_path, view.buffer().source(), Some((file_page_index * FILE_PAGE_SIZE, read_size)));
+                    let (page_uri, offset) = build_uri(
+                        gltf_file_name,
+                        gltf_path,
+                        view.buffer().source(),
+                        Some((file_page_index * FILE_PAGE_SIZE, read_size)),
+                    );
 
                     let mut file = asset_mgr
                         .load_file(&page_uri)
@@ -436,7 +449,10 @@ impl GltfLoader {
                         assert_eq!(end_in_cache, cache_data_vec.len());
                         let page_data = cache_data_vec.split_off(start_in_cache);
                         buffer_cache
-                            .insert((key.0.clone(), file_page_index), page_data.into_boxed_slice())
+                            .insert(
+                                (key.0.clone(), file_page_index),
+                                page_data.into_boxed_slice(),
+                            )
                             .unwrap();
                     }
                 }

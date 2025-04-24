@@ -2,7 +2,10 @@ use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
-use build_util::{compile_shaders, ShadingLanguage};
+use build_util::{
+    compile_shaders,
+    ShadingLanguage,
+};
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());

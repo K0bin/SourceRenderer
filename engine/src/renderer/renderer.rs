@@ -1,35 +1,61 @@
 use std::sync::Arc;
-use crate::{Mutex, Condvar};
 
-use web_time::{Duration, Instant};
 use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;
 use crossbeam_channel::{
-    unbounded, Receiver, SendError, Sender, TryRecvError
+    unbounded,
+    Receiver,
+    SendError,
+    Sender,
+    TryRecvError,
 };
-use sourcerenderer_core::{
-    console::Console, Vec3
+use sourcerenderer_core::console::Console;
+use sourcerenderer_core::Vec3;
+use web_time::{
+    Duration,
+    Instant,
 };
 
 use super::asset::RendererAssets;
-use super::drawable::{make_camera_proj, make_camera_view, RendererStaticDrawable};
+use super::drawable::{
+    make_camera_proj,
+    make_camera_view,
+    RendererStaticDrawable,
+};
 use super::ecs::{
     DirectionalLightComponent,
     PointLightComponent,
 };
 use super::light::DirectionalLight;
 use super::passes::web::WebRenderer;
-use super::render_path::{FrameInfo, RenderPath, SceneInfo};
+use super::render_path::{
+    FrameInfo,
+    RenderPath,
+    SceneInfo,
+};
 use super::renderer_culling::update_visibility;
 use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
-use super::{PointLight, StaticRenderableComponent};
-use crate::asset::{AssetManager, AssetType};
-use crate::engine::{EngineLoopFuncResult, WindowState};
+use super::{
+    PointLight,
+    StaticRenderableComponent,
+};
+use crate::asset::{
+    AssetManager,
+    AssetType,
+};
+use crate::engine::{
+    EngineLoopFuncResult,
+    WindowState,
+};
+use crate::graphics::*;
 use crate::renderer::command::RendererCommand;
 use crate::transform::InterpolatedTransform;
 use crate::ui::UIDrawData;
-use crate::graphics::*;
+use crate::{
+    Condvar,
+    Mutex,
+};
 
 //#[cfg(not(target_arch = "wasm32"))]
 //use super::passes::modern::ModernRenderer;
@@ -53,10 +79,10 @@ pub struct RendererReceiver {
 enum ReceiveMessagesResult {
     FrameCompleted,
     Quit,
-    Empty
+    Empty,
 }
 
-pub trait MaybeSendRenderPath : RenderPath + sourcerenderer_core::gpu::GPUMaybeSend {}
+pub trait MaybeSendRenderPath: RenderPath + sourcerenderer_core::gpu::GPUMaybeSend {}
 pub type BoxedRenderPath = Box<dyn MaybeSendRenderPath>;
 
 pub struct Renderer {
@@ -92,10 +118,7 @@ impl Renderer {
             sender: Some(sender),
             state: state.clone(),
         };
-        let renderer_receiver = RendererReceiver {
-            state,
-            receiver,
-        };
+        let renderer_receiver = RendererReceiver { state, receiver };
         (renderer_sender, renderer_receiver)
     }
 
@@ -106,7 +129,10 @@ impl Renderer {
         asset_manager: &Arc<AssetManager>,
         _console: &Arc<Console>,
     ) -> Self {
-        log::info!("Initializing renderer with {} backend", crate::graphics::ActiveBackend::name());
+        log::info!(
+            "Initializing renderer with {} backend",
+            crate::graphics::ActiveBackend::name()
+        );
 
         let mut context: GraphicsContext = device.create_context();
 
@@ -115,7 +141,13 @@ impl Renderer {
         let assets = RendererAssets::new(device, asset_manager);
 
         log::trace!("Initializing render path");
-        let render_path = Box::new(WebRenderer::new(device, &swapchain, &mut context, &mut resources, &assets));
+        let render_path = Box::new(WebRenderer::new(
+            device,
+            &swapchain,
+            &mut context,
+            &mut resources,
+            &assets,
+        ));
         //let render_path: Box<dyn RenderPath> = Box::new(NoOpRenderPath);
 
         Self {
@@ -207,23 +239,33 @@ impl Renderer {
             &scene_info,
             &frame_info,
             &mut self.resources,
-            &read_assets
+            &read_assets,
         );
         let frame_end_signal = self.context.end_frame();
 
         match render_path_result {
             Ok(result) => {
-                self.device.submit(QueueType::Graphics, QueueSubmission {
-                    command_buffer: result.cmd_buffer,
-                    wait_fences: &[],
-                    signal_fences: &[frame_end_signal],
-                    acquire_swapchain: result.backbuffer.as_ref().map(|backbuffer| (&self.swapchain, backbuffer)),
-                    release_swapchain: result.backbuffer.as_ref().map(|backbuffer| (&self.swapchain, backbuffer))
-                });
+                self.device.submit(
+                    QueueType::Graphics,
+                    QueueSubmission {
+                        command_buffer: result.cmd_buffer,
+                        wait_fences: &[],
+                        signal_fences: &[frame_end_signal],
+                        acquire_swapchain: result
+                            .backbuffer
+                            .as_ref()
+                            .map(|backbuffer| (&self.swapchain, backbuffer)),
+                        release_swapchain: result
+                            .backbuffer
+                            .as_ref()
+                            .map(|backbuffer| (&self.swapchain, backbuffer)),
+                    },
+                );
                 if let Some(backbuffer) = result.backbuffer {
-                    self.device.present(QueueType::Graphics, &self.swapchain, backbuffer);
+                    self.device
+                        .present(QueueType::Graphics, &self.swapchain, backbuffer);
                 }
-            },
+            }
             Err(_swapchain_err) => {
                 todo!("Handle swapchain recreation");
             }
@@ -233,11 +275,13 @@ impl Renderer {
         let c_device = self.device.clone();
         std::mem::drop(read_assets); // TODO: The asset manager needs a bit of an overhaul to avoid this dead lock scenario. (Spawning on a task pool in single thread mode while holding the RW lock)
 
-        bevy_tasks::ComputeTaskPool::get().spawn(async move {
-            crate::autoreleasepool(|| {
-                c_device.flush(QueueType::Graphics);
-            });
-        }).detach();
+        bevy_tasks::ComputeTaskPool::get()
+            .spawn(async move {
+                crate::autoreleasepool(|| {
+                    c_device.flush(QueueType::Graphics);
+                });
+            })
+            .detach();
 
         // The WASM task pool will only run it after the function returns.
         // By this time the current context texture might be invalidated.
@@ -260,7 +304,9 @@ impl Renderer {
         let mut message_opt: Option<RendererCommand>;
         let message_res = self.receiver.receiver.try_recv();
         match message_res {
-            Ok(message) => { message_opt = Some(message); },
+            Ok(message) => {
+                message_opt = Some(message);
+            }
             Err(err) => {
                 return match err {
                     TryRecvError::Disconnected => ReceiveMessagesResult::Quit,
@@ -296,10 +342,7 @@ impl Renderer {
                     );
                 }
 
-                RendererCommand::UpdateTransform {
-                    entity,
-                    transform,
-                } => {
+                RendererCommand::UpdateTransform { entity, transform } => {
                     self.scene.update_transform(&entity, transform);
                 }
 
@@ -311,7 +354,10 @@ impl Renderer {
                     cast_shadows,
                     can_move,
                 } => {
-                    let model_handle = self.assets.asset_manager().get_or_reserve_handle(&model_path, AssetType::Model);
+                    let model_handle = self
+                        .assets
+                        .asset_manager()
+                        .get_or_reserve_handle(&model_path, AssetType::Model);
                     self.scene.add_static_drawable(
                         entity,
                         RendererStaticDrawable {
@@ -366,18 +412,18 @@ impl Renderer {
                     self.scene.remove_directional_light(&entity);
                 }
                 RendererCommand::SetLightmap(path) => {
-                    let handle = self.assets.asset_manager().get_or_reserve_handle(&path, AssetType::Texture);
+                    let handle = self
+                        .assets
+                        .asset_manager()
+                        .get_or_reserve_handle(&path, AssetType::Texture);
                     self.scene.set_lightmap(Some(handle.into()));
                 }
                 //RendererCommand::RenderUI(data) => { self.render_path.set_ui_data(data); },
-
-                RendererCommand::WindowChanged(window_state) => {
-                    match window_state {
-                        WindowState::Fullscreen(_size) => {},
-                        WindowState::Window(_size) => {},
-                        WindowState::Minimized => {}
-                    }
-                }
+                RendererCommand::WindowChanged(window_state) => match window_state {
+                    WindowState::Fullscreen(_size) => {}
+                    WindowState::Window(_size) => {}
+                    WindowState::Minimized => {}
+                },
             }
 
             let message_res = self.receiver.receiver.try_recv();
@@ -416,14 +462,15 @@ impl RendererSender {
             return Err(SendError(()));
         };
 
-        sender.send(RendererCommand::RegisterStatic {
-            entity,
-            transform: transform.0,
-            model_path: renderable.model_path.to_string(),
-            receive_shadows: renderable.receive_shadows,
-            cast_shadows: renderable.cast_shadows,
-            can_move: renderable.can_move,
-        })
+        sender
+            .send(RendererCommand::RegisterStatic {
+                entity,
+                transform: transform.0,
+                model_path: renderable.model_path.to_string(),
+                receive_shadows: renderable.receive_shadows,
+                cast_shadows: renderable.cast_shadows,
+                can_move: renderable.can_move,
+            })
             .map_err(|_| SendError(()))
     }
 
@@ -434,7 +481,8 @@ impl RendererSender {
             return Err(SendError(()));
         };
 
-        sender.send(RendererCommand::UnregisterStatic(entity))
+        sender
+            .send(RendererCommand::UnregisterStatic(entity))
             .map_err(|_| SendError(()))
     }
 
@@ -450,11 +498,12 @@ impl RendererSender {
             return Err(SendError(()));
         };
 
-        sender.send(RendererCommand::RegisterPointLight {
-            entity,
-            transform: transform.0,
-            intensity: component.intensity,
-        })
+        sender
+            .send(RendererCommand::RegisterPointLight {
+                entity,
+                transform: transform.0,
+                intensity: component.intensity,
+            })
             .map_err(|_| SendError(()))
     }
 
@@ -465,7 +514,8 @@ impl RendererSender {
             return Err(SendError(()));
         };
 
-        sender.send(RendererCommand::UnregisterPointLight(entity))
+        sender
+            .send(RendererCommand::UnregisterPointLight(entity))
             .map_err(|_| SendError(()))
     }
 
@@ -481,11 +531,12 @@ impl RendererSender {
             return Err(SendError(()));
         };
 
-        sender.send(RendererCommand::RegisterDirectionalLight {
-            entity,
-            transform: transform.0,
-            intensity: component.intensity,
-        })
+        sender
+            .send(RendererCommand::RegisterDirectionalLight {
+                entity,
+                transform: transform.0,
+                intensity: component.intensity,
+            })
             .map_err(|_| SendError(()))
     }
 
@@ -496,35 +547,46 @@ impl RendererSender {
             return Err(SendError(()));
         };
 
-        sender.send(RendererCommand::UnregisterDirectionalLight(entity))
+        sender
+            .send(RendererCommand::UnregisterDirectionalLight(entity))
             .map_err(|_| SendError(()))
     }
 
-    pub fn update_camera_transform(&self, camera_transform: Affine3A, fov: f32) -> Result<(), SendError<()>> {
+    pub fn update_camera_transform(
+        &self,
+        camera_transform: Affine3A,
+        fov: f32,
+    ) -> Result<(), SendError<()>> {
         let sender = if let Some(sender) = self.sender.as_ref() {
             sender
         } else {
             return Err(SendError(()));
         };
 
-        sender.send(RendererCommand::UpdateCameraTransform {
-            camera_transform,
-            fov,
-        })
+        sender
+            .send(RendererCommand::UpdateCameraTransform {
+                camera_transform,
+                fov,
+            })
             .map_err(|_| SendError(()))
     }
 
-    pub fn update_transform(&self, entity: Entity, transform: Affine3A) -> Result<(), SendError<()>> {
+    pub fn update_transform(
+        &self,
+        entity: Entity,
+        transform: Affine3A,
+    ) -> Result<(), SendError<()>> {
         let sender = if let Some(sender) = self.sender.as_ref() {
             sender
         } else {
             return Err(SendError(()));
         };
 
-        sender.send(RendererCommand::UpdateTransform {
-            entity,
-            transform: transform,
-        })
+        sender
+            .send(RendererCommand::UpdateTransform {
+                entity,
+                transform: transform,
+            })
             .map_err(|_| SendError(()))
     }
 
@@ -537,7 +599,8 @@ impl RendererSender {
 
         let mut queued_guard = self.state.queued_frames_counter.lock().unwrap();
         *queued_guard += 1;
-        sender.send(RendererCommand::EndFrame)
+        sender
+            .send(RendererCommand::EndFrame)
             .map_err(|_| SendError(()))
     }
 
@@ -548,23 +611,23 @@ impl RendererSender {
             return Err(SendError(()));
         };
 
-        sender.send(RendererCommand::SetLightmap(path.to_string()))
+        sender
+            .send(RendererCommand::SetLightmap(path.to_string()))
             .map_err(|_| SendError(()))
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn wait_until_available(&self, timeout: Duration) {
         let queued_guard = self.state.queued_frames_counter.lock().unwrap();
-        let _ = self.state.cond_var
-            .wait_timeout_while(queued_guard, timeout, |queued| {
-                *queued > 1
-            })
+        let _ = self
+            .state
+            .cond_var
+            .wait_timeout_while(queued_guard, timeout, |queued| *queued > 1)
             .unwrap();
     }
 
     #[cfg(target_arch = "wasm32")]
-    pub fn wait_until_available(&self, _timeout: Duration) {
-    }
+    pub fn wait_until_available(&self, _timeout: Duration) {}
 
     pub fn is_saturated(&self) -> bool {
         let queued_guard: crate::MutexGuard<u32> = self.state.queued_frames_counter.lock().unwrap();
@@ -579,7 +642,7 @@ impl RendererSender {
         };
 
         /*sender.send(RendererCommand::RenderUI(ui_data))
-            .map_err(|_| SendError(()))*/
+        .map_err(|_| SendError(()))*/
         unimplemented!()
     }
 

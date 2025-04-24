@@ -1,7 +1,21 @@
-use bevy_app::{App, FixedPostUpdate, Plugin, PostUpdate};
-use bevy_ecs::{component::Component, entity::Entity, system::{Commands, Query, Res}};
+use bevy_app::{
+    App,
+    FixedPostUpdate,
+    Plugin,
+    PostUpdate,
+};
+use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::system::{
+    Commands,
+    Query,
+    Res,
+};
 use bevy_math::Affine3A;
-use bevy_time::{Fixed, Time};
+use bevy_time::{
+    Fixed,
+    Time,
+};
 use bevy_transform::components::GlobalTransform;
 
 #[derive(Component)]
@@ -25,7 +39,9 @@ fn update_previous_global_transform(
     mut commands: Commands,
 ) {
     for (entity, transform) in query.iter() {
-        commands.entity(entity).insert(PreviousGlobalTransform(transform.affine()));
+        commands
+            .entity(entity)
+            .insert(PreviousGlobalTransform(transform.affine()));
     }
 }
 
@@ -35,15 +51,18 @@ fn interpolate_transform_matrix(
     mut commands: Commands,
 ) {
     for (entity, old_transform, new_transform) in query.iter() {
-        let (old_scale, old_rotation, old_translation) = old_transform.0.to_scale_rotation_translation();
-        let (new_scale, new_rotation, new_translation) = new_transform.to_scale_rotation_translation();
+        let (old_scale, old_rotation, old_translation) =
+            old_transform.0.to_scale_rotation_translation();
+        let (new_scale, new_rotation, new_translation) =
+            new_transform.to_scale_rotation_translation();
         let s = time.overstep_fraction();
 
-        commands.entity(entity).insert(
-            InterpolatedTransform(
-                Affine3A::from_scale_rotation_translation(
-                    old_scale.lerp(new_scale, s), old_rotation.lerp(new_rotation,s), old_translation.lerp(new_translation, s))
-            )
-        );
+        commands.entity(entity).insert(InterpolatedTransform(
+            Affine3A::from_scale_rotation_translation(
+                old_scale.lerp(new_scale, s),
+                old_rotation.lerp(new_rotation, s),
+                old_translation.lerp(new_translation, s),
+            ),
+        ));
     }
 }

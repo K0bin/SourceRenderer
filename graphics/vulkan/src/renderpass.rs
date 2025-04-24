@@ -32,15 +32,13 @@ fn resolve_mode_to_vk(resolve_mode: gpu::ResolveMode) -> vk::ResolveModeFlags {
         gpu::ResolveMode::Average => vk::ResolveModeFlags::AVERAGE,
         gpu::ResolveMode::Min => vk::ResolveModeFlags::MIN,
         gpu::ResolveMode::Max => vk::ResolveModeFlags::MAX,
-        gpu::ResolveMode::SampleZero => vk::ResolveModeFlags::SAMPLE_ZERO
+        gpu::ResolveMode::SampleZero => vk::ResolveModeFlags::SAMPLE_ZERO,
     }
 }
 
 fn clear_color_to_vk(clear_color: gpu::ClearColor) -> vk::ClearValue {
     let mut val = vk::ClearValue {
-        color: vk::ClearColorValue {
-            float32: [0f32; 4]
-        }
+        color: vk::ClearColorValue { float32: [0f32; 4] },
     };
     unsafe {
         val.color.float32.clone_from_slice(clear_color.as_f32());
@@ -52,10 +50,10 @@ pub(crate) fn begin_render_pass(
     device: &RawVkDevice,
     command_buffer: vk::CommandBuffer,
     render_pass: &gpu::RenderPassBeginInfo<VkBackend>,
-    recording_mode: gpu::RenderpassRecordingMode
+    recording_mode: gpu::RenderpassRecordingMode,
 ) {
-
-    let color_attachments: SmallVec<[vk::RenderingAttachmentInfo; 8]> = render_pass.render_targets
+    let color_attachments: SmallVec<[vk::RenderingAttachmentInfo; 8]> = render_pass
+        .render_targets
         .iter()
         .map(|rt| render_target_to_rendering_attachment_info(rt))
         .collect();
@@ -65,16 +63,16 @@ pub(crate) fn begin_render_pass(
             offset: vk::Offset2D { x: 0, y: 0 },
             extent: vk::Extent2D {
                 width: rt.view.texture_info().width,
-                height: rt.view.texture_info().height
-            }
+                height: rt.view.texture_info().height,
+            },
         }
     } else if let Some(dsv) = render_pass.depth_stencil.as_ref() {
         vk::Rect2D {
             offset: vk::Offset2D { x: 0, y: 0 },
             extent: vk::Extent2D {
                 width: dsv.view.texture_info().width,
-                height: dsv.view.texture_info().height
-            }
+                height: dsv.view.texture_info().height,
+            },
         }
     } else {
         panic!("Renderpass must have either color or depth stencil target")
@@ -85,24 +83,33 @@ pub(crate) fn begin_render_pass(
     let mut stencil_attachment: *const vk::RenderingAttachmentInfo = std::ptr::null();
 
     if let Some(dsv) = render_pass.depth_stencil.as_ref() {
-        let clear_value = if let gpu::LoadOpDepthStencil::Clear(clear_value) = dsv.load_op { clear_value } else { gpu::ClearDepthStencilValue::DEPTH_ONE };
+        let clear_value = if let gpu::LoadOpDepthStencil::Clear(clear_value) = dsv.load_op {
+            clear_value
+        } else {
+            gpu::ClearDepthStencilValue::DEPTH_ONE
+        };
         depth_stencil_attachment.clear_value = vk::ClearValue {
             depth_stencil: vk::ClearDepthStencilValue {
                 depth: clear_value.depth,
-                stencil: clear_value.stencil
-            }
+                stencil: clear_value.stencil,
+            },
         };
         depth_stencil_attachment.image_layout = vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         depth_stencil_attachment.image_view = dsv.view.view_handle();
         if let gpu::StoreOp::<VkBackend>::Resolve(resolve_view) = &dsv.store_op {
-            depth_stencil_attachment.resolve_image_layout = vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL;
+            depth_stencil_attachment.resolve_image_layout =
+                vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL;
             depth_stencil_attachment.resolve_image_view = resolve_view.view.view_handle();
             depth_stencil_attachment.resolve_mode = resolve_mode_to_vk(resolve_view.mode);
         }
         depth_stencil_attachment.load_op = load_op_ds_to_vk(dsv.load_op);
         depth_stencil_attachment.store_op = store_op_to_vk(&dsv.store_op);
 
-        let format = dsv.view.info().format.unwrap_or(dsv.view.texture_info().format);
+        let format = dsv
+            .view
+            .info()
+            .format
+            .unwrap_or(dsv.view.texture_info().format);
         if format.is_depth() {
             depth_attachment = &depth_stencil_attachment as *const vk::RenderingAttachmentInfo;
         }
@@ -112,7 +119,11 @@ pub(crate) fn begin_render_pass(
     }
 
     let info = vk::RenderingInfo {
-        flags: if let gpu::RenderpassRecordingMode::CommandBuffers(_) = recording_mode { vk::RenderingFlags::CONTENTS_SECONDARY_COMMAND_BUFFERS } else { vk::RenderingFlags::empty() },
+        flags: if let gpu::RenderpassRecordingMode::CommandBuffers(_) = recording_mode {
+            vk::RenderingFlags::CONTENTS_SECONDARY_COMMAND_BUFFERS
+        } else {
+            vk::RenderingFlags::empty()
+        },
         color_attachment_count: color_attachments.len() as u32,
         p_color_attachments: color_attachments.as_ptr(),
         view_mask: 0u32,
@@ -127,11 +138,19 @@ pub(crate) fn begin_render_pass(
     }
 }
 
-
-pub(crate) fn render_target_to_rendering_attachment_info<'a>(render_target: &'a gpu::RenderTarget<'a, VkBackend>) -> vk::RenderingAttachmentInfo<'a> {
-    let (resolve_view, resolve_layout, resolve_mode) = if let gpu::StoreOp::<VkBackend>::Resolve(resolve_attachment) = &render_target.store_op {
-        (resolve_attachment.view.view_handle(), vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL, resolve_mode_to_vk(resolve_attachment.mode))
-    } else { Default::default() };
+pub(crate) fn render_target_to_rendering_attachment_info<'a>(
+    render_target: &'a gpu::RenderTarget<'a, VkBackend>,
+) -> vk::RenderingAttachmentInfo<'a> {
+    let (resolve_view, resolve_layout, resolve_mode) =
+        if let gpu::StoreOp::<VkBackend>::Resolve(resolve_attachment) = &render_target.store_op {
+            (
+                resolve_attachment.view.view_handle(),
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                resolve_mode_to_vk(resolve_attachment.mode),
+            )
+        } else {
+            Default::default()
+        };
 
     vk::RenderingAttachmentInfo {
         image_view: render_target.view.view_handle(),
@@ -141,7 +160,11 @@ pub(crate) fn render_target_to_rendering_attachment_info<'a>(render_target: &'a 
         image_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
         load_op: load_op_color_to_vk(render_target.load_op),
         store_op: store_op_to_vk(&render_target.store_op),
-        clear_value: if let gpu::LoadOpColor::Clear(clear_color) = render_target.load_op { clear_color_to_vk(clear_color) } else { vk::ClearValue::default() },
+        clear_value: if let gpu::LoadOpColor::Clear(clear_color) = render_target.load_op {
+            clear_color_to_vk(clear_color)
+        } else {
+            vk::ClearValue::default()
+        },
         ..Default::default()
     }
 }

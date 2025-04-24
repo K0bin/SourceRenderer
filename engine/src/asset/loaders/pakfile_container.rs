@@ -1,5 +1,3 @@
-use crate::Mutex;
-
 use bevy_tasks::futures_lite::io::Cursor;
 use sourcerenderer_bsp::PakFile;
 
@@ -7,6 +5,7 @@ use crate::asset::asset_manager::{
     AssetContainer,
     AssetFile,
 };
+use crate::Mutex;
 
 pub struct PakFileContainer {
     pakfile: Mutex<PakFile>,

@@ -1,6 +1,8 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
+use std::sync::Arc;
 
-use sourcerenderer_core::{gpu::Backbuffer as _, Matrix4};
+use sourcerenderer_core::gpu::Backbuffer as _;
+use sourcerenderer_core::Matrix4;
 
 use super::*;
 
@@ -9,7 +11,7 @@ pub struct Swapchain {
     destroyer: Arc<DeferredDestroyer>,
     swapchain: active_gpu_backend::Swapchain,
     views: HashMap<u64, Arc<super::TextureView>>,
-    recreation_count: u32
+    recreation_count: u32,
 }
 
 impl Swapchain {
@@ -19,7 +21,7 @@ impl Swapchain {
             destroyer: device.destroyer().clone(),
             device: device.handle().clone(),
             views: HashMap::new(),
-            recreation_count: 0u32
+            recreation_count: 0u32,
         }
     }
 
@@ -34,47 +36,57 @@ impl Swapchain {
     }
 
     pub fn recreate(&mut self) {
-        unsafe { self.swapchain.recreate(); }
+        unsafe {
+            self.swapchain.recreate();
+        }
         self.views.clear();
         self.recreation_count += 1;
     }
 
-    pub fn backbuffer_view(&self, backbuffer: &active_gpu_backend::Backbuffer) -> Arc<super::TextureView>{
+    pub fn backbuffer_view(
+        &self,
+        backbuffer: &active_gpu_backend::Backbuffer,
+    ) -> Arc<super::TextureView> {
         if self.swapchain.will_reuse_backbuffers() {
             self.views.get(&backbuffer.key()).unwrap().clone()
         } else {
             unsafe {
                 let texture = self.swapchain.texture_for_backbuffer(backbuffer);
-                Arc::new(
-                    super::TextureView::new_from_texture_handle(
-                        &self.device, &self.destroyer, texture,
-                        &TextureViewInfo::default(), None
-                    )
-                )
+                Arc::new(super::TextureView::new_from_texture_handle(
+                    &self.device,
+                    &self.destroyer,
+                    texture,
+                    &TextureViewInfo::default(),
+                    None,
+                ))
             }
         }
     }
 
     pub fn ensure_backbuffer_view(&mut self, backbuffer: &active_gpu_backend::Backbuffer) {
         let key = backbuffer.key();
-        self.views.entry(key).or_insert_with(|| {
-            unsafe {
-                let texture = self.swapchain.texture_for_backbuffer(backbuffer);
-                Arc::new(
-                    super::TextureView::new_from_texture_handle(
-                        &self.device, &self.destroyer, texture,
-                        &TextureViewInfo::default(), None
-                    )
-                )
-            }
+        self.views.entry(key).or_insert_with(|| unsafe {
+            let texture = self.swapchain.texture_for_backbuffer(backbuffer);
+            Arc::new(super::TextureView::new_from_texture_handle(
+                &self.device,
+                &self.destroyer,
+                texture,
+                &TextureViewInfo::default(),
+                None,
+            ))
         });
     }
 
-    pub fn backbuffer_handle<'a>(&'a self, backbuffer: &'a active_gpu_backend::Backbuffer) -> &'a active_gpu_backend::Texture {
+    pub fn backbuffer_handle<'a>(
+        &'a self,
+        backbuffer: &'a active_gpu_backend::Backbuffer,
+    ) -> &'a active_gpu_backend::Texture {
         unsafe { self.swapchain.texture_for_backbuffer(backbuffer) }
     }
 
-    pub fn next_backbuffer(&mut self) -> Result<Arc<active_gpu_backend::Backbuffer>, SwapchainError> {
+    pub fn next_backbuffer(
+        &mut self,
+    ) -> Result<Arc<active_gpu_backend::Backbuffer>, SwapchainError> {
         let backbuffer = unsafe { self.swapchain.next_backbuffer()? };
         if self.swapchain.will_reuse_backbuffers() {
             self.ensure_backbuffer_view(&backbuffer);

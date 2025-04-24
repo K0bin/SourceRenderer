@@ -9,7 +9,7 @@ fn store_action_to_mtl(action: &gpu::StoreOp<MTLBackend>) -> objc2_metal::MTLSto
     match action {
         gpu::StoreOp::Store => objc2_metal::MTLStoreAction::Store,
         gpu::StoreOp::DontCare => objc2_metal::MTLStoreAction::DontCare,
-        gpu::StoreOp::Resolve(_) => objc2_metal::MTLStoreAction::StoreAndMultisampleResolve
+        gpu::StoreOp::Resolve(_) => objc2_metal::MTLStoreAction::StoreAndMultisampleResolve,
     }
 }
 
@@ -29,7 +29,9 @@ fn load_action_depth_stencil_to_mtl(action: gpu::LoadOpDepthStencil) -> objc2_me
     }
 }
 
-pub(crate) unsafe fn render_pass_to_descriptors(info: &gpu::RenderPassBeginInfo<MTLBackend>) -> Retained<objc2_metal::MTLRenderPassDescriptor> {
+pub(crate) unsafe fn render_pass_to_descriptors(
+    info: &gpu::RenderPassBeginInfo<MTLBackend>,
+) -> Retained<objc2_metal::MTLRenderPassDescriptor> {
     let descriptor = objc2_metal::MTLRenderPassDescriptor::new();
     for (index, rt) in info.render_targets.iter().enumerate() {
         let attachment_desc = objc2_metal::MTLRenderPassColorAttachmentDescriptor::new();
@@ -44,7 +46,11 @@ pub(crate) unsafe fn render_pass_to_descriptors(info: &gpu::RenderPassBeginInfo<
             attachment_desc.setSlice(resolve_view.view.info().base_array_layer as NSUInteger);
         }
         if let gpu::LoadOpColor::Clear(color) = rt.load_op {
-            let format = rt.view.info().format.unwrap_or(rt.view.texture_info().format);
+            let format = rt
+                .view
+                .info()
+                .format
+                .unwrap_or(rt.view.texture_info().format);
             if format.is_unorm() {
                 attachment_desc.setClearColor(objc2_metal::MTLClearColor {
                     red: color.as_u32()[0] as f64 / 255.0f64,
@@ -84,7 +90,9 @@ pub(crate) unsafe fn render_pass_to_descriptors(info: &gpu::RenderPassBeginInfo<
                 panic!("Something is wrong with the clear color.")
             }
         }
-        descriptor.colorAttachments().setObject_atIndexedSubscript(Some(&attachment_desc), index as usize);
+        descriptor
+            .colorAttachments()
+            .setObject_atIndexedSubscript(Some(&attachment_desc), index as usize);
     }
 
     if let Some(dsv) = info.depth_stencil {
@@ -106,4 +114,3 @@ pub(crate) unsafe fn render_pass_to_descriptors(info: &gpu::RenderPassBeginInfo<
     descriptor.setVisibilityResultBuffer(info.query_pool.map(|p| p.handle()));
     descriptor.to_owned()
 }
-

@@ -1,28 +1,55 @@
 use std::sync::Arc;
 
 use smallvec::SmallVec;
-use crate::graphics::gpu::TextureViewInfo;
-use crate::graphics::{Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef, BufferUsage, Device, MemoryUsage, QueueSubmission, QueueType, Swapchain, SwapchainError, TextureLayout, WHOLE_BUFFER};
-use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
-use crate::renderer::passes::blit::BlitPass;
 use sourcerenderer_core::{
-    Matrix4, Vec2, Vec2UI, Vec3, Vec3UI
+    Matrix4,
+    Vec2,
+    Vec2UI,
+    Vec3,
+    Vec3UI,
 };
 
-use crate::renderer::passes::modern::acceleration_structure_update::AccelerationStructureUpdatePass;
-use crate::graphics::{GraphicsContext, CommandBuffer};
+use super::PathTracerPass;
+use crate::graphics::gpu::TextureViewInfo;
+use crate::graphics::{
+    Barrier,
+    BarrierAccess,
+    BarrierSync,
+    BarrierTextureRange,
+    BindingFrequency,
+    BufferRef,
+    BufferUsage,
+    CommandBuffer,
+    Device,
+    GraphicsContext,
+    MemoryUsage,
+    QueueSubmission,
+    QueueType,
+    Swapchain,
+    SwapchainError,
+    TextureLayout,
+    WHOLE_BUFFER,
+};
+use crate::renderer::asset::{
+    RendererAssets,
+    RendererAssetsReadOnly,
+};
+use crate::renderer::passes::blit::BlitPass;
 use crate::renderer::passes::blue_noise::BlueNoise;
+use crate::renderer::passes::modern::acceleration_structure_update::AccelerationStructureUpdatePass;
+use crate::renderer::passes::modern::gpu_scene::SceneBuffers;
 use crate::renderer::render_path::{
-    FrameInfo, RenderPassParameters, RenderPath, RenderPathResult, SceneInfo
+    FrameInfo,
+    RenderPassParameters,
+    RenderPath,
+    RenderPathResult,
+    SceneInfo,
 };
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::passes::modern::gpu_scene::SceneBuffers;
 use crate::ui::UIDrawData;
-
-use super::PathTracerPass;
 
 pub struct PathTracingRenderer {
     device: Arc<Device>,
@@ -30,7 +57,7 @@ pub struct PathTracingRenderer {
     blue_noise: BlueNoise,
     acceleration_structure_update: AccelerationStructureUpdatePass,
     blit_pass: crate::renderer::passes::blit::BlitPass,
-    path_tracer: PathTracerPass
+    path_tracer: PathTracerPass,
 }
 
 impl PathTracingRenderer {
@@ -50,33 +77,41 @@ impl PathTracingRenderer {
         if !device.supports_ray_tracing_query() {
             panic!("Need ray tracing support to run the path tracer");
         }
-        let acceleration_structure_update = AccelerationStructureUpdatePass::new(
-            device,
-            &mut init_cmd_buffer,
-        );
+        let acceleration_structure_update =
+            AccelerationStructureUpdatePass::new(device, &mut init_cmd_buffer);
         let blit_pass = BlitPass::new(resources, assets, swapchain.format());
-        let path_tracer_pass = PathTracerPass::new(device, resolution, resources, assets, &mut init_cmd_buffer);
+        let path_tracer_pass =
+            PathTracerPass::new(device, resolution, resources, assets, &mut init_cmd_buffer);
 
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
 
-        device.submit(QueueType::Graphics, QueueSubmission {
-            command_buffer: init_cmd_buffer.finish(),
-            wait_fences: &[],
-            signal_fences: &[],
-            acquire_swapchain: None,
-            release_swapchain: None
-        });
+        device.submit(
+            QueueType::Graphics,
+            QueueSubmission {
+                command_buffer: init_cmd_buffer.finish(),
+                wait_fences: &[],
+                signal_fences: &[],
+                acquire_swapchain: None,
+                release_swapchain: None,
+            },
+        );
         let c_device = device.clone();
         let task_pool = bevy_tasks::ComputeTaskPool::get();
-        task_pool.spawn(async move { crate::autoreleasepool(|| { c_device.flush(QueueType::Graphics); }) }).detach();
+        task_pool
+            .spawn(async move {
+                crate::autoreleasepool(|| {
+                    c_device.flush(QueueType::Graphics);
+                })
+            })
+            .detach();
         Self {
             device: device.clone(),
             ui_data: UIDrawData::default(),
             blue_noise,
             acceleration_structure_update,
             blit_pass,
-            path_tracer: path_tracer_pass
+            path_tracer: path_tracer_pass,
         }
     }
 
@@ -93,13 +128,55 @@ impl PathTracingRenderer {
     ) {
         let view = &scene.scene.views()[scene.active_view_index];
 
-        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 0, BufferRef::Transient(&gpu_scene_buffers.buffer), gpu_scene_buffers.scene_buffer.offset, gpu_scene_buffers.scene_buffer.length);
-        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 1, BufferRef::Transient(&gpu_scene_buffers.buffer), gpu_scene_buffers.draws_buffer.offset, gpu_scene_buffers.draws_buffer.length);
-        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 2, BufferRef::Transient(&gpu_scene_buffers.buffer), gpu_scene_buffers.meshes_buffer.offset, gpu_scene_buffers.meshes_buffer.length);
-        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 3, BufferRef::Transient(&gpu_scene_buffers.buffer), gpu_scene_buffers.drawables_buffer.offset, gpu_scene_buffers.drawables_buffer.length);
-        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 4, BufferRef::Transient(&gpu_scene_buffers.buffer), gpu_scene_buffers.parts_buffer.offset, gpu_scene_buffers.parts_buffer.length);
-        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 5, BufferRef::Transient(&gpu_scene_buffers.buffer), gpu_scene_buffers.materials_buffer.offset, gpu_scene_buffers.materials_buffer.length);
-        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 6, BufferRef::Transient(&gpu_scene_buffers.buffer), gpu_scene_buffers.lights_buffer.offset, gpu_scene_buffers.lights_buffer.length);
+        cmd_buf.bind_storage_buffer(
+            BindingFrequency::Frame,
+            0,
+            BufferRef::Transient(&gpu_scene_buffers.buffer),
+            gpu_scene_buffers.scene_buffer.offset,
+            gpu_scene_buffers.scene_buffer.length,
+        );
+        cmd_buf.bind_storage_buffer(
+            BindingFrequency::Frame,
+            1,
+            BufferRef::Transient(&gpu_scene_buffers.buffer),
+            gpu_scene_buffers.draws_buffer.offset,
+            gpu_scene_buffers.draws_buffer.length,
+        );
+        cmd_buf.bind_storage_buffer(
+            BindingFrequency::Frame,
+            2,
+            BufferRef::Transient(&gpu_scene_buffers.buffer),
+            gpu_scene_buffers.meshes_buffer.offset,
+            gpu_scene_buffers.meshes_buffer.length,
+        );
+        cmd_buf.bind_storage_buffer(
+            BindingFrequency::Frame,
+            3,
+            BufferRef::Transient(&gpu_scene_buffers.buffer),
+            gpu_scene_buffers.drawables_buffer.offset,
+            gpu_scene_buffers.drawables_buffer.length,
+        );
+        cmd_buf.bind_storage_buffer(
+            BindingFrequency::Frame,
+            4,
+            BufferRef::Transient(&gpu_scene_buffers.buffer),
+            gpu_scene_buffers.parts_buffer.offset,
+            gpu_scene_buffers.parts_buffer.length,
+        );
+        cmd_buf.bind_storage_buffer(
+            BindingFrequency::Frame,
+            5,
+            BufferRef::Transient(&gpu_scene_buffers.buffer),
+            gpu_scene_buffers.materials_buffer.offset,
+            gpu_scene_buffers.materials_buffer.length,
+        );
+        cmd_buf.bind_storage_buffer(
+            BindingFrequency::Frame,
+            6,
+            BufferRef::Transient(&gpu_scene_buffers.buffer),
+            gpu_scene_buffers.lights_buffer.offset,
+            gpu_scene_buffers.lights_buffer.length,
+        );
 
         cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 7, camera_buffer, 0, WHOLE_BUFFER);
         cmd_buf.bind_uniform_buffer(
@@ -109,8 +186,20 @@ impl PathTracingRenderer {
             0,
             WHOLE_BUFFER,
         );
-        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 9, scene.vertex_buffer, 0, WHOLE_BUFFER);
-        cmd_buf.bind_storage_buffer(BindingFrequency::Frame, 10, scene.index_buffer, 0, WHOLE_BUFFER);
+        cmd_buf.bind_storage_buffer(
+            BindingFrequency::Frame,
+            9,
+            scene.vertex_buffer,
+            0,
+            WHOLE_BUFFER,
+        );
+        cmd_buf.bind_storage_buffer(
+            BindingFrequency::Frame,
+            10,
+            scene.index_buffer,
+            0,
+            WHOLE_BUFFER,
+        );
         let cluster_count = Vec3UI::new(1u32, 1u32, 1u32);
         let cluster_z_scale = (cluster_count.z as f32) / (view.far_plane / view.near_plane).log2();
         let cluster_z_bias = -(cluster_count.z as f32) * (view.near_plane).log2()
@@ -124,7 +213,7 @@ impl PathTracingRenderer {
             light_mat: Matrix4,
             z_min: f32,
             z_max: f32,
-            _padding: [u32; 2]
+            _padding: [u32; 2],
         }
 
         #[repr(C)]
@@ -141,38 +230,47 @@ impl PathTracingRenderer {
             rt_size: Vec2UI,
             cascades: [ShadowCascade; 5],
             cascade_count: u32,
-            frame: u32
+            frame: u32,
         }
 
-        let setup_buffer = cmd_buf.upload_dynamic_data(
-            &[SetupBuffer {
-                point_light_count: scene.scene.point_lights().len() as u32,
-                directional_light_count: scene.scene.directional_lights().len() as u32,
-                cluster_z_bias,
-                cluster_z_scale,
-                cluster_count,
-                _padding: 0,
-                swapchain_transform: swapchain.transform(),
-                halton_point: crate::renderer::passes::taa::scaled_halton_point(
-                    rendering_resolution.x,
-                    rendering_resolution.y,
-                    (frame % 8) as u32 + 1,
-                ),
-                rt_size: *rendering_resolution,
-                cascade_count: 0u32,
-                cascades: gpu_cascade_data,
-                frame: frame as u32
-            }],
-            BufferUsage::CONSTANT,
-        ).unwrap();
-        cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 11, BufferRef::Transient(&setup_buffer), 0, WHOLE_BUFFER);
+        let setup_buffer = cmd_buf
+            .upload_dynamic_data(
+                &[SetupBuffer {
+                    point_light_count: scene.scene.point_lights().len() as u32,
+                    directional_light_count: scene.scene.directional_lights().len() as u32,
+                    cluster_z_bias,
+                    cluster_z_scale,
+                    cluster_count,
+                    _padding: 0,
+                    swapchain_transform: swapchain.transform(),
+                    halton_point: crate::renderer::passes::taa::scaled_halton_point(
+                        rendering_resolution.x,
+                        rendering_resolution.y,
+                        (frame % 8) as u32 + 1,
+                    ),
+                    rt_size: *rendering_resolution,
+                    cascade_count: 0u32,
+                    cascades: gpu_cascade_data,
+                    frame: frame as u32,
+                }],
+                BufferUsage::CONSTANT,
+            )
+            .unwrap();
+        cmd_buf.bind_uniform_buffer(
+            BindingFrequency::Frame,
+            11,
+            BufferRef::Transient(&setup_buffer),
+            0,
+            WHOLE_BUFFER,
+        );
         #[repr(C)]
         #[derive(Debug, Clone)]
         struct PointLight {
             position: Vec3,
             intensity: f32,
         }
-        let point_lights: SmallVec<[PointLight; 16]> = scene.scene
+        let point_lights: SmallVec<[PointLight; 16]> = scene
+            .scene
             .point_lights()
             .iter()
             .map(|l| PointLight {
@@ -180,7 +278,9 @@ impl PathTracingRenderer {
                 intensity: l.intensity,
             })
             .collect();
-        let point_lights_buffer = cmd_buf.upload_dynamic_data(&point_lights, BufferUsage::CONSTANT).unwrap();
+        let point_lights_buffer = cmd_buf
+            .upload_dynamic_data(&point_lights, BufferUsage::CONSTANT)
+            .unwrap();
         cmd_buf.bind_uniform_buffer(
             BindingFrequency::Frame,
             12,
@@ -194,7 +294,8 @@ impl PathTracingRenderer {
             direction: Vec3,
             intensity: f32,
         }
-        let directional_lights: SmallVec<[DirectionalLight; 16]> = scene.scene
+        let directional_lights: SmallVec<[DirectionalLight; 16]> = scene
+            .scene
             .directional_lights()
             .iter()
             .map(|l| DirectionalLight {
@@ -202,8 +303,9 @@ impl PathTracingRenderer {
                 intensity: l.intensity,
             })
             .collect();
-        let directional_lights_buffer =
-            cmd_buf.upload_dynamic_data(&directional_lights, BufferUsage::CONSTANT).unwrap();
+        let directional_lights_buffer = cmd_buf
+            .upload_dynamic_data(&directional_lights, BufferUsage::CONSTANT)
+            .unwrap();
         cmd_buf.bind_uniform_buffer(
             BindingFrequency::Frame,
             13,
@@ -221,10 +323,7 @@ impl RenderPath for PathTracingRenderer {
 
     fn write_occlusion_culling_results(&self, _frame: u64, _bitset: &mut Vec<u32>) {}
 
-    fn on_swapchain_changed(
-        &mut self,
-        _swapchain: &Swapchain,
-    ) {
+    fn on_swapchain_changed(&mut self, _swapchain: &Swapchain) {
         // TODO: resize render targets
     }
 
@@ -246,10 +345,29 @@ impl RenderPath for PathTracingRenderer {
 
         let _main_view = &scene.scene.views()[scene.active_view_index];
 
-        let camera_buffer = self.device.upload_data(&[0f32], MemoryUsage::MainMemoryWriteCombined, BufferUsage::CONSTANT).unwrap();
-        let camera_history_buffer = self.device.upload_data(&[0f32], MemoryUsage::MainMemoryWriteCombined, BufferUsage::CONSTANT).unwrap();
+        let camera_buffer = self
+            .device
+            .upload_data(
+                &[0f32],
+                MemoryUsage::MainMemoryWriteCombined,
+                BufferUsage::CONSTANT,
+            )
+            .unwrap();
+        let camera_history_buffer = self
+            .device
+            .upload_data(
+                &[0f32],
+                MemoryUsage::MainMemoryWriteCombined,
+                BufferUsage::CONSTANT,
+            )
+            .unwrap();
 
-        let scene_buffers = crate::renderer::passes::modern::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, &assets);
+        let scene_buffers = crate::renderer::passes::modern::gpu_scene::upload(
+            &mut cmd_buf,
+            scene.scene,
+            0, /* TODO */
+            &assets,
+        );
 
         self.setup_frame(
             &mut cmd_buf,
@@ -259,7 +377,7 @@ impl RenderPath for PathTracingRenderer {
             BufferRef::Regular(&camera_buffer),
             BufferRef::Regular(&camera_history_buffer),
             &Vec2UI::new(swapchain.width(), swapchain.height()),
-            frame_info.frame
+            frame_info.frame,
         );
 
         let params = RenderPassParameters {
@@ -269,12 +387,17 @@ impl RenderPath for PathTracingRenderer {
             assets,
         };
 
-        self
-            .acceleration_structure_update
+        self.acceleration_structure_update
             .execute(&mut cmd_buf, &params);
 
         let blue_noise_sampler = params.resources.linear_sampler();
-        self.path_tracer.execute(&mut cmd_buf, &params, self.acceleration_structure_update.acceleration_structure(), self.blue_noise.frame(frame_info.frame), blue_noise_sampler);
+        self.path_tracer.execute(
+            &mut cmd_buf,
+            &params,
+            self.acceleration_structure_update.acceleration_structure(),
+            self.blue_noise.frame(frame_info.frame),
+            blue_noise_sampler,
+        );
 
         let backbuffer = swapchain.next_backbuffer()?;
         let backbuffer_view = swapchain.backbuffer_view(&backbuffer);
@@ -289,10 +412,12 @@ impl RenderPath for PathTracingRenderer {
             new_layout: TextureLayout::RenderTarget,
             texture: backbuffer_handle,
             range: BarrierTextureRange::default(),
-            queue_ownership: None
+            queue_ownership: None,
         }]);
         cmd_buf.flush_barriers();
-        let rt_view = params.resources.access_view(&mut cmd_buf, PathTracerPass::PATH_TRACING_TARGET,
+        let rt_view = params.resources.access_view(
+            &mut cmd_buf,
+            PathTracerPass::PATH_TRACING_TARGET,
             BarrierSync::FRAGMENT_SHADER,
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,
@@ -302,11 +427,21 @@ impl RenderPath for PathTracingRenderer {
                 mip_level_length: 1,
                 base_array_layer: 0,
                 array_layer_length: 1,
-                format: None
-            }, HistoryResourceEntry::Current);
+                format: None,
+            },
+            HistoryResourceEntry::Current,
+        );
         let sampler = params.resources.linear_sampler();
         let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
-        self.blit_pass.execute(context, &mut cmd_buf, &params.assets, &rt_view, &backbuffer_view, sampler, resolution);
+        self.blit_pass.execute(
+            context,
+            &mut cmd_buf,
+            &params.assets,
+            &rt_view,
+            &backbuffer_view,
+            sampler,
+            resolution,
+        );
         cmd_buf.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::RENDER_TARGET,
             new_sync: BarrierSync::empty(),
@@ -316,11 +451,11 @@ impl RenderPath for PathTracingRenderer {
             new_layout: TextureLayout::Present,
             texture: backbuffer_handle,
             range: BarrierTextureRange::default(),
-            queue_ownership: None
+            queue_ownership: None,
         }]);
         return Ok(RenderPathResult {
             cmd_buffer: cmd_buf.finish(),
-            backbuffer: Some(backbuffer)
+            backbuffer: Some(backbuffer),
         });
     }
 

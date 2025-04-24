@@ -27,10 +27,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-mod utilities;
-mod package;
 mod archive_md5_section_entry;
+mod package;
 mod package_entry;
+mod utilities;
 
 pub use self::package::Package;
 pub use self::package::PackageError;

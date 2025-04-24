@@ -3,7 +3,6 @@ use std::sync::{
     Arc,
     Weak,
 };
-use crate::Mutex;
 use std::thread;
 
 use crossbeam_channel::{
@@ -11,7 +10,8 @@ use crossbeam_channel::{
     Receiver,
 };
 use sourcerenderer_core::platform::{
-    FileWatcher, PlatformIO
+    FileWatcher,
+    PlatformIO,
 };
 
 use crate::asset::asset_manager::{
@@ -19,6 +19,7 @@ use crate::asset::asset_manager::{
     AssetFile,
 };
 use crate::asset::AssetManager;
+use crate::Mutex;
 
 pub struct FSContainer<IO: PlatformIO> {
     path: PathBuf,
@@ -57,7 +58,11 @@ impl<IO: PlatformIO> AssetContainer for FSContainer<IO> {
         let final_path = self.path.join(path_without_metadata);
         let file_res = IO::open_asset(final_path.clone()).await;
         if let Err(e) = file_res {
-            log::error!("Failed to load file using platform API. Path: {}, Error: \n{:?}", path, e);
+            log::error!(
+                "Failed to load file using platform API. Path: {}, Error: \n{:?}",
+                path,
+                e
+            );
             return None;
         }
         let file = file_res.unwrap();
@@ -79,9 +84,9 @@ impl<IO: PlatformIO> FSContainer<IO> {
         if cfg!(feature = "threading") {
             let mut thread_builder = thread::Builder::new();
             thread_builder = thread_builder.name("AssetManagerWatchThread".to_string());
-            let _ = thread_builder.spawn(move || {
-                fs_container_watch_thread_fn(asset_mgr_weak, receiver)
-            }).unwrap();
+            let _ = thread_builder
+                .spawn(move || fs_container_watch_thread_fn(asset_mgr_weak, receiver))
+                .unwrap();
         }
         Self {
             path: PathBuf::from(""),
@@ -90,10 +95,7 @@ impl<IO: PlatformIO> FSContainer<IO> {
     }
 }
 
-fn fs_container_watch_thread_fn(
-    asset_manager: Weak<AssetManager>,
-    receiver: Receiver<String>,
-) {
+fn fs_container_watch_thread_fn(asset_manager: Weak<AssetManager>, receiver: Receiver<String>) {
     'watch_loop: loop {
         let changed = receiver.recv();
         match changed {

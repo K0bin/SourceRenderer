@@ -2,11 +2,13 @@ use std::collections::HashMap;
 
 use sourcerenderer_core::Vec4;
 
+use super::loaded_level::LevelData;
+use super::AssetType;
+use crate::graphics::{
+    PackedShader,
+    TextureInfo,
+};
 use crate::math::BoundingBox;
-
-use crate::graphics::{TextureInfo, PackedShader};
-
-use super::{loaded_level::LevelData, AssetType};
 
 #[derive(Clone)]
 pub struct MeshRange {
@@ -84,7 +86,7 @@ pub enum AssetData {
     Sound(SoundData),
     Material(MaterialData),
     Shader(ShaderData),
-    Level(LevelData)
+    Level(LevelData),
 }
 
 impl AssetData {
@@ -96,7 +98,7 @@ impl AssetData {
             AssetData::Sound(_) => AssetType::Sound,
             AssetData::Material(_) => AssetType::Material,
             AssetData::Shader(_) => AssetType::Shader,
-            AssetData::Level(_) => AssetType::Level
+            AssetData::Level(_) => AssetType::Level,
         }
     }
 }

@@ -6,13 +6,17 @@ use sourcerenderer_core::{
     Vec2UI,
 };
 
-use crate::renderer::asset::{ComputePipelineHandle, RendererAssets, RendererAssetsReadOnly};
+use crate::graphics::*;
+use crate::renderer::asset::{
+    ComputePipelineHandle,
+    RendererAssets,
+    RendererAssetsReadOnly,
+};
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::graphics::*;
 
 pub(crate) fn scaled_halton_point(width: u32, height: u32, index: u32) -> Vec2 {
     let width_frac = 1.0f32 / (width as f32 * 0.5f32);
@@ -131,12 +135,9 @@ impl TAAPass {
             HistoryResourceEntry::Past,
         );
 
-        let mut motion_srv =
-            Option::<Ref<Arc<TextureView>>>::None;
-        let mut id_view =
-            Option::<Ref<Arc<TextureView>>>::None;
-        let mut barycentrics_view =
-            Option::<Ref<Arc<TextureView>>>::None;
+        let mut motion_srv = Option::<Ref<Arc<TextureView>>>::None;
+        let mut id_view = Option::<Ref<Arc<TextureView>>>::None;
+        let mut barycentrics_view = Option::<Ref<Arc<TextureView>>>::None;
         if !visibility_buffer {
             motion_srv = Some(pass_params.resources.access_view(
                 cmd_buf,
@@ -182,7 +183,10 @@ impl TAAPass {
             HistoryResourceEntry::Current,
         );
 
-        let pipeline = pass_params.assets.get_compute_pipeline(self.pipeline).unwrap();
+        let pipeline = pass_params
+            .assets
+            .get_compute_pipeline(self.pipeline)
+            .unwrap();
         cmd_buf.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buf.bind_sampling_view_and_sampler(
             BindingFrequency::VeryFrequent,

@@ -1,17 +1,17 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use build_util::{
-    compile_shaders,
-    ShadingLanguage,
-};
+use build_util::{compile_shaders, ShadingLanguage};
 
 fn main() {
     // Only used to test it. See the respective build.rs for the actual usage.
 
     println!("Hello, world!");
 
-    simple_logger::SimpleLogger::new().with_level(log::LevelFilter::Warn).init().unwrap();
+    simple_logger::SimpleLogger::new()
+        .with_level(log::LevelFilter::Warn)
+        .init()
+        .unwrap();
 
     let manifest_dir = PathBuf::from(std::env::current_dir().unwrap());
 
@@ -21,7 +21,8 @@ fn main() {
     shader_dest_dir.push("shaders");
 
     if !shader_dest_dir.exists() {
-        std::fs::create_dir_all(&shader_dest_dir).expect("Failed to create shader target directory.");
+        std::fs::create_dir_all(&shader_dest_dir)
+            .expect("Failed to create shader target directory.");
     }
 
     let mut shader_dir = manifest_dir.clone();

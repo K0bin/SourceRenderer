@@ -1,15 +1,19 @@
-use std::{fs::File, io::{BufWriter, Write}, sync::Mutex};
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+    sync::Mutex,
+};
 
 use log::{Log, Record};
 
 struct LoggerFile {
     writer: BufWriter<File>,
-    msg_count: u64
+    msg_count: u64,
 }
 
 struct BuildScriptLogger {
     file: Mutex<LoggerFile>,
-    filter: Box<dyn Fn(&Record) -> bool + Send + Sync + 'static>
+    filter: Box<dyn Fn(&Record) -> bool + Send + Sync + 'static>,
 }
 
 impl log::Log for BuildScriptLogger {
@@ -18,7 +22,9 @@ impl log::Log for BuildScriptLogger {
     }
 
     fn log(&self, record: &log::Record) {
-        if !self.enabled(record.metadata()) { return; }
+        if !self.enabled(record.metadata()) {
+            return;
+        }
 
         if !self.filter.as_ref()(record) {
             return;
@@ -51,7 +57,7 @@ impl Drop for BuildScriptLogger {
 }
 
 pub fn init() {
-    init_with_filter(move |_record| { true })
+    init_with_filter(move |_record| true)
 }
 
 pub fn init_with_filter(filter: impl Fn(&Record) -> bool + Send + Sync + 'static) {
@@ -59,11 +65,12 @@ pub fn init_with_filter(filter: impl Fn(&Record) -> bool + Send + Sync + 'static
     let bufwriter = BufWriter::new(file);
     let boxed_filter: Box<dyn Fn(&Record) -> bool + Send + Sync + 'static> = Box::new(filter);
 
-     let boxed = Box::new(BuildScriptLogger {
+    let boxed = Box::new(BuildScriptLogger {
         file: Mutex::new(LoggerFile {
-            writer: bufwriter, msg_count: 0u64
+            writer: bufwriter,
+            msg_count: 0u64,
         }),
-        filter: boxed_filter
+        filter: boxed_filter,
     });
     unsafe {
         let ptr = Box::into_raw(boxed);

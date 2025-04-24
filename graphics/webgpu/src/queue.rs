@@ -4,13 +4,14 @@ use js_sys::Array;
 use sourcerenderer_core::gpu;
 use web_sys::{GpuDevice, GpuQueue};
 
-use crate::{WebGPUCommandPool, swapchain::WebGPUSwapchain, WebGPUBackbuffer, WebGPUBackend, WebGPULimits};
-
+use crate::{
+    swapchain::WebGPUSwapchain, WebGPUBackbuffer, WebGPUBackend, WebGPUCommandPool, WebGPULimits,
+};
 
 pub struct WebGPUQueue {
     device: GpuDevice,
     queue: GpuQueue,
-    limits: WebGPULimits
+    limits: WebGPULimits,
 }
 
 impl WebGPUQueue {
@@ -19,7 +20,7 @@ impl WebGPUQueue {
         Self {
             device: device.clone(),
             queue,
-            limits: limits.clone()
+            limits: limits.clone(),
         }
     }
 
@@ -29,13 +30,20 @@ impl WebGPUQueue {
 }
 
 impl gpu::Queue<WebGPUBackend> for WebGPUQueue {
-    unsafe fn create_command_pool(&self, command_pool_type: gpu::CommandPoolType, _flags: gpu::CommandPoolFlags) -> WebGPUCommandPool {
+    unsafe fn create_command_pool(
+        &self,
+        command_pool_type: gpu::CommandPoolType,
+        _flags: gpu::CommandPoolFlags,
+    ) -> WebGPUCommandPool {
         WebGPUCommandPool::new(&self.device, command_pool_type, &self.limits)
     }
 
     unsafe fn submit(&self, submissions: &[gpu::Submission<WebGPUBackend>]) {
         for submission in submissions {
-            let is_ready = submission.wait_fences.iter().all(|pair| pair.fence.value.load(Ordering::Acquire) >= pair.value);
+            let is_ready = submission
+                .wait_fences
+                .iter()
+                .all(|pair| pair.fence.value.load(Ordering::Acquire) >= pair.value);
             assert!(is_ready);
 
             let array = Array::new_with_length(submission.command_buffers.len() as u32);
@@ -81,7 +89,7 @@ pub struct WebGPUFence {
 impl WebGPUFence {
     pub(crate) fn new(_gpu: &GpuDevice) -> Self {
         Self {
-            value: AtomicU64::new(0u64)
+            value: AtomicU64::new(0u64),
         }
     }
 }

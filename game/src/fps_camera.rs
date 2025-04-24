@@ -1,4 +1,4 @@
-use bevy_app::{App, Update, FixedUpdate};
+use bevy_app::{App, FixedUpdate, Update};
 use bevy_ecs::component::Component;
 use bevy_ecs::event::EventReader;
 use bevy_ecs::query::With;
@@ -9,10 +9,7 @@ use bevy_input::ButtonInput;
 use bevy_math::Vec2;
 use bevy_time::{Fixed, Time};
 use bevy_transform::components::Transform;
-use sourcerenderer_core::{
-    Quaternion,
-    Vec3,
-};
+use sourcerenderer_core::{Quaternion, Vec3};
 
 use sourcerenderer_engine::Camera;
 
@@ -67,7 +64,12 @@ fn fps_camera_rotation(mouse: &MouseMotion, fps_camera: &mut FPSCamera) -> Quate
         .min(std::f32::consts::FRAC_PI_2 - 0.01f32);
 
     fps_camera.last_touch_position = touch_position;
-    Quaternion::from_euler(bevy_math::EulerRot::YXZ, fps_camera.yaw, fps_camera.pitch, 0f32)
+    Quaternion::from_euler(
+        bevy_math::EulerRot::YXZ,
+        fps_camera.yaw,
+        fps_camera.pitch,
+        0f32,
+    )
 }
 
 pub(crate) fn retrieve_fps_camera_rotation(

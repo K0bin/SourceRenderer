@@ -4,7 +4,7 @@ use super::*;
 
 pub enum MTLBackend {}
 
-pub(crate) type MTLRayTracingPipeline = (); 
+pub(crate) type MTLRayTracingPipeline = ();
 
 impl gpu::GPUBackend for MTLBackend {
     type Instance = MTLInstance;

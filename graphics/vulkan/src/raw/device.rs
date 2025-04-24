@@ -2,15 +2,17 @@ use std::ops::Deref;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
-use ash::khr;
-use ash::vk;
+use ash::{
+    khr,
+    vk,
+};
 use parking_lot::{
     ReentrantMutex,
     ReentrantMutexGuard,
 };
 
-use crate::VkQueueInfo;
 use crate::raw::RawVkInstance;
+use crate::VkQueueInfo;
 
 pub struct RawVkDevice {
     pub device: ash::Device,
@@ -51,8 +53,10 @@ pub struct RawVkRTEntries {
     pub acceleration_structure: khr::acceleration_structure::Device,
     pub rt_pipelines: Option<khr::ray_tracing_pipeline::Device>,
     pub deferred_operations: Option<khr::deferred_host_operations::Device>,
-    pub properties_acceleration_structure: vk::PhysicalDeviceAccelerationStructurePropertiesKHR<'static>,
-    pub features_acceleration_structure: vk::PhysicalDeviceAccelerationStructureFeaturesKHR<'static>,
+    pub properties_acceleration_structure:
+        vk::PhysicalDeviceAccelerationStructurePropertiesKHR<'static>,
+    pub features_acceleration_structure:
+        vk::PhysicalDeviceAccelerationStructureFeaturesKHR<'static>,
     pub properties_rt_pipeline: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR<'static>,
     pub features_rt_pipeline: vk::PhysicalDeviceRayTracingPipelineFeaturesKHR<'static>,
     pub rt_query: bool,

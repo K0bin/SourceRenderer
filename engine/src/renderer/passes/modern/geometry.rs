@@ -6,30 +6,30 @@ use sourcerenderer_core::{
     Matrix4,
     Vec2,
     Vec2I,
-    Vec2UI, Vec3UI,
+    Vec2UI,
+    Vec3UI,
 };
 
 use super::draw_prep::DrawPrepPass;
 use super::gpu_scene::DRAW_CAPACITY;
 use super::rt_shadows::RTShadowPass;
+use crate::graphics::*;
+use crate::renderer::asset::{
+    GraphicsPipelineHandle,
+    GraphicsPipelineInfo,
+    *,
+};
 use crate::renderer::drawable::View;
 use crate::renderer::light::DirectionalLight;
 use crate::renderer::passes::light_binning;
 use crate::renderer::passes::ssao::SsaoPass;
 use crate::renderer::passes::taa::scaled_halton_point;
-use crate::renderer::asset::*;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
 use crate::renderer::renderer_scene::RendererScene;
-use crate::renderer::asset::{
-    GraphicsPipelineHandle,
-    GraphicsPipelineInfo,
-};
 use crate::renderer::PointLight;
-
-use crate::graphics::*;
 
 #[allow(unused)]
 #[repr(C)]
@@ -208,15 +208,12 @@ impl GeometryPass {
                 attachments: &[AttachmentBlendInfo::default()],
             },
             render_target_formats: &[texture_info.format, Format::RG32Float, Format::RGBA32Float],
-            depth_stencil_format: Format::D24S8
+            depth_stencil_format: Format::D24S8,
         };
 
         let pipeline = assets.request_graphics_pipeline(&pipeline_info);
 
-        Self {
-            sampler,
-            pipeline
-        }
+        Self { sampler, pipeline }
     }
 
     #[inline(always)]
@@ -337,33 +334,31 @@ impl GeometryPass {
             zero_texture_view
         };
 
-        cmd_buffer.begin_render_pass(
-            &RenderPassBeginInfo {
-                render_targets: &[
-                    RenderTarget {
-                        view: &rtv,
-                        load_op: LoadOpColor::Clear(ClearColor::BLACK),
-                        store_op: StoreOp::Store,
-                    },
-                    RenderTarget {
-                        view: &*motion,
-                        load_op: LoadOpColor::Clear(ClearColor::BLACK),
-                        store_op: StoreOp::Store,
-                    },
-                    RenderTarget {
-                        view: &*normals,
-                        load_op: LoadOpColor::Clear(ClearColor::BLACK),
-                        store_op: StoreOp::Store,
-                    }
-                ],
-                depth_stencil: Some(&DepthStencilAttachment {
-                    view: &prepass_depth,
-                    load_op: LoadOpDepthStencil::Load,
+        cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
+            render_targets: &[
+                RenderTarget {
+                    view: &rtv,
+                    load_op: LoadOpColor::Clear(ClearColor::BLACK),
                     store_op: StoreOp::Store,
-                }),
-                query_range: None,
-            }
-        );
+                },
+                RenderTarget {
+                    view: &*motion,
+                    load_op: LoadOpColor::Clear(ClearColor::BLACK),
+                    store_op: StoreOp::Store,
+                },
+                RenderTarget {
+                    view: &*normals,
+                    load_op: LoadOpColor::Clear(ClearColor::BLACK),
+                    store_op: StoreOp::Store,
+                },
+            ],
+            depth_stencil: Some(&DepthStencilAttachment {
+                view: &prepass_depth,
+                load_op: LoadOpDepthStencil::Load,
+                store_op: StoreOp::Store,
+            }),
+            query_range: None,
+        });
 
         let rtv_info = rtv.texture().unwrap().info();
         let cluster_count = Vec3UI::new(16, 9, 24);
@@ -397,11 +392,15 @@ impl GeometryPass {
                 intensity: directional_light.intensity,
             });
         }
-        let per_frame_buffer = cmd_buffer.upload_dynamic_data(&[per_frame], BufferUsage::CONSTANT).unwrap();
-        let point_light_buffer =
-            cmd_buffer.upload_dynamic_data(&point_lights[..], BufferUsage::STORAGE).unwrap();
-        let directional_light_buffer =
-            cmd_buffer.upload_dynamic_data(&directional_lights[..], BufferUsage::STORAGE).unwrap();
+        let per_frame_buffer = cmd_buffer
+            .upload_dynamic_data(&[per_frame], BufferUsage::CONSTANT)
+            .unwrap();
+        let point_light_buffer = cmd_buffer
+            .upload_dynamic_data(&point_lights[..], BufferUsage::STORAGE)
+            .unwrap();
+        let directional_light_buffer = cmd_buffer
+            .upload_dynamic_data(&directional_lights[..], BufferUsage::STORAGE)
+            .unwrap();
 
         cmd_buffer.bind_uniform_buffer(
             BindingFrequency::Frequent,
@@ -472,13 +471,26 @@ impl GeometryPass {
             &shadows,
             &self.sampler,
         );
-        cmd_buffer.bind_storage_buffer(BindingFrequency::Frequent, 9, BufferRef::Transient(gpu_scene), 0, WHOLE_BUFFER);
+        cmd_buffer.bind_storage_buffer(
+            BindingFrequency::Frequent,
+            9,
+            BufferRef::Transient(gpu_scene),
+            0,
+            WHOLE_BUFFER,
+        );
 
         cmd_buffer.set_vertex_buffer(0, BufferRef::Regular(vertex_buffer), 0);
         cmd_buffer.set_index_buffer(BufferRef::Regular(index_buffer), 0, IndexFormat::U32);
 
         cmd_buffer.finish_binding();
-        cmd_buffer.draw_indexed_indirect_count(BufferRef::Regular(&draw_buffer), 4, BufferRef::Regular(&draw_buffer), 0, DRAW_CAPACITY, 20);
+        cmd_buffer.draw_indexed_indirect_count(
+            BufferRef::Regular(&draw_buffer),
+            4,
+            BufferRef::Regular(&draw_buffer),
+            0,
+            DRAW_CAPACITY,
+            20,
+        );
 
         cmd_buffer.end_render_pass();
         cmd_buffer.end_label();

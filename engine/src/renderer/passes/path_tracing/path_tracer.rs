@@ -2,18 +2,20 @@ use std::sync::Arc;
 
 use sourcerenderer_core::Vec2UI;
 
+use crate::graphics::*;
+use crate::renderer::asset::{
+    ComputePipelineHandle,
+    *,
+};
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-use crate::renderer::asset::*;
-use crate::renderer::asset::ComputePipelineHandle;
-use crate::graphics::*;
 
 pub struct PathTracerPass {
     pipeline: ComputePipelineHandle,
-    sampler: Sampler
+    sampler: Sampler,
 }
 
 impl PathTracerPass {
@@ -59,10 +61,7 @@ impl PathTracerPass {
             max_lod: None,
         });
 
-        Self {
-            pipeline,
-            sampler
-        }
+        Self { pipeline, sampler }
     }
 
     #[inline(always)]
@@ -99,7 +98,10 @@ impl PathTracerPass {
             HistoryResourceEntry::Past,
         );
 
-        let pipeline = pass_params.assets.get_compute_pipeline(self.pipeline).unwrap();
+        let pipeline = pass_params
+            .assets
+            .get_compute_pipeline(self.pipeline)
+            .unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buffer.bind_acceleration_structure(
             BindingFrequency::Frequent,

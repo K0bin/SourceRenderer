@@ -1,10 +1,8 @@
-use std::{
-    collections::HashMap,
-    hash::Hash,
-    sync::{
-        Arc,
-        RwLock,
-    },
+use std::collections::HashMap;
+use std::hash::Hash;
+use std::sync::{
+    Arc,
+    RwLock,
 };
 
 use ash::vk;
@@ -29,8 +27,7 @@ pub(super) struct VkDescriptorSetLayoutKey {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub(super) struct VkPipelineLayoutKey {
-    pub(super) descriptor_set_layouts:
-        [VkDescriptorSetLayoutKey; gpu::TOTAL_SET_COUNT as usize],
+    pub(super) descriptor_set_layouts: [VkDescriptorSetLayoutKey; gpu::TOTAL_SET_COUNT as usize],
     pub(super) push_constant_ranges: [Option<VkConstantRange>; 3],
 }
 
@@ -39,8 +36,8 @@ impl VkShared {
         let mut descriptor_set_layouts =
             HashMap::<VkDescriptorSetLayoutKey, Arc<VkDescriptorSetLayout>>::new();
 
-        let bindless_texture_descriptor_set =
-        if device.features_12.descriptor_indexing == vk::TRUE {
+        let bindless_texture_descriptor_set = if device.features_12.descriptor_indexing == vk::TRUE
+        {
             let bindless_set = VkBindlessDescriptorSet::new(device);
             let (layout_key, descriptor_layout) = bindless_set.layout();
             descriptor_set_layouts.insert(layout_key.clone(), descriptor_layout.clone());
@@ -51,11 +48,7 @@ impl VkShared {
 
         let shader_bytes = include_bytes!("../meta_shaders/clear_buffer.comp.json");
         let packed: gpu::PackedShader = serde_json::from_slice(shader_bytes).unwrap();
-        let shader = VkShader::new(
-            device,
-            &packed,
-            Some("ClearBufferMeta"),
-        );
+        let shader = VkShader::new(device, &packed, Some("ClearBufferMeta"));
         let clear_buffer_meta_pipeline =
             VkPipeline::new_compute_meta(device, &shader, Some("ClearBufferPipeline"));
 
@@ -112,7 +105,8 @@ impl VkShared {
             }
         }
 
-        let mut descriptor_sets: [Option<Arc<VkDescriptorSetLayout>>; gpu::TOTAL_SET_COUNT as usize] = Default::default();
+        let mut descriptor_sets: [Option<Arc<VkDescriptorSetLayout>>;
+            gpu::TOTAL_SET_COUNT as usize] = Default::default();
         for i in 0..layout_key.descriptor_set_layouts.len() {
             let set_key = &layout_key.descriptor_set_layouts[i];
             descriptor_sets[i] = Some(self.get_descriptor_set_layout(set_key));

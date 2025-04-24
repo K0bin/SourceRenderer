@@ -1,21 +1,25 @@
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
+
 use super::gpu::ComputePipeline as _;
 use super::*;
 
 pub struct GraphicsPipeline {
     pipeline: ManuallyDrop<active_gpu_backend::GraphicsPipeline>,
-    destroyer: Arc<DeferredDestroyer>
+    destroyer: Arc<DeferredDestroyer>,
 }
 
 impl GraphicsPipeline {
-    pub(super) fn new(device: &Arc<active_gpu_backend::Device>, destroyer: &Arc<DeferredDestroyer>, info: &active_gpu_backend::GraphicsPipelineInfo, name: Option<&str>) -> Self {
-        let pipeline = unsafe {
-            device.create_graphics_pipeline(info, name)
-        };
+    pub(super) fn new(
+        device: &Arc<active_gpu_backend::Device>,
+        destroyer: &Arc<DeferredDestroyer>,
+        info: &active_gpu_backend::GraphicsPipelineInfo,
+        name: Option<&str>,
+    ) -> Self {
+        let pipeline = unsafe { device.create_graphics_pipeline(info, name) };
         Self {
             pipeline: ManuallyDrop::new(pipeline),
-            destroyer: destroyer.clone()
+            destroyer: destroyer.clone(),
         }
     }
 
@@ -34,17 +38,20 @@ impl Drop for GraphicsPipeline {
 
 pub struct MeshGraphicsPipeline {
     pipeline: ManuallyDrop<active_gpu_backend::MeshGraphicsPipeline>,
-    destroyer: Arc<DeferredDestroyer>
+    destroyer: Arc<DeferredDestroyer>,
 }
 
 impl MeshGraphicsPipeline {
-    pub(super) fn new(device: &Arc<active_gpu_backend::Device>, destroyer: &Arc<DeferredDestroyer>, info: &active_gpu_backend::MeshGraphicsPipelineInfo, name: Option<&str>) -> Self {
-        let pipeline = unsafe {
-            device.create_mesh_graphics_pipeline(info, name)
-        };
+    pub(super) fn new(
+        device: &Arc<active_gpu_backend::Device>,
+        destroyer: &Arc<DeferredDestroyer>,
+        info: &active_gpu_backend::MeshGraphicsPipelineInfo,
+        name: Option<&str>,
+    ) -> Self {
+        let pipeline = unsafe { device.create_mesh_graphics_pipeline(info, name) };
         Self {
             pipeline: ManuallyDrop::new(pipeline),
-            destroyer: destroyer.clone()
+            destroyer: destroyer.clone(),
         }
     }
 
@@ -63,17 +70,20 @@ impl Drop for MeshGraphicsPipeline {
 
 pub struct ComputePipeline {
     pipeline: ManuallyDrop<active_gpu_backend::ComputePipeline>,
-    destroyer: Arc<DeferredDestroyer>
+    destroyer: Arc<DeferredDestroyer>,
 }
 
 impl ComputePipeline {
-    pub(super) fn new(device: &Arc<active_gpu_backend::Device>, destroyer: &Arc<DeferredDestroyer>, shader: &active_gpu_backend::Shader, name: Option<&str>) -> Self {
-        let pipeline = unsafe {
-            device.create_compute_pipeline(shader, name)
-        };
+    pub(super) fn new(
+        device: &Arc<active_gpu_backend::Device>,
+        destroyer: &Arc<DeferredDestroyer>,
+        shader: &active_gpu_backend::Shader,
+        name: Option<&str>,
+    ) -> Self {
+        let pipeline = unsafe { device.create_compute_pipeline(shader, name) };
         Self {
             pipeline: ManuallyDrop::new(pipeline),
-            destroyer: destroyer.clone()
+            destroyer: destroyer.clone(),
         }
     }
 
@@ -98,27 +108,36 @@ impl Drop for ComputePipeline {
 pub struct RayTracingPipeline {
     pipeline: ManuallyDrop<active_gpu_backend::RayTracingPipeline>,
     destroyer: Arc<DeferredDestroyer>,
-    sbt: Arc<BufferSlice>
+    sbt: Arc<BufferSlice>,
 }
 
 impl RayTracingPipeline {
-    pub(super) fn new(device: &Arc<active_gpu_backend::Device>, destroyer: &Arc<DeferredDestroyer>, buffer_allocator: &BufferAllocator, info: &active_gpu_backend::RayTracingPipelineInfo, name: Option<&str>) -> Result<Self, OutOfMemoryError> {
+    pub(super) fn new(
+        device: &Arc<active_gpu_backend::Device>,
+        destroyer: &Arc<DeferredDestroyer>,
+        buffer_allocator: &BufferAllocator,
+        info: &active_gpu_backend::RayTracingPipelineInfo,
+        name: Option<&str>,
+    ) -> Result<Self, OutOfMemoryError> {
         let sbt_size = unsafe { device.get_raytracing_pipeline_sbt_buffer_size(info) };
-        let sbt = buffer_allocator.get_slice(&BufferInfo {
-            size: sbt_size,
-            usage: BufferUsage::SHADER_BINDING_TABLE,
-            sharing_mode: QueueSharingMode::Exclusive
-        }, MemoryUsage::MappableGPUMemory, None)?;
+        let sbt = buffer_allocator.get_slice(
+            &BufferInfo {
+                size: sbt_size,
+                usage: BufferUsage::SHADER_BINDING_TABLE,
+                sharing_mode: QueueSharingMode::Exclusive,
+            },
+            MemoryUsage::MappableGPUMemory,
+            None,
+        )?;
         // TODO: Name SBT
         // TODO: Handle systems without rebar
 
-        let pipeline = unsafe {
-            device.create_raytracing_pipeline(info, sbt.handle(), sbt.offset(), name)
-        };
+        let pipeline =
+            unsafe { device.create_raytracing_pipeline(info, sbt.handle(), sbt.offset(), name) };
         Ok(Self {
             pipeline: ManuallyDrop::new(pipeline),
             destroyer: destroyer.clone(),
-            sbt
+            sbt,
         })
     }
 
@@ -139,4 +158,3 @@ impl Drop for RayTracingPipeline {
         self.destroyer.destroy_raytracing_pipeline(pipeline);
     }
 }
-

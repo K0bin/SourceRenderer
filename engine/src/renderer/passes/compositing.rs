@@ -1,14 +1,17 @@
 use sourcerenderer_core::Vec2UI;
 
 use super::ssr::SsrPass;
-use crate::renderer::asset::{ComputePipelineHandle, RendererAssets, RendererAssetsReadOnly};
+use crate::graphics::*;
+use crate::renderer::asset::{
+    ComputePipelineHandle,
+    RendererAssets,
+    RendererAssetsReadOnly,
+};
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{
     HistoryResourceEntry,
     RendererResources,
 };
-
-use crate::graphics::*;
 
 pub struct CompositingPass {
     pipeline: ComputePipelineHandle,
@@ -100,13 +103,15 @@ impl CompositingPass {
             gamma: f32,
             exposure: f32,
         }
-        let setup_ubo = cmd_buffer.upload_dynamic_data(
-            &[Setup {
-                gamma: 2.2f32,
-                exposure: 0.01f32,
-            }],
-            BufferUsage::CONSTANT,
-        ).unwrap();
+        let setup_ubo = cmd_buffer
+            .upload_dynamic_data(
+                &[Setup {
+                    gamma: 2.2f32,
+                    exposure: 0.01f32,
+                }],
+                BufferUsage::CONSTANT,
+            )
+            .unwrap();
 
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0, &output);
         cmd_buffer.bind_sampling_view_and_sampler(

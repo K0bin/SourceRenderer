@@ -1,12 +1,16 @@
 use std::sync::Arc;
 
 use log::trace;
-use crate::graphics::gpu::PackedShader;
 
 use crate::asset::asset_manager::AssetFile;
 use crate::asset::{
-    AssetData, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager
+    AssetData,
+    AssetLoadPriority,
+    AssetLoader,
+    AssetLoaderProgress,
+    AssetManager,
 };
+use crate::graphics::gpu::PackedShader;
 
 pub struct ShaderLoader {}
 
