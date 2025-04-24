@@ -23,7 +23,7 @@ use crate::renderer::renderer_resources::RendererResources;
 
 mod geometry;
 
-use self::geometry::GeometryPass;
+pub use self::geometry::GeometryPass;
 
 #[allow(unused)]
 #[derive(Clone)]

@@ -32,7 +32,7 @@ pub struct GeometryPass {
 impl GeometryPass {
     pub const DEPTH_TEXTURE_NAME: &'static str = "Depth";
 
-    pub(super) fn new(
+    pub(crate) fn new(
         device: &Arc<crate::graphics::Device>,
         assets: &RendererAssets,
         swapchain: &crate::graphics::Swapchain,
@@ -153,11 +153,11 @@ impl GeometryPass {
     }
 
     #[inline(always)]
-    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
+    pub(crate) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_graphics_pipeline(self.pipeline).is_some()
     }
 
-    pub(super) fn execute(
+    pub(crate) fn execute(
         &mut self,
         cmd_buffer: &mut CommandBuffer,
         scene: &RendererScene,

@@ -27,6 +27,9 @@ use super::ecs::{
     PointLightComponent,
 };
 use super::light::DirectionalLight;
+#[cfg(not(target_arch = "wasm32"))]
+use super::passes::modern::ModernRenderer;
+#[allow(unused_imports)]
 use super::passes::web::WebRenderer;
 use super::render_path::{
     FrameInfo,
@@ -56,9 +59,6 @@ use crate::{
     Condvar,
     Mutex,
 };
-
-//#[cfg(not(target_arch = "wasm32"))]
-//use super::passes::modern::ModernRenderer;
 
 struct RendererState {
     queued_frames_counter: Mutex<u32>, // we need the mutex for the condvar anyway
@@ -141,7 +141,18 @@ impl Renderer {
         let assets = RendererAssets::new(device, asset_manager);
 
         log::trace!("Initializing render path");
+        let render_path: Box<dyn RenderPath>;
+        #[cfg(target_arch = "wasm32")]
         let render_path = Box::new(WebRenderer::new(
+            device,
+            &swapchain,
+            &mut context,
+            &mut resources,
+            &assets,
+        ));
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let render_path = Box::new(ModernRenderer::new(
             device,
             &swapchain,
             &mut context,

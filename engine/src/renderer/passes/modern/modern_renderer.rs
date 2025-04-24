@@ -70,18 +70,7 @@ pub struct ModernRenderer {
     clustering_pass: ClusteringPass,
     light_binning_pass: LightBinningPass,
     geometry_draw_prep: DrawPrepPass,
-    ssao: SsaoPass,
-    rt_passes: Option<RTPasses>,
-    blue_noise: BlueNoise,
-    hi_z_pass: HierarchicalZPass,
-    ssr_pass: SsrPass,
-    visibility_buffer: VisibilityBufferPass,
-    shading_pass: ShadingPass,
-    compositing_pass: CompositingPass,
-    motion_vector_pass: MotionVectorPass,
-    anti_aliasing: AntiAliasing,
-    shadow_map_pass: ShadowMapPass,
-    ui_pass: UIPass,
+    geometry_pass: super::super::web::GeometryPass,
 }
 
 enum AntiAliasing {
@@ -124,8 +113,6 @@ impl ModernRenderer {
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
         let resolution = Vec2UI::new(swapchain.width(), swapchain.height());
 
-        let blue_noise = BlueNoise::new(device);
-
         let clustering = ClusteringPass::new(resources, assets);
         let light_binning = LightBinningPass::new(resources, assets);
         let ssao = SsaoPass::new(device, resolution, resources, assets, true);
@@ -145,21 +132,14 @@ impl ModernRenderer {
             &mut init_cmd_buffer,
             VisibilityBufferPass::DEPTH_TEXTURE_NAME,
         );
-        let ssr_pass = SsrPass::new(resolution, resources, assets, true);
-        let shading_pass =
-            ShadingPass::new(device, resolution, resources, assets, &mut init_cmd_buffer);
-        let compositing_pass = CompositingPass::new(resolution, resources, assets);
-        let motion_vector_pass = MotionVectorPass::new(resources, resolution, assets);
 
-        let anti_aliasing = {
-            let taa = TAAPass::new(resolution, resources, assets, true);
-            let sharpen = SharpenPass::new(resolution, resources, assets);
-            AntiAliasing::TAA { taa, sharpen }
-        };
-
-        let shadow_map = ShadowMapPass::new(device, resources, &mut init_cmd_buffer, assets);
-
-        let ui_pass = UIPass::new(device, assets);
+        let geometry_pass = super::super::web::GeometryPass::new(
+            device,
+            assets,
+            swapchain,
+            &mut init_cmd_buffer,
+            resources,
+        );
 
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
@@ -190,18 +170,7 @@ impl ModernRenderer {
             clustering_pass: clustering,
             light_binning_pass: light_binning,
             geometry_draw_prep: draw_prep,
-            ssao,
-            rt_passes,
-            blue_noise,
-            hi_z_pass,
-            ssr_pass,
-            visibility_buffer,
-            shading_pass,
-            compositing_pass,
-            motion_vector_pass,
-            anti_aliasing,
-            shadow_map_pass: shadow_map,
-            ui_pass,
+            geometry_pass,
         }
     }
 
@@ -295,15 +264,15 @@ impl ModernRenderer {
         let cluster_z_bias = -(cluster_count.z as f32) * (view.near_plane).log2()
             / (view.far_plane / view.near_plane).log2();
 
-        let cascades = self.shadow_map_pass.cascades();
+        //let cascades = self.shadow_map_pass.cascades();
         let mut gpu_cascade_data: [ShadowCascade; 5] = Default::default();
-        for i in 0..cascades.len() {
+        /*for i in 0..cascades.len() {
             let gpu_cascade = &mut gpu_cascade_data[i];
             let cascade = &cascades[i];
             gpu_cascade.light_mat = cascade.view_proj;
             gpu_cascade.z_max = cascade.z_max;
             gpu_cascade.z_min = cascade.z_min;
-        }
+        }*/
 
         #[repr(C)]
         #[derive(Debug, Clone, Default)]
@@ -347,7 +316,7 @@ impl ModernRenderer {
                         (frame % 8) as u32 + 1,
                     ),
                     rt_size: *rendering_resolution,
-                    cascade_count: cascades.len() as u32,
+                    cascade_count: 0,
                     cascades: gpu_cascade_data,
                     frame: frame as u32,
                 }],
@@ -426,28 +395,10 @@ impl RenderPath for ModernRenderer {
     }
 
     fn is_ready(&self, assets: &RendererAssetsReadOnly) -> bool {
-        self.clustering_pass.is_ready(&assets)
-            && self.light_binning_pass.is_ready(&assets)
-            && self.geometry_draw_prep.is_ready(&assets)
-            && self.ssao.is_ready(&assets)
-            && self
-                .rt_passes
-                .as_ref()
-                .map(|passes| passes.shadows.is_ready(&assets))
-                .unwrap_or(true)
-            && self.hi_z_pass.is_ready(&assets)
-            && self.ssr_pass.is_ready(&assets)
-            && self.visibility_buffer.is_ready(&assets)
-            && self.shading_pass.is_ready(&assets)
-            && self.compositing_pass.is_ready(&assets)
-            && self.motion_vector_pass.is_ready(&assets)
-            && match &self.anti_aliasing {
-                AntiAliasing::TAA { taa, sharpen } => {
-                    taa.is_ready(&assets) && sharpen.is_ready(&assets)
-                }
-            }
-            && self.shadow_map_pass.is_ready(&assets)
-            && self.ui_pass.is_ready(&assets)
+        self.clustering_pass.is_ready(assets)
+            && self.light_binning_pass.is_ready(assets)
+            && self.geometry_draw_prep.is_ready(assets)
+            && self.geometry_pass.is_ready(assets)
     }
 
     #[profiling::function]
@@ -493,7 +444,7 @@ impl RenderPath for ModernRenderer {
         let scene_buffers =
             super::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, &assets);
 
-        self.shadow_map_pass.calculate_cascades(scene);
+        //self.shadow_map_pass.calculate_cascades(scene);
 
         self.setup_frame(
             &mut cmd_buf,
@@ -519,7 +470,7 @@ impl RenderPath for ModernRenderer {
             assets,
         };
 
-        if let Some(rt_passes) = self.rt_passes.as_mut() {
+        /*if let Some(rt_passes) = self.rt_passes.as_mut() {
             rt_passes
                 .acceleration_structure_update
                 .execute(&mut cmd_buf, &params);
@@ -632,7 +583,23 @@ impl RenderPath for ModernRenderer {
             range: BarrierTextureRange::default(),
             queue_ownership: None,
         }]);
-        std::mem::drop(output_texture);
+        std::mem::drop(output_texture);*/
+
+        let backbuffer = swapchain.next_backbuffer()?;
+        let backbuffer_view = swapchain.backbuffer_view(&backbuffer);
+        let backbuffer_handle = swapchain.backbuffer_handle(&backbuffer);
+        self.geometry_pass.execute(
+            &mut cmd_buf,
+            scene.scene,
+            main_view,
+            &camera_buffer,
+            resources,
+            &backbuffer_view,
+            backbuffer_handle,
+            swapchain.width(),
+            swapchain.height(),
+            assets,
+        );
 
         return Ok(RenderPathResult {
             cmd_buffer: cmd_buf.finish(),
