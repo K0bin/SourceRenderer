@@ -74,7 +74,7 @@ impl AssetBuffer {
                 length as u64 + alignment as u64,
                 std::sync::atomic::Ordering::SeqCst,
             );
-            let aligned_offset = align_up_64(offset, alignment as u64);
+            let aligned_offset = align_up_non_pot_64(offset, alignment as u64);
             if aligned_offset + length as u64 > self.internal.debug_size as u64 {
                 panic!("Ran out of space.");
             }
@@ -95,7 +95,7 @@ impl AssetBuffer {
         let mut used_range = Option::<(usize, u32)>::None;
         for (index, range) in free_ranges.iter_mut().enumerate() {
             let mut aligned_range = range.clone();
-            aligned_range.offset = align_up_32(range.offset, alignment);
+            aligned_range.offset = align_up_non_pot_32(range.offset, alignment);
             let alignment_diff = aligned_range.offset - range.offset;
             aligned_range.length -= alignment_diff;
             if aligned_range.length >= length as u32 {
@@ -119,7 +119,7 @@ impl AssetBuffer {
             buffer: self.internal.clone(),
             range: BufferRange {
                 offset,
-                aligned_offset: align_up_32(offset, alignment),
+                aligned_offset: align_up_non_pot_32(offset, alignment),
                 length: length as u32,
             },
         }

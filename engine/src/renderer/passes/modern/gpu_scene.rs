@@ -260,7 +260,7 @@ pub fn upload(
                     let vertices = &mesh.vertices;
                     assert_eq!(indices.offset() % (std::mem::size_of::<u32>() as u32), 0);
                     assert_eq!(
-                        vertices.offset() % (std::mem::size_of::<crate::renderer::Vertex>() as u32),
+                        vertices.offset() % (std::mem::size_of::<crate::asset::Vertex>() as u32),
                         0
                     );
                     let gpu_part = GPUMeshPart {
