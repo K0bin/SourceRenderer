@@ -12,13 +12,13 @@ crossbeam-queue = "0.3"
 crossbeam-deque = "0.8"
 crossbeam-utils = "0.8"
 num_cpus = "1.16"
-smallvec = { version = "1.15", features = [ "union", "const_generics", "const_new" ] }
+smallvec = { version = "1.15", features = ["union", "const_generics", "const_new"] }
 serde = { version = "1.0", features = ["derive"] }
 smartstring = "1.0"
 futures-io = "0.3"
 
-bevy_math = "0.15"
-bevy_log = "0.15"
+bevy_math = { version = "0.16", features = ["serialize"] }
+bevy_log = "0.16"
 
 [features]
 default = []

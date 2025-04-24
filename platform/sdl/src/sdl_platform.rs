@@ -5,6 +5,14 @@ use std::path::{
     PathBuf,
 };
 
+use bevy_ecs::entity::Entity;
+use bevy_input::keyboard::{
+    Key,
+    KeyCode,
+    KeyboardInput,
+};
+use bevy_input::mouse::MouseMotion;
+use bevy_input::ButtonState;
 use crossbeam_channel::Sender;
 use notify::{
     recommended_watcher,
@@ -22,20 +30,25 @@ use sdl3::{
     VideoSubsystem,
 };
 use sourcerenderer_core::platform::{
-    FileWatcher, PlatformIO, Window,
+    FileWatcher,
+    PlatformIO,
+    Window,
 };
 use sourcerenderer_core::{
+    gpu,
+    Vec2,
     Vec2I,
     Vec2UI,
-    Vec2,
-    gpu
 };
-use crate::sdl_gpu::{self, SDLGPUBackend};
-use sourcerenderer_engine::{Engine, WindowState};
-use bevy_input::keyboard::{KeyboardInput, KeyCode, Key};
-use bevy_input::ButtonState;
-use bevy_input::mouse::MouseMotion;
-use bevy_ecs::entity::Entity;
+use sourcerenderer_engine::{
+    Engine,
+    WindowState,
+};
+
+use crate::sdl_gpu::{
+    self,
+    SDLGPUBackend,
+};
 
 lazy_static! {
     pub static ref SCANCODE_TO_KEY: HashMap<Scancode, KeyCode> = {
@@ -106,7 +119,8 @@ impl SDLPlatform {
                             logical_key: Key::Dead(None),
                             state: ButtonState::Released,
                             window: Entity::from_raw(0u32),
-                            repeat: false
+                            repeat: false,
+                            text: None,
                         });
                     }
                 }
@@ -121,15 +135,20 @@ impl SDLPlatform {
                             logical_key: Key::Dead(None),
                             state: ButtonState::Pressed,
                             window: Entity::from_raw(0u32),
-                            repeat: false
+                            repeat: false,
+                            text: None,
                         });
                     }
                 }
                 SDLEvent::MouseMotion {
-                    x: _x, y: _y, xrel, yrel, ..
+                    x: _x,
+                    y: _y,
+                    xrel,
+                    yrel,
+                    ..
                 } => {
                     engine.dispatch_mouse_motion(MouseMotion {
-                        delta: Vec2::new(xrel as f32, yrel as f32)
+                        delta: Vec2::new(xrel as f32, yrel as f32),
                     });
                 }
                 SDLEvent::Window {
@@ -160,16 +179,17 @@ impl SDLPlatform {
         mouse_util.set_relative_mouse_mode(self.window.sdl_window_handle(), is_locked);
         if is_locked {
             let (width, height) = self.window.window.size_in_pixels();
-            mouse_util.warp_mouse_in_window(self.window.sdl_window_handle(), width as f32 / 2.0f32, height as f32 / 2.0f32);
+            mouse_util.warp_mouse_in_window(
+                self.window.sdl_window_handle(),
+                width as f32 / 2.0f32,
+                height as f32 / 2.0f32,
+            );
         }
     }
 }
 
 impl SDLWindow {
-    fn new(
-        _sdl_context: &Sdl,
-        video_subsystem: &VideoSubsystem,
-    ) -> SDLWindow {
+    fn new(_sdl_context: &Sdl, video_subsystem: &VideoSubsystem) -> SDLWindow {
         let mut window_builder = video_subsystem.window("sourcerenderer", 1920, 1080);
         window_builder.position_centered();
         //window_builder.fullscreen();
@@ -189,7 +209,10 @@ impl SDLWindow {
 }
 
 impl Window<SDLGPUBackend> for SDLWindow {
-    fn create_surface(&self, graphics_instance: &<SDLGPUBackend as gpu::GPUBackend>::Instance) -> <SDLGPUBackend as gpu::GPUBackend>::Surface {
+    fn create_surface(
+        &self,
+        graphics_instance: &<SDLGPUBackend as gpu::GPUBackend>::Instance,
+    ) -> <SDLGPUBackend as gpu::GPUBackend>::Surface {
         sdl_gpu::create_surface(&self.window, graphics_instance)
     }
 
@@ -241,7 +264,9 @@ impl NotifyFileWatcher {
             recommended_watcher(
                 move |event: Result<notify::Event, notify::Error>| match event {
                     Ok(event) => {
-                        if let notify::EventKind::Modify(notify::event::ModifyKind::Data(_)) = event.kind  {
+                        if let notify::EventKind::Modify(notify::event::ModifyKind::Data(_)) =
+                            event.kind
+                        {
                             for path in event.paths {
                                 let path_str = path.to_str().unwrap().to_string();
                                 let relative_path = if path_str.starts_with(&base_path) {

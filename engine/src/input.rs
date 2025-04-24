@@ -1,6 +1,5 @@
-use crate::Mutex;
-
-use bevy_ecs::system::Resource;
+use bevy_ecs::resource::Resource;
+use bitset_core::BitSet;
 use sourcerenderer_core::input::Key;
 use sourcerenderer_core::platform::Event;
 use sourcerenderer_core::{
@@ -8,8 +7,8 @@ use sourcerenderer_core::{
     Vec2I,
 };
 
-use bitset_core::BitSet;
 use crate::graphics::ActiveBackend;
+use crate::Mutex;
 
 #[allow(dead_code)]
 pub struct Input {

@@ -6,7 +6,7 @@ edition = "2021"
 build = "build.rs"
 
 [dependencies]
-sdl3 = { version = "0.14", features = [ "raw-window-handle" ] }
+sdl3 = { version = "0.14", features = ["raw-window-handle"] }
 sdl3-sys = "0.4"
 raw-window-handle = "0.6"
 bitset-core = "0.1"
@@ -18,15 +18,15 @@ simple_logger = "5.0"
 notify = "8.0"
 crossbeam-channel = "0.5"
 log = "0.4"
-bevy_input = "0.15"
-bevy_ecs = "0.15"
-bevy_tasks = "0.15"
+bevy_input = "0.16"
+bevy_ecs = "0.16"
+bevy_tasks = "0.16"
 sourcerenderer_game = { path = "../../game" }
 async-fs = "2.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-metal = "0.3"
-objc2 = { version = "0.6", features = [ "std", "disable-encoding-assertions" ] } # disable-encoding-assertions is required otherwise the Metal debugger doesn't work
+objc2 = { version = "0.6", features = ["std", "disable-encoding-assertions"] } # disable-encoding-assertions is required otherwise the Metal debugger doesn't work
 objc2-foundation = "0.3"
 objc2-quartz-core = "0.3"
 objc2-app-kit = "0.3"

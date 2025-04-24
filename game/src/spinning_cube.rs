@@ -4,29 +4,21 @@ use std::sync::Arc;
 use bevy_app::{App, Plugin, SpawnScene};
 use bevy_ecs::component::Component;
 use bevy_ecs::query::With;
-use bevy_ecs::system::{Commands, Query, Res, ResMut, Resource};
+use bevy_ecs::resource::Resource;
+use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use bevy_input::keyboard::KeyCode;
 use bevy_input::ButtonInput;
-use bevy_transform::components::Transform;
 use bevy_log::*;
+use bevy_transform::components::Transform;
+use sourcerenderer_core::{Quaternion, Vec2, Vec3};
 use sourcerenderer_engine::graphics::*;
-use sourcerenderer_core::{
-    Quaternion, Vec2, Vec3
-};
 use sourcerenderer_engine::Engine;
 
-use sourcerenderer_engine::asset::{
-    AssetManager,
-    MeshRange,
-    Vertex
-};
-use sourcerenderer_engine::camera::ActiveCamera;
 use crate::fps_camera::FPSCameraComponent;
+use sourcerenderer_engine::asset::{AssetManager, MeshRange, Vertex};
+use sourcerenderer_engine::camera::ActiveCamera;
 use sourcerenderer_engine::math::BoundingBox;
-use sourcerenderer_engine::renderer::{
-    PointLightComponent,
-    StaticRenderableComponent,
-};
+use sourcerenderer_engine::renderer::{PointLightComponent, StaticRenderableComponent};
 use sourcerenderer_engine::Camera;
 
 pub(crate) struct SpinningCubePlugin;
@@ -36,8 +28,10 @@ struct SpinningCube {}
 
 impl Plugin for SpinningCubePlugin {
     fn build<'a>(&self, app: &'a mut App) {
-        app.insert_resource(PlaceLightsState { was_space_down: false });
-        app.add_systems(SpawnScene, (place_lights, spin,));
+        app.insert_resource(PlaceLightsState {
+            was_space_down: false,
+        });
+        app.add_systems(SpawnScene, (place_lights, spin));
 
         {
             let asset_manager: &Arc<AssetManager> = Engine::get_asset_manager(app);
@@ -245,7 +239,7 @@ impl Plugin for SpinningCubePlugin {
                 samples: SampleCount::Samples1,
                 supports_srgb: false,
                 dimension: TextureDimension::Dim2D,
-                usage: TextureUsage::SAMPLED | TextureUsage::INITIAL_COPY
+                usage: TextureUsage::SAMPLED | TextureUsage::INITIAL_COPY,
             };
             let mut data = Vec::<u8>::new();
             data.resize(256 * 256 * 4, 255u8);
@@ -255,7 +249,11 @@ impl Plugin for SpinningCubePlugin {
                 }
             }
 
-            asset_manager.add_texture_data("cube_texture_albedo", &texture_info, data.to_vec().into_boxed_slice());
+            asset_manager.add_texture_data(
+                "cube_texture_albedo",
+                &texture_info,
+                data.to_vec().into_boxed_slice(),
+            );
             asset_manager.add_material_data("cube_material", "cube_texture_albedo", 0f32, 0f32);
             asset_manager.add_model_data("cube_model", "cube_mesh", &["cube_material"]);
         }
@@ -291,14 +289,17 @@ impl Plugin for SpinningCubePlugin {
             },*/
         ));
 
-        let camera = app.world_mut().spawn((
-            Camera {
-                fov: f32::consts::PI / 2f32,
-                interpolate_rotation: false,
-            },
-            Transform::from_translation(Vec3::new(0.0f32, 1.0f32, -1.0f32)),
-            FPSCameraComponent::default(),
-        )).flush();
+        let camera = app
+            .world_mut()
+            .spawn((
+                Camera {
+                    fov: f32::consts::PI / 2f32,
+                    interpolate_rotation: false,
+                },
+                Transform::from_translation(Vec3::new(0.0f32, 1.0f32, -1.0f32)),
+                FPSCameraComponent::default(),
+            ))
+            .flush();
 
         app.insert_resource(ActiveCamera(camera));
         info!("Added spinning cube");
@@ -323,19 +324,19 @@ fn place_lights(
     input: Res<ButtonInput<KeyCode>>,
     mut state: ResMut<PlaceLightsState>,
     query: Query<(&mut Transform,)>,
-    mut commands: Commands
+    mut commands: Commands,
 ) {
     if input.pressed(KeyCode::Space) {
         if !state.was_space_down {
             for (transform,) in query.iter() {
-                commands.spawn(
-                    (Transform {
+                commands.spawn((
+                    Transform {
                         translation: transform.translation,
                         rotation: Quaternion::default(),
                         scale: Vec3::new(1f32, 1f32, 1f32),
                     },
-                    PointLightComponent { intensity: 1.0f32 },)
-                );
+                    PointLightComponent { intensity: 1.0f32 },
+                ));
             }
         }
         state.was_space_down = true;

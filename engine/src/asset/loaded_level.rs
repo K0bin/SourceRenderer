@@ -1,25 +1,34 @@
-use std::{any::{Any, TypeId}, marker::PhantomPinned, ops::Deref, pin::Pin};
+use std::any::{
+    Any,
+    TypeId,
+};
+use std::marker::PhantomPinned;
+use std::ops::Deref;
+use std::pin::Pin;
 
 use bevy_ecs::entity::Entity;
+use bevy_ecs::prelude::ChildOf;
 use bevy_ecs::world::World;
-use bevy_hierarchy::BuildChildren;
 use bevy_transform::components::Transform;
-use bumpalo::Bump;
-use bumpalo::collections::Vec;
 use bumpalo::boxed::Box;
+use bumpalo::collections::Vec;
+use bumpalo::Bump;
 
-use crate::renderer::{DirectionalLightComponent, PointLightComponent, StaticRenderableComponent};
+use crate::renderer::{
+    DirectionalLightComponent,
+    PointLightComponent,
+    StaticRenderableComponent,
+};
 
 pub struct LoadedEntityParent(pub usize);
 
 pub struct LoadedEntity<'a> {
-    components: Vec<'a, Box<'a, dyn Any>>
+    components: Vec<'a, Box<'a, dyn Any>>,
 }
 
 struct BumpUnpin {
     _unpinned: PhantomPinned,
-    bump: Bump
-
+    bump: Bump,
 }
 
 impl Deref for BumpUnpin {
@@ -42,14 +51,12 @@ unsafe impl Sync for LevelData {}
 impl LevelData {
     pub fn new(estimated_allocation_size: usize, estimated_entity_count: usize) -> Self {
         let bump = Bump::with_capacity(estimated_allocation_size);
-        let static_bump: &'static Bump = unsafe {
-            std::mem::transmute(&bump)
-        };
+        let static_bump: &'static Bump = unsafe { std::mem::transmute(&bump) };
         let mut new_loaded_level = Self {
             total_component_count: 0,
             bump: std::boxed::Box::pin(BumpUnpin {
                 _unpinned: PhantomPinned,
-                bump
+                bump,
             }),
             entities: Vec::new_in(static_bump), // Vec does not allocate until it gets entries
         };
@@ -69,9 +76,7 @@ impl LevelData {
         };
         let index = self.entities.len();
         let components = Vec::with_capacity_in(estimated_component_count, static_bump);
-        let entity = LoadedEntity {
-            components
-        };
+        let entity = LoadedEntity { components };
         self.entities.push(entity);
         index
     }
@@ -89,7 +94,7 @@ impl LevelData {
     }
 
     pub fn get_component_mut<T: Any>(&mut self, entity_index: usize) -> Option<&mut T> {
-        let entity= &mut self.entities[entity_index];
+        let entity = &mut self.entities[entity_index];
         for component in &mut entity.components {
             let component_type_id = component.as_ref().type_id();
             let expected_type_id = TypeId::of::<T>();
@@ -116,7 +121,10 @@ impl LevelData {
     }
 
     pub fn import_into_world(mut self, world: &mut World) {
-        let mut ecs_entities = Vec::<(Entity, Option<LoadedEntityParent>)>::with_capacity_in(self.entities.len(), &self.bump);
+        let mut ecs_entities = Vec::<(Entity, Option<LoadedEntityParent>)>::with_capacity_in(
+            self.entities.len(),
+            &self.bump,
+        );
 
         for mut loaded_entity in self.entities.drain(..) {
             let mut parent = Option::<LoadedEntityParent>::None;
@@ -126,13 +134,21 @@ impl LevelData {
                 if component_type_id == TypeId::of::<Transform>() {
                     entity.insert(Self::loaded_component_into::<Transform>(loaded_component));
                 } else if component_type_id == TypeId::of::<LoadedEntityParent>() {
-                    parent = Some(Self::loaded_component_into::<LoadedEntityParent>(loaded_component));
+                    parent = Some(Self::loaded_component_into::<LoadedEntityParent>(
+                        loaded_component,
+                    ));
                 } else if component_type_id == TypeId::of::<StaticRenderableComponent>() {
-                    entity.insert(Self::loaded_component_into::<StaticRenderableComponent>(loaded_component));
+                    entity.insert(Self::loaded_component_into::<StaticRenderableComponent>(
+                        loaded_component,
+                    ));
                 } else if component_type_id == TypeId::of::<DirectionalLightComponent>() {
-                    entity.insert(Self::loaded_component_into::<DirectionalLightComponent>(loaded_component));
+                    entity.insert(Self::loaded_component_into::<DirectionalLightComponent>(
+                        loaded_component,
+                    ));
                 } else if component_type_id == TypeId::of::<PointLightComponent>() {
-                    entity.insert(Self::loaded_component_into::<PointLightComponent>(loaded_component));
+                    entity.insert(Self::loaded_component_into::<PointLightComponent>(
+                        loaded_component,
+                    ));
                 } else {
                     panic!("Unsupported type in LevelData");
                 }
@@ -143,7 +159,9 @@ impl LevelData {
         let mut commands = world.commands();
         for (entity, entity_parent_index_opt) in &ecs_entities {
             if let Some(entity_parent_index) = entity_parent_index_opt {
-                commands.entity(*entity).set_parent(ecs_entities[entity_parent_index.0].0);
+                commands
+                    .entity(*entity)
+                    .insert(ChildOf(ecs_entities[entity_parent_index.0].0));
             }
         }
     }

@@ -18,16 +18,16 @@ sourcerenderer_vmt = { path = "../valve_formats/vmt" }
 sourcerenderer_mdl = { path = "../valve_formats/mdl" }
 sourcerenderer_vtx = { path = "../valve_formats/vtx" }
 sourcerenderer_vvd = { path = "../valve_formats/vvd" }
-io_util = { path = "../io_util", features = [ "async" ] }
+io_util = { path = "../io_util", features = ["async"] }
 regex = "1.11"
 bitvec = "1.0"
-smallvec = { version = "1.15", features = [ "union", "const_generics", "const_new" ] }
+smallvec = { version = "1.15", features = ["union", "const_generics", "const_new"] }
 gltf = { version = "1.4", features = ["KHR_lights_punctual"] }
 rand = "0.9"
 bitset-core = "0.1"
 web-time = "1.1"
 log = "0.4"
-rapier3d = { version = "0.24", features = [ "enhanced-determinism", "f32" ] }
+rapier3d = { version = "0.24", features = ["enhanced-determinism", "f32"] }
 half = "2.6"
 profiling = "1.0"
 field-offset = "0.3"
@@ -39,7 +39,7 @@ strum_macros = "0.27"
 thread_local = "1.1"
 serde_json = "1.0"
 smartstring = "1.0"
-bumpalo = { version = "3.17", features = [ "collections", "boxed" ] }
+bumpalo = { version = "3.17", features = ["collections", "boxed"] }
 futures-io = "0.3"
 waker-fn = "1.2"
 async-lock = "3.4"
@@ -47,17 +47,16 @@ atomic-waker = "1.1"
 futures-lite = "2.6"
 parking_lot = "0.12"
 
-bevy_app = "0.15"
-bevy_math = "0.15"
-bevy_ecs = "0.15"
-bevy_transform = "0.15"
-bevy_hierarchy = "0.15"
-bevy_log = "0.15"
-bevy_tasks = { version = "0.15" }
-bevy_utils = "0.15"
-bevy_core = "0.15"
-bevy_time = "0.15"
-bevy_input = "0.15"
+bevy_app = "0.16"
+bevy_math = "0.16"
+bevy_ecs = "0.16"
+bevy_transform = "0.16"
+bevy_log = "0.16"
+bevy_tasks = { version = "0.16" }
+bevy_utils = "0.16"
+bevy_time = "0.16"
+bevy_input = "0.16"
+bevy_diagnostic = "0.16.0"
 
 # bevy_ecs has a dependency on async-executor which itself has a dependency on an ancient version of slab that no longer builds on modern rust versions.
 # This forces Cargo to use a more recent version of Slab.
@@ -68,22 +67,22 @@ sourcerenderer_vulkan = { path = "../graphics/vulkan" }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 sourcerenderer_metal = { path = "../graphics/metal" }
-objc2 = { version = "0.6", features = [ "std", "disable-encoding-assertions" ] } # disable-encoding-assertions is required otherwise the Metal debugger doesn't work
+objc2 = { version = "0.6", features = ["std", "disable-encoding-assertions"] } # disable-encoding-assertions is required otherwise the Metal debugger doesn't work
 
 # Force rand crate to use getrandom with wasm-js feature
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 sourcerenderer_webgpu = { path = "../graphics/webgpu" }
-getrandom = { version = "0.3", features = [ "wasm_js" ] }
+getrandom = { version = "0.3", features = ["wasm_js"] }
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
-web-sys = { version = "0.3", features = [ "OffscreenCanvas", "Navigator", "DedicatedWorkerGlobalScope", "WorkerNavigator" ] }
+web-sys = { version = "0.3", features = ["OffscreenCanvas", "Navigator", "DedicatedWorkerGlobalScope", "WorkerNavigator"] }
 js-sys = "0.3"
 wasm-bindgen-futures = "0.4.50"
 
 [features]
-default = [ "threading" ]
+default = ["threading"]
 # default = [ ]
-ecs_threading = [ "bevy_tasks/multi_threaded" ]
-render_thread = [ ]
-threading = [ "ecs_threading", "render_thread" ]
-web = [ ]
-profile = [ "profiling/profile-with-optick" ]
+ecs_threading = ["bevy_tasks/multi_threaded"]
+render_thread = []
+threading = ["ecs_threading", "render_thread"]
+web = []
+profile = ["profiling/profile-with-optick"]

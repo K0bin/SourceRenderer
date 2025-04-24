@@ -1,26 +1,33 @@
 use std::sync::Arc;
-
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 
-use bevy_input::keyboard::KeyboardInput;
 use bevy_app::*;
-use bevy_ecs::system::Resource;
-use bevy_core::{FrameCountPlugin, TaskPoolPlugin};
+use bevy_diagnostic::FrameCountPlugin;
+use bevy_ecs::resource::Resource;
+use bevy_input::keyboard::KeyboardInput;
 use bevy_input::mouse::MouseMotion;
 use bevy_input::InputPlugin;
 use bevy_log::LogPlugin;
-use bevy_time::{Fixed, Time, TimePlugin};
-use bevy_transform::TransformPlugin;
-use bevy_hierarchy::HierarchyPlugin;
-
-use sourcerenderer_core::platform::{GraphicsPlatform, PlatformIO, Window};
-use sourcerenderer_core::{
-    console::Console,
-    Vec2UI,
+use bevy_time::{
+    Fixed,
+    Time,
+    TimePlugin,
 };
+use bevy_transform::TransformPlugin;
+use sourcerenderer_core::console::Console;
+use sourcerenderer_core::platform::{
+    GraphicsPlatform,
+    PlatformIO,
+    Window,
+};
+use sourcerenderer_core::Vec2UI;
 
-use crate::asset::{AssetManager, AssetManagerECSResource, AssetManagerPlugin};
+use crate::asset::{
+    AssetManager,
+    AssetManagerECSResource,
+    AssetManagerPlugin,
+};
 use crate::graphics::*;
 use crate::renderer::RendererPlugin;
 use crate::transform::InterpolationPlugin;
@@ -31,7 +38,7 @@ pub struct ConsoleResource(pub Arc<Console>);
 pub enum WindowState {
     Minimized,
     Window(Vec2UI),
-    Fullscreen(Vec2UI)
+    Fullscreen(Vec2UI),
 }
 
 pub const TICK_RATE: u32 = 5;
@@ -42,12 +49,11 @@ pub enum EngineLoopFuncResult {
     Exit,
 }
 
-
 #[cfg(all(feature = "threading", target_arch = "wasm32"))]
 compile_error!("Threads are not supported on WebAssembly.");
 
 pub struct Engine {
-    app: App
+    app: App,
 }
 
 impl Drop for Engine {
@@ -57,15 +63,17 @@ impl Drop for Engine {
 }
 
 impl Engine {
-    pub fn run<M, IO: PlatformIO, G: GraphicsPlatform<ActiveBackend>>(window: &impl Window<ActiveBackend>, game_plugins: impl Plugins<M>) -> Self {
+    pub fn run<M, IO: PlatformIO, G: GraphicsPlatform<ActiveBackend>>(
+        window: &impl Window<ActiveBackend>,
+        game_plugins: impl Plugins<M>,
+    ) -> Self {
         let console = Arc::new(Console::new());
         let console_resource = ConsoleResource(console);
 
         let mut app = App::new();
         initialize_graphics::<G>(&mut app, window);
 
-        app
-            .add_plugins(PanicHandlerPlugin::default());
+        app.add_plugins(PanicHandlerPlugin::default());
 
         #[cfg(not(target_arch = "wasm32"))]
         app.add_plugins(LogPlugin::default());
@@ -78,7 +86,6 @@ impl Engine {
             .insert_resource(Time::<Fixed>::from_hz(TICK_RATE as f64))
             .add_plugins(FrameCountPlugin::default())
             .add_plugins(TransformPlugin::default())
-            .add_plugins(HierarchyPlugin::default())
             .add_plugins(InterpolationPlugin::default())
             .add_plugins(InputPlugin::default())
             .add_plugins(AssetManagerPlugin::<IO>::default())
@@ -91,9 +98,7 @@ impl Engine {
             app.cleanup();
         }
 
-        Self {
-            app,
-        }
+        Self { app }
     }
 
     pub fn frame(&mut self) -> EngineLoopFuncResult {
@@ -105,7 +110,8 @@ impl Engine {
                 app.cleanup();
                 assert_eq!(app.plugins_state(), PluginsState::Cleaned);
             } else if plugins_state != PluginsState::Cleaned {
-                #[cfg(not(target_arch = "wasm32"))] {
+                #[cfg(not(target_arch = "wasm32"))]
+                {
                     // We only need to call it manually before the app is ready.
                     // After that the TaskPoolPlugin takes care of it.
                     bevy_tasks::tick_global_task_pools_on_main_thread();
@@ -116,9 +122,15 @@ impl Engine {
             }
 
             if cfg!(not(target_arch = "wasm32")) {
-                bevy_tasks::IoTaskPool::get().with_local_executor(|e| { e.try_tick(); });
-                bevy_tasks::AsyncComputeTaskPool::get().with_local_executor(|e| { e.try_tick(); });
-                bevy_tasks::ComputeTaskPool::get().with_local_executor(|e| { e.try_tick(); });
+                bevy_tasks::IoTaskPool::get().with_local_executor(|e| {
+                    e.try_tick();
+                });
+                bevy_tasks::AsyncComputeTaskPool::get().with_local_executor(|e| {
+                    e.try_tick();
+                });
+                bevy_tasks::ComputeTaskPool::get().with_local_executor(|e| {
+                    e.try_tick();
+                });
             }
 
             app.update();
@@ -144,7 +156,10 @@ impl Engine {
         self.app.world_mut().send_event(motion);
     }
 
-    pub fn window_changed<P: GraphicsPlatform<ActiveBackend>>(&mut self, window_state: WindowState) {
+    pub fn window_changed<P: GraphicsPlatform<ActiveBackend>>(
+        &mut self,
+        window_state: WindowState,
+    ) {
         RendererPlugin::<P>::window_changed(&self.app, window_state);
     }
 
