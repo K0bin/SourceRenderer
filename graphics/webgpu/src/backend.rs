@@ -25,6 +25,7 @@ impl gpu::GPUBackend for WebGPUBackend {
     type RayTracingPipeline = ();
     type MeshGraphicsPipeline = ();
     type Fence = WebGPUFence;
+    type SplitBarrier = ();
     type Queue = WebGPUQueue;
     type Heap = WebGPUHeap;
     type AccelerationStructure = WebGPUAccelerationStructure;

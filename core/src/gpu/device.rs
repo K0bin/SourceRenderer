@@ -134,4 +134,6 @@ pub trait Device<B: GPUBackend> {
         name: Option<&str>,
     ) -> B::RayTracingPipeline;
     unsafe fn create_query_pool(&self, count: u32) -> B::QueryPool;
+
+    unsafe fn create_split_barrier(&self) -> B::SplitBarrier;
 }

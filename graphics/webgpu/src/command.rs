@@ -2,20 +2,6 @@ use core::panic;
 use std::collections::{hash_set::Iter, HashSet};
 use std::sync::Arc;
 
-use js_sys::{wasm_bindgen::JsValue, Array, Uint32Array};
-use smallvec::SmallVec;
-use sourcerenderer_core::{
-    align_up_32,
-    gpu::{self, Buffer as _, Texture as _, TextureView as _},
-};
-use web_sys::{
-    GpuCommandBuffer, GpuCommandEncoder, GpuComputePassEncoder, GpuDevice, GpuExtent3dDict,
-    GpuIndexFormat, GpuLoadOp, GpuRenderBundle, GpuRenderBundleEncoder,
-    GpuRenderBundleEncoderDescriptor, GpuRenderPassColorAttachment,
-    GpuRenderPassDepthStencilAttachment, GpuRenderPassDescriptor, GpuRenderPassEncoder, GpuStoreOp,
-    GpuTexelCopyBufferInfo, GpuTexelCopyTextureInfo,
-};
-
 use crate::{
     binding::{
         self, WebGPUBindingManager, WebGPUBoundResourceRef, WebGPUBufferBindingInfo,
@@ -27,6 +13,20 @@ use crate::{
     stubs::WebGPUAccelerationStructure,
     texture::{format_to_webgpu, WebGPUTexture, WebGPUTextureView},
     WebGPUBackend, WebGPUBindGroupBinding, WebGPULimits, WebGPUQueryPool,
+};
+use js_sys::{wasm_bindgen::JsValue, Array, Uint32Array};
+use smallvec::SmallVec;
+use sourcerenderer_core::gpu::{Barrier, BarrierSync, SplitBarrierWait};
+use sourcerenderer_core::{
+    align_up_32,
+    gpu::{self, Buffer as _, Texture as _, TextureView as _},
+};
+use web_sys::{
+    GpuCommandBuffer, GpuCommandEncoder, GpuComputePassEncoder, GpuDevice, GpuExtent3dDict,
+    GpuIndexFormat, GpuLoadOp, GpuRenderBundle, GpuRenderBundleEncoder,
+    GpuRenderBundleEncoderDescriptor, GpuRenderPassColorAttachment,
+    GpuRenderPassDepthStencilAttachment, GpuRenderPassDescriptor, GpuRenderPassEncoder, GpuStoreOp,
+    GpuTexelCopyBufferInfo, GpuTexelCopyTextureInfo,
 };
 
 enum WebGPUPassEncoder {
@@ -1521,6 +1521,16 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
             panic!("copy_query_results_to_buffer is not supported in inner command buffers");
         }
     }
+
+    // Barriers in WebGPU are handled automatically by the WebGPU implementation
+    unsafe fn split_barrier_reset(&mut self, _split_barrier: &(), _after: BarrierSync) {}
+    unsafe fn split_barrier_signal(
+        &mut self,
+        _split_barrier: &(),
+        _barrier: Barrier<WebGPUBackend>,
+    ) {
+    }
+    unsafe fn split_barrier_wait(&mut self, _waits: &[SplitBarrierWait<WebGPUBackend>]) {}
 }
 
 pub struct WebGPUCommandPool {

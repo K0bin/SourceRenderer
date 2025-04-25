@@ -20,6 +20,7 @@ impl gpu::GPUBackend for MTLBackend {
     type Surface = MTLSurface;
     type Swapchain = MTLSwapchain;
     type Fence = MTLFence;
+    type SplitBarrier = ();
     type Heap = MTLHeap;
     type Shader = MTLShader;
     type GraphicsPipeline = MTLGraphicsPipeline;

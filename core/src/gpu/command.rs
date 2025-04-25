@@ -355,6 +355,15 @@ pub trait CommandBuffer<B: GPUBackend> {
     ) -> B::AccelerationStructure;
 
     unsafe fn trace_ray(&mut self, width: u32, height: u32, depth: u32);
+
+    unsafe fn split_barrier_reset(&mut self, split_barrier: &B::SplitBarrier, after: BarrierSync);
+    unsafe fn split_barrier_signal(&mut self, split_barrier: &B::SplitBarrier, barrier: Barrier<B>);
+    unsafe fn split_barrier_wait(&mut self, waits: &[SplitBarrierWait<B>]);
+}
+
+pub struct SplitBarrierWait<'a, B: GPUBackend> {
+    pub split_barrier: &'a B::SplitBarrier,
+    pub barrier: &'a [Barrier<'a, B>],
 }
 
 pub enum RenderPassAttachmentView<'a, B: GPUBackend> {
@@ -590,6 +599,64 @@ pub enum Barrier<'a, B: GPUBackend> {
         old_access: BarrierAccess,
         new_access: BarrierAccess,
     },
+}
+
+impl<'a, B: GPUBackend> Clone for Barrier<'a, B> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::TextureBarrier {
+                old_sync,
+                new_sync,
+                old_layout,
+                new_layout,
+                old_access,
+                new_access,
+                texture,
+                range,
+                queue_ownership,
+            } => Self::TextureBarrier {
+                old_sync: *old_sync,
+                new_sync: *new_sync,
+                old_layout: *old_layout,
+                new_layout: *new_layout,
+                old_access: *old_access,
+                new_access: *new_access,
+                texture,
+                range: range.clone(),
+                queue_ownership: queue_ownership.clone(),
+            },
+            Self::BufferBarrier {
+                old_sync,
+                new_sync,
+                old_access,
+                new_access,
+                buffer,
+                offset,
+                length,
+                queue_ownership,
+            } => Self::BufferBarrier {
+                old_sync: *old_sync,
+                new_sync: *new_sync,
+                old_access: *old_access,
+                new_access: *new_access,
+                buffer,
+                offset: *offset,
+                length: *length,
+                queue_ownership: queue_ownership.clone(),
+            },
+            Self::GlobalBarrier {
+                old_sync,
+                new_sync,
+                old_access,
+                new_access,
+            } => Self::GlobalBarrier {
+                old_sync: *old_sync,
+                new_sync: *new_sync,
+                old_access: *old_access,
+                new_access: *new_access,
+            },
+        }
+    }
 }
 
 bitflags! {

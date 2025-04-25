@@ -13,14 +13,14 @@ use objc2_metal::{
     MTLParallelRenderCommandEncoder as _, MTLRenderCommandEncoder, MTLTexture as _,
 };
 
+use super::*;
 use smallvec::SmallVec;
+use sourcerenderer_core::gpu::{Barrier, BarrierSync, SplitBarrierWait};
 use sourcerenderer_core::{
     align_up_32,
     gpu::{self, Texture as _},
     Vec3UI,
 };
-
-use super::*;
 
 pub struct MTLCommandPool {
     queue: Retained<ProtocolObject<dyn objc2_metal::MTLCommandQueue>>,
@@ -1492,6 +1492,12 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
             count as NSUInteger * 8,
         );
     }
+
+    // We're relying entirely on Metal handling the barriers automatically right now.
+    // TODO: Rewrite Metal synchronization using MTLFence
+    unsafe fn split_barrier_reset(&mut self, _split_barrier: &(), _after: BarrierSync) {}
+    unsafe fn split_barrier_signal(&mut self, _split_barrier: &(), _barrier: Barrier<MTLBackend>) {}
+    unsafe fn split_barrier_wait(&mut self, _waits: &[SplitBarrierWait<MTLBackend>]) {}
 }
 
 impl Drop for MTLCommandBuffer {

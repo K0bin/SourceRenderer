@@ -28,6 +28,8 @@ impl gpu::GPUBackend for VkBackend {
     type QueryPool = VkQueryPool;
     type AccelerationStructure = VkAccelerationStructure;
 
+    type SplitBarrier = VkEvent;
+
     fn name() -> &'static str {
         "Vulkan"
     }

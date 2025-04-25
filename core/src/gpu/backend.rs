@@ -20,6 +20,7 @@ pub trait GPUBackend: 'static + Sized {
     type ComputePipeline: ComputePipeline + GPUMaybeSend + GPUMaybeSync;
     type RayTracingPipeline: GPUMaybeSend + GPUMaybeSync;
     type Fence: Fence + GPUMaybeSend + GPUMaybeSync;
+    type SplitBarrier: GPUMaybeSend + GPUMaybeSync;
     type Queue: Queue<Self> + GPUMaybeSend + GPUMaybeSync;
     type Heap: Heap<Self>;
     type QueryPool: QueryPool + GPUMaybeSend + GPUMaybeSync;

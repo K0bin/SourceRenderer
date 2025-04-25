@@ -93,3 +93,41 @@ impl gpu::Fence for VkTimelineSemaphore {
         }
     }
 }
+
+pub struct VkEvent {
+    device: Arc<RawVkDevice>,
+    event: vk::Event,
+}
+
+impl Drop for VkEvent {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.destroy_event(self.event, None);
+        }
+    }
+}
+
+impl VkEvent {
+    pub fn new(device: &Arc<RawVkDevice>) -> Self {
+        let event = unsafe {
+            device
+                .create_event(
+                    &vk::EventCreateInfo {
+                        flags: vk::EventCreateFlags::DEVICE_ONLY,
+                        ..Default::default()
+                    },
+                    None,
+                )
+                .unwrap()
+        };
+        Self {
+            device: device.clone(),
+            event,
+        }
+    }
+
+    #[inline(always)]
+    pub(super) fn handle(&self) -> vk::Event {
+        self.event
+    }
+}

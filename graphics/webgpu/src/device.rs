@@ -373,4 +373,8 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
     unsafe fn create_query_pool(&self, count: u32) -> WebGPUQueryPool {
         WebGPUQueryPool::new(&self.device, count)
     }
+
+    unsafe fn create_split_barrier(&self) -> () {
+        ()
+    }
 }

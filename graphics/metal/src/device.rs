@@ -488,8 +488,11 @@ impl gpu::Device<MTLBackend> for MTLDevice {
                 slice_pitch,
             );
     }
-
     unsafe fn create_query_pool(&self, count: u32) -> MTLQueryPool {
         MTLQueryPool::new(&self.device, count)
+    }
+
+    unsafe fn create_split_barrier(&self) -> () {
+        ()
     }
 }

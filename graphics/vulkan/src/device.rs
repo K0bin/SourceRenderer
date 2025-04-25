@@ -677,6 +677,10 @@ impl gpu::Device<VkBackend> for VkDevice {
     unsafe fn create_query_pool(&self, count: u32) -> VkQueryPool {
         VkQueryPool::new(&self.device, vk::QueryType::OCCLUSION, count)
     }
+
+    unsafe fn create_split_barrier(&self) -> VkEvent {
+        VkEvent::new(&self.device)
+    }
 }
 
 impl Drop for VkDevice {

@@ -11,7 +11,11 @@ use crossbeam_utils::atomic::AtomicCell;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{
     self,
+    Barrier,
+    BarrierSync,
     Buffer as _,
+    QueueOwnershipTransfer,
+    SplitBarrierWait,
 };
 
 use super::*;
@@ -837,237 +841,22 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             SmallVec::<[vk::BufferMemoryBarrier2; 4]>::with_capacity(barriers.len());
         let mut pending_memory_barriers = <[vk::MemoryBarrier2; 2]>::default();
 
-        for barrier in barriers {
-            match barrier {
-                gpu::Barrier::TextureBarrier {
-                    old_sync,
-                    new_sync,
-                    old_layout,
-                    new_layout,
-                    old_access,
-                    new_access,
-                    texture,
-                    range,
-                    queue_ownership,
-                } => {
-                    let info = texture.info();
-                    let mut aspect_mask = vk::ImageAspectFlags::empty();
-                    if info.format.is_depth() {
-                        aspect_mask |= vk::ImageAspectFlags::DEPTH;
-                    }
-                    if info.format.is_stencil() {
-                        aspect_mask |= vk::ImageAspectFlags::STENCIL;
-                    }
-                    if aspect_mask.is_empty() {
-                        aspect_mask |= vk::ImageAspectFlags::COLOR;
-                    }
+        pending_image_barriers.resize(barriers.len(), Default::default());
+        pending_buffer_barriers.resize(barriers.len(), Default::default());
 
-                    let mut src_queue_family_index: u32 = vk::QUEUE_FAMILY_IGNORED;
-                    let mut dst_queue_family_index: u32 = vk::QUEUE_FAMILY_IGNORED;
-                    if let Some(queue_transfer) = queue_ownership {
-                        src_queue_family_index = match queue_transfer.from {
-                            gpu::QueueType::Graphics => {
-                                self.device.graphics_queue_info.queue_family_index as u32
-                            }
-                            gpu::QueueType::Compute => {
-                                if let Some(info) = self.device.compute_queue_info.as_ref() {
-                                    info.queue_family_index as u32
-                                } else {
-                                    vk::QUEUE_FAMILY_IGNORED
-                                }
-                            }
-                            gpu::QueueType::Transfer => {
-                                if let Some(info) = self.device.transfer_queue_info.as_ref() {
-                                    info.queue_family_index as u32
-                                } else {
-                                    vk::QUEUE_FAMILY_IGNORED
-                                }
-                            }
-                        };
-                        dst_queue_family_index = match queue_transfer.to {
-                            gpu::QueueType::Graphics => {
-                                self.device.graphics_queue_info.queue_family_index as u32
-                            }
-                            gpu::QueueType::Compute => {
-                                if let Some(info) = self.device.compute_queue_info.as_ref() {
-                                    info.queue_family_index as u32
-                                } else {
-                                    vk::QUEUE_FAMILY_IGNORED
-                                }
-                            }
-                            gpu::QueueType::Transfer => {
-                                if let Some(info) = self.device.transfer_queue_info.as_ref() {
-                                    info.queue_family_index as u32
-                                } else {
-                                    vk::QUEUE_FAMILY_IGNORED
-                                }
-                            }
-                        };
-                    }
-                    if src_queue_family_index == vk::QUEUE_FAMILY_IGNORED
-                        || dst_queue_family_index == vk::QUEUE_FAMILY_IGNORED
-                    {
-                        src_queue_family_index = vk::QUEUE_FAMILY_IGNORED;
-                        dst_queue_family_index = vk::QUEUE_FAMILY_IGNORED;
-                    }
+        let dependency_info_opt = barriers_to_vk(
+            &self.device,
+            barriers,
+            &mut pending_image_barriers,
+            &mut pending_buffer_barriers,
+            &mut pending_memory_barriers,
+        );
 
-                    let dst_stages =
-                        barrier_sync_to_stage(*new_sync) & self.device.supported_pipeline_stages;
-                    let src_stages =
-                        barrier_sync_to_stage(*old_sync) & self.device.supported_pipeline_stages;
-                    pending_image_barriers.push(vk::ImageMemoryBarrier2 {
-                        src_stage_mask: src_stages,
-                        dst_stage_mask: dst_stages,
-                        src_access_mask: barrier_access_to_access(*old_access)
-                            & self.device.supported_access_flags,
-                        dst_access_mask: barrier_access_to_access(*new_access)
-                            & self.device.supported_access_flags,
-                        old_layout: texture_layout_to_image_layout(*old_layout),
-                        new_layout: texture_layout_to_image_layout(*new_layout),
-                        src_queue_family_index: src_queue_family_index,
-                        dst_queue_family_index: dst_queue_family_index,
-                        image: texture.handle(),
-                        subresource_range: vk::ImageSubresourceRange {
-                            aspect_mask,
-                            base_array_layer: range.base_array_layer,
-                            base_mip_level: range.base_mip_level,
-                            level_count: range.mip_level_length,
-                            layer_count: range.array_layer_length,
-                        },
-                        ..Default::default()
-                    });
-                }
-                gpu::Barrier::BufferBarrier {
-                    old_sync,
-                    new_sync,
-                    old_access,
-                    new_access,
-                    buffer,
-                    offset,
-                    length,
-                    queue_ownership,
-                } => {
-                    let dst_stages =
-                        barrier_sync_to_stage(*new_sync) & self.device.supported_pipeline_stages;
-                    let src_stages =
-                        barrier_sync_to_stage(*old_sync) & self.device.supported_pipeline_stages;
-
-                    let mut src_queue_family_index: u32 = vk::QUEUE_FAMILY_IGNORED;
-                    let mut dst_queue_family_index: u32 = vk::QUEUE_FAMILY_IGNORED;
-                    if let Some(queue_transfer) = queue_ownership {
-                        src_queue_family_index = match queue_transfer.from {
-                            gpu::QueueType::Graphics => {
-                                self.device.graphics_queue_info.queue_family_index as u32
-                            }
-                            gpu::QueueType::Compute => {
-                                if let Some(info) = self.device.compute_queue_info.as_ref() {
-                                    info.queue_family_index as u32
-                                } else {
-                                    vk::QUEUE_FAMILY_IGNORED
-                                }
-                            }
-                            gpu::QueueType::Transfer => {
-                                if let Some(info) = self.device.transfer_queue_info.as_ref() {
-                                    info.queue_family_index as u32
-                                } else {
-                                    vk::QUEUE_FAMILY_IGNORED
-                                }
-                            }
-                        };
-                        dst_queue_family_index = match queue_transfer.to {
-                            gpu::QueueType::Graphics => {
-                                self.device.graphics_queue_info.queue_family_index as u32
-                            }
-                            gpu::QueueType::Compute => {
-                                if let Some(info) = self.device.compute_queue_info.as_ref() {
-                                    info.queue_family_index as u32
-                                } else {
-                                    vk::QUEUE_FAMILY_IGNORED
-                                }
-                            }
-                            gpu::QueueType::Transfer => {
-                                if let Some(info) = self.device.transfer_queue_info.as_ref() {
-                                    info.queue_family_index as u32
-                                } else {
-                                    vk::QUEUE_FAMILY_IGNORED
-                                }
-                            }
-                        };
-                    }
-                    if src_queue_family_index == vk::QUEUE_FAMILY_IGNORED
-                        || dst_queue_family_index == vk::QUEUE_FAMILY_IGNORED
-                    {
-                        src_queue_family_index = vk::QUEUE_FAMILY_IGNORED;
-                        dst_queue_family_index = vk::QUEUE_FAMILY_IGNORED;
-                    }
-
-                    pending_buffer_barriers.push(vk::BufferMemoryBarrier2 {
-                        src_stage_mask: src_stages,
-                        dst_stage_mask: dst_stages,
-                        src_access_mask: barrier_access_to_access(*old_access)
-                            & self.device.supported_access_flags,
-                        dst_access_mask: barrier_access_to_access(*new_access)
-                            & self.device.supported_access_flags,
-                        src_queue_family_index: src_queue_family_index,
-                        dst_queue_family_index: dst_queue_family_index,
-                        buffer: buffer.handle(),
-                        offset: *offset as u64,
-                        size: (buffer.info().size - *offset).min(*length),
-                        ..Default::default()
-                    });
-                }
-                gpu::Barrier::GlobalBarrier {
-                    old_sync,
-                    new_sync,
-                    old_access,
-                    new_access,
-                } => {
-                    let dst_stages =
-                        barrier_sync_to_stage(*new_sync) & self.device.supported_pipeline_stages;
-                    let src_stages =
-                        barrier_sync_to_stage(*old_sync) & self.device.supported_pipeline_stages;
-                    let src_access =
-                        barrier_access_to_access(*old_access) & self.device.supported_access_flags;
-                    let dst_access =
-                        barrier_access_to_access(*new_access) & self.device.supported_access_flags;
-
-                    pending_memory_barriers[0].dst_stage_mask |= dst_stages
-                        & !(vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR
-                            | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR);
-                    pending_memory_barriers[0].src_stage_mask |= src_stages
-                        & !(vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR
-                            | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR);
-                    pending_memory_barriers[0].src_access_mask |=
-                        src_access & !(vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR);
-                    pending_memory_barriers[0].dst_access_mask |= dst_access
-                        & !(vk::AccessFlags2::ACCELERATION_STRUCTURE_READ_KHR
-                            | vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR);
-
-                    pending_memory_barriers[1].dst_access_mask |= dst_access
-                        & (vk::AccessFlags2::ACCELERATION_STRUCTURE_READ_KHR
-                            | vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR);
-
-                    if !pending_memory_barriers[1].dst_access_mask.is_empty() {
-                        /*
-                        VUID-VkMemoryBarrier2-dstAccessMask-06256
-                        If the rayQuery feature is not enabled and dstAccessMask includes VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
-                        dstStageMask must not include any of the VK_PIPELINESTAGE*_SHADER_BIT stages except VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR
-
-                        So we need to handle RT barriers separately.
-                        */
-                        pending_memory_barriers[1].src_stage_mask = src_stages
-                            & (vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR
-                                | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR);
-                        pending_memory_barriers[1].src_access_mask =
-                            src_access & (vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR);
-                        pending_memory_barriers[1].dst_stage_mask = dst_stages
-                            & (vk::PipelineStageFlags2::RAY_TRACING_SHADER_KHR
-                                | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR
-                                | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR);
-                    }
-                }
-            }
+        if dependency_info_opt.is_none() {
+            log::warn!("Empty barrier call");
+            return;
         }
+        let dependency_info = dependency_info_opt.unwrap();
 
         const FULL_BARRIER: bool = false; // IN CASE OF EMERGENCY, SET TO TRUE
         if FULL_BARRIER {
@@ -1079,62 +868,17 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                 ..Default::default()
             };
             let dependency_info = vk::DependencyInfo {
-                image_memory_barrier_count: 0,
-                p_image_memory_barriers: std::ptr::null(),
                 buffer_memory_barrier_count: 0,
-                p_buffer_memory_barriers: std::ptr::null(),
                 memory_barrier_count: 1,
                 p_memory_barriers: &full_memory_barrier as *const vk::MemoryBarrier2,
-                ..Default::default()
+                ..dependency_info
             };
             unsafe {
                 self.device
                     .cmd_pipeline_barrier2(self.cmd_buffer, &dependency_info);
             }
-            pending_memory_barriers[0].src_stage_mask = vk::PipelineStageFlags2::empty();
-            pending_memory_barriers[0].dst_stage_mask = vk::PipelineStageFlags2::empty();
-            pending_memory_barriers[0].src_access_mask = vk::AccessFlags2::empty();
-            pending_memory_barriers[0].dst_access_mask = vk::AccessFlags2::empty();
-            pending_memory_barriers[1].src_stage_mask = vk::PipelineStageFlags2::empty();
-            pending_memory_barriers[1].dst_stage_mask = vk::PipelineStageFlags2::empty();
-            pending_memory_barriers[1].src_access_mask = vk::AccessFlags2::empty();
-            pending_memory_barriers[1].dst_access_mask = vk::AccessFlags2::empty();
-            pending_buffer_barriers.clear();
             return;
         }
-
-        let has_pending_barriers = !pending_image_barriers.is_empty()
-            || !pending_buffer_barriers.is_empty()
-            || !pending_memory_barriers[0].src_stage_mask.is_empty()
-            || !pending_memory_barriers[0].dst_stage_mask.is_empty()
-            || !pending_memory_barriers[1].src_stage_mask.is_empty()
-            || !pending_memory_barriers[1].dst_stage_mask.is_empty();
-
-        if !has_pending_barriers {
-            return;
-        }
-
-        let dependency_info = vk::DependencyInfo {
-            image_memory_barrier_count: pending_image_barriers.len() as u32,
-            p_image_memory_barriers: pending_image_barriers.as_ptr(),
-            buffer_memory_barrier_count: pending_buffer_barriers.len() as u32,
-            p_buffer_memory_barriers: pending_buffer_barriers.as_ptr(),
-            memory_barrier_count: if pending_memory_barriers[0].src_stage_mask.is_empty()
-                && pending_memory_barriers[0].dst_stage_mask.is_empty()
-                && pending_memory_barriers[1].src_stage_mask.is_empty()
-                && pending_memory_barriers[1].dst_stage_mask.is_empty()
-            {
-                0
-            } else if pending_memory_barriers[1].src_stage_mask.is_empty()
-                && pending_memory_barriers[1].dst_stage_mask.is_empty()
-            {
-                1
-            } else {
-                2
-            },
-            p_memory_barriers: &pending_memory_barriers as *const vk::MemoryBarrier2,
-            ..Default::default()
-        };
 
         self.device
             .cmd_pipeline_barrier2(self.cmd_buffer, &dependency_info);
@@ -1931,6 +1675,369 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             vk::QueryResultFlags::WAIT | vk::QueryResultFlags::TYPE_64,
         );
     }
+
+    unsafe fn split_barrier_reset(&mut self, split_barrier: &VkEvent, after: BarrierSync) {
+        self.device.cmd_reset_event2(
+            self.cmd_buffer,
+            split_barrier.handle(),
+            barrier_sync_to_stage(after),
+        );
+    }
+
+    unsafe fn split_barrier_signal(
+        &mut self,
+        split_barrier: &VkEvent,
+        barrier: Barrier<VkBackend>,
+    ) {
+        let mut pending_image_barriers = SmallVec::<[vk::ImageMemoryBarrier2; 4]>::new();
+        let mut pending_buffer_barriers = SmallVec::<[vk::BufferMemoryBarrier2; 4]>::new();
+        let mut pending_memory_barriers = <[vk::MemoryBarrier2; 2]>::default();
+
+        pending_image_barriers.resize(1, Default::default());
+        pending_buffer_barriers.resize(1, Default::default());
+
+        let dependency_info_opt = barriers_to_vk(
+            &self.device,
+            &[barrier],
+            &mut pending_image_barriers,
+            &mut pending_buffer_barriers,
+            &mut pending_memory_barriers,
+        );
+
+        if dependency_info_opt.is_none() {
+            panic!("Empty split barrier signal");
+        }
+        let dependency_info = dependency_info_opt.unwrap();
+
+        const FULL_BARRIER: bool = false; // IN CASE OF EMERGENCY, SET TO TRUE
+        if FULL_BARRIER {
+            let full_memory_barrier = vk::MemoryBarrier2 {
+                src_stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
+                dst_stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
+                src_access_mask: vk::AccessFlags2::MEMORY_WRITE,
+                dst_access_mask: vk::AccessFlags2::MEMORY_READ | vk::AccessFlags2::MEMORY_WRITE,
+                ..Default::default()
+            };
+            let dependency_info = vk::DependencyInfo {
+                buffer_memory_barrier_count: 0,
+                memory_barrier_count: 1,
+                p_memory_barriers: &full_memory_barrier as *const vk::MemoryBarrier2,
+                ..dependency_info
+            };
+            unsafe {
+                self.device
+                    .cmd_pipeline_barrier2(self.cmd_buffer, &dependency_info);
+            }
+            return;
+        }
+
+        self.device
+            .cmd_set_event2(self.cmd_buffer, split_barrier.handle(), &dependency_info);
+    }
+
+    unsafe fn split_barrier_wait(&mut self, waits: &[SplitBarrierWait<VkBackend>]) {
+        let mut total_barrier_count = 0;
+        for wait in waits {
+            total_barrier_count += wait.barrier.len();
+        }
+
+        let mut pending_image_barriers =
+            SmallVec::<[vk::ImageMemoryBarrier2; 4]>::with_capacity(total_barrier_count);
+        let mut pending_buffer_barriers =
+            SmallVec::<[vk::BufferMemoryBarrier2; 4]>::with_capacity(total_barrier_count);
+        let mut pending_memory_barriers = <[vk::MemoryBarrier2; 2]>::default();
+
+        let mut event_handles = SmallVec::<[vk::Event; 4]>::with_capacity(waits.len());
+        let mut dependency_infos =
+            SmallVec::<[vk::DependencyInfo<'static>; 4]>::with_capacity(waits.len());
+        let mut image_barrier_index = 0;
+        let mut buffer_barrier_index = 0;
+        for wait in waits {
+            let dependency_info_opt = barriers_to_vk(
+                &self.device,
+                &wait.barrier,
+                &mut pending_image_barriers[image_barrier_index..],
+                &mut pending_buffer_barriers[buffer_barrier_index..],
+                &mut pending_memory_barriers,
+            );
+            if let Some(dependency_info) = dependency_info_opt {
+                image_barrier_index += dependency_info.image_memory_barrier_count as usize;
+                buffer_barrier_index += dependency_info.buffer_memory_barrier_count as usize;
+                dependency_infos.push(unsafe { std::mem::transmute(dependency_info) });
+                event_handles.push(wait.split_barrier.handle());
+            }
+        }
+
+        if dependency_infos.is_empty() {
+            return;
+        }
+
+        const FULL_BARRIER: bool = false; // IN CASE OF EMERGENCY, SET TO TRUE
+        if FULL_BARRIER {
+            let full_memory_barrier = vk::MemoryBarrier2 {
+                src_stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
+                dst_stage_mask: vk::PipelineStageFlags2::ALL_COMMANDS,
+                src_access_mask: vk::AccessFlags2::MEMORY_WRITE,
+                dst_access_mask: vk::AccessFlags2::MEMORY_READ | vk::AccessFlags2::MEMORY_WRITE,
+                ..Default::default()
+            };
+            std::mem::drop(dependency_infos);
+            let dependency_info = vk::DependencyInfo {
+                buffer_memory_barrier_count: 0,
+                memory_barrier_count: 1,
+                image_memory_barrier_count: image_barrier_index as u32,
+                p_image_memory_barriers: pending_image_barriers.as_ptr(),
+                p_memory_barriers: &full_memory_barrier as *const vk::MemoryBarrier2,
+                ..Default::default()
+            };
+            unsafe {
+                self.device
+                    .cmd_pipeline_barrier2(self.cmd_buffer, &dependency_info);
+            }
+            return;
+        }
+
+        self.device
+            .cmd_wait_events2(self.cmd_buffer, &event_handles, &dependency_infos)
+    }
+}
+
+fn barriers_to_vk<'a>(
+    device: &RawVkDevice,
+    barriers: &[Barrier<'a, VkBackend>],
+    pending_image_barriers: &'a mut [vk::ImageMemoryBarrier2],
+    pending_buffer_barriers: &'a mut [vk::BufferMemoryBarrier2],
+    pending_memory_barriers: &'a mut [vk::MemoryBarrier2; 2],
+) -> Option<vk::DependencyInfo<'a>> {
+    let mut image_barrier_index: usize = 0;
+    let mut buffer_barrier_index: usize = 0;
+
+    for barrier in barriers {
+        match barrier {
+            gpu::Barrier::TextureBarrier {
+                old_sync,
+                new_sync,
+                old_layout,
+                new_layout,
+                old_access,
+                new_access,
+                texture,
+                range,
+                queue_ownership,
+            } => {
+                let info = texture.info();
+                let mut aspect_mask = vk::ImageAspectFlags::empty();
+                if info.format.is_depth() {
+                    aspect_mask |= vk::ImageAspectFlags::DEPTH;
+                }
+                if info.format.is_stencil() {
+                    aspect_mask |= vk::ImageAspectFlags::STENCIL;
+                }
+                if aspect_mask.is_empty() {
+                    aspect_mask |= vk::ImageAspectFlags::COLOR;
+                }
+
+                let (src_queue_family_index, dst_queue_family_index) =
+                    queue_ownership_to_vk(&device, queue_ownership);
+
+                let dst_stages =
+                    barrier_sync_to_stage(*new_sync) & device.supported_pipeline_stages;
+                let src_stages =
+                    barrier_sync_to_stage(*old_sync) & device.supported_pipeline_stages;
+                pending_image_barriers[image_barrier_index] = vk::ImageMemoryBarrier2 {
+                    src_stage_mask: src_stages,
+                    dst_stage_mask: dst_stages,
+                    src_access_mask: barrier_access_to_access(*old_access)
+                        & device.supported_access_flags,
+                    dst_access_mask: barrier_access_to_access(*new_access)
+                        & device.supported_access_flags,
+                    old_layout: texture_layout_to_image_layout(*old_layout),
+                    new_layout: texture_layout_to_image_layout(*new_layout),
+                    src_queue_family_index,
+                    dst_queue_family_index,
+                    image: texture.handle(),
+                    subresource_range: vk::ImageSubresourceRange {
+                        aspect_mask,
+                        base_array_layer: range.base_array_layer,
+                        base_mip_level: range.base_mip_level,
+                        level_count: range.mip_level_length,
+                        layer_count: range.array_layer_length,
+                    },
+                    ..Default::default()
+                };
+                image_barrier_index += 1;
+            }
+            gpu::Barrier::BufferBarrier {
+                old_sync,
+                new_sync,
+                old_access,
+                new_access,
+                buffer,
+                offset,
+                length,
+                queue_ownership,
+            } => {
+                let dst_stages =
+                    barrier_sync_to_stage(*new_sync) & device.supported_pipeline_stages;
+                let src_stages =
+                    barrier_sync_to_stage(*old_sync) & device.supported_pipeline_stages;
+
+                let (src_queue_family_index, dst_queue_family_index) =
+                    queue_ownership_to_vk(&device, queue_ownership);
+
+                pending_buffer_barriers[buffer_barrier_index] = vk::BufferMemoryBarrier2 {
+                    src_stage_mask: src_stages,
+                    dst_stage_mask: dst_stages,
+                    src_access_mask: barrier_access_to_access(*old_access)
+                        & device.supported_access_flags,
+                    dst_access_mask: barrier_access_to_access(*new_access)
+                        & device.supported_access_flags,
+                    src_queue_family_index,
+                    dst_queue_family_index,
+                    buffer: buffer.handle(),
+                    offset: *offset,
+                    size: (buffer.info().size - *offset).min(*length),
+                    ..Default::default()
+                };
+                buffer_barrier_index += 1;
+            }
+            gpu::Barrier::GlobalBarrier {
+                old_sync,
+                new_sync,
+                old_access,
+                new_access,
+            } => {
+                let dst_stages =
+                    barrier_sync_to_stage(*new_sync) & device.supported_pipeline_stages;
+                let src_stages =
+                    barrier_sync_to_stage(*old_sync) & device.supported_pipeline_stages;
+                let src_access =
+                    barrier_access_to_access(*old_access) & device.supported_access_flags;
+                let dst_access =
+                    barrier_access_to_access(*new_access) & device.supported_access_flags;
+
+                pending_memory_barriers[0].dst_stage_mask |= dst_stages
+                    & !(vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR
+                        | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR);
+                pending_memory_barriers[0].src_stage_mask |= src_stages
+                    & !(vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR
+                        | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR);
+                pending_memory_barriers[0].src_access_mask |=
+                    src_access & !(vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR);
+                pending_memory_barriers[0].dst_access_mask |= dst_access
+                    & !(vk::AccessFlags2::ACCELERATION_STRUCTURE_READ_KHR
+                        | vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR);
+
+                pending_memory_barriers[1].dst_access_mask |= dst_access
+                    & (vk::AccessFlags2::ACCELERATION_STRUCTURE_READ_KHR
+                        | vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR);
+
+                if !pending_memory_barriers[1].dst_access_mask.is_empty() {
+                    /*
+                    VUID-VkMemoryBarrier2-dstAccessMask-06256
+                    If the rayQuery feature is not enabled and dstAccessMask includes VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
+                    dstStageMask must not include any of the VK_PIPELINESTAGE*_SHADER_BIT stages except VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR
+
+                    So we need to handle RT barriers separately.
+                    */
+                    pending_memory_barriers[1].src_stage_mask = src_stages
+                        & (vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR
+                            | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR);
+                    pending_memory_barriers[1].src_access_mask =
+                        src_access & (vk::AccessFlags2::ACCELERATION_STRUCTURE_WRITE_KHR);
+                    pending_memory_barriers[1].dst_stage_mask = dst_stages
+                        & (vk::PipelineStageFlags2::RAY_TRACING_SHADER_KHR
+                            | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR
+                            | vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_COPY_KHR);
+                }
+            }
+        }
+    }
+
+    let has_pending_barriers = image_barrier_index != 0
+        || buffer_barrier_index != 0
+        || !pending_memory_barriers[0].src_stage_mask.is_empty()
+        || !pending_memory_barriers[0].dst_stage_mask.is_empty()
+        || !pending_memory_barriers[1].src_stage_mask.is_empty()
+        || !pending_memory_barriers[1].dst_stage_mask.is_empty();
+
+    if !has_pending_barriers {
+        return None;
+    }
+
+    Some(vk::DependencyInfo {
+        image_memory_barrier_count: image_barrier_index as u32,
+        p_image_memory_barriers: pending_image_barriers.as_ptr(),
+        buffer_memory_barrier_count: buffer_barrier_index as u32,
+        p_buffer_memory_barriers: pending_buffer_barriers.as_ptr(),
+        memory_barrier_count: if pending_memory_barriers[0].src_stage_mask.is_empty()
+            && pending_memory_barriers[0].dst_stage_mask.is_empty()
+            && pending_memory_barriers[1].src_stage_mask.is_empty()
+            && pending_memory_barriers[1].dst_stage_mask.is_empty()
+        {
+            0
+        } else if pending_memory_barriers[1].src_stage_mask.is_empty()
+            && pending_memory_barriers[1].dst_stage_mask.is_empty()
+        {
+            1
+        } else {
+            2
+        },
+        p_memory_barriers: pending_memory_barriers as *const vk::MemoryBarrier2,
+        ..Default::default()
+    })
+}
+
+fn queue_ownership_to_vk(
+    device: &RawVkDevice,
+    queue_ownership: &Option<QueueOwnershipTransfer>,
+) -> (u32, u32) {
+    let mut src_queue_family_index: u32 = vk::QUEUE_FAMILY_IGNORED;
+    let mut dst_queue_family_index: u32 = vk::QUEUE_FAMILY_IGNORED;
+    if let Some(queue_transfer) = queue_ownership {
+        src_queue_family_index = match queue_transfer.from {
+            gpu::QueueType::Graphics => device.graphics_queue_info.queue_family_index as u32,
+            gpu::QueueType::Compute => {
+                if let Some(info) = device.compute_queue_info.as_ref() {
+                    info.queue_family_index as u32
+                } else {
+                    vk::QUEUE_FAMILY_IGNORED
+                }
+            }
+            gpu::QueueType::Transfer => {
+                if let Some(info) = device.transfer_queue_info.as_ref() {
+                    info.queue_family_index as u32
+                } else {
+                    vk::QUEUE_FAMILY_IGNORED
+                }
+            }
+        };
+        dst_queue_family_index = match queue_transfer.to {
+            gpu::QueueType::Graphics => device.graphics_queue_info.queue_family_index as u32,
+            gpu::QueueType::Compute => {
+                if let Some(info) = device.compute_queue_info.as_ref() {
+                    info.queue_family_index as u32
+                } else {
+                    vk::QUEUE_FAMILY_IGNORED
+                }
+            }
+            gpu::QueueType::Transfer => {
+                if let Some(info) = device.transfer_queue_info.as_ref() {
+                    info.queue_family_index as u32
+                } else {
+                    vk::QUEUE_FAMILY_IGNORED
+                }
+            }
+        };
+    }
+    if src_queue_family_index == vk::QUEUE_FAMILY_IGNORED
+        || dst_queue_family_index == vk::QUEUE_FAMILY_IGNORED
+    {
+        src_queue_family_index = vk::QUEUE_FAMILY_IGNORED;
+        dst_queue_family_index = vk::QUEUE_FAMILY_IGNORED;
+    }
+
+    (src_queue_family_index, dst_queue_family_index)
 }
 
 pub(super) fn barrier_sync_to_stage(sync: gpu::BarrierSync) -> vk::PipelineStageFlags2 {
