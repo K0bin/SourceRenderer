@@ -4,6 +4,7 @@ mod command;
 mod drawable;
 mod ecs;
 mod light;
+mod render_graph;
 mod render_path;
 mod renderer_culling;
 mod renderer_plugin;
