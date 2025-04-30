@@ -2081,8 +2081,14 @@ pub(super) fn barrier_sync_to_stage(sync: gpu::BarrierSync) -> vk::PipelineStage
     if sync.contains(gpu::BarrierSync::ACCELERATION_STRUCTURE_BUILD) {
         stages |= vk::PipelineStageFlags2::ACCELERATION_STRUCTURE_BUILD_KHR;
     }
-    if sync.contains(gpu::BarrierSync::RAY_TRACING) {
+    if sync.contains(gpu::BarrierSync::RAY_TRACING_SHADER) {
         stages |= vk::PipelineStageFlags2::RAY_TRACING_SHADER_KHR;
+    }
+    if sync.contains(gpu::BarrierSync::MESH_SHADER) {
+        stages |= vk::PipelineStageFlags2::MESH_SHADER_EXT;
+    }
+    if sync.contains(gpu::BarrierSync::TASK_SHADER) {
+        stages |= vk::PipelineStageFlags2::TASK_SHADER_EXT;
     }
     stages
 }
@@ -2118,7 +2124,6 @@ fn barrier_access_to_access(access: gpu::BarrierAccess) -> vk::AccessFlags2 {
     }
     if access.contains(gpu::BarrierAccess::RESOLVE_READ) {
         vk_access |= vk::AccessFlags2::TRANSFER_READ;
-        // TODO: sync2
     }
     if access.contains(gpu::BarrierAccess::RESOLVE_WRITE) {
         vk_access |= vk::AccessFlags2::TRANSFER_WRITE;

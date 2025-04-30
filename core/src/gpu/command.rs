@@ -470,11 +470,14 @@ bitflags! {
     const RENDER_TARGET                = 0b1000000;
     const COPY                         = 0b10000000;
     const RESOLVE                      = 0b100000000;
-    const INDIRECT                     = 0b1000000000;
-    const INDEX_INPUT                  = 0b10000000000;
-    const HOST                         = 0b100000000000;
-    const ACCELERATION_STRUCTURE_BUILD = 0b1000000000000;
-    const RAY_TRACING                  = 0b10000000000000;
+    const BLIT                         = 0b1000000000;
+    const INDIRECT                     = 0b10000000000;
+    const INDEX_INPUT                  = 0b100000000000;
+    const HOST                         = 0b1000000000000;
+    const ACCELERATION_STRUCTURE_BUILD = 0b10000000000000;
+    const RAY_TRACING_SHADER           = 0b100000000000000;
+    const MESH_SHADER                  = 0b1000000000000000;
+    const TASK_SHADER                  = 0b10000000000000000;
   }
 }
 
@@ -521,10 +524,128 @@ impl BarrierAccess {
             | BarrierAccess::ACCELERATION_STRUCTURE_WRITE
     }
 
-    pub fn is_write(&self) -> bool {
+    pub fn is_write(self) -> bool {
         let writes = Self::write_mask();
 
         self.intersects(writes)
+    }
+
+    pub fn applies_to_graphics(self) -> bool {
+        (self
+            & !(Self::ACCELERATION_STRUCTURE_WRITE
+                | Self::HOST_WRITE
+                | Self::HOST_READ
+                | Self::COPY_READ
+                | Self::COPY_WRITE))
+            != Self::empty()
+    }
+
+    pub fn applies_to_compute(self) -> bool {
+        self.contains(
+            Self::STORAGE_READ
+                | Self::STORAGE_WRITE
+                | Self::CONSTANT_READ
+                | Self::ACCELERATION_STRUCTURE_READ
+                | Self::COPY_READ
+                | Self::COPY_WRITE
+                | Self::ACCELERATION_STRUCTURE_WRITE
+                | Self::MEMORY_READ
+                | Self::MEMORY_WRITE
+                | Self::SHADER_READ
+                | Self::SHADER_WRITE
+                | Self::SAMPLING_READ,
+        )
+    }
+
+    pub fn applies_to_texture(self) -> bool {
+        (self
+            & !(Self::VERTEX_INPUT_READ
+                | Self::INDIRECT_READ
+                | Self::INDEX_READ
+                | Self::HOST_WRITE
+                | Self::HOST_READ
+                | Self::CONSTANT_READ
+                | Self::ACCELERATION_STRUCTURE_READ
+                | Self::ACCELERATION_STRUCTURE_WRITE))
+            != Self::empty()
+    }
+
+    pub fn applies_to_buffer(self) -> bool {
+        (self
+            & !(Self::SAMPLING_READ
+                | Self::RESOLVE_READ
+                | Self::RESOLVE_WRITE
+                | Self::RENDER_TARGET_READ
+                | Self::RENDER_TARGET_WRITE
+                | Self::DEPTH_STENCIL_READ
+                | Self::DEPTH_STENCIL_WRITE))
+            != Self::empty()
+    }
+
+    pub fn applies_to_sync_stages(self, stages: BarrierSync) -> bool {
+        (self.contains(Self::COPY_WRITE | Self::COPY_READ | Self::MEMORY_READ | Self::MEMORY_WRITE)
+            && stages.contains(BarrierSync::COPY))
+            || (self.contains(
+                Self::HOST_READ | Self::HOST_WRITE | Self::MEMORY_READ | Self::MEMORY_WRITE,
+            ) && stages.contains(BarrierSync::HOST))
+            || (self.contains(Self::VERTEX_INPUT_READ | Self::MEMORY_READ)
+                && stages.contains(BarrierSync::VERTEX_INPUT))
+            || (self.contains(Self::INDIRECT_READ | Self::MEMORY_READ)
+                && stages.contains(BarrierSync::INDIRECT))
+            || (self.contains(Self::INDEX_READ | Self::MEMORY_READ)
+                && stages.contains(BarrierSync::INDEX_INPUT))
+            || (self.contains(
+                Self::SAMPLING_READ
+                    | Self::SHADER_READ
+                    | Self::SHADER_WRITE
+                    | Self::DEPTH_STENCIL_WRITE
+                    | Self::DEPTH_STENCIL_READ
+                    | Self::RENDER_TARGET_WRITE
+                    | Self::RENDER_TARGET_READ
+                    | Self::STORAGE_READ
+                    | Self::STORAGE_WRITE
+                    | Self::CONSTANT_READ
+                    | Self::ACCELERATION_STRUCTURE_READ
+                    | Self::MEMORY_READ
+                    | Self::MEMORY_WRITE,
+            ) && stages.contains(BarrierSync::FRAGMENT_SHADER | BarrierSync::VERTEX_SHADER))
+            || (self.contains(
+                Self::SAMPLING_READ
+                    | Self::SHADER_READ
+                    | Self::SHADER_WRITE
+                    | Self::STORAGE_READ
+                    | Self::STORAGE_WRITE
+                    | Self::CONSTANT_READ
+                    | Self::ACCELERATION_STRUCTURE_READ
+                    | Self::MEMORY_READ
+                    | Self::MEMORY_WRITE,
+            ) && stages.contains(
+                BarrierSync::COMPUTE_SHADER
+                    | BarrierSync::TASK_SHADER
+                    | BarrierSync::MESH_SHADER
+                    | BarrierSync::RAY_TRACING_SHADER,
+            ))
+            || (self.contains(
+                Self::ACCELERATION_STRUCTURE_WRITE
+                    | Self::ACCELERATION_STRUCTURE_READ
+                    | Self::MEMORY_READ
+                    | Self::MEMORY_WRITE,
+            ) && stages.contains(BarrierSync::ACCELERATION_STRUCTURE_BUILD))
+            || (self.contains(
+                Self::RESOLVE_WRITE | Self::RESOLVE_READ | Self::MEMORY_READ | Self::MEMORY_WRITE,
+            ) && stages.contains(BarrierSync::RESOLVE))
+            || (self.contains(
+                Self::DEPTH_STENCIL_READ
+                    | Self::DEPTH_STENCIL_WRITE
+                    | Self::MEMORY_READ
+                    | Self::MEMORY_WRITE,
+            ) && stages.contains(BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH))
+            || (self.contains(
+                Self::RENDER_TARGET_READ
+                    | Self::RENDER_TARGET_WRITE
+                    | Self::MEMORY_READ
+                    | Self::MEMORY_WRITE,
+            ) && stages.contains(BarrierSync::RENDER_TARGET))
     }
 }
 
