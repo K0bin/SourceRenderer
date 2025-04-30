@@ -3,6 +3,7 @@ mod renderer;
 mod command;
 mod drawable;
 mod ecs;
+mod frame_graph;
 mod light;
 mod render_path;
 mod renderer_culling;
