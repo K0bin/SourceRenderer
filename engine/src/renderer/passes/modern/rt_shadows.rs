@@ -71,7 +71,7 @@ impl RTShadowPass {
         let texture_uav = pass_params.resources.access_view(
             cmd_buffer,
             Self::SHADOWS_TEXTURE_NAME,
-            BarrierSync::COMPUTE_SHADER | BarrierSync::RAY_TRACING,
+            BarrierSync::COMPUTE_SHADER | BarrierSync::RAY_TRACING_SHADER,
             BarrierAccess::STORAGE_WRITE,
             TextureLayout::Storage,
             true,
@@ -82,7 +82,7 @@ impl RTShadowPass {
         let depth = pass_params.resources.access_view(
             cmd_buffer,
             depth_name,
-            BarrierSync::RAY_TRACING | BarrierSync::COMPUTE_SHADER,
+            BarrierSync::RAY_TRACING_SHADER | BarrierSync::COMPUTE_SHADER,
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,
             false,
