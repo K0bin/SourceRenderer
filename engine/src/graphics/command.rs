@@ -4,7 +4,6 @@ use std::sync::Arc;
 use atomic_refcell::AtomicRefMut;
 use crossbeam_channel::Sender;
 use smallvec::SmallVec;
-
 use super::gpu::{
     self,
     Buffer as _,
@@ -119,6 +118,96 @@ struct BufferHandleRef<'a> {
 }
 
 impl<'a> Copy for BufferRef<'a> {}
+
+fn barrier_to_backend<'a>(barrier: &Barrier<'a>, frame: u64) -> active_gpu_backend::Barrier<'a> {
+    match barrier {
+        Barrier::RawTextureBarrier {
+            old_sync,
+            new_sync,
+            old_layout,
+            new_layout,
+            old_access,
+            new_access,
+            texture,
+            range,
+            queue_ownership
+        } => {
+            gpu::Barrier::TextureBarrier {
+                old_sync: *old_sync,
+                new_sync: *new_sync,
+                old_access: *old_access,
+                new_access: *new_access,
+                old_layout: *old_layout,
+                new_layout: *new_layout,
+                texture: *texture,
+                range: range.clone(),
+                queue_ownership: queue_ownership.clone(),
+            }
+        }
+        Barrier::TextureBarrier {
+            old_sync,
+            new_sync,
+            old_layout,
+            new_layout,
+            old_access,
+            new_access,
+            texture,
+            range,
+            queue_ownership
+        } => {
+            gpu::Barrier::TextureBarrier {
+                old_sync: *old_sync,
+                new_sync: *new_sync,
+                old_access: *old_access,
+                new_access: *new_access,
+                old_layout: *old_layout,
+                new_layout: *new_layout,
+                texture: texture.handle(),
+                range: range.clone(),
+                queue_ownership: queue_ownership.clone(),
+            }
+        }
+        Barrier::BufferBarrier {
+            old_sync,
+            new_sync,
+            old_access,
+            new_access,
+            buffer,
+            queue_ownership
+        } => {
+            let BufferHandleRef {
+                handle: buffer_handle,
+                offset: buffer_offset,
+                length: buffer_length,
+            } = buffer.deconstruct(frame);
+            gpu::Barrier::BufferBarrier {
+                old_sync: *old_sync,
+                new_sync: *new_sync,
+                old_access: *old_access,
+                new_access: *new_access,
+                buffer: buffer_handle,
+                offset: buffer_offset,
+                length: buffer_length,
+                queue_ownership: queue_ownership.clone(),
+            }
+        }
+        Barrier::GlobalBarrier {
+            old_sync, new_sync, old_access, new_access
+        } => {
+            gpu::Barrier::GlobalBarrier {
+                old_sync: *old_sync,
+                new_sync: *new_sync,
+                old_access: *old_access,
+                new_access: *new_access,
+            }
+        }
+    }
+}
+
+pub struct SplitBarrierWait<'a> {
+    pub split_barrier: &'a SplitBarrier,
+    pub barrier: &'a [Barrier<'a>],
+}
 
 impl<'a> CommandBuffer<'a> {
     pub(super) fn new(
@@ -700,85 +789,7 @@ impl<'a> CommandBuffer<'a> {
 
         let core_barriers: SmallVec<[active_gpu_backend::Barrier; 4]> = barriers
             .iter()
-            .map(|b| match b {
-                Barrier::TextureBarrier {
-                    old_sync,
-                    new_sync,
-                    old_layout,
-                    new_layout,
-                    old_access,
-                    new_access,
-                    texture,
-                    range,
-                    queue_ownership,
-                } => gpu::Barrier::TextureBarrier {
-                    old_sync: *old_sync,
-                    new_sync: *new_sync,
-                    old_layout: *old_layout,
-                    new_layout: *new_layout,
-                    old_access: *old_access,
-                    new_access: *new_access,
-                    texture: texture.handle(),
-                    range: range.clone(),
-                    queue_ownership: queue_ownership.clone(),
-                },
-                Barrier::BufferBarrier {
-                    old_sync,
-                    new_sync,
-                    old_access,
-                    new_access,
-                    buffer,
-                    queue_ownership,
-                } => {
-                    let BufferHandleRef {
-                        handle: buffer_handle,
-                        offset: buffer_offset,
-                        length: buffer_length,
-                    } = buffer.deconstruct(self.frame());
-                    gpu::Barrier::BufferBarrier {
-                        old_sync: *old_sync,
-                        new_sync: *new_sync,
-                        old_access: *old_access,
-                        new_access: *new_access,
-                        buffer: buffer_handle,
-                        offset: buffer_offset,
-                        length: buffer_length,
-                        queue_ownership: queue_ownership.clone(),
-                    }
-                }
-                Barrier::GlobalBarrier {
-                    old_sync,
-                    new_sync,
-                    old_access,
-                    new_access,
-                } => gpu::Barrier::GlobalBarrier {
-                    old_sync: *old_sync,
-                    new_sync: *new_sync,
-                    old_access: *old_access,
-                    new_access: *new_access,
-                },
-                Barrier::RawTextureBarrier {
-                    old_sync,
-                    new_sync,
-                    old_layout,
-                    new_layout,
-                    old_access,
-                    new_access,
-                    texture,
-                    range,
-                    queue_ownership,
-                } => gpu::Barrier::TextureBarrier {
-                    old_sync: *old_sync,
-                    new_sync: *new_sync,
-                    old_layout: *old_layout,
-                    new_layout: *new_layout,
-                    old_access: *old_access,
-                    new_access: *new_access,
-                    texture: *texture,
-                    range: range.clone(),
-                    queue_ownership: queue_ownership.clone(),
-                },
-            })
+            .map(|b| barrier_to_backend(b, self.frame()))
             .collect();
 
         unsafe {
@@ -788,6 +799,23 @@ impl<'a> CommandBuffer<'a> {
 
     pub fn flush_barriers(&mut self) {
         // TODO batch barriers
+    }
+
+    fn split_barrier_reset(&mut self, split_barrier: &SplitBarrier, after: BarrierSync) {
+        unsafe { self.cmd_buffer_handle.split_barrier_reset(split_barrier, after) }
+    }
+
+    fn split_barrier_signal(&mut self, split_barrier: &SplitBarrier, barrier: &Barrier) {
+        let core_barrier = barrier_to_backend(barrier, self.frame());
+        unsafe { self.cmd_buffer_handle.split_barrier_signal(split_barrier, &core_barrier) };
+    }
+    unsafe fn split_barrier_wait<'b>(&mut self, waits: &[SplitBarrierWait]) {
+        let mut barriers = SmallVec::<[active_gpu_backend::Barrier; 4]>::with_capacity(waits.len());
+        let mut core_waits = SmallVec::<[gpu::SplitBarrierWait<'b, active_gpu_backend::Backend>; 4]>::with_capacity(waits.len());
+        let core_barriers: SmallVec<[active_gpu_backend::Barrier; 4]> = waits
+            .iter()
+            .map(|b| barrier_to_backend(b.barrier, self.frame()))
+            .collect();
     }
 
     pub fn begin_render_pass(&mut self, renderpass_info: &RenderPassBeginInfo) {

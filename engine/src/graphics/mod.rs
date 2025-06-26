@@ -83,6 +83,7 @@ mod active_gpu_backend {
         VkTexture as Texture,
         VkTextureView as TextureView,
         VkTimelineSemaphore as Fence,
+        VkEvent as SplitBarrier,
     };
     pub type Barrier<'a> = super::gpu::Barrier<'a, self::Backend>;
     pub type RenderTarget<'a> = super::gpu::RenderTarget<'a, self::Backend>;
@@ -134,6 +135,7 @@ mod active_gpu_backend {
     pub type GraphicsPipelineInfo<'a> = super::gpu::GraphicsPipelineInfo<'a, self::Backend>;
     pub type MeshGraphicsPipelineInfo<'a> = super::gpu::MeshGraphicsPipelineInfo<'a, self::Backend>;
     pub type RayTracingPipelineInfo<'a> = super::gpu::RayTracingPipelineInfo<'a, self::Backend>;
+    pub type SplitBarrier = <sourcerenderer_webgpu::WebGPUBackend as super::gpu::GPUBackend>::SplitBarrier;
 }
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -176,6 +178,7 @@ mod active_gpu_backend {
     pub type GraphicsPipelineInfo<'a> = super::gpu::GraphicsPipelineInfo<'a, self::Backend>;
     pub type MeshGraphicsPipelineInfo<'a> = super::gpu::MeshGraphicsPipelineInfo<'a, self::Backend>;
     pub type RayTracingPipelineInfo<'a> = super::gpu::RayTracingPipelineInfo<'a, self::Backend>;
+    pub type SplitBarrier = <sourcerenderer_metal::MTLBackend as super::gpu::GPUBackend>::SplitBarrier;
 }
 
 pub use active_gpu_backend::{
@@ -188,6 +191,7 @@ pub use active_gpu_backend::{
     Shader,
     Surface,
     Texture as BackendTexture,
+    SplitBarrier,
 };
 
 pub use self::gpu::{
