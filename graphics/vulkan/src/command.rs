@@ -1687,7 +1687,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
     unsafe fn split_barrier_signal(
         &mut self,
         split_barrier: &VkEvent,
-        barrier: Barrier<VkBackend>,
+        barrier: &Barrier<VkBackend>,
     ) {
         let mut pending_image_barriers = SmallVec::<[vk::ImageMemoryBarrier2; 4]>::new();
         let mut pending_buffer_barriers = SmallVec::<[vk::BufferMemoryBarrier2; 4]>::new();
@@ -1698,7 +1698,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
 
         let dependency_info_opt = barriers_to_vk(
             &self.device,
-            &[barrier],
+            &[barrier.clone()],
             &mut pending_image_barriers,
             &mut pending_buffer_barriers,
             &mut pending_memory_barriers,

@@ -475,6 +475,11 @@ impl Device {
 
         virtual_queue.flush(queue);
     }
+
+    #[inline]
+    pub fn create_split_barrier(&self) -> SplitBarrier {
+        unsafe { self.device.create_split_barrier() }
+    }
 }
 
 impl Drop for Device {

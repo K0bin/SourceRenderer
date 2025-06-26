@@ -5,6 +5,7 @@ use std::hash::{
     Hash,
     Hasher,
 };
+use std::ptr::read;
 use std::sync::Arc;
 
 use atomic_refcell::{
@@ -104,6 +105,15 @@ pub enum HistoryResourceEntry {
     Past,
 }
 
+impl HistoryResourceEntry {
+    fn invert(self) -> Self {
+        match self {
+            HistoryResourceEntry::Past => HistoryResourceEntry::Current,
+            HistoryResourceEntry::Current => HistoryResourceEntry::Past,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub enum TextureAccessKind {
     Sampling,
@@ -152,6 +162,27 @@ impl TextureAccessKind {
             _ => false,
         }
     }
+
+    fn to_access(self) -> BarrierAccess {
+        match self {
+            TextureAccessKind::Sampling => BarrierAccess::SAMPLING_READ,
+            TextureAccessKind::StorageRead => BarrierAccess::STORAGE_READ,
+            TextureAccessKind::StorageWrite => BarrierAccess::STORAGE_WRITE,
+            TextureAccessKind::StorageWriteEntireSubresource => BarrierAccess::STORAGE_WRITE,
+            TextureAccessKind::StorageReadWrite => BarrierAccess::STORAGE_WRITE | BarrierAccess::STORAGE_READ,
+            TextureAccessKind::RenderTargetCleared(_) => BarrierAccess::RENDER_TARGET_WRITE,
+            TextureAccessKind::DepthStencilCleared(_) => BarrierAccess::DEPTH_STENCIL_WRITE,
+            TextureAccessKind::DepthStencilReadOnly => BarrierAccess::DEPTH_STENCIL_READ,
+            TextureAccessKind::RenderTarget => BarrierAccess::RENDER_TARGET_WRITE | BarrierAccess::RENDER_TARGET_READ,
+            TextureAccessKind::DepthStencil => BarrierAccess::DEPTH_STENCIL_READ | BarrierAccess::DEPTH_STENCIL_WRITE,
+            TextureAccessKind::BlitSrc => BarrierAccess::COPY_READ,
+            TextureAccessKind::BlitDst => BarrierAccess::COPY_WRITE,
+            TextureAccessKind::BlitDstEntireSubresource => BarrierAccess::COPY_WRITE,
+            TextureAccessKind::CopySrc => BarrierAccess::COPY_READ,
+            TextureAccessKind::CopyDst => BarrierAccess::COPY_WRITE,
+            TextureAccessKind::CopyDstEntireSubresource => BarrierAccess::COPY_WRITE,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
@@ -170,6 +201,16 @@ impl BufferAccessKind {
             | BufferAccessKind::ShaderWrite
             | BufferAccessKind::CopyDst => true,
             _ => false,
+        }
+    }
+
+    fn to_access(self) -> BarrierAccess {
+        match self {
+            BufferAccessKind::ShaderRead => BarrierAccess::SHADER_READ,
+            BufferAccessKind::ShaderWrite => BarrierAccess::SHADER_WRITE,
+            BufferAccessKind::ShaderReadWrite => BarrierAccess::SHADER_READ | BarrierAccess::SHADER_WRITE,
+            BufferAccessKind::CopySrc => BarrierAccess::COPY_READ,
+            BufferAccessKind::CopyDst => BarrierAccess::COPY_WRITE,
         }
     }
 }
@@ -199,6 +240,12 @@ pub struct DataAccess {
     name: &'static str,
     kind: DataAccessKind,
     history: HistoryResourceEntry,
+}
+
+pub struct ResourceAvailability {
+    stages: BarrierSync,
+    access: BarrierAccess,
+    available_since_pass_idx: u32
 }
 
 pub struct FramePassResourceUsageRegister<'a> {
@@ -315,9 +362,36 @@ struct RenderPassHolder {
     accessed_textures: Vec<TextureAccess>,
     accessed_buffers: Vec<BufferAccess>,
     accessed_data: Vec<DataAccess>,
+    split_barrier: crate::graphics::SplitBarrier,
     queued: bool,
     bloom: u64,
     write_bloom: u64,
+}
+
+impl RenderPassHolder {
+    fn reads_resources_written_by_other_pass(&self, other: &Self) -> bool {
+        for texture in &self.accessed_textures {
+            if texture.kind.is_write() {
+                continue;
+            }
+            for other_texture in &other.accessed_textures {
+                if texture.name == other_texture.name && texture.history == other_texture.history && other_texture.kind.is_write() {
+                    return true;
+                }
+            }
+        }
+        for buffer in &self.accessed_buffers {
+            if buffer.kind.is_write() {
+                continue;
+            }
+            for other_buffer in &other.accessed_buffers {
+                if buffer.name == other_buffer.name && buffer.history == other_buffer.history && other_buffer.kind.is_write() {
+                    return true;
+                }
+            }
+        }
+        false
+    }
 }
 
 pub struct RenderGraph {
@@ -333,9 +407,11 @@ impl RenderGraph {
     pub fn add_pass<T: RenderPass + Default + 'static>(&mut self) {
         let mut pass: Box<dyn RenderPass> = Box::new(T::default());
         self.create_resources(pass.as_mut());
+        let split_barrier = self.device.create_split_barrier();
         let pass_holder = RenderPassHolder {
             pass,
             queued: false,
+            split_barrier,
             bloom: 0u64,
             write_bloom: 0u64,
             accessed_buffers: Vec::new(), // Will be populated every frame
@@ -480,10 +556,122 @@ impl RenderGraph {
             pass.pass.register_resource_accesses(&mut context);
         }
 
-        let mut read_bloom = 0u64;
-        let mut write_bloom = 0u64;
+        let mut resource_availability = HashMap::<(&'static str, HistoryResourceEntry), ResourceAvailability>::new();
+        fn add_or_extend_availability(resource_availability: &mut HashMap<(&'static str, HistoryResourceEntry), ResourceAvailability>, resource_name: &'static str, history: HistoryResourceEntry, stages: BarrierSync, access: BarrierAccess) {
+            let previous_access = resource_availability.get_mut(&(resource_name, history));
+            if let Some(previous_access) = previous_access {
+                if access.is_write() || previous_access.access.is_write() {
+                    previous_access.access = access;
+                    previous_access.stages = stages;
+                } else {
+                    previous_access.access |= access;
+                    previous_access.stages |= stages;
+                }
+            } else {
+                resource_availability.insert((resource_name, history), ResourceAvailability {
+                    stages,
+                    access,
+                    available_since_pass_idx: 0u32,
+                });
+            }
+        }
+
+        // Prepopulate availability for previous frame
+        for pass in &self.passes {
+            for texture in &pass.accessed_textures {
+                let texture_resource = self.textures.get(&texture.name).unwrap();
+                let has_ab = texture_resource.b.is_some();
+                let history = if has_ab { texture.history.invert() } else { texture.history };
+                add_or_extend_availability(&mut resource_availability, texture.name, history, texture.stages, texture.kind.to_access());
+            }
+            for buffer in &pass.accessed_buffers {
+                let texture_resource = self.buffers.get(&buffer.name).unwrap();
+                let has_ab = texture_resource.b.is_some();
+                let history = if has_ab { buffer.history.invert() } else { buffer.history };
+                add_or_extend_availability(&mut resource_availability, buffer.name, history, buffer.stages, buffer.kind.to_access());
+            }
+        }
+
+        let mut first_ready_pass = 0usize;
+        let mut ready_pass_count = 0usize;
+        let mut barrier_passes = 0usize;
+        let mut barrier_passes_count = 0usize;
+
+        fn flush_ready_passes(passes: &mut [RenderPassHolder]) {
+            passes.first().unwrap().pass.execute();
+        }
+
         for (idx, pass) in self.passes.iter().enumerate() {
-            for pass in &self.passes[idx..] {}
+            let mut pass_ready = true;
+            let mut has_write = false;
+            for texture in &pass.accessed_textures {
+                has_write |= texture.kind.is_write();
+                let existing_availability = resource_availability.get_mut(&(texture.name, texture.history));
+                if existing_availability.is_none() && texture.kind.can_discard() && texture.history == HistoryResourceEntry::Current {
+                    resource_availability.insert((texture.name, texture.history), ResourceAvailability {
+                        stages: texture.stages,
+                        access: texture.kind.to_access(),
+                        available_since_pass_idx: 0u32,
+                    });
+                } else {
+                    let existing_availability = existing_availability.unwrap();
+                    pass_ready = !texture.kind.is_write()
+                        && !existing_availability.access.is_write()
+                        && existing_availability.access.contains(texture.kind.to_access())
+                        && existing_availability.stages.contains(texture.stages);
+                }
+            }
+            if pass_ready {
+                for buffer in &pass.accessed_textures {
+                    has_write |= buffer.kind.is_write();
+                    let existing_availability = resource_availability.get_mut(&(buffer.name, buffer.history));
+                    if existing_availability.is_none() && buffer.kind.can_discard() && buffer.history == HistoryResourceEntry::Current {
+                        resource_availability.insert((buffer.name, buffer.history), ResourceAvailability {
+                            stages: buffer.stages,
+                            access: buffer.kind.to_access(),
+                            available_since_pass_idx: 0u32,
+                        });
+                    } else {
+                        let existing_availability = existing_availability.unwrap();
+                        pass_ready = !buffer.kind.is_write()
+                            && !existing_availability.access.is_write()
+                            && existing_availability.access.contains(buffer.kind.to_access())
+                            && existing_availability.stages.contains(buffer.stages);
+                    }
+                }
+            }
+            assert!(has_write);
+
+            if pass_ready {
+                pass.pass.execute();
+            } else {
+                for pass in &self.passes[barrier_passes..barrier_passes + barrier_passes_count] {
+
+                }
+            }
+
+            
+            /*resource_availability.clear();
+            let mut pass_read_bloom = 0u64;
+            let mut pass_write_bloom = 0u64;
+            let mut hasher = DefaultHasher::new();
+            for texture in &pass.accessed_textures {
+                texture.name.hash(&mut hasher);
+                let hash = hasher.finish();
+                if texture.kind.is_write() {
+                    pass_write_bloom |= hash % (std::mem::size_of_val(&write_bloom) as u64 / 8u64);
+                    resource_availability.
+                } else {
+                    pass_read_bloom |= hash % (std::mem::size_of_val(&write_bloom) as u64 / 8u64);
+                }
+            }*/
+            
+            
+            // Find all passes after the current pass that can 
+            
+            for pass in &self.passes[idx..] {
+
+            }
         }
     }
 

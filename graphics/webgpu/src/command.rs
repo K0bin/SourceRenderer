@@ -1527,9 +1527,8 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
     unsafe fn split_barrier_signal(
         &mut self,
         _split_barrier: &(),
-        _barrier: Barrier<WebGPUBackend>,
-    ) {
-    }
+        _barrier: &Barrier<WebGPUBackend>,
+    ) {}
     unsafe fn split_barrier_wait(&mut self, _waits: &[SplitBarrierWait<WebGPUBackend>]) {}
 }
 
