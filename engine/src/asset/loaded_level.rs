@@ -13,7 +13,7 @@ use bevy_transform::components::Transform;
 use bumpalo::boxed::Box;
 use bumpalo::collections::Vec;
 use bumpalo::Bump;
-
+use sourcerenderer_core::extend_lifetime;
 use crate::renderer::{
     DirectionalLightComponent,
     PointLightComponent,
@@ -51,7 +51,7 @@ unsafe impl Sync for LevelData {}
 impl LevelData {
     pub fn new(estimated_allocation_size: usize, estimated_entity_count: usize) -> Self {
         let bump = Bump::with_capacity(estimated_allocation_size);
-        let static_bump: &'static Bump = unsafe { std::mem::transmute(&bump) };
+        let static_bump: &'static Bump = unsafe { extend_lifetime(&bump) };
         let mut new_loaded_level = Self {
             total_component_count: 0,
             bump: std::boxed::Box::pin(BumpUnpin {
@@ -63,7 +63,7 @@ impl LevelData {
 
         let static_bump: &'static Bump = unsafe {
             let bump_ref = new_loaded_level.bump.as_ref().get_ref();
-            std::mem::transmute(bump_ref)
+            extend_lifetime(bump_ref)
         };
         new_loaded_level.entities = Vec::with_capacity_in(estimated_entity_count, static_bump);
         new_loaded_level
@@ -72,7 +72,7 @@ impl LevelData {
     pub fn push_entity(&mut self, estimated_component_count: usize) -> usize {
         let static_bump: &'static Bump = unsafe {
             let bump_ref = self.bump.as_ref().get_ref();
-            std::mem::transmute(bump_ref)
+            extend_lifetime(bump_ref)
         };
         let index = self.entities.len();
         let components = Vec::with_capacity_in(estimated_component_count, static_bump);
@@ -85,7 +85,7 @@ impl LevelData {
         let entity = &mut self.entities[entity_index];
         let static_bump: &'static Bump = unsafe {
             let bump_ref = self.bump.as_ref().get_ref();
-            std::mem::transmute(bump_ref)
+            extend_lifetime(bump_ref)
         };
         let alloced_component: &'static mut T = static_bump.alloc(component);
         let boxed_component: Box<'static, dyn Any> = unsafe { Box::from_raw(alloced_component) };
