@@ -63,6 +63,7 @@ pub struct FrameContext {
     frame: u64,
     query_allocator: QueryAllocator,
     remaining_command_buffers: Arc<AtomicU64>,
+    split_barriers: SplitBarrierPool,
 }
 
 pub struct FrameContextCommandBufferEntry(Arc<AtomicU64>);
@@ -361,6 +362,7 @@ impl FrameContext {
             frame: 1u64,
             query_allocator: QueryAllocator::new(device, destroyer, QUERY_COUNT),
             remaining_command_buffers: Arc::new(AtomicU64::new(0u64)),
+            split_barriers: SplitBarrierPool::new(device),
         }
     }
 
@@ -392,6 +394,11 @@ impl FrameContext {
     #[inline(always)]
     pub(super) fn query_allocator(&mut self) -> &mut QueryAllocator {
         &mut self.query_allocator
+    }
+
+    #[inline(always)]
+    pub(super) fn split_barrier_pool(&mut self) -> &mut SplitBarrierPool {
+        &mut self.split_barriers
     }
 
     #[inline(always)]

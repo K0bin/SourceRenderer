@@ -191,7 +191,6 @@ pub use active_gpu_backend::{
     Shader,
     Surface,
     Texture as BackendTexture,
-    SplitBarrier,
 };
 
 pub use self::gpu::{
