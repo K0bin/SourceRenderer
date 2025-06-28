@@ -136,4 +136,6 @@ pub trait Device<B: GPUBackend> {
     unsafe fn create_query_pool(&self, count: u32) -> B::QueryPool;
 
     unsafe fn create_split_barrier(&self) -> B::SplitBarrier;
+
+    unsafe fn reset_split_barrier(&self, split_barrier: &B::SplitBarrier);
 }

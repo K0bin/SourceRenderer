@@ -1523,7 +1523,6 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
     }
 
     // Barriers in WebGPU are handled automatically by the WebGPU implementation
-    unsafe fn split_barrier_reset(&mut self, _split_barrier: &(), _after: BarrierSync) {}
     unsafe fn split_barrier_signal(
         &mut self,
         _split_barrier: &(),

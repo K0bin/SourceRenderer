@@ -26,6 +26,7 @@ struct DeferredDestroyerInner {
     raytracing_pipelines: Vec<(u64, active_gpu_backend::RayTracingPipeline)>,
     buffer_allocations: Vec<(u64, Allocation<BufferAndAllocation>)>,
     query_pools: Vec<(u64, active_gpu_backend::QueryPool)>,
+    split_barriers: Vec<(u64, active_gpu_backend::SplitBarrier)>,
 }
 
 // TODO: Turn into a union to save memory
@@ -49,6 +50,7 @@ impl DeferredDestroyer {
                 raytracing_pipelines: Vec::new(),
                 buffer_allocations: Vec::new(),
                 query_pools: Vec::new(),
+                split_barriers: Vec::new(),
             }),
         }
     }
@@ -148,6 +150,12 @@ impl DeferredDestroyer {
         guard.buffer_allocations.push((frame, buffer_allocation));
     }
 
+    pub(super) fn destroy_split_barrier(&self, split_barrier: active_gpu_backend::SplitBarrier) {
+        let mut guard = self.inner.lock().unwrap();
+        let frame = guard.current_counter;
+        guard.split_barriers.push((frame, split_barrier));
+    }
+
     pub(super) fn set_counter(&self, counter: u64) {
         let mut guard = self.inner.lock().unwrap();
         assert!(guard.current_counter <= counter);
@@ -208,6 +216,9 @@ impl DeferredDestroyer {
             .retain(|(resource_counter, _)| *resource_counter > counter);
         guard
             .buffer_allocations
+            .retain(|(resource_counter, _)| *resource_counter > counter);
+        guard
+            .split_barriers
             .retain(|(resource_counter, _)| *resource_counter > counter);
     }
 }

@@ -495,4 +495,6 @@ impl gpu::Device<MTLBackend> for MTLDevice {
     unsafe fn create_split_barrier(&self) -> () {
         ()
     }
+
+    unsafe fn reset_split_barrier(&self, _split_barrier: &()) {}
 }

@@ -1495,7 +1495,6 @@ impl gpu::CommandBuffer<MTLBackend> for MTLCommandBuffer {
 
     // We're relying entirely on Metal handling the barriers automatically right now.
     // TODO: Rewrite Metal synchronization using MTLFence
-    unsafe fn split_barrier_reset(&mut self, _split_barrier: &(), _after: BarrierSync) {}
     unsafe fn split_barrier_signal(&mut self, _split_barrier: &(), _barrier: &Barrier<MTLBackend>) {}
     unsafe fn split_barrier_wait(&mut self, _waits: &[SplitBarrierWait<MTLBackend>]) {}
 }

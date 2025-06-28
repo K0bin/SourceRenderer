@@ -377,4 +377,6 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
     unsafe fn create_split_barrier(&self) -> () {
         ()
     }
+
+    unsafe fn reset_split_barrier(&self, _split_barrier: &()) {}
 }

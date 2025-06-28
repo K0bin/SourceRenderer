@@ -1676,14 +1676,6 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         );
     }
 
-    unsafe fn split_barrier_reset(&mut self, split_barrier: &VkEvent, after: BarrierSync) {
-        self.device.cmd_reset_event2(
-            self.cmd_buffer,
-            split_barrier.handle(),
-            barrier_sync_to_stage(after),
-        );
-    }
-
     unsafe fn split_barrier_signal(
         &mut self,
         split_barrier: &VkEvent,
@@ -1738,7 +1730,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
     unsafe fn split_barrier_wait(&mut self, waits: &[SplitBarrierWait<VkBackend>]) {
         let mut total_barrier_count = 0;
         for wait in waits {
-            total_barrier_count += wait.barrier.len();
+            total_barrier_count += wait.barriers.len();
         }
 
         let mut pending_image_barriers =
@@ -1755,7 +1747,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         for wait in waits {
             let dependency_info_opt = barriers_to_vk(
                 &self.device,
-                &wait.barrier,
+                &wait.barriers,
                 &mut pending_image_barriers[image_barrier_index..],
                 &mut pending_buffer_barriers[buffer_barrier_index..],
                 &mut pending_memory_barriers,

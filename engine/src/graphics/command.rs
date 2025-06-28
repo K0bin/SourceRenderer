@@ -206,7 +206,7 @@ fn barrier_to_backend<'a>(barrier: &Barrier<'a>, frame: u64) -> active_gpu_backe
 
 pub struct SplitBarrierWait<'a> {
     pub split_barrier: &'a SplitBarrier,
-    pub barrier: &'a [Barrier<'a>],
+    pub barriers: &'a [Barrier<'a>],
 }
 
 impl<'a> CommandBuffer<'a> {
@@ -801,21 +801,29 @@ impl<'a> CommandBuffer<'a> {
         // TODO batch barriers
     }
 
-    fn split_barrier_reset(&mut self, split_barrier: &SplitBarrier, after: BarrierSync) {
-        unsafe { self.cmd_buffer_handle.split_barrier_reset(split_barrier, after) }
-    }
-
     fn split_barrier_signal(&mut self, split_barrier: &SplitBarrier, barrier: &Barrier) {
         let core_barrier = barrier_to_backend(barrier, self.frame());
-        unsafe { self.cmd_buffer_handle.split_barrier_signal(split_barrier, &core_barrier) };
+        unsafe { self.cmd_buffer_handle.split_barrier_signal(split_barrier.handle(), &core_barrier) };
     }
-    unsafe fn split_barrier_wait<'b>(&mut self, waits: &[SplitBarrierWait]) {
-        let mut barriers = SmallVec::<[active_gpu_backend::Barrier; 4]>::with_capacity(waits.len());
-        let mut core_waits = SmallVec::<[gpu::SplitBarrierWait<'b, active_gpu_backend::Backend>; 4]>::with_capacity(waits.len());
-        let core_barriers: SmallVec<[active_gpu_backend::Barrier; 4]> = waits
-            .iter()
-            .map(|b| barrier_to_backend(b.barrier, self.frame()))
-            .collect();
+    unsafe fn split_barrier_wait(&mut self, waits: &[SplitBarrierWait]) {
+        let mut core_barriers = SmallVec::<[active_gpu_backend::Barrier; 4]>::with_capacity(waits.len());
+        let mut core_waits = SmallVec::<[gpu::SplitBarrierWait<'_, active_gpu_backend::Backend>; 4]>::with_capacity(waits.len());
+
+        for wait in waits {
+            for barrier in wait.barriers {
+                core_barriers.push(barrier_to_backend(barrier, self.frame()));
+            }
+        }
+        let mut barrier_idx = 0usize;
+        for wait in waits {
+            let core_wait = gpu::SplitBarrierWait {
+                barriers: &core_barriers[barrier_idx..barrier_idx + wait.barriers.len()],
+                split_barrier: wait.split_barrier.handle()
+            };
+            core_waits.push(core_wait);
+            barrier_idx += wait.barriers.len();
+        }
+        unsafe { self.cmd_buffer_handle.split_barrier_wait(&core_waits); }
     }
 
     pub fn begin_render_pass(&mut self, renderpass_info: &RenderPassBeginInfo) {

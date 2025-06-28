@@ -681,6 +681,10 @@ impl gpu::Device<VkBackend> for VkDevice {
     unsafe fn create_split_barrier(&self) -> VkEvent {
         VkEvent::new(&self.device)
     }
+
+    unsafe fn reset_split_barrier(&self, split_barrier: &VkEvent) {
+        self.device.reset_event(split_barrier.handle()).unwrap();
+    }
 }
 
 impl Drop for VkDevice {
