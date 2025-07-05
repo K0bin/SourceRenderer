@@ -51,7 +51,7 @@ pub struct ThreadContext {
     frames: AtomicRefCell<SmallVec<[FrameContext; 5]>>,
 }
 
-pub struct FrameContext {
+pub(super) struct FrameContext {
     device: Arc<active_gpu_backend::Device>,
     command_pool: FrameContextCommandPool,
     secondary_command_pool: FrameContextCommandPool,
@@ -233,6 +233,12 @@ impl GraphicsContext {
     pub(super) fn get_thread_frame_context(&self, frame: u64) -> AtomicRefMut<FrameContext> {
         let thread_context = self.get_thread_context();
         thread_context.get_frame(frame)
+    }
+
+    pub fn get_split_barrier(&self) -> SplitBarrier {
+        let thread_context = self.get_thread_context();
+        let mut frame_context = thread_context.get_frame(self.current_frame);
+        frame_context.split_barrier_pool().get_split_barrier()
     }
 
     fn get_thread_context(&self) -> &ThreadContext {

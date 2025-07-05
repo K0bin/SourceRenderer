@@ -803,7 +803,7 @@ impl<'a> CommandBuffer<'a> {
 
     fn split_barrier_signal(&mut self, split_barrier: &SplitBarrier, barrier: &Barrier) {
         let core_barrier = barrier_to_backend(barrier, self.frame());
-        unsafe { self.cmd_buffer_handle.split_barrier_signal(split_barrier.handle(), &core_barrier) };
+        unsafe { self.cmd_buffer_handle.split_barrier_signal(split_barrier.handle(self.frame()), &core_barrier) };
     }
     unsafe fn split_barrier_wait(&mut self, waits: &[SplitBarrierWait]) {
         let mut core_barriers = SmallVec::<[active_gpu_backend::Barrier; 4]>::with_capacity(waits.len());
@@ -818,7 +818,7 @@ impl<'a> CommandBuffer<'a> {
         for wait in waits {
             let core_wait = gpu::SplitBarrierWait {
                 barriers: &core_barriers[barrier_idx..barrier_idx + wait.barriers.len()],
-                split_barrier: wait.split_barrier.handle()
+                split_barrier: wait.split_barrier.handle(self.frame())
             };
             core_waits.push(core_wait);
             barrier_idx += wait.barriers.len();

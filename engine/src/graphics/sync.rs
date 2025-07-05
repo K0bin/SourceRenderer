@@ -123,6 +123,7 @@ impl<'a> From<&SharedFenceValuePairRef<'a>> for SharedFenceValuePair {
 pub struct SplitBarrier {
     split_barrier: ManuallyDrop<active_gpu_backend::SplitBarrier>,
     sender: Sender<active_gpu_backend::SplitBarrier>,
+    frame: u64,
 }
 
 impl Drop for SplitBarrier {
@@ -136,26 +137,31 @@ impl SplitBarrier {
     fn new(
         device: &active_gpu_backend::Device,
         sender: &Sender<active_gpu_backend::SplitBarrier>,
+        frame: u64,
     ) -> Self {
         let split_barrier = unsafe { device.create_split_barrier() };
         Self {
             split_barrier: ManuallyDrop::new(split_barrier),
             sender: sender.clone(),
+            frame
         }
     }
 
     fn wrap(
         split_barrier: active_gpu_backend::SplitBarrier,
         sender: &Sender<active_gpu_backend::SplitBarrier>,
+        frame: u64,
     ) -> Self {
         Self {
             split_barrier: ManuallyDrop::new(split_barrier),
             sender: sender.clone(),
+            frame,
         }
     }
 
     #[inline(always)]
-    pub(super) fn handle(&self) -> &active_gpu_backend::SplitBarrier {
+    pub(super) fn handle(&self, frame: u64) -> &active_gpu_backend::SplitBarrier {
+        assert_eq!(self.frame, frame);
         &self.split_barrier
     }
 }
@@ -166,6 +172,7 @@ pub(super) struct SplitBarrierPool {
     sender: Sender<active_gpu_backend::SplitBarrier>,
     receiver: Receiver<active_gpu_backend::SplitBarrier>,
     barriers: Vec<active_gpu_backend::SplitBarrier>,
+    frame: u64,
 }
 
 impl SplitBarrierPool {
@@ -176,10 +183,12 @@ impl SplitBarrierPool {
             sender,
             receiver,
             barriers: Vec::new(),
+            frame: 0u64,
         }
     }
-    
-    pub(super) fn reset(&mut self) {
+
+    pub(super) fn reset(&mut self, frame: u64) {
+        self.frame = frame;
         let mut split_barrier_opt = self.receiver.try_recv();
         while split_barrier_opt.is_ok() {
             let split_barrier = split_barrier_opt.unwrap();
@@ -192,10 +201,10 @@ impl SplitBarrierPool {
         }
     }
 
-    pub(super) fn get_split_barrier(&mut self) -> SplitBarrier {
+    pub fn get_split_barrier(&mut self) -> SplitBarrier {
         if let Some(barrier) = self.barriers.pop() {
-            return SplitBarrier::wrap(barrier, &self.sender);
+            return SplitBarrier::wrap(barrier, &self.sender, self.frame);
         }
-        SplitBarrier::new(&self.device, &self.sender)
+        SplitBarrier::new(&self.device, &self.sender, self.frame)
     }
 }
