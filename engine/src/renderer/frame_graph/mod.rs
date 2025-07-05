@@ -30,12 +30,7 @@ use sourcerenderer_core::gpu::{
     TextureLayout,
 };
 
-use crate::graphics::{
-    BufferSlice,
-    Device,
-    MemoryUsage,
-    Texture,
-};
+use crate::graphics::{BufferSlice, Device, GraphicsContext, MemoryUsage, Texture};
 
 pub type Data = Box<dyn Any + Send + Sync + 'static>;
 
@@ -183,6 +178,27 @@ impl TextureAccessKind {
             TextureAccessKind::CopyDstEntireSubresource => BarrierAccess::COPY_WRITE,
         }
     }
+
+    fn to_layout(self) -> TextureLayout {
+        match self {
+            TextureAccessKind::Sampling => TextureLayout::Sampled,
+            TextureAccessKind::StorageRead => TextureLayout::Storage,
+            TextureAccessKind::StorageWrite => TextureLayout::Storage,
+            TextureAccessKind::StorageWriteEntireSubresource => TextureLayout::Storage,
+            TextureAccessKind::StorageReadWrite => TextureLayout::Storage,
+            TextureAccessKind::RenderTargetCleared(_) => TextureLayout::RenderTarget,
+            TextureAccessKind::DepthStencilCleared(_) => TextureLayout::DepthStencilReadWrite,
+            TextureAccessKind::DepthStencilReadOnly => TextureLayout::DepthStencilRead,
+            TextureAccessKind::RenderTarget => TextureLayout::RenderTarget,
+            TextureAccessKind::DepthStencil => TextureLayout::DepthStencilReadWrite,
+            TextureAccessKind::BlitSrc => TextureLayout::CopySrc,
+            TextureAccessKind::BlitDst => TextureLayout::CopyDst,
+            TextureAccessKind::BlitDstEntireSubresource => TextureLayout::CopyDst,
+            TextureAccessKind::CopySrc => TextureLayout::CopySrc,
+            TextureAccessKind::CopyDst => TextureLayout::CopyDst,
+            TextureAccessKind::CopyDstEntireSubresource => TextureLayout::CopyDst,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
@@ -219,6 +235,7 @@ impl BufferAccessKind {
 pub enum DataAccessKind {
     Read,
     Write,
+    ReadWrite,
 }
 
 pub struct TextureAccess {
@@ -227,6 +244,7 @@ pub struct TextureAccess {
     range: BarrierTextureRange,
     stages: BarrierSync,
     history: HistoryResourceEntry,
+    last_write_idx: Option<u32>,
 }
 
 pub struct BufferAccess {
@@ -234,12 +252,14 @@ pub struct BufferAccess {
     kind: BufferAccessKind,
     stages: BarrierSync,
     history: HistoryResourceEntry,
+    last_write_idx: Option<u32>,
 }
 
 pub struct DataAccess {
     name: &'static str,
     kind: DataAccessKind,
     history: HistoryResourceEntry,
+    last_write_idx: Option<u32>,
 }
 
 pub struct ResourceAvailability {
@@ -249,11 +269,27 @@ pub struct ResourceAvailability {
 }
 
 pub struct FramePassResourceUsageRegister<'a> {
-    textures: &'a mut Vec<TextureAccess>,
-    buffers: &'a mut Vec<BufferAccess>,
-    data: &'a mut Vec<DataAccess>,
+    texture_accesses: &'a mut Vec<TextureAccess>,
+    buffer_accesses: &'a mut Vec<BufferAccess>,
+    data_accesses: &'a mut Vec<DataAccess>,
     read_bloom: &'a mut u64,
     write_bloom: &'a mut u64,
+    pass_idx: u32,
+    textures: &'a mut HashMap<&'static str, ResourceHolder<Arc<Texture>>>,
+    buffers: &'a mut HashMap<&'static str, ResourceHolder<Arc<BufferSlice>>>,
+    datas: &'a mut HashMap<&'static str, ResourceHolder<AtomicRefCell<Data>>>,
+}
+
+struct ResourceWrite {
+    write_pass_idx: u32,
+    discard: bool,
+    layout: TextureLayout,
+    sync: BarrierSync,
+    access: BarrierAccess,
+    following_reads_layout: TextureLayout,
+    following_reads_syncs: BarrierSync,
+    following_reads_accesses: BarrierAccess,
+    following_reads_last_pass_idx: Option<u32>,
 }
 
 impl<'a> FramePassResourceUsageRegister<'a> {
@@ -265,12 +301,16 @@ impl<'a> FramePassResourceUsageRegister<'a> {
         access_kind: TextureAccessKind,
         history: HistoryResourceEntry,
     ) {
-        self.textures.push(TextureAccess {
+        let texture = self.textures.get_mut(name).unwrap();
+        let writes = &mut texture.writes;
+
+        self.texture_accesses.push(TextureAccess {
             name,
             stages,
             kind: access_kind,
             range: range.clone(),
             history,
+            last_write_idx: (!writes.is_empty()).then(|| writes.len() as u32),
         });
 
         let mut hasher = DefaultHasher::new();
@@ -279,6 +319,48 @@ impl<'a> FramePassResourceUsageRegister<'a> {
         (*self.read_bloom) |= 1 << (hash % 63);
         if access_kind.is_write() {
             (*self.write_bloom) |= 1 << (hash % 63);
+
+            writes.push(ResourceWrite {
+                write_pass_idx: self.pass_idx,
+                discard: access_kind.can_discard(),
+                layout: access_kind.to_layout(),
+                sync: stages,
+                access: access_kind.to_access(),
+                following_reads_layout: TextureLayout::Undefined,
+                following_reads_syncs: BarrierSync::empty(),
+                following_reads_accesses: BarrierAccess::empty(),
+                following_reads_last_pass_idx: None,
+            });
+        } else {
+            if writes.is_empty() {
+                // Assume the texture was written in the previous frame
+                writes.push(ResourceWrite {
+                    write_pass_idx: u32::MAX,
+                    discard: false,
+                    layout: TextureLayout::Undefined,
+                    sync: BarrierSync::empty(),
+                    access: BarrierAccess::empty(),
+                    following_reads_layout: TextureLayout::Undefined,
+                    following_reads_syncs: BarrierSync::empty(),
+                    following_reads_accesses: BarrierAccess::empty(),
+                    following_reads_last_pass_idx: None,
+                });
+            }
+            let write = writes.last_mut().unwrap();
+            write.following_reads_last_pass_idx = Some(write.following_reads_last_pass_idx.map_or(self.pass_idx, |idx| idx.max(self.pass_idx)));
+            write.following_reads_syncs |= stages;
+            write.following_reads_accesses |= access_kind.to_access();
+            let new_layout = access_kind.to_layout();
+            if write.following_reads_layout == TextureLayout::Undefined {
+                write.following_reads_layout = new_layout;
+            } else if (write.following_reads_layout == TextureLayout::DepthStencilRead
+                && new_layout == TextureLayout::Sampled)
+                || (write.following_reads_layout == TextureLayout::Sampled
+                && new_layout == TextureLayout::DepthStencilRead) {
+                write.following_reads_layout = TextureLayout::DepthStencilRead;
+            } else if write.following_reads_layout != new_layout {
+                write.following_reads_layout = TextureLayout::General;
+            }
         }
     }
 
@@ -289,11 +371,14 @@ impl<'a> FramePassResourceUsageRegister<'a> {
         access_kind: BufferAccessKind,
         history: HistoryResourceEntry,
     ) {
-        self.buffers.push(BufferAccess {
+        let buffer = self.buffers.get_mut(name).unwrap();
+        let writes = &mut buffer.writes;
+        self.buffer_accesses.push(BufferAccess {
             name,
             stages,
             kind: access_kind,
             history,
+            last_write_idx: (!writes.is_empty()).then(|| writes.len() as u32),
         });
 
         let mut hasher = DefaultHasher::new();
@@ -302,6 +387,37 @@ impl<'a> FramePassResourceUsageRegister<'a> {
         (*self.read_bloom) |= 1 << (hash % 63);
         if access_kind.is_write() {
             (*self.write_bloom) |= 1 << (hash % 63);
+
+            writes.push(ResourceWrite {
+                write_pass_idx: self.pass_idx,
+                discard: false,
+                layout: TextureLayout::General,
+                sync: stages,
+                access: access_kind.to_access(),
+                following_reads_layout: TextureLayout::General,
+                following_reads_syncs: BarrierSync::empty(),
+                following_reads_accesses: BarrierAccess::empty(),
+                following_reads_last_pass_idx: None,
+            });
+        } else {
+            if writes.is_empty() {
+                // Assume the texture was written in the previous frame
+                writes.push(ResourceWrite {
+                    write_pass_idx: u32::MAX,
+                    discard: false,
+                    layout: TextureLayout::General,
+                    sync: BarrierSync::empty(),
+                    access: BarrierAccess::empty(),
+                    following_reads_layout: TextureLayout::General,
+                    following_reads_syncs: BarrierSync::empty(),
+                    following_reads_accesses: BarrierAccess::empty(),
+                    following_reads_last_pass_idx: None,
+                });
+            }
+            let write = writes.last_mut().unwrap();
+            write.following_reads_last_pass_idx = Some(write.following_reads_last_pass_idx.map_or(self.pass_idx, |idx| idx.max(self.pass_idx)));
+            write.following_reads_syncs |= stages;
+            write.following_reads_accesses |= access_kind.to_access();
         }
     }
 
@@ -311,18 +427,50 @@ impl<'a> FramePassResourceUsageRegister<'a> {
         data_access_kind: DataAccessKind,
         history: HistoryResourceEntry,
     ) {
-        self.data.push(DataAccess {
+        let data = self.datas.get_mut(name).unwrap();
+        let writes = &mut data.writes;
+        self.data_accesses.push(DataAccess {
             name,
             kind: data_access_kind,
             history,
+            last_write_idx: (!writes.is_empty()).then(|| writes.len() as u32),
         });
 
         let mut hasher = DefaultHasher::new();
         name.hash(&mut hasher);
         let hash = hasher.finish();
         (*self.read_bloom) |= 1 << (hash % 63);
-        if data_access_kind == DataAccessKind::Write {
+        if data_access_kind != DataAccessKind::Read {
             (*self.write_bloom) |= 1 << (hash % 63);
+
+            writes.push(ResourceWrite {
+                write_pass_idx: self.pass_idx,
+                discard: false,
+                layout: TextureLayout::General,
+                sync: BarrierSync::empty(),
+                access: BarrierAccess::empty(),
+                following_reads_layout: TextureLayout::General,
+                following_reads_syncs: BarrierSync::empty(),
+                following_reads_accesses: BarrierAccess::empty(),
+                following_reads_last_pass_idx: None,
+            });
+        } else {
+            if writes.is_empty() {
+                // Assume the texture was written in the previous frame
+                writes.push(ResourceWrite {
+                    write_pass_idx: u32::MAX,
+                    discard: false,
+                    layout: TextureLayout::General,
+                    sync: BarrierSync::empty(),
+                    access: BarrierAccess::empty(),
+                    following_reads_layout: TextureLayout::General,
+                    following_reads_syncs: BarrierSync::empty(),
+                    following_reads_accesses: BarrierAccess::empty(),
+                    following_reads_last_pass_idx: None,
+                });
+            }
+            let write = writes.last_mut().unwrap();
+            write.following_reads_last_pass_idx = Some(write.following_reads_last_pass_idx.map_or(self.pass_idx, |idx| idx.max(self.pass_idx)));
         }
     }
 }
@@ -355,6 +503,8 @@ impl<T> AB<T> {
 
 struct ResourceHolder<T> {
     resource: AB<T>,
+    writes: Vec<ResourceWrite>,
+    flushed_write_idx: Option<u32>,
 }
 
 struct RenderPassHolder {
@@ -362,7 +512,7 @@ struct RenderPassHolder {
     accessed_textures: Vec<TextureAccess>,
     accessed_buffers: Vec<BufferAccess>,
     accessed_data: Vec<DataAccess>,
-    split_barrier: crate::graphics::SplitBarrier,
+    split_barrier: Option<crate::graphics::SplitBarrier>,
     queued: bool,
     bloom: u64,
     write_bloom: u64,
@@ -397,9 +547,9 @@ impl RenderPassHolder {
 pub struct RenderGraph {
     device: Arc<Device>,
     passes: Vec<RenderPassHolder>,
-    textures: HashMap<&'static str, AB<Arc<Texture>>>,
-    buffers: HashMap<&'static str, AB<Arc<BufferSlice>>>,
-    data: HashMap<&'static str, AB<AtomicRefCell<Data>>>,
+    textures: HashMap<&'static str, ResourceHolder<Arc<Texture>>>,
+    buffers: HashMap<&'static str, ResourceHolder<Arc<BufferSlice>>>,
+    data: HashMap<&'static str, ResourceHolder<AtomicRefCell<Data>>>,
     current_ab: ABEntry,
 }
 
@@ -407,11 +557,10 @@ impl RenderGraph {
     pub fn add_pass<T: RenderPass + Default + 'static>(&mut self) {
         let mut pass: Box<dyn RenderPass> = Box::new(T::default());
         self.create_resources(pass.as_mut());
-        let split_barrier = self.device.create_split_barrier();
         let pass_holder = RenderPassHolder {
             pass,
             queued: false,
-            split_barrier,
+            split_barrier: None,
             bloom: 0u64,
             write_bloom: 0u64,
             accessed_buffers: Vec::new(), // Will be populated every frame
@@ -446,7 +595,11 @@ impl RenderGraph {
                         .unwrap(),
                 );
             }
-            let existing = self.textures.insert(texture.name, texture_ab);
+            let existing = self.textures.insert(texture.name, ResourceHolder {
+                resource: texture_ab,
+                writes: Vec::new(),
+                flushed_write_idx: None,
+            });
             if existing.is_some() {
                 panic!("A texture with the name {} already exists.", texture.name);
             }
@@ -467,7 +620,11 @@ impl RenderGraph {
                         .unwrap(),
                 );
             }
-            let existing = self.buffers.insert(buffer.name, buffer_ab);
+            let existing = self.buffers.insert(buffer.name, ResourceHolder {
+                resource: buffer_ab,
+                writes: Vec::new(),
+                flushed_write_idx: None,
+            });
             if existing.is_some() {
                 panic!("A buffer with the name {} already exists.", buffer.name);
             }
@@ -479,7 +636,11 @@ impl RenderGraph {
                 a: AtomicRefCell::new(a),
                 b: b.map(|b| AtomicRefCell::new(b)),
             };
-            let existing = self.data.insert(name, refcell_ab);
+            let existing = self.data.insert(name, ResourceHolder {
+                resource: refcell_ab,
+                writes: Vec::new(),
+                flushed_write_idx: None,
+            });
             if existing.is_some() {
                 panic!("Data with the name {} already exists.", name);
             }
@@ -487,13 +648,14 @@ impl RenderGraph {
     }
 
     pub fn access_data(&self, name: &'static str) -> AtomicRef<Data> {
-        self.data.get(name).unwrap().get(self.current_ab).borrow()
+        self.data.get(name).unwrap().resource.get(self.current_ab).borrow()
     }
 
     pub fn access_data_mut(&self, name: &'static str) -> AtomicRefMut<Data> {
         self.data
             .get(name)
             .unwrap()
+            .resource
             .get(self.current_ab)
             .borrow_mut()
     }
@@ -508,9 +670,13 @@ impl RenderGraph {
         }
         let _ = self.data.insert(
             name,
-            AB {
-                a: AtomicRefCell::new(Box::new(data)),
-                b: None,
+            ResourceHolder {
+                resource: AB {
+                    a: AtomicRefCell::new(Box::new(data)),
+                    b: None,
+                },
+                writes: Vec::new(),
+                flushed_write_idx: None,
             },
         );
         true
@@ -527,34 +693,64 @@ impl RenderGraph {
         }
         let _ = self.data.insert(
             name,
-            AB {
-                a: AtomicRefCell::new(Box::new(data)),
-                b: Some(AtomicRefCell::new(Box::new(data_b))),
+            ResourceHolder {
+                resource: AB {
+                    a: AtomicRefCell::new(Box::new(data)),
+                    b: Some(AtomicRefCell::new(Box::new(data_b))),
+                },
+                writes: Vec::new(),
+                flushed_write_idx: None,
             },
         );
         true
     }
 
-    pub fn execute(&mut self) {
-        for pass in &mut self.passes {
+    pub fn execute(&mut self, ctx: &GraphicsContext) {
+        for (idx, pass) in &mut self.passes.iter_mut().enumerate() {
             // Clear old resources access declarations and state
             pass.accessed_data.clear();
             pass.accessed_textures.clear();
             pass.accessed_buffers.clear();
             pass.queued = false;
+            pass.split_barrier = Some(ctx.get_split_barrier());
             pass.bloom = 0u64;
             pass.write_bloom = 0u64;
 
             // Collect new access declarations
             let mut context = FramePassResourceUsageRegister {
-                textures: &mut pass.accessed_textures,
-                buffers: &mut pass.accessed_buffers,
-                data: &mut pass.accessed_data,
+                texture_accesses: &mut pass.accessed_textures,
+                buffer_accesses: &mut pass.accessed_buffers,
+                data_accesses: &mut pass.accessed_data,
                 read_bloom: &mut pass.bloom,
                 write_bloom: &mut pass.write_bloom,
+                textures: &mut self.textures,
+                buffers: &mut self.buffers,
+                datas: &mut self.data,
+                pass_idx: idx as u32,
             };
             pass.pass.register_resource_accesses(&mut context);
         }
+
+
+        let mut first_ready_pass = 0usize;
+        let mut ready_pass_count = 0usize;
+        let mut barrier_passes = 0usize;
+        let mut barrier_passes_count = 0usize;
+
+        for (pass_idx, pass) in self.passes.iter().enumerate() {
+            let mut is_ready = true;
+            for texture_access in &pass.accessed_textures {
+                let texture = self.textures.get(&texture_access.name).unwrap();
+                let relevant_write = Option::<&ResourceWrite>::None;
+                for write in &texture.writes {
+                    if write.write_pass_idx >= 
+                    relevant_write = Some(write);
+                }
+            }
+        }
+
+
+
 
         let mut resource_availability = HashMap::<(&'static str, HistoryResourceEntry), ResourceAvailability>::new();
         fn add_or_extend_availability(resource_availability: &mut HashMap<(&'static str, HistoryResourceEntry), ResourceAvailability>, resource_name: &'static str, history: HistoryResourceEntry, stages: BarrierSync, access: BarrierAccess) {
