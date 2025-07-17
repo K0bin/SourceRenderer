@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::hash::{
     DefaultHasher,
@@ -13,6 +14,7 @@ use atomic_refcell::{
     AtomicRefCell,
     AtomicRefMut,
 };
+use bitvec::domain::PartialElement;
 use bumpalo::collections::{
     String as BumpString,
     Vec as BumpVec,
@@ -244,7 +246,7 @@ pub struct TextureAccess {
     range: BarrierTextureRange,
     stages: BarrierSync,
     history: HistoryResourceEntry,
-    last_write_idx: Option<u32>,
+    last_write_idx: Option<PassIdx>,
 }
 
 pub struct BufferAccess {
@@ -252,14 +254,14 @@ pub struct BufferAccess {
     kind: BufferAccessKind,
     stages: BarrierSync,
     history: HistoryResourceEntry,
-    last_write_idx: Option<u32>,
+    last_write_idx: Option<PassIdx>,
 }
 
 pub struct DataAccess {
     name: &'static str,
     kind: DataAccessKind,
     history: HistoryResourceEntry,
-    last_write_idx: Option<u32>,
+    last_write_idx: Option<PassIdx>,
 }
 
 pub struct ResourceAvailability {
@@ -274,14 +276,14 @@ pub struct FramePassResourceUsageRegister<'a> {
     data_accesses: &'a mut Vec<DataAccess>,
     read_bloom: &'a mut u64,
     write_bloom: &'a mut u64,
-    pass_idx: u32,
+    pass_idx: PassIdx,
     textures: &'a mut HashMap<&'static str, ResourceHolder<Arc<Texture>>>,
     buffers: &'a mut HashMap<&'static str, ResourceHolder<Arc<BufferSlice>>>,
     datas: &'a mut HashMap<&'static str, ResourceHolder<AtomicRefCell<Data>>>,
 }
 
 struct ResourceWrite {
-    write_pass_idx: u32,
+    write_pass_idx: PassIdx,
     discard: bool,
     layout: TextureLayout,
     sync: BarrierSync,
@@ -289,7 +291,7 @@ struct ResourceWrite {
     following_reads_layout: TextureLayout,
     following_reads_syncs: BarrierSync,
     following_reads_accesses: BarrierAccess,
-    following_reads_last_pass_idx: Option<u32>,
+    following_reads_last_pass_idx: Option<PassIdx>,
 }
 
 impl<'a> FramePassResourceUsageRegister<'a> {
@@ -310,7 +312,7 @@ impl<'a> FramePassResourceUsageRegister<'a> {
             kind: access_kind,
             range: range.clone(),
             history,
-            last_write_idx: (!writes.is_empty()).then(|| writes.len() as u32),
+            last_write_idx: (!writes.is_empty()).then(|| PassIdx(writes.len() as u32)),
         });
 
         let mut hasher = DefaultHasher::new();
@@ -335,7 +337,7 @@ impl<'a> FramePassResourceUsageRegister<'a> {
             if writes.is_empty() {
                 // Assume the texture was written in the previous frame
                 writes.push(ResourceWrite {
-                    write_pass_idx: u32::MAX,
+                    write_pass_idx: PassIdx(u32::MAX),
                     discard: false,
                     layout: TextureLayout::Undefined,
                     sync: BarrierSync::empty(),
@@ -378,7 +380,7 @@ impl<'a> FramePassResourceUsageRegister<'a> {
             stages,
             kind: access_kind,
             history,
-            last_write_idx: (!writes.is_empty()).then(|| writes.len() as u32),
+            last_write_idx: (!writes.is_empty()).then(|| PassIdx(writes.len() as u32)),
         });
 
         let mut hasher = DefaultHasher::new();
@@ -403,7 +405,7 @@ impl<'a> FramePassResourceUsageRegister<'a> {
             if writes.is_empty() {
                 // Assume the texture was written in the previous frame
                 writes.push(ResourceWrite {
-                    write_pass_idx: u32::MAX,
+                    write_pass_idx: PassIdx(u32::MAX),
                     discard: false,
                     layout: TextureLayout::General,
                     sync: BarrierSync::empty(),
@@ -433,7 +435,7 @@ impl<'a> FramePassResourceUsageRegister<'a> {
             name,
             kind: data_access_kind,
             history,
-            last_write_idx: (!writes.is_empty()).then(|| writes.len() as u32),
+            last_write_idx: (!writes.is_empty()).then(|| PassIdx(writes.len() as u32)),
         });
 
         let mut hasher = DefaultHasher::new();
@@ -458,7 +460,7 @@ impl<'a> FramePassResourceUsageRegister<'a> {
             if writes.is_empty() {
                 // Assume the texture was written in the previous frame
                 writes.push(ResourceWrite {
-                    write_pass_idx: u32::MAX,
+                    write_pass_idx: PassIdx(u32::MAX),
                     discard: false,
                     layout: TextureLayout::General,
                     sync: BarrierSync::empty(),
@@ -501,10 +503,19 @@ impl<T> AB<T> {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+struct PassIdx(u32);
+
+impl PassIdx {
+    fn to_index(self) -> usize {
+        self.0 as usize
+    }
+}
+
 struct ResourceHolder<T> {
     resource: AB<T>,
     writes: Vec<ResourceWrite>,
-    flushed_write_idx: Option<u32>,
+    flushed_write_idx: Option<PassIdx>,
 }
 
 struct RenderPassHolder {
@@ -516,6 +527,53 @@ struct RenderPassHolder {
     queued: bool,
     bloom: u64,
     write_bloom: u64,
+}
+
+struct QueuedPass {
+    dependency_pass_indices: SmallVec<[PassIdx; 8]>,
+    last_dependency_pass_idx: Option<PassIdx>,
+}
+
+impl PartialEq for QueuedPass {
+    fn eq(&self, other: &Self) -> bool {
+        if self.dependency_pass_indices.len() != other.dependency_pass_indices.len() {
+            return false;
+        }
+
+        for i in 0..self.dependency_pass_indices.len() {
+            let element = self.dependency_pass_indices[i];
+            let other = other.dependency_pass_indices[i];
+            if element != other {
+                return false;
+            }
+        }
+
+        self.last_dependency_pass_idx == other.last_dependency_pass_idx
+    }
+}
+
+impl Eq for QueuedPass {}
+
+impl PartialOrd for QueuedPass {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for QueuedPass {
+    fn cmp(&self, other: &Self) -> Ordering {
+        if let (Some(last_dep_idx), Some(other_last_dep_idx)) = (self.last_dependency_pass_idx, other.last_dependency_pass_idx) {
+            last_dep_idx.cmp(&other_last_dep_idx)
+        } else if self.last_dependency_pass_idx.is_some() {
+            Ordering::Greater
+        } else if other.last_dependency_pass_idx.is_some() {
+            Ordering::Less
+        } else if self == other {
+            Ordering::Equal
+        } else {
+            self.dependency_pass_indices.len().cmp(&other.dependency_pass_indices.len())
+        }
+    }
 }
 
 impl RenderPassHolder {
@@ -706,6 +764,7 @@ impl RenderGraph {
     }
 
     pub fn execute(&mut self, ctx: &GraphicsContext) {
+        let mut queued_passes = Vec::<QueuedPass>::with_capacity(self.passes.len());
         for (idx, pass) in &mut self.passes.iter_mut().enumerate() {
             // Clear old resources access declarations and state
             pass.accessed_data.clear();
@@ -726,12 +785,15 @@ impl RenderGraph {
                 textures: &mut self.textures,
                 buffers: &mut self.buffers,
                 datas: &mut self.data,
-                pass_idx: idx as u32,
+                pass_idx: PassIdx(idx as u32),
             };
             pass.pass.register_resource_accesses(&mut context);
+            /*queued_passes.push(QueuedPass {
+                last_dependency_pass_idx: 
+            });*/
         }
 
-
+        let mut executed_pass_idx = Option::<PassIdx>::None;
         let mut first_ready_pass = 0usize;
         let mut ready_pass_count = 0usize;
         let mut barrier_passes = 0usize;
@@ -739,14 +801,33 @@ impl RenderGraph {
 
         for (pass_idx, pass) in self.passes.iter().enumerate() {
             let mut is_ready = true;
-            for texture_access in &pass.accessed_textures {
+            'textures: for texture_access in &pass.accessed_textures {
                 let texture = self.textures.get(&texture_access.name).unwrap();
-                let relevant_write = Option::<&ResourceWrite>::None;
-                for write in &texture.writes {
-                    if write.write_pass_idx >= 
-                    relevant_write = Some(write);
+                if texture_access.kind.is_write() {
+                    is_ready = is_ready && texture_access.last_write_idx.is_none();
+                } else if let (Some(last_write_idx), Some(last_flushed_write_idx)) = (texture_access.last_write_idx, texture.flushed_write_idx) {
+                    is_ready = is_ready && last_write_idx <= last_flushed_write_idx;
+                } else if texture_access.last_write_idx.is_some() {
+                    is_ready = false;
+                }
+                if !is_ready {
+                    break 'textures;
                 }
             }
+            'buffers: for buffer_access in &pass.accessed_buffers {
+                let buffer = self.buffers.get(&buffer_access.name).unwrap();
+                if buffer_access.kind.is_write() {
+                    is_ready = false;
+                } else if let (Some(last_write_idx), Some(last_flushed_write_idx)) = (buffer_access.last_write_idx, buffer.flushed_write_idx) {
+                    is_ready = is_ready && last_write_idx <= last_flushed_write_idx;
+                } else if buffer_access.last_write_idx.is_some() {
+                    is_ready = false;
+                }
+                if !is_ready {
+                    break 'buffers;
+                }
+            }
+
         }
 
 
@@ -773,7 +854,7 @@ impl RenderGraph {
         }
 
         // Prepopulate availability for previous frame
-        for pass in &self.passes {
+       /* for pass in &self.passes {
             for texture in &pass.accessed_textures {
                 let texture_resource = self.textures.get(&texture.name).unwrap();
                 let has_ab = texture_resource.b.is_some();
@@ -786,7 +867,7 @@ impl RenderGraph {
                 let history = if has_ab { buffer.history.invert() } else { buffer.history };
                 add_or_extend_availability(&mut resource_availability, buffer.name, history, buffer.stages, buffer.kind.to_access());
             }
-        }
+        }*/
 
         let mut first_ready_pass = 0usize;
         let mut ready_pass_count = 0usize;
