@@ -64,17 +64,10 @@ pub struct FramePassResourceCreationContext<'a> {
     pass_idx: PassIdx,
     textures: &'a mut BumpVec<'a, ResourceDescription<TextureInfo>>,
     buffers: &'a mut BumpVec<'a, ResourceDescription<(BufferInfo, MemoryUsage)>>,
-    texture_metadata: &'a mut BumpVec<'a, ResourceMetadata<TextureHandle>>,
-    buffer_metadata: &'a mut BumpVec<'a, ResourceMetadata<BufferHandle>>,
+    texture_metadata: &'a mut BumpVec<'a, ResourceWrite<TextureHandle>>,
+    buffer_metadata: &'a mut BumpVec<'a, ResourceWrite<BufferHandle>>,
     texture_handle_map: &'a mut HashMap<&'static str, TextureHandle>,
     buffer_handle_map: &'a mut HashMap<&'static str, BufferHandle>,
-}
-
-#[derive(Debug, Clone)]
-struct ResourceMetadata<THandle: Copy> {
-    inherits: Option<THandle>,
-    first_used_in: HistoryPassIdx,
-    last_used_in: HistoryPassIdx,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
@@ -93,7 +86,7 @@ impl<'a> FramePassResourceCreationContext<'a> {
         let history_pass_idx = HistoryPassIdx(HistoryResourceEntry::Current, self.pass_idx);
         let handle = TextureHandle(self.texture_metadata.len());
         self.texture_metadata
-            .push(ResourceMetadata::<TextureHandle> {
+            .push(ResourceWrite::<TextureHandle> {
                 inherits: None,
                 first_used_in: history_pass_idx,
                 last_used_in: history_pass_idx,
@@ -115,7 +108,7 @@ impl<'a> FramePassResourceCreationContext<'a> {
         });
         let history_pass_idx = HistoryPassIdx(HistoryResourceEntry::Current, self.pass_idx);
         let handle = BufferHandle(self.buffer_metadata.len());
-        self.buffer_metadata.push(ResourceMetadata::<BufferHandle> {
+        self.buffer_metadata.push(ResourceWrite::<BufferHandle> {
             inherits: None,
             first_used_in: history_pass_idx,
             last_used_in: history_pass_idx,
@@ -293,8 +286,8 @@ pub struct ResourceAvailability {
 
 pub struct FramePassResourceAccessContext<'a> {
     pass_idx: PassIdx,
-    texture_metadata: &'a mut BumpVec<'a, ResourceMetadata<TextureHandle>>,
-    buffer_metadata: &'a mut BumpVec<'a, ResourceMetadata<BufferHandle>>,
+    texture_metadata: &'a mut BumpVec<'a, ResourceWrite<TextureHandle>>,
+    buffer_metadata: &'a mut BumpVec<'a, ResourceWrite<BufferHandle>>,
     texture_accesses: &'a mut BumpVec<'a, TextureAccess>,
     buffer_accesses: &'a mut BumpVec<'a, BufferAccess>,
     texture_handle_map: &'a mut HashMap<&'static str, TextureHandle>,
@@ -306,8 +299,10 @@ pub struct BufferRange {
     pub len: u64,
 }
 
-#[derive(Clone)]
-struct ResourceWrite {
+#[derive(Debug, Clone)]
+struct ResourceWrite<THandle: Copy> {
+    previous: Option<THandle>,
+    next: Option<THandle>,
     write_pass_idx: Option<PassIdx>,
     discard: bool,
     layout: TextureLayout,
@@ -317,6 +312,8 @@ struct ResourceWrite {
     following_reads_syncs: BarrierSync,
     following_reads_accesses: BarrierAccess,
     following_reads_last_pass_idx: Option<PassIdx>,
+    first_used_in: HistoryPassIdx,
+    last_used_in: HistoryPassIdx,
 }
 
 impl<'a> FramePassResourceAccessContext<'a> {
@@ -340,7 +337,7 @@ impl<'a> FramePassResourceAccessContext<'a> {
         let handle = self.texture_handle_map.get_mut(name).unwrap();
         let texture = if access_kind.is_write() {
             let new_handle = TextureHandle(self.texture_metadata.len());
-            let new_texture = ResourceMetadata::<TextureHandle> {
+            let new_texture = ResourceWrite::<TextureHandle> {
                 inherits: Some(*handle),
                 first_used_in: history_pass_idx,
                 last_used_in: history_pass_idx,
@@ -452,7 +449,7 @@ impl<'a> FramePassResourceAccessContext<'a> {
         let handle = self.buffer_handle_map.get_mut(name).unwrap();
         let buffer = if access_kind.is_write() {
             let new_handle = BufferHandle(self.buffer_metadata.len());
-            let new_buffer = ResourceMetadata::<BufferHandle> {
+            let new_buffer = ResourceWrite::<BufferHandle> {
                 inherits: Some(*handle),
                 first_used_in: history_pass_idx,
                 last_used_in: history_pass_idx,
@@ -692,8 +689,8 @@ impl RenderGraph {
 
         let mut textures = BumpVec::<ResourceDescription<TextureInfo>>::new_in(&bump);
         let mut buffers = BumpVec::<ResourceDescription<(BufferInfo, MemoryUsage)>>::new_in(&bump);
-        let mut texture_metadata = BumpVec::<ResourceMetadata<TextureHandle>>::new_in(&bump);
-        let mut buffer_metadata = BumpVec::<ResourceMetadata<BufferHandle>>::new_in(&bump);
+        let mut texture_metadata = BumpVec::<ResourceWrite<TextureHandle>>::new_in(&bump);
+        let mut buffer_metadata = BumpVec::<ResourceWrite<BufferHandle>>::new_in(&bump);
 
         // Determine required resources
         for (idx, pass) in self.passes.iter_mut().enumerate() {
