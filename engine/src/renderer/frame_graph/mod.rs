@@ -760,7 +760,49 @@ impl RenderGraph {
         }
 
         // Build actual resources
-        for (name, handle) in texture_handle_map {
+        for texture_desc in &texture_descriptions {
+            if texture_desc.has_history {
+                // We cant alias history resources.
+                continue;
+            }
+
+            let handle = texture_handle_map.get(&(texture_desc.name, HistoryResourceEntry::Current)).unwrap();
+            let mut texture = textures.get(handle.0).unwrap();
+            let mut first_used_in = HistoryPassIdx(HistoryResourceEntry::Current, texture.write_pass_idx.unwrap_or(PassIdx(0u32)));
+            let mut last_used_in = HistoryPassIdx(HistoryResourceEntry::Current, texture.last_used_in.unwrap_or(PassIdx(u32::MAX)));
+            while let Some(next) = texture.next {
+                texture = textures.get(next.0).unwrap();
+                last_used_in = last_used_in.max(texture.last_used_in.unwrap());
+            }
+            while let Some(previous) = texture.previous {
+                texture = textures.get(previous.0).unwrap();
+                first_used_in = first_used_in.max(HistoryPassIdx(HistoryResourceEntry::Current, texture.write_pass_idx.unwrap()));
+            }
+
+
+            for texture_desc_b in &texture_descriptions {
+                if texture_desc_b.name == texture_desc.name
+                    || texture_desc_b.has_history
+                    || texture_desc_b.info != texture_desc.info {
+                    continue;
+                }
+                let handle_b = texture_handle_map.get(&(texture_desc_b.name, HistoryResourceEntry::Current)).unwrap();
+                let mut texture_b = textures.get(handle_b.0).unwrap();
+                while let Some(next) = texture_b.next {
+                    // Start at the last write.
+                    texture_b = textures.get(next.0).unwrap();
+                }
+                while let Some(previous) = texture_b.previous {
+                    let next_write_b = texture_b;
+                    texture_b = textures.get(previous.0).unwrap();
+                    if next_write_b.discard
+                        && next_write_b.write_pass_idx.unwrap() > last_used_in
+                        && texture_b.last_used_in < first_used_in {
+                        // Insert here
+                    }
+                }
+            }
+
             let mut texture = textures.get(handle.0).unwrap();
             let last_used_in = texture.last_used_in;
             while let Some(inherits) = texture.previous {
