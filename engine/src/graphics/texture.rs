@@ -1,11 +1,7 @@
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
 
-use super::gpu::{
-    self,
-    Heap as _,
-    Texture as _,
-};
+use super::gpu::{self, Heap as _, Texture as _};
 use super::*;
 
 pub struct Texture {
@@ -139,6 +135,7 @@ impl PartialEq<Texture> for Texture {
 pub struct TextureView {
     texture: Option<Arc<Texture>>,
     texture_view: ManuallyDrop<active_gpu_backend::TextureView>,
+    info: TextureViewInfo,
     destroyer: Arc<DeferredDestroyer>,
 }
 
@@ -161,6 +158,7 @@ impl TextureView {
         Arc::new(Self {
             texture: Some(texture.clone()),
             texture_view: ManuallyDrop::new(texture_view),
+            info: info.clone(),
             destroyer: destroyer.clone(),
         })
     }
@@ -176,6 +174,7 @@ impl TextureView {
         Self {
             texture: None,
             texture_view: ManuallyDrop::new(texture_view),
+            info: info.clone(),
             destroyer: destroyer.clone(),
         }
     }
@@ -188,6 +187,11 @@ impl TextureView {
     #[inline(always)]
     pub fn texture(&self) -> Option<&Arc<Texture>> {
         self.texture.as_ref()
+    }
+
+    #[inline(always)]
+    pub fn info(&self) -> &TextureViewInfo {
+        &self.info
     }
 }
 
