@@ -356,7 +356,11 @@ pub trait CommandBuffer<B: GPUBackend> {
 
     unsafe fn trace_ray(&mut self, width: u32, height: u32, depth: u32);
 
-    unsafe fn split_barrier_signal(&mut self, split_barrier: &B::SplitBarrier, barrier: &Barrier<B>);
+    unsafe fn split_barrier_signal(
+        &mut self,
+        split_barrier: &B::SplitBarrier,
+        barrier: &Barrier<B>,
+    );
     unsafe fn split_barrier_wait(&mut self, waits: &[SplitBarrierWait<B>]);
 }
 
@@ -409,7 +413,7 @@ impl ClearColor {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ClearDepthStencilValue {
     pub depth: f32,
     pub stencil: u32,
