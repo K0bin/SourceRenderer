@@ -16,10 +16,14 @@ pub type Quaternion = bevy_math::Quat;
 pub type Matrix4 = bevy_math::Mat4;
 pub type Matrix3 = bevy_math::Mat3;
 pub type EulerRot = bevy_math::EulerRot;
+pub use half::f16;
+pub use half_vec::HalfVec3;
 
 mod align;
 pub use align::*;
 mod fixed_size_vec;
+mod half_vec;
+
 pub use fixed_size_vec::*;
 
 pub unsafe fn extend_lifetime<'b, T>(r: &'b T) -> &'static T {
