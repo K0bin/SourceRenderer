@@ -19,9 +19,13 @@ impl RawVolumeLoader {
     }
 }
 
-const RESOLUTION_DOWNSCALE_FACTOR: usize = 4usize;
+const RESOLUTION_DOWNSCALE_FACTOR: usize = 1usize;
 const SIZE_SCALE_FACTOR: f32 = 0.01f32;
-const THRESHOLD: f32 = 600.0f32;
+//const THRESHOLD: f32 = 0.08f32;
+//const THRESHOLD: f32 = 0.0505f32;
+const THRESHOLD: f32 = 0.0485f32;
+//const THRESHOLD: f32 = 0.035f32;
+//const THRESHOLD: f32 = 0.026f32;
 
 impl AssetLoader for RawVolumeLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
@@ -86,7 +90,7 @@ impl AssetLoader for RawVolumeLoader {
         let downsampled_height = height / (RESOLUTION_DOWNSCALE_FACTOR as u32);
         let downsampled_depth = depth / (RESOLUTION_DOWNSCALE_FACTOR as u32);
         log::info!(
-            "Loading volume. Original resolution: {}x{}x{}, {} voxels, downscaled to {}x{}x{}, {} voxels, spacing: {:?}",
+            "Loading volume. Original resolution: {}x{}x{}, {} voxels, downscaled to {}x{}x{}, {} voxels,\nspacing: {:?}",
             width,
             height,
             depth,
@@ -99,6 +103,8 @@ impl AssetLoader for RawVolumeLoader {
         );
         let mut values = Vec::<f32>::with_capacity(values_count);
 
+        let mut min_value = f32::MAX;
+        let mut max_value = 0.0f32;
         for z_base in (0usize..(depth as usize)).step_by(RESOLUTION_DOWNSCALE_FACTOR) {
             if z_base + RESOLUTION_DOWNSCALE_FACTOR > depth as usize {
                 continue;
@@ -129,15 +135,25 @@ impl AssetLoader for RawVolumeLoader {
                             }
                         }
                     }
-                    values.push(
-                        value
-                            / ((RESOLUTION_DOWNSCALE_FACTOR
-                                * RESOLUTION_DOWNSCALE_FACTOR
-                                * RESOLUTION_DOWNSCALE_FACTOR)
-                                as f32),
-                    );
+                    let val = value
+                        / ((RESOLUTION_DOWNSCALE_FACTOR
+                            * RESOLUTION_DOWNSCALE_FACTOR
+                            * RESOLUTION_DOWNSCALE_FACTOR) as f32);
+                    values.push(val);
+                    min_value = min_value.min(val);
+                    max_value = max_value.max(val);
                 }
             }
+        }
+        log::info!(
+            "Loaded density. Min density: {:?}, max density: {:?}, threshold: {:?}",
+            min_value,
+            max_value,
+            THRESHOLD
+        );
+
+        for val in &mut values {
+            *val = (*val - min_value) / (max_value - min_value);
         }
 
         let vertices = marching_cubes(
@@ -164,9 +180,9 @@ impl AssetLoader for RawVolumeLoader {
         let vertices_data = unsafe { Box::from_raw(data_ptr) };
         assert_eq!(size_old, std::mem::size_of_val(vertices_data.as_ref()));
         log::info!(
-            "Generated {} vertices ({} bytes)",
+            "Generated {} vertices ({} MB)",
             vertex_count,
-            vertices_data.len()
+            vertices_data.len() / 1024usize / 1024usize
         );
 
         let mesh = MeshData {
