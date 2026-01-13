@@ -10,6 +10,7 @@ pub fn format_to_vk(format: gpu::Format, supports_d24: bool) -> vk::Format {
         gpu::Format::R32Float => vk::Format::R32_SFLOAT,
         gpu::Format::R8Unorm => vk::Format::R8_UNORM,
         gpu::Format::RG32Float => vk::Format::R32G32_SFLOAT,
+        gpu::Format::RGB16Float => vk::Format::R16G16B16_SFLOAT,
         gpu::Format::RGB32Float => vk::Format::R32G32B32_SFLOAT,
         gpu::Format::RGBA32Float => vk::Format::R32G32B32A32_SFLOAT,
         gpu::Format::BGR8UNorm => vk::Format::B8G8R8_UNORM,

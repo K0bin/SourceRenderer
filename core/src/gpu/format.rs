@@ -20,6 +20,7 @@ pub enum Format {
     R32Float,
     RG32Float,
     RG16Float,
+    RGB16Float,
     RGB32Float,
     RGBA32Float,
     RG16UNorm,
@@ -64,6 +65,7 @@ impl Format {
             Format::R32Float => 4,
             Format::R16Float => 2,
             Format::RG32Float => 8,
+            Format::RGB16Float => 6,
             Format::RGB32Float => 12,
             Format::RGBA32Float => 16,
             Format::RGBA8UNorm => 4,
@@ -97,6 +99,7 @@ impl Format {
             | Format::R32Float
             | Format::RG32Float
             | Format::RG16Float
+            | Format::RGB16Float
             | Format::RGB32Float
             | Format::RGBA32Float
             | Format::RGBA16Float
