@@ -1,3 +1,4 @@
+use crate::Vec3;
 use half::f16;
 use std::fmt::{Debug, Formatter};
 
@@ -70,6 +71,42 @@ impl std::ops::Mul<HalfVec3> for f32 {
     }
 }
 
+impl std::ops::Mul<Vec3> for HalfVec3 {
+    type Output = HalfVec3;
+
+    fn mul(self, rhs: Vec3) -> Self::Output {
+        HalfVec3 {
+            x: self.x * f16::from_f32(rhs.x),
+            y: self.y * f16::from_f32(rhs.y),
+            z: self.z * f16::from_f32(rhs.z),
+        }
+    }
+}
+
+impl std::ops::Mul<HalfVec3> for Vec3 {
+    type Output = Vec3;
+
+    fn mul(self, rhs: HalfVec3) -> Self::Output {
+        Vec3 {
+            x: self.x * rhs.x.to_f32(),
+            y: self.y * rhs.y.to_f32(),
+            z: self.z * rhs.z.to_f32(),
+        }
+    }
+}
+
+impl std::ops::Mul<HalfVec3> for HalfVec3 {
+    type Output = HalfVec3;
+
+    fn mul(self, rhs: HalfVec3) -> Self::Output {
+        HalfVec3 {
+            x: self.x * rhs.x,
+            y: self.y * rhs.y,
+            z: self.z * rhs.z,
+        }
+    }
+}
+
 impl std::ops::Mul<f16> for HalfVec3 {
     type Output = HalfVec3;
 
@@ -100,6 +137,31 @@ impl Clone for HalfVec3 {
             x: self.x,
             y: self.y,
             z: self.z,
+        }
+    }
+}
+
+impl std::ops::Div<f32> for HalfVec3 {
+    type Output = HalfVec3;
+
+    fn div(self, rhs: f32) -> Self::Output {
+        let rhs_f16 = f16::from_f32(rhs);
+        Self {
+            x: self.x / rhs_f16,
+            y: self.y / rhs_f16,
+            z: self.z / rhs_f16,
+        }
+    }
+}
+
+impl std::ops::Div<f16> for HalfVec3 {
+    type Output = HalfVec3;
+
+    fn div(self, rhs: f16) -> Self::Output {
+        Self {
+            x: self.x / rhs,
+            y: self.y / rhs,
+            z: self.z / rhs,
         }
     }
 }
