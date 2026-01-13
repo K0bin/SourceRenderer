@@ -63,6 +63,19 @@ impl AssetLoader for RawVolumeLoader {
         }
         let depth: u32 = word.unwrap().parse().map_err(|_| ())?;
 
+        let mut word = words.next();
+        if word != Some("spacing:") {
+            return Err(());
+        }
+        let mut spacing = Vec3::new(0.0f32, 0.0f32, 0.0f32);
+        for i in 0..3 {
+            word = words.next();
+            if word.is_none() {
+                return Err(());
+            }
+            spacing[i] = word.unwrap().parse().map_err(|_| ())?;
+        }
+
         let values_count = (width as usize) * (height as usize) * (depth as usize);
 
         let mut data = Vec::<u8>::with_capacity(values_count);
@@ -73,7 +86,7 @@ impl AssetLoader for RawVolumeLoader {
         let downsampled_height = height / (RESOLUTION_DOWNSCALE_FACTOR as u32);
         let downsampled_depth = depth / (RESOLUTION_DOWNSCALE_FACTOR as u32);
         log::info!(
-            "Loading volume. Original resolution: {}x{}x{}, {} voxels, downscaled to {}x{}x{}, {} voxels",
+            "Loading volume. Original resolution: {}x{}x{}, {} voxels, downscaled to {}x{}x{}, {} voxels, spacing: {:?}",
             width,
             height,
             depth,
@@ -82,6 +95,7 @@ impl AssetLoader for RawVolumeLoader {
             downsampled_height,
             downsampled_depth,
             (downsampled_width as usize) * (downsampled_height as usize) * (downsampled_depth as usize),
+            spacing,
         );
         let mut values = Vec::<f32>::with_capacity(values_count);
 
@@ -134,7 +148,7 @@ impl AssetLoader for RawVolumeLoader {
                     + (x as usize)]
             },
             THRESHOLD,
-            SIZE_SCALE_FACTOR * (RESOLUTION_DOWNSCALE_FACTOR as f32),
+            spacing * SIZE_SCALE_FACTOR * (RESOLUTION_DOWNSCALE_FACTOR as f32),
             RESOLUTION_DOWNSCALE_FACTOR as u32,
         );
         let vertex_count = vertices.len() as u32;
@@ -180,7 +194,7 @@ fn marching_cubes<F: Fn(u32, u32, u32) -> f32>(
     size: (u32, u32, u32),
     value_lookup: F,
     threshold: f32,
-    scale: f32,
+    scale: Vec3,
     downscale_factor: u32,
 ) -> Vec<HalfVec3> {
     const EDGE_TABLE: [u32; 256] = [
