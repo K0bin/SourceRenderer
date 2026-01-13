@@ -584,7 +584,8 @@ fn interpolate_vertices<F: Fn(u32, u32, u32) -> f32>(
     let pos1f = HalfVec3::new_from_f32(pos1.0 as f32, pos1.1 as f32, pos1.2 as f32);
     let pos2f = HalfVec3::new_from_f32(pos2.0 as f32, pos2.1 as f32, pos2.2 as f32);
 
-    return pos1f + (pos2f - pos1f) * 0.5f32;
+    // Simple interpolation:
+    // return pos1f + (pos2f - pos1f) * 0.5f32;
 
     let value1 = value_lookup(pos1.0, pos1.1, pos1.2);
     let value2 = value_lookup(pos2.0, pos2.1, pos2.2);
