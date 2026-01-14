@@ -37,5 +37,6 @@ pub(crate) fn format_to_mtl(format: Format) -> MTLPixelFormat {
         Format::D24S8 => MTLPixelFormat::Depth32Float_Stencil8,
         Format::RG16SInt => MTLPixelFormat::RG16Sint,
         Format::R16SInt => MTLPixelFormat::R16Sint,
+        _ => panic!("Unimplemented or unsupported format."),
     }
 }
