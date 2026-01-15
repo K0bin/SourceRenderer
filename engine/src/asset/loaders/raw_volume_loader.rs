@@ -1,10 +1,12 @@
 use crate::asset::asset_manager::AssetFile;
+use crate::asset::AssetData::{Material, Model};
 use crate::asset::{
-    AssetData, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, MeshData,
-    MeshRange,
+    AssetData, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, MaterialData,
+    MaterialValue, MeshData, MeshRange, ModelData,
 };
+use crate::renderer::asset::RendererMaterialValue;
 use futures_lite::AsyncReadExt;
-use sourcerenderer_core::{HalfVec3, Vec3};
+use sourcerenderer_core::{HalfVec3, Vec3, Vec4};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -208,12 +210,27 @@ impl AssetLoader for RawVolumeLoader {
             vertices: vertices_data,
             parts: Box::new([MeshRange {
                 start: 0u32,
-                count: vertex_count,
+                count: index_count,
             }]),
             bounding_box: None,
             vertex_count,
         };
-        manager.add_asset_data(file.path(), AssetData::Mesh(mesh), priority);
+        let mesh_path = format!("{}_mesh", file.path());
+        manager.add_asset_data(&mesh_path, AssetData::Mesh(mesh), priority);
+        let material = MaterialData {
+            shader_name: "empty".to_string(),
+            properties: HashMap::from([(
+                "albedo".to_string(),
+                MaterialValue::Vec4(Vec4::new(1.0f32, 0.0f32, 0.5f32, 1.0f32)),
+            )]),
+        };
+        let material_path = format!("{}_material", file.path());
+        manager.add_asset_data(&material_path, AssetData::Material(material), priority);
+        let model = ModelData {
+            mesh_path,
+            material_paths: vec![material_path],
+        };
+        manager.add_asset_data(file.path(), AssetData::Model(model), priority);
 
         Ok(())
     }
