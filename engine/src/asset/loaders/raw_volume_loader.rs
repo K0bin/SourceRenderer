@@ -5,6 +5,7 @@ use crate::asset::{
 };
 use futures_lite::AsyncReadExt;
 use sourcerenderer_core::{HalfVec3, Vec3};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
@@ -156,7 +157,7 @@ impl AssetLoader for RawVolumeLoader {
             *val = (*val - min_value) / (max_value - min_value);
         }
 
-        let vertices = marching_cubes(
+        let (vertices, indices) = marching_cubes(
             (downsampled_width, downsampled_height, downsampled_depth),
             |x, y, z| {
                 values[(z as usize) * (downsampled_width as usize) * (downsampled_height as usize)
@@ -179,14 +180,31 @@ impl AssetLoader for RawVolumeLoader {
         };
         let vertices_data = unsafe { Box::from_raw(data_ptr) };
         assert_eq!(size_old, std::mem::size_of_val(vertices_data.as_ref()));
+        let index_count = indices.len() as u32;
+        let indices_box = indices.into_boxed_slice();
+        let indices_size_old = std::mem::size_of_val(indices_box.as_ref());
+        let indices_ptr = Box::into_raw(indices_box);
+        let indices_data_ptr = unsafe {
+            slice::from_raw_parts_mut(
+                indices_ptr as *mut u8,
+                (index_count as usize) * std::mem::size_of::<u32>(),
+            ) as *mut [u8]
+        };
+        let indices_data = unsafe { Box::from_raw(indices_data_ptr) };
+        assert_eq!(
+            indices_size_old,
+            std::mem::size_of_val(indices_data.as_ref())
+        );
         log::info!(
-            "Generated {} vertices ({} MB)",
+            "Generated {} vertices ({} MB) + {} indices ({} MB)",
             vertex_count,
-            vertices_data.len() / 1024usize / 1024usize
+            vertices_data.len() / 1024usize / 1024usize,
+            index_count,
+            indices_data.len() / 1024usize / 1024usize
         );
 
         let mesh = MeshData {
-            indices: None,
+            indices: Some(indices_data),
             vertices: vertices_data,
             parts: Box::new([MeshRange {
                 start: 0u32,
@@ -212,7 +230,7 @@ fn marching_cubes<F: Fn(u32, u32, u32) -> f32>(
     threshold: f32,
     scale: Vec3,
     downscale_factor: u32,
-) -> Vec<HalfVec3> {
+) -> (Vec<HalfVec3>, Vec<u32>) {
     const EDGE_TABLE: [u32; 256] = [
         0x0, 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c, 0x80c, 0x905, 0xa0f, 0xb06, 0xc0a,
         0xd03, 0xe09, 0xf00, 0x190, 0x99, 0x393, 0x29a, 0x596, 0x49f, 0x795, 0x69c, 0x99c, 0x895,
@@ -509,10 +527,14 @@ fn marching_cubes<F: Fn(u32, u32, u32) -> f32>(
     export_debug(&test_vertices);
     return test_vertices;*/
 
+    let mut indices_map = HashMap::<u32, u32>::new();
     let mut vertices =
         Vec::<HalfVec3>::with_capacity((size.0 as usize) * (size.1 as usize) * (size.2 as usize));
-    let mut cube_vertices: [HalfVec3; 12usize] =
-        [HalfVec3::new_from_f32(0.0f32, 0.0f32, 0.0f32); 12usize];
+    let mut indices = Vec::<u32>::new();
+    let mut hits = 0u64;
+    let mut total = 0u64;
+
+    let mut cube_vertex_indices: [u32; 12usize] = [0u32; 12usize];
     for z_base in 0..size.2 - 1 {
         for y_base in 0..size.1 - 1 {
             for x_base in 0..size.0 - 1 {
@@ -547,34 +569,101 @@ fn marching_cubes<F: Fn(u32, u32, u32) -> f32>(
                     )
                 };
 
+                let pos_to_cache_key = |mut pos: (u32, u32, u32), pos2: (u32, u32, u32)| {
+                    let x_diff = pos2.0.max(pos.0) - pos.0.min(pos2.0);
+                    let y_diff = pos2.1.max(pos.1) - pos.1.min(pos2.1);
+                    let z_diff = pos2.2.max(pos.2) - pos.2.min(pos2.2);
+                    assert_eq!(x_diff + y_diff + z_diff, 1u32);
+
+                    let mut dir = 0u32;
+                    if y_diff == 1u32 {
+                        dir = 1u32;
+                    } else if z_diff == 1u32 {
+                        dir = 2u32;
+                    }
+
+                    pos = pos.min(pos2);
+
+                    (pos.2 * size.0 * size.1 + pos.1 * size.0 + pos.0) * 3u32 + dir
+                };
+
                 for i in 0usize..4usize {
-                    cube_vertices[i] = (interpolate_vertices(
-                        index_to_pos(i as u32),
-                        index_to_pos((i as u32 + 1u32) % 4u32),
-                        &value_lookup,
-                        threshold,
-                    )) * scale;
+                    if (EDGE_TABLE[key as usize] & (1 << i)) != 0 {
+                        total += 1;
+                        let index0 = pos_to_cache_key(
+                            index_to_pos(i as u32),
+                            index_to_pos((i as u32 + 1u32) % 4u32),
+                        );
+                        let existing_index0 = indices_map.get(&index0).cloned();
+                        if let Some(index) = existing_index0 {
+                            cube_vertex_indices[i] = index;
+                            hits += 1;
+                        } else {
+                            let vertex = interpolate_vertices(
+                                index_to_pos(i as u32),
+                                index_to_pos((i as u32 + 1u32) % 4u32),
+                                &value_lookup,
+                                threshold,
+                            ) * scale;
+                            let index = vertices.len() as u32;
+                            vertices.push(vertex);
+                            cube_vertex_indices[i] = index;
+                            indices_map.insert(index0, index);
+                        }
+                    }
 
-                    cube_vertices[i + 4usize] = (interpolate_vertices(
-                        index_to_pos(i as u32 + 4u32),
-                        index_to_pos((i as u32 + 1u32) % 4u32 + 4u32),
-                        &value_lookup,
-                        threshold,
-                    )) * scale;
+                    if (EDGE_TABLE[key as usize] & (16 << i)) != 0 {
+                        total += 1;
+                        let index1 = pos_to_cache_key(
+                            index_to_pos(i as u32 + 4u32),
+                            index_to_pos((i as u32 + 1u32) % 4u32 + 4u32),
+                        );
+                        let existing_index1 = indices_map.get(&index1).cloned();
+                        if let Some(index) = existing_index1 {
+                            cube_vertex_indices[i + 4usize] = index;
+                            hits += 1;
+                        } else {
+                            let vertex = interpolate_vertices(
+                                index_to_pos(i as u32 + 4u32),
+                                index_to_pos((i as u32 + 1u32) % 4u32 + 4u32),
+                                &value_lookup,
+                                threshold,
+                            ) * scale;
+                            let index = vertices.len() as u32;
+                            vertices.push(vertex);
+                            cube_vertex_indices[i + 4usize] = index;
+                            indices_map.insert(index1, index);
+                        }
+                    }
 
-                    cube_vertices[i + 8usize] = (interpolate_vertices(
-                        index_to_pos(i as u32),
-                        index_to_pos(i as u32 + 4u32),
-                        &value_lookup,
-                        threshold,
-                    )) * scale;
+                    if (EDGE_TABLE[key as usize] & (256 << i)) != 0 {
+                        total += 1;
+                        let index2 =
+                            pos_to_cache_key(index_to_pos(i as u32), index_to_pos(i as u32 + 4u32));
+                        let existing_index2 = indices_map.get(&index2).cloned();
+                        if let Some(index) = existing_index2 {
+                            cube_vertex_indices[i + 8usize] = index;
+                            hits += 1;
+                        } else {
+                            let vertex = interpolate_vertices(
+                                index_to_pos(i as u32),
+                                index_to_pos(i as u32 + 4u32),
+                                &value_lookup,
+                                threshold,
+                            ) * scale;
+                            let index = vertices.len() as u32;
+                            vertices.push(vertex);
+                            cube_vertex_indices[i + 8usize] = index;
+                            indices_map.insert(index2, index);
+                        }
+                    }
                 }
 
                 let mut i = 0usize;
                 while TRI_TABLE[key as usize][i] != -1 {
-                    vertices.push(cube_vertices[TRI_TABLE[key as usize][i] as usize]);
-                    vertices.push(cube_vertices[TRI_TABLE[key as usize][i + 1usize] as usize]);
-                    vertices.push(cube_vertices[TRI_TABLE[key as usize][i + 2usize] as usize]);
+                    indices.push(cube_vertex_indices[TRI_TABLE[key as usize][i] as usize]);
+                    indices.push(cube_vertex_indices[TRI_TABLE[key as usize][i + 1usize] as usize]);
+                    indices.push(cube_vertex_indices[TRI_TABLE[key as usize][i + 2usize] as usize]);
 
                     /*log::info!(
                         "Triangle: {:?}\n{:?}\n{:?}",
@@ -600,9 +689,15 @@ fn marching_cubes<F: Fn(u32, u32, u32) -> f32>(
         }
     }
 
-    export_debug(&vertices);
+    log::info!(
+        "HIT RATE: {:?}, vertices: {:?}",
+        ((hits as f64) / (total as f64)) * 100.0f64,
+        vertices.len()
+    );
 
-    return vertices;
+    export_debug(&vertices, &indices);
+
+    return (vertices, indices);
 }
 
 fn interpolate_vertices<F: Fn(u32, u32, u32) -> f32>(
@@ -629,7 +724,7 @@ fn interpolate_vertices<F: Fn(u32, u32, u32) -> f32>(
     pos1f + a * (pos2f - pos1f)
 }
 
-fn export_debug(vertices: &[HalfVec3]) {
+fn export_debug(vertices: &[HalfVec3], indices: &[u32]) {
     let path = Path::new("geometry.obj");
     let _ = std::fs::remove_file(path);
     let file_res = File::create(path);
@@ -652,8 +747,13 @@ fn export_debug(vertices: &[HalfVec3]) {
             );
         }
     }
-    for i in (1..=vertices.len()).step_by(3) {
-        let res = writer.write_fmt(format_args!("f {} {} {}\n", i, i + 1, i + 2));
+    for i in (0..indices.len()).step_by(3) {
+        let res = writer.write_fmt(format_args!(
+            "f {} {} {}\n",
+            indices[i] + 1,
+            indices[i + 1] + 1,
+            indices[i + 2] + 1
+        ));
         if res.is_err() {
             log::error!(
                 "export_debug: Failed to write face: {:?} {:?} {:?}: {:?}",
