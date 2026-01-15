@@ -36,8 +36,8 @@ struct BufferRange {
 }
 
 impl AssetBuffer {
-    pub const SIZE_BIG: u32 = 256 << 20;
-    pub const SIZE_SMALL: u32 = 64 << 20;
+    pub const SIZE_BIG: u32 = 512 << 20;
+    pub const SIZE_SMALL: u32 = 128 << 20;
 
     pub fn new(device: &Arc<Device>, size: u32, usage: BufferUsage) -> Self {
         let buffer = device
