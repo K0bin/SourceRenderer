@@ -43,9 +43,9 @@ layout(push_constant) uniform Config {
 
 uvec3 indexToCubePos(uint idx) {
     return uvec3(
-        (gl_GlobalInvocationID.x / 2u) + (((~(idx >> 1u) & (idx & 1u)) | ((idx >> 1u) & ~(idx & 1u))) & 1u),
-        (gl_GlobalInvocationID.y / 2u) + ((idx >> 2u) & 1u),
-        (gl_GlobalInvocationID.z / 2u) + ((idx >> 1u) & 1u)
+        gl_GlobalInvocationID.x + (((~(idx >> 1u) & (idx & 1u)) | ((idx >> 1u) & ~(idx & 1u))) & 1u),
+        gl_GlobalInvocationID.y + ((idx >> 2u) & 1u),
+        gl_GlobalInvocationID.z + ((idx >> 1u) & 1u)
     );
 }
 
@@ -83,30 +83,6 @@ void main() {
     }
 
     uint[12u] cubeVertexIndices;
-
-#ifdef HAS_SUBGROUPS
-    uint i = gl_SubgroupInvocationID % 4u;
-    uint j = (gl_SubgroupInvocationID % 12u) / 4u;
-
-    uvec3[3u] idxPos;
-    uvec3[3u] idxPos1;
-    idxPos[0u] = indexToCubePos(i);
-    idxPos[1u] = indexToCubePos(i + 4u);
-    idxPos[2u] = idxPos[0u];
-    idxPos1[0u] = indexToCubePos((i + 1u) % 4u);
-    idxPos1[1u] = indexToCubePos((i + 1u) % 4u);
-
-    uint cubeVertexIndex;
-    if (subgroupAny((edges[key] & ((1u << j) << i)) != 0u) && gl_SubgroupInvocationID < 12u) {
-        uvec3 usedIdxPos = idxPos[j];
-        uvec3 usedIdxPos1 = idxPos1[j];
-
-        vec3 vertex = interpolateVertices(usedIdxPos, usedIdxPos1) * scale;
-        uint index = atomicAdd(vertexCount, 1u);
-        vertices[index] = vertex;
-        cubeVertexIndex = index;
-    }
-#else
     for (uint i = 0u; i < 4u; i++) {
         if ((edges[key] & (1u << i)) != 0u) {
             vec3 vertex = interpolateVertices(indexToCubePos(i), indexToCubePos((i + 1u) % 4u)) * scale;
@@ -127,19 +103,10 @@ void main() {
             cubeVertexIndices[i + 8u] = index;
         }
     }
-#endif
 
-#ifdef HAS_SUBGROUPS
-    for (uint i = 0u; tris[key][i] != -1; i++) {
-        indices[atomicAdd(indexCount, 1u)] = subgroupShuffle(cubeVertexIndex, tris[key][i]);
-        indices[atomicAdd(indexCount, 1u)] = subgroupShuffle(cubeVertexIndex, tris[key][i + 1u]);
-        indices[atomicAdd(indexCount, 1u)] = subgroupShuffle(cubeVertexIndex, tris[key][i + 2u]);
-    }
-#else
     for (uint i = 0u; tris[key][i] != -1; i++) {
         indices[atomicAdd(indexCount, 1u)] = cubeVertexIndices[tris[key][i]];
         indices[atomicAdd(indexCount, 1u)] = cubeVertexIndices[tris[key][i + 1u]];
         indices[atomicAdd(indexCount, 1u)] = cubeVertexIndices[tris[key][i + 2u]];
     }
-#endif
 }
