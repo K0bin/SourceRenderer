@@ -4,7 +4,7 @@ use crate::renderer::asset::{ComputePipelineHandle, RendererAssets, RendererAsse
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use sourcerenderer_core::gpu::Buffer;
-use sourcerenderer_core::{Vec2UI, Vec3, Vec3UI, Vec4};
+use sourcerenderer_core::{HalfVec3, HalfVec4, Vec2UI, Vec3, Vec3UI, Vec4};
 use std::sync::Arc;
 
 #[repr(C)]
@@ -59,7 +59,7 @@ impl MarchingCubesPass {
         resources.create_buffer(
             Self::VERTICES_BUFFER_NAME,
             &BufferInfo {
-                size: (std::mem::size_of::<Vec4>() * 100_000_000) as u64,
+                size: (std::mem::size_of::<HalfVec3>() * 100_000_000) as u64,
                 usage: BufferUsage::STORAGE | BufferUsage::VERTEX,
                 sharing_mode: QueueSharingMode::Exclusive,
             },

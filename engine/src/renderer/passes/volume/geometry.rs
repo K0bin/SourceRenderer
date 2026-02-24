@@ -69,8 +69,7 @@ impl GeometryPass {
             vertex_layout: VertexLayoutInfo {
                 input_assembler: &[InputAssemblerElement {
                     binding: 0,
-                    //stride: std::mem::size_of::<HalfVec3>(),
-                    stride: std::mem::size_of::<Vec4>(),
+                    stride: std::mem::size_of::<HalfVec3>(),
                     input_rate: InputRate::PerVertex,
                 }],
                 shader_inputs: &[ShaderInputElement {
@@ -79,7 +78,7 @@ impl GeometryPass {
                     semantic_name_d3d: String::from(""),
                     semantic_index_d3d: 0,
                     offset: 0,
-                    format: Format::RGB32Float,
+                    format: Format::RGB16Float,
                 }],
             },
             rasterizer: RasterizerInfo {

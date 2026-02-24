@@ -1,6 +1,8 @@
 #version 450
 #extension GL_GOOGLE_include_directive : enable
 // #extension GL_EXT_debug_printf : enable
+#extension GL_EXT_scalar_block_layout : enable
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : enable
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
@@ -15,8 +17,8 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 1, std430) buffer readonly TriTa
 };
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2, r32f) uniform readonly image3D densityImage;
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 3, std430) buffer verticesBuffer {
-    vec4[] vertices;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 3, scalar) buffer verticesBuffer {
+    f16vec3[] vertices;
 };
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 4, std430) buffer indicesBuffer {
     uint[] indices;
@@ -91,7 +93,7 @@ void main() {
             vec4 vertex = interpolateVertices(indexToCubePos(i), indexToCubePos((i + 1u) % 4u)) * vec4(scale, 1.0);
             //vertex = vec4(0.2);
             uint index = atomicAdd(vertexCount, 1u);
-            vertices[index] = vertex;
+            vertices[index] = f16vec3(vertex.xyz);
             cubeVertexIndices[i] = index;
         } else {
             cubeVertexIndices[i] = 0u;
@@ -100,7 +102,7 @@ void main() {
             vec4 vertex = interpolateVertices(indexToCubePos(i + 4u), indexToCubePos((i + 1u) % 4u + 4u)) * vec4(scale, 1.0);
             //vertex = vec4(0.5);
             uint index = atomicAdd(vertexCount, 1u);
-            vertices[index] = vertex;
+            vertices[index] = f16vec3(vertex.xyz);
             cubeVertexIndices[i + 4u] = index;
         } else {
             cubeVertexIndices[i + 4u] = 0u;
@@ -109,7 +111,7 @@ void main() {
             vec4 vertex = interpolateVertices(indexToCubePos(i), indexToCubePos(i + 4u)) * vec4(scale, 1.0);
             //vertex = vec4(1.0);
             uint index = atomicAdd(vertexCount, 1u);
-            vertices[index] = vertex;
+            vertices[index] = f16vec3(vertex.xyz);
             cubeVertexIndices[i + 8u] = index;
         } else {
             cubeVertexIndices[i + 8u] = 0u;
