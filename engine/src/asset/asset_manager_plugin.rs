@@ -1,10 +1,7 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use bevy_app::{
-    Plugin,
-    PreUpdate,
-};
+use bevy_app::{Plugin, PreUpdate};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use sourcerenderer_core::platform::PlatformIO;
@@ -34,6 +31,8 @@ impl<IO: PlatformIO> Plugin for AssetManagerPlugin<IO> {
 
         asset_manager.add_loader(GltfLoader::new());
         asset_manager.add_loader(ImageLoader::new());
+        //asset_manager.add_loader(RawVolumeLoader::new());
+        asset_manager.add_loader(RawVolumeLoaderTexture::new());
         app.insert_resource(AssetManagerECSResource(asset_manager));
         app.add_systems(PreUpdate, load_level_system);
     }

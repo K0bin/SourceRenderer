@@ -24,7 +24,9 @@ impl AssetPlaceholders {
                     mip_levels: 1,
                     array_length: 1,
                     samples: SampleCount::Samples1,
-                    usage: TextureUsage::SAMPLED | TextureUsage::INITIAL_COPY,
+                    usage: TextureUsage::SAMPLED
+                        | TextureUsage::STORAGE
+                        | TextureUsage::INITIAL_COPY,
                     supports_srgb: false,
                 },
                 Some("AssetZeroTexture"),

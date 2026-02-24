@@ -1,16 +1,9 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
-use std::hash::{
-    Hash,
-    Hasher,
-};
+use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
-use std::sync::{
-    Arc,
-    Mutex,
-    MutexGuard,
-};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use ash::vk;
 use bitflags::bitflags;
@@ -258,6 +251,10 @@ impl VkDescriptorPool {
             },
             vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::STORAGE_BUFFER_DYNAMIC,
+                descriptor_count: 256,
+            },
+            vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::STORAGE_IMAGE,
                 descriptor_count: 256,
             },
         ];
