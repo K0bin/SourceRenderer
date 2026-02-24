@@ -1,9 +1,5 @@
 use std::f32;
-use std::ffi::{
-    c_void,
-    CStr,
-    CString,
-};
+use std::ffi::{c_void, CStr, CString};
 use std::os::raw::c_char;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -265,6 +261,8 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             vk::PhysicalDeviceHostImageCopyFeaturesEXT::default();
         let mut supported_features_mesh_shader = vk::PhysicalDeviceMeshShaderFeaturesEXT::default();
         let mut properties_mesh_shader = vk::PhysicalDeviceMeshShaderPropertiesEXT::default();
+        let mut supported_features_float_16_int_8 =
+            vk::PhysicalDeviceShaderFloat16Int8Features::default();
 
         supported_features_11.p_next = std::mem::replace(
             &mut supported_features.p_next,
@@ -386,6 +384,12 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             );
         }
 
+        supported_features_float_16_int_8.p_next = std::mem::replace(
+            &mut supported_features.p_next,
+            &mut supported_features_float_16_int_8 as *mut vk::PhysicalDeviceFloat16Int8FeaturesKHR
+                as *mut c_void,
+        );
+
         self.instance
             .get_physical_device_features2(self.physical_device, &mut supported_features);
         self.instance
@@ -404,6 +408,8 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             vk::PhysicalDeviceFragmentShaderBarycentricFeaturesKHR::default();
         let mut features_host_image_copy = vk::PhysicalDeviceHostImageCopyFeaturesEXT::default();
         let mut features_mesh_shader = vk::PhysicalDeviceMeshShaderFeaturesEXT::default();
+        let mut enabled_features_float_16_int_8 =
+            vk::PhysicalDeviceShaderFloat16Int8Features::default();
         let mut enabled_extensions: Vec<&str> = vec![SWAPCHAIN_EXT_NAME];
 
         enabled_features
@@ -577,6 +583,15 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                     as *mut c_void,
             );
         }
+
+        enabled_features_float_16_int_8.shader_float16 =
+            supported_features_float_16_int_8.shader_float16;
+
+        enabled_features_float_16_int_8.p_next = std::mem::replace(
+            &mut enabled_features.p_next,
+            &mut enabled_features_float_16_int_8 as *mut vk::PhysicalDeviceFloat16Int8FeaturesKHR
+                as *mut c_void,
+        );
 
         let enabled_extensions_c: Vec<CString> = enabled_extensions
             .iter()
