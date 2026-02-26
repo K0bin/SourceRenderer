@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use smallvec::SmallVec;
-use sourcerenderer_core::{HalfVec3, Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
-
+use crate::asset::{AssetLoadPriority, AssetType, TextureHandle};
 use crate::graphics::*;
 use crate::renderer::asset::{
     GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssets, RendererAssetsReadOnly,
@@ -12,10 +10,20 @@ use crate::renderer::drawable::View;
 use crate::renderer::passes::marching_cubes::{MarchingCubesIndirectCall, MarchingCubesPass};
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use crate::renderer::renderer_scene::RendererScene;
+use smallvec::SmallVec;
+use sourcerenderer_core::{HalfVec3, Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
+
+#[repr(C)]
+#[derive(Clone)]
+struct PushConstantData {
+    model_matrix: Matrix4,
+    size: Vec3,
+}
 
 pub struct GeometryPass {
     pipeline: GraphicsPipelineHandle,
     sampler: Arc<crate::graphics::Sampler>,
+    transfer_function_handle: TextureHandle,
 }
 
 impl GeometryPass {
@@ -61,9 +69,9 @@ impl GeometryPass {
 
         let shader_file_extension = "json";
 
-        let fs_name = format!("shaders/web_geometry.web.frag.{}", shader_file_extension);
+        let fs_name = format!("shaders/volume_geometry.web.frag.{}", shader_file_extension);
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
-            vs: &format!("shaders/web_geometry.web.vert.{}", shader_file_extension),
+            vs: &format!("shaders/volume_geometry.web.vert.{}", shader_file_extension),
             fs: Some(&fs_name),
             primitive_type: PrimitiveType::Triangles,
             vertex_layout: VertexLayoutInfo {
@@ -109,9 +117,16 @@ impl GeometryPass {
         };
         let pipeline = assets.request_graphics_pipeline(&pipeline_info);
 
+        let (transfer_function_handle, _) = assets.asset_manager().request_asset(
+            "assets/transferfunction.png",
+            AssetType::Texture,
+            AssetLoadPriority::Normal,
+        );
+
         Self {
             pipeline,
             sampler: Arc::new(sampler),
+            transfer_function_handle: TextureHandle::from(transfer_function_handle),
         }
     }
 
@@ -132,6 +147,8 @@ impl GeometryPass {
         width: u32,
         height: u32,
         assets: &RendererAssetsReadOnly<'_>,
+        volume_texture: TextureHandle,
+        spacing: Vec3,
     ) {
         cmd_buffer.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::empty(),
@@ -217,18 +234,40 @@ impl GeometryPass {
             WHOLE_BUFFER,
         );
 
-        cmd_buffer.set_push_constant_data(&[Matrix4::default()], ShaderType::VertexShader);
+        let volume_texture = assets.get_texture(volume_texture);
+        cmd_buffer.bind_sampling_view_and_sampler(
+            BindingFrequency::Frequent,
+            0u32,
+            &volume_texture.view,
+            resources.linear_sampler(),
+        );
+        let texture_info = volume_texture.view.texture().unwrap().info();
+
+        let transfer_function = assets.get_texture(self.transfer_function_handle);
+        cmd_buffer.bind_sampling_view_and_sampler(
+            BindingFrequency::Frequent,
+            1u32,
+            &transfer_function.view,
+            resources.linear_sampler(),
+        );
+
+        cmd_buffer.set_push_constant_data(
+            &[PushConstantData {
+                model_matrix: Matrix4::from_rotation_z(-1.57f32)
+                    * Matrix4::from_rotation_y(-1.57f32),
+                size: Vec3::new(
+                    texture_info.width as f32,
+                    texture_info.height as f32,
+                    texture_info.depth as f32,
+                ) * spacing,
+            }],
+            ShaderType::VertexShader,
+        );
         cmd_buffer.set_vertex_buffer(0u32, BufferRef::Regular(&*marchingcubes_vbo), 0u64);
         cmd_buffer.set_index_buffer(
             BufferRef::Regular(&*marchingcubes_ibo),
             0u64,
             IndexFormat::U32,
-        );
-        cmd_buffer.bind_sampling_view_and_sampler(
-            BindingFrequency::Frequent,
-            0,
-            &assets.get_placeholder_texture_white().view,
-            &self.sampler,
         );
         cmd_buffer.finish_binding();
         cmd_buffer.draw_indexed_indirect(
@@ -238,74 +277,6 @@ impl GeometryPass {
             std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
         );
 
-        let drawables = scene.static_drawables();
-        let parts = &view.drawable_parts;
-        for part in parts {
-            let drawable = &drawables[part.drawable_index];
-            cmd_buffer.set_push_constant_data(
-                &[Matrix4::from(drawable.transform)],
-                ShaderType::VertexShader,
-            );
-            let model = assets.get_model(drawable.model);
-            if model.is_none() {
-                log::info!("Skipping draw because of missing model");
-                continue;
-            }
-            let model = model.unwrap();
-            let mesh = assets.get_mesh(model.mesh_handle());
-            if mesh.is_none() {
-                log::info!("Skipping draw because of missing mesh");
-                continue;
-            }
-            let mesh = mesh.unwrap();
-            let materials: SmallVec<[&RendererMaterial; 4]> = model
-                .material_handles()
-                .iter()
-                .map(|handle| assets.get_material(*handle))
-                .collect();
-            let range = &mesh.parts[part.part_index];
-            let material = &materials[part.part_index];
-            let albedo_value = material.get("albedo").unwrap();
-            match albedo_value {
-                RendererMaterialValue::Texture(handle) => {
-                    let texture = assets.get_texture(*handle);
-                    let albedo_view = &texture.view;
-                    cmd_buffer.bind_sampling_view_and_sampler(
-                        BindingFrequency::Frequent,
-                        0,
-                        albedo_view,
-                        &self.sampler,
-                    );
-                }
-                _ => {
-                    let texture = assets.get_placeholder_texture_white();
-                    let albedo_view = &texture.view;
-                    cmd_buffer.bind_sampling_view_and_sampler(
-                        BindingFrequency::Frequent,
-                        0,
-                        albedo_view,
-                        &self.sampler,
-                    );
-                } //_ => unimplemented!(),
-            }
-            cmd_buffer.finish_binding();
-
-            cmd_buffer.set_vertex_buffer(
-                0,
-                BufferRef::Regular(mesh.vertices.buffer()),
-                mesh.vertices.offset() as u64,
-            );
-            if let Some(indices) = mesh.indices.as_ref() {
-                cmd_buffer.set_index_buffer(
-                    BufferRef::Regular(indices.buffer()),
-                    indices.offset() as u64,
-                    IndexFormat::U32,
-                );
-                cmd_buffer.draw_indexed(range.count, 1, range.start, 0, 0);
-            } else {
-                cmd_buffer.draw(range.count, 1, range.start, 1);
-            }
-        }
         cmd_buffer.end_render_pass();
 
         cmd_buffer.barrier(&[Barrier::RawTextureBarrier {

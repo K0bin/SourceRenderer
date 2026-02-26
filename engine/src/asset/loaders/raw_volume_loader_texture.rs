@@ -23,7 +23,7 @@ impl RawVolumeLoaderTexture {
     }
 }
 
-const RESOLUTION_DOWNSCALE_FACTOR: usize = 1usize;
+pub const RESOLUTION_DOWNSCALE_FACTOR: usize = 2usize;
 //const THRESHOLD: f32 = 0.08f32;
 const THRESHOLD: f32 = 0.0505f32;
 //const THRESHOLD: f32 = 0.0485f32;
@@ -129,13 +129,16 @@ impl AssetLoader for RawVolumeLoaderTexture {
                                 let i = (z_base + z) * (width as usize) * (height as usize)
                                     + (y_base + y) * (width as usize)
                                     + (x_base + x);
-                                if value_size == 1usize {
-                                    value += data[i] as f32;
+                                let val = if value_size == 1usize {
+                                    data[i] as f32
                                 } else {
-                                    value += ((data[i * 2usize] as u16)
+                                    ((data[i * 2usize] as u16)
                                         | ((data[i * 2usize + 1usize] as u16) << 8u16))
-                                        as f32;
-                                }
+                                        as f32
+                                };
+                                min_value = min_value.min(val);
+                                max_value = max_value.max(val);
+                                value += val;
                             }
                         }
                     }
@@ -144,8 +147,6 @@ impl AssetLoader for RawVolumeLoaderTexture {
                             * RESOLUTION_DOWNSCALE_FACTOR
                             * RESOLUTION_DOWNSCALE_FACTOR) as f32);
                     values.push(val);
-                    min_value = min_value.min(val);
-                    max_value = max_value.max(val);
                 }
             }
         }
@@ -161,12 +162,6 @@ impl AssetLoader for RawVolumeLoaderTexture {
         }
 
         values.shrink_to_fit();
-
-        log::info!(
-            "Adding texture data for {:?} test {:?}",
-            file.path(),
-            values[300]
-        );
 
         let data = unsafe {
             let values_box = values.into_boxed_slice();
@@ -184,9 +179,9 @@ impl AssetLoader for RawVolumeLoaderTexture {
                 info: TextureInfo {
                     dimension: TextureDimension::Dim3D,
                     format: Format::R32Float,
-                    width: width / (RESOLUTION_DOWNSCALE_FACTOR as u32),
-                    height: height / (RESOLUTION_DOWNSCALE_FACTOR as u32),
-                    depth: depth / (RESOLUTION_DOWNSCALE_FACTOR as u32),
+                    width: downsampled_width,
+                    height: downsampled_height,
+                    depth: downsampled_depth,
                     mip_levels: 1,
                     array_length: 1,
                     samples: SampleCount::Samples1,

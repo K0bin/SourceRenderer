@@ -545,7 +545,7 @@ impl MarchingCubesPass {
         command_buffer.set_push_constant_data(
             &[MarchingCubesConfig {
                 threshold,
-                scale: spacing * 0.01f32,
+                scale: spacing,
             }],
             ShaderType::ComputeShader,
         );

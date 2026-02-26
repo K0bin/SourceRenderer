@@ -40,6 +40,7 @@ pub struct VolumeRenderer {
     ssao: SsaoPass,
     texture_handle: TextureHandle,
     texture_progress: Arc<AssetLoaderProgress>,
+    threshold: f32,
 }
 
 impl VolumeRenderer {
@@ -101,6 +102,8 @@ impl VolumeRenderer {
             ssao,
             texture_handle: TextureHandle::from(texture_handle),
             texture_progress: progress,
+            //threshold: 0.0505f32,
+            threshold: 0.0f32,
         }
     }
 }
@@ -131,6 +134,10 @@ impl RenderPath for VolumeRenderer {
         resources: &mut RendererResources,
         assets: &RendererAssetsReadOnly<'_>,
     ) -> Result<RenderPathResult, sourcerenderer_core::gpu::SwapchainError> {
+        //self.threshold += 0.000005f32;
+        self.threshold += 0.00005f32;
+        self.threshold = self.threshold % 0.10f32;
+
         let backbuffer = swapchain.next_backbuffer()?;
 
         let mut cmd_buffer = context.get_command_buffer(QueueType::Graphics);
@@ -146,8 +153,8 @@ impl RenderPath for VolumeRenderer {
             &mut cmd_buffer,
             &params,
             self.texture_handle,
-            0.00001f32,
-            Vec3::new(0.488281f32, 0.488281f32, 0.700012f32),
+            self.threshold,
+            Vec3::new(0.488281f32, 0.488281f32, 0.700012f32) * 8f32 * 0.01f32,
         );
 
         let main_view = &scene.scene.views()[scene.active_view_index];
@@ -186,6 +193,8 @@ impl RenderPath for VolumeRenderer {
             swapchain.width(),
             swapchain.height(),
             assets,
+            self.texture_handle,
+            Vec3::new(0.488281f32, 0.488281f32, 0.700012f32) * 8f32 * 0.01f32,
         );
 
         return Ok(RenderPathResult {
