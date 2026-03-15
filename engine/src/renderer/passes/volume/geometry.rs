@@ -7,7 +7,9 @@ use crate::renderer::asset::{
     RendererMaterial, RendererMaterialValue,
 };
 use crate::renderer::drawable::View;
-use crate::renderer::passes::marching_cubes::{MarchingCubesIndirectCall, MarchingCubesPass};
+use crate::renderer::passes::marching_cubes::{
+    MarchingCubesIndirectCall, MarchingCubesPass, MarchingCubesVertex,
+};
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use crate::renderer::renderer_scene::RendererScene;
 use smallvec::SmallVec;
@@ -77,17 +79,27 @@ impl GeometryPass {
             vertex_layout: VertexLayoutInfo {
                 input_assembler: &[InputAssemblerElement {
                     binding: 0,
-                    stride: std::mem::size_of::<HalfVec3>(),
+                    stride: std::mem::size_of::<MarchingCubesVertex>(),
                     input_rate: InputRate::PerVertex,
                 }],
-                shader_inputs: &[ShaderInputElement {
-                    input_assembler_binding: 0,
-                    location_vk_mtl: 0,
-                    semantic_name_d3d: String::from(""),
-                    semantic_index_d3d: 0,
-                    offset: 0,
-                    format: Format::RGB16Float,
-                }],
+                shader_inputs: &[
+                    ShaderInputElement {
+                        input_assembler_binding: 0,
+                        location_vk_mtl: 0,
+                        semantic_name_d3d: String::from(""),
+                        semantic_index_d3d: 0,
+                        offset: 0,
+                        format: Format::RGB16Float,
+                    },
+                    ShaderInputElement {
+                        input_assembler_binding: 0,
+                        location_vk_mtl: 1,
+                        semantic_name_d3d: String::from(""),
+                        semantic_index_d3d: 0,
+                        offset: std::mem::size_of::<HalfVec3>(),
+                        format: Format::RGB16Float,
+                    },
+                ],
             },
             rasterizer: RasterizerInfo {
                 fill_mode: FillMode::Fill,

@@ -17,7 +17,8 @@ layout (set = DESCRIPTOR_SET_FREQUENT, binding = 1) uniform sampler2D transferFu
 
 void main(void) {
     //out_color = texture(albedo, in_uv);
-    //out_color = vec4(0.8, in_density * 2.0 / 0.14, in_density * 2.0 / 0.14, 1.0);
-    out_color = texture(transferFunction, vec2(0.35 + in_density, 0.85));
-    out_color.a = texture(transferFunction, vec2(0.35 + in_density, 0.65)).x;
+    float density = 0.5 - 0.5 * cos(3.1425 * in_density / 0.10);
+    out_color = vec4(0.8, density, density, 1.0);
+    //out_color = texture(transferFunction, vec2(0.35 + in_density, 0.85));
+    //out_color.a = texture(transferFunction, vec2(0.35 + in_density, 0.65)).x;
 }

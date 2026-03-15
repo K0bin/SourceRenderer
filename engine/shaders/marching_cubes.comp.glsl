@@ -8,6 +8,11 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
 #include "descriptor_sets.inc.glsl"
 
+struct Vertex {
+    f16vec3 pos;
+    f16vec3 normal;
+};
+
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0, std430) buffer readonly EdgeTable {
   uint[256u] edges;
 };
@@ -18,7 +23,7 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 1, std430) buffer readonly TriTa
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2, r32f) uniform readonly image3D densityImage;
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 3, scalar) buffer verticesBuffer {
-    f16vec3[] vertices;
+    Vertex[] vertices;
 };
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 4, std430) buffer indicesBuffer {
     uint[] indices;
@@ -93,7 +98,8 @@ void main() {
             vec4 vertex = interpolateVertices(indexToCubePos(i), indexToCubePos((i + 1u) % 4u)) * vec4(scale, 1.0);
             //vertex = vec4(0.2);
             uint index = atomicAdd(vertexCount, 1u);
-            vertices[index] = f16vec3(vertex.xyz);
+            vertices[index].pos = f16vec3(vertex.xyz);
+            vertices[index].normal = f16vec3(0.0);
             cubeVertexIndices[i] = index;
         } else {
             cubeVertexIndices[i] = 0u;
@@ -102,7 +108,8 @@ void main() {
             vec4 vertex = interpolateVertices(indexToCubePos(i + 4u), indexToCubePos((i + 1u) % 4u + 4u)) * vec4(scale, 1.0);
             //vertex = vec4(0.5);
             uint index = atomicAdd(vertexCount, 1u);
-            vertices[index] = f16vec3(vertex.xyz);
+            vertices[index].pos = f16vec3(vertex.xyz);
+            vertices[index].normal = f16vec3(0.0);
             cubeVertexIndices[i + 4u] = index;
         } else {
             cubeVertexIndices[i + 4u] = 0u;
@@ -111,7 +118,8 @@ void main() {
             vec4 vertex = interpolateVertices(indexToCubePos(i), indexToCubePos(i + 4u)) * vec4(scale, 1.0);
             //vertex = vec4(1.0);
             uint index = atomicAdd(vertexCount, 1u);
-            vertices[index] = f16vec3(vertex.xyz);
+            vertices[index].pos = f16vec3(vertex.xyz);
+            vertices[index].normal = f16vec3(0.0);
             cubeVertexIndices[i + 8u] = index;
         } else {
             cubeVertexIndices[i + 8u] = 0u;

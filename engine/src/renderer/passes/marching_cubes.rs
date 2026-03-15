@@ -16,6 +16,13 @@ struct MarchingCubesConfig {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
+pub struct MarchingCubesVertex {
+    pub pos: HalfVec3,
+    pub normal: HalfVec3,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
 pub struct MarchingCubesIndirectCall {
     index_count: u32,
     instance_count: u32,
@@ -59,7 +66,7 @@ impl MarchingCubesPass {
         resources.create_buffer(
             Self::VERTICES_BUFFER_NAME,
             &BufferInfo {
-                size: (std::mem::size_of::<HalfVec3>() * 100_000_000) as u64,
+                size: (std::mem::size_of::<MarchingCubesVertex>() * 100_000_000) as u64,
                 usage: BufferUsage::STORAGE | BufferUsage::VERTEX,
                 sharing_mode: QueueSharingMode::Exclusive,
             },
