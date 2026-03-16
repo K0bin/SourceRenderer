@@ -129,8 +129,29 @@ void main() {
     for (uint i = 0u; i < 16u && tris[key][i] != -1; i += 3u) {
         uint firstIndex = atomicAdd(indexCount, 3u);
 
-        indices[firstIndex] = cubeVertexIndices[tris[key][i]];
-        indices[firstIndex + 1u] = cubeVertexIndices[tris[key][i + 1u]];
-        indices[firstIndex + 2u] = cubeVertexIndices[tris[key][i + 2u]];
+        uint index0 = cubeVertexIndices[tris[key][i + 0u]];
+        uint index1 = cubeVertexIndices[tris[key][i + 1u]];
+        uint index2 = cubeVertexIndices[tris[key][i + 2u]];
+
+        indices[firstIndex + 0u] = index0;
+        indices[firstIndex + 1u] = index1;
+        indices[firstIndex + 2u] = index2;
+
+        // Calculate normals
+
+        Vertex v1 = vertices[index0];
+        Vertex v2 = vertices[index1];
+        Vertex v3 = vertices[index2];
+
+        f16vec3 faceNormal = cross(v1.pos - v2.pos, v1.pos - v3.pos);
+
+        vertices[index0].normal += faceNormal;
+        vertices[index1].normal += faceNormal;
+        vertices[index2].normal += faceNormal;
+    }
+
+    for (uint i = 0u; i < 12u; i++) {
+        if (cubeVertexIndices[i] == 0u) continue;
+        vertices[cubeVertexIndices[i]].normal = normalize(vertices[cubeVertexIndices[i]].normal);
     }
 }
