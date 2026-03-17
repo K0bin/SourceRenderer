@@ -255,6 +255,14 @@ impl GeometryPass {
         );
         let texture_info = volume_texture.view.texture().unwrap().info();
 
+        cmd_buffer.bind_uniform_buffer(
+            BindingFrequency::Frame,
+            0,
+            BufferRef::Transient(camera_buffer),
+            0,
+            WHOLE_BUFFER,
+        );
+
         let transfer_function = assets.get_texture(self.transfer_function_handle);
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::Frequent,

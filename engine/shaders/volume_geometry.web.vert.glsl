@@ -3,6 +3,7 @@
 #extension GL_GOOGLE_include_directive : enable
 
 #include "descriptor_sets.inc.glsl"
+#include "camera.inc.glsl"
 
 layout(location = 0) in vec3 in_pos;
 layout(location = 1) in vec3 in_normal;
@@ -11,10 +12,11 @@ layout(location = 1) in vec3 in_normal;
 
 layout(location = 0) out vec3 out_normal;
 layout(location = 1) out float out_density;
+layout(location = 2) out vec3 out_worldPosition;
 
 layout(set = DESCRIPTOR_SET_FRAME, binding = 0) uniform CameraUBO {
-  mat4 viewProj;
-} camera;
+  Camera camera;
+};
 
 layout(push_constant) uniform VeryHighFrequencyUbo {
   mat4 model;
@@ -32,4 +34,5 @@ void main(void) {
   out_density = texture(densityMap, in_pos / size).x;
 
   gl_Position = mvp * pos;
+  out_worldPosition = gl_Position.xyz;
 }
