@@ -99,8 +99,17 @@ void main() {
             //vertex = vec4(0.2);
             uint index = atomicAdd(vertexCount, 1u);
             vertices[index].pos = f16vec3(vertex.xyz);
-            vertices[index].normal = f16vec3(0.0);
             cubeVertexIndices[i] = index;
+
+            vertices[index].normal = f16vec3(0.0);
+            ivec3 imgPos = ivec3(vertex.xyz / scale);
+            vertices[index].normal.x = float16_t(imageLoad(densityImage, imgPos - ivec3(1, 0, 0)))
+                                        - float16_t(imageLoad(densityImage, imgPos + ivec3(1, 0, 0)));
+            vertices[index].normal.y = float16_t(imageLoad(densityImage, imgPos - ivec3(0, 1, 0)))
+                                        - float16_t(imageLoad(densityImage, imgPos + ivec3(0, 1, 0)));
+            vertices[index].normal.z = float16_t(imageLoad(densityImage, imgPos - ivec3(0, 0, 1)))
+                                        - float16_t(imageLoad(densityImage, imgPos + ivec3(0, 0, 1)));
+
         } else {
             cubeVertexIndices[i] = 0u;
         }
@@ -109,8 +118,16 @@ void main() {
             //vertex = vec4(0.5);
             uint index = atomicAdd(vertexCount, 1u);
             vertices[index].pos = f16vec3(vertex.xyz);
-            vertices[index].normal = f16vec3(0.0);
             cubeVertexIndices[i + 4u] = index;
+
+            vertices[index].normal = f16vec3(0.0);
+            ivec3 imgPos = ivec3(vertex.xyz / scale);
+            vertices[index].normal.x = float16_t(imageLoad(densityImage, imgPos - ivec3(1, 0, 0)))
+                                        - float16_t(imageLoad(densityImage, imgPos + ivec3(1, 0, 0)));
+            vertices[index].normal.y = float16_t(imageLoad(densityImage, imgPos - ivec3(0, 1, 0)))
+                                        - float16_t(imageLoad(densityImage, imgPos + ivec3(0, 1, 0)));
+            vertices[index].normal.z = float16_t(imageLoad(densityImage, imgPos - ivec3(0, 0, 1)))
+                                        - float16_t(imageLoad(densityImage, imgPos + ivec3(0, 0, 1)));
         } else {
             cubeVertexIndices[i + 4u] = 0u;
         }
@@ -119,8 +136,16 @@ void main() {
             //vertex = vec4(1.0);
             uint index = atomicAdd(vertexCount, 1u);
             vertices[index].pos = f16vec3(vertex.xyz);
-            vertices[index].normal = f16vec3(0.0);
             cubeVertexIndices[i + 8u] = index;
+
+            vertices[index].normal = f16vec3(0.0);
+            ivec3 imgPos = ivec3(vertex.xyz / scale);
+            vertices[index].normal.x = float16_t(imageLoad(densityImage, imgPos - ivec3(1, 0, 0)))
+                                        - float16_t(imageLoad(densityImage, imgPos + ivec3(1, 0, 0)));
+            vertices[index].normal.y = float16_t(imageLoad(densityImage, imgPos - ivec3(0, 1, 0)))
+                                        - float16_t(imageLoad(densityImage, imgPos + ivec3(0, 1, 0)));
+            vertices[index].normal.z = float16_t(imageLoad(densityImage, imgPos - ivec3(0, 0, 1)))
+                                        - float16_t(imageLoad(densityImage, imgPos + ivec3(0, 0, 1)));
         } else {
             cubeVertexIndices[i + 8u] = 0u;
         }
@@ -143,15 +168,14 @@ void main() {
         Vertex v2 = vertices[index1];
         Vertex v3 = vertices[index2];
 
-        f16vec3 faceNormal = cross(v1.pos - v2.pos, v1.pos - v3.pos);
+        //f16vec3 faceNormal = normalize(cross(v1.pos - v2.pos, v1.pos - v3.pos));
 
-        vertices[index0].normal += faceNormal;
-        vertices[index1].normal += faceNormal;
-        vertices[index2].normal += faceNormal;
-    }
+        /*vertices[index0].normal = faceNormal;
+        vertices[index1].normal = faceNormal;
+        vertices[index2].normal = faceNormal;*/
 
-    for (uint i = 0u; i < 12u; i++) {
-        if (cubeVertexIndices[i] == 0u) continue;
-        vertices[cubeVertexIndices[i]].normal = normalize(vertices[cubeVertexIndices[i]].normal);
+        vertices[index0].normal = normalize(vertices[index0].normal);
+        vertices[index1].normal = normalize(vertices[index1].normal);
+        vertices[index2].normal = normalize(vertices[index2].normal);
     }
 }
