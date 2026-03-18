@@ -32,7 +32,7 @@ void main(void) {
 
   out_normal = normalize((model * vec4(in_normal, 0)).xyz);
   out_density = texture(densityMap, in_pos / size).x;
-  out_density = max(out_density, texture(densityMap, (in_pos - in_normal) / size).x);
+  out_density = max(out_density, texture(densityMap, (in_pos - in_normal * 0.2) / size).x);
   //out_density = max(out_density, texture(densityMap, (in_pos - in_normal * 2.0) / size).x);
 
   gl_Position = mvp * pos;
