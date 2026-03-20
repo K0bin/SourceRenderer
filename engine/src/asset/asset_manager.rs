@@ -1,62 +1,26 @@
-use std::collections::{
-    HashMap,
-    HashSet,
-};
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::hash::Hash;
-use std::io::{
-    Result as IOResult,
-    SeekFrom,
-};
-use std::pin::{
-    pin,
-    Pin,
-};
-use std::sync::atomic::{
-    AtomicU32,
-    AtomicU64,
-    Ordering,
-};
+use std::io::{Result as IOResult, SeekFrom};
+use std::pin::{pin, Pin};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 
-use crossbeam_channel::{
-    unbounded,
-    Receiver,
-    Sender,
-};
-use futures_io::{
-    AsyncRead,
-    AsyncSeek,
-};
-use futures_lite::io::{
-    AsyncSeekExt,
-    Cursor,
-};
+use crossbeam_channel::{unbounded, Receiver, Sender};
+use futures_io::{AsyncRead, AsyncSeek};
+use futures_lite::io::{AsyncSeekExt, Cursor};
 use io_util::ReadEntireSeekableFileAsync as _;
-use sourcerenderer_core::platform::{
-    IOMaybeSend,
-    PlatformFile,
-};
+use sourcerenderer_core::platform::{IOMaybeSend, PlatformFile};
 use sourcerenderer_core::Vec4;
 use strum::VariantArray as _;
 
 use super::{
-    AssetData,
-    AssetHandle,
-    AssetType,
-    AssetTypeGroup,
-    MaterialData,
-    MeshData,
-    MeshRange,
-    ModelData,
-    TextureData,
+    AssetData, AssetHandle, AssetType, AssetTypeGroup, MaterialData, MeshData, MeshRange,
+    ModelData, TextureData,
 };
 use crate::graphics::TextureInfo;
 use crate::math::BoundingBox;
-use crate::{
-    AsyncCounter,
-    Mutex,
-};
+use crate::{AsyncCounter, Mutex};
 
 pub struct AssetLoadRequest {
     pub path: String,
@@ -187,6 +151,14 @@ pub struct AssetLoaderProgress {
 impl AssetLoaderProgress {
     pub fn is_done(&self) -> bool {
         self.finished.load(Ordering::SeqCst) == self.expected.load(Ordering::SeqCst)
+    }
+
+    pub fn print(&self) {
+        log::info!(
+            "Progress: {:?}/{:?}",
+            self.finished.load(Ordering::Relaxed),
+            self.expected.load(Ordering::Relaxed)
+        );
     }
 }
 
