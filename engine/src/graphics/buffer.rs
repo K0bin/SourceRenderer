@@ -1,22 +1,13 @@
 use std::collections::HashMap;
 use std::ffi::c_void;
-use std::fmt::{
-    Debug,
-    Formatter,
-};
+use std::fmt::{Debug, Formatter};
 use std::hash::Hash;
 use std::mem::ManuallyDrop;
-use std::sync::{
-    Arc,
-    Mutex,
-};
+use std::sync::{Arc, Mutex};
 
 use log::trace;
 
-use super::gpu::{
-    Buffer as _,
-    Heap as _,
-};
+use super::gpu::{Buffer as _, Heap as _};
 use super::*;
 
 pub struct BufferAndAllocation {
@@ -120,6 +111,11 @@ impl BufferSlice {
     #[inline(always)]
     pub fn info(&self) -> &BufferInfo {
         self.buffer_allocation.data().buffer.info()
+    }
+
+    #[inline(always)]
+    pub fn range(&self) -> Range {
+        self.buffer_allocation.range.clone()
     }
 }
 
