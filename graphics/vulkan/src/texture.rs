@@ -1,21 +1,12 @@
 use std::cmp::max;
-use std::ffi::{
-    c_void,
-    CString,
-};
-use std::hash::{
-    Hash,
-    Hasher,
-};
+use std::ffi::{c_void, CString};
+use std::hash::{Hash, Hasher};
 use std::pin::Pin;
 use std::sync::Arc;
 
 use ash::vk;
 use ash::vk::Handle as _;
-use sourcerenderer_core::{
-    gpu,
-    FixedSizeSmallVec,
-};
+use sourcerenderer_core::{gpu, FixedSizeSmallVec};
 
 use super::*;
 
@@ -506,6 +497,8 @@ impl VkTextureView {
             },
             ..Default::default()
         };
+        debug_assert_ne!(info.array_layer_length, 0u32);
+        debug_assert_ne!(info.mip_level_length, 0u32);
         let view = unsafe { device.create_image_view(&view_create_info, None) }.unwrap();
 
         if let Some(name) = name {
