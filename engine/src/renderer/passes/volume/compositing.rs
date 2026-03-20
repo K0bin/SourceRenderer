@@ -103,25 +103,35 @@ impl CompositingPass {
 
         let resources = &params.resources;
 
-        let color_view = resources.get_view(
+        let color_view = resources.access_view(
+            cmd_buffer,
             color_name,
+            BarrierSync::FRAGMENT_SHADER,
+            BarrierAccess::SAMPLING_READ,
+            TextureLayout::Sampled,
+            false,
             &TextureViewInfo {
                 base_mip_level: 0u32,
-                mip_level_length: 0u32,
+                mip_level_length: 1u32,
                 base_array_layer: 0u32,
-                array_layer_length: 0u32,
+                array_layer_length: 1u32,
                 format: None,
             },
             HistoryResourceEntry::Current,
         );
 
-        let ssao_view = resources.get_view(
+        let ssao_view = resources.access_view(
+            cmd_buffer,
             ssao_name,
+            BarrierSync::FRAGMENT_SHADER,
+            BarrierAccess::SAMPLING_READ,
+            TextureLayout::Sampled,
+            false,
             &TextureViewInfo {
                 base_mip_level: 0u32,
-                mip_level_length: 0u32,
+                mip_level_length: 1u32,
                 base_array_layer: 0u32,
-                array_layer_length: 0u32,
+                array_layer_length: 1u32,
                 format: None,
             },
             HistoryResourceEntry::Current,
