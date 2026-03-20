@@ -3,10 +3,7 @@ extern crate lazy_static;
 
 pub use sdl_platform::SDLPlatform;
 use sdl_platform::StdIO;
-use sourcerenderer_engine::{
-    Engine,
-    EngineLoopFuncResult,
-};
+use sourcerenderer_engine::{Engine, EngineLoopFuncResult};
 
 #[cfg(target_os = "macos")]
 mod sdl_metal;
@@ -59,6 +56,4 @@ pub fn main() {
             break 'event_loop;
         }
     }
-
-    std::process::exit(0);
 }
