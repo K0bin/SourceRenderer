@@ -1,8 +1,5 @@
 use std::mem::ManuallyDrop;
-use std::sync::atomic::{
-    AtomicBool,
-    Ordering,
-};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use log::trace;
@@ -280,7 +277,7 @@ impl Device {
         Ok(())
     }
 
-    pub fn init_texture_from_buffer<T>(
+    pub fn init_texture_from_buffer(
         &self,
         dst: &Arc<super::Texture>,
         src: &Arc<BufferSlice>,
