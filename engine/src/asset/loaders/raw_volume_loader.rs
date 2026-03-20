@@ -25,8 +25,9 @@ impl RawVolumeLoader {
 const RESOLUTION_DOWNSCALE_FACTOR: usize = 1usize;
 const SIZE_SCALE_FACTOR: f32 = 0.01f32;
 //const THRESHOLD: f32 = 0.08f32;
-//const THRESHOLD: f32 = 0.0505f32;
-const THRESHOLD: f32 = 0.0485f32;
+const THRESHOLD: f32 = 0.0505f32;
+//const THRESHOLD: f32 = 0.0485f32;
+//const THRESHOLD: f32 = 0.046f32;
 //const THRESHOLD: f32 = 0.035f32;
 //const THRESHOLD: f32 = 0.026f32;
 
@@ -695,7 +696,7 @@ fn marching_cubes<F: Fn(u32, u32, u32) -> f32>(
                 let total_iterations = size.0 * size.1 * size.2;
                 let current_iterations = z_base * size.0 * size.1 + y_base * size.0 + x_base;
                 if (current_iterations % 10000) == 0 {
-                    log::trace!(
+                    log::warn!(
                         "Marching cube progress: {}/{} ({} %)",
                         current_iterations,
                         total_iterations,
@@ -782,75 +783,4 @@ fn export_debug(vertices: &[HalfVec3], indices: &[u32]) {
         }
     }
     log::info!("export_debug: Exported geometry to {:?}", path);
-}
-
-fn test<F: Fn(u32, u32, u32) -> f32>(
-    key: u8,
-    value_lookup: &F,
-    threshold: f32,
-    scale: f32,
-    tri_table: &[[i32; 16]; 256],
-    downscale_factor: u32,
-) -> Vec<HalfVec3> {
-    let index_to_pos = |idx: u32| {
-        (
-            ((!(idx >> 1) & (idx & 1)) | ((idx >> 1) & !(idx & 1))) & 1,
-            (idx >> 2) & 1,
-            (idx >> 1) & 1,
-        )
-    };
-
-    for i in 0..12 {
-        let pos = index_to_pos(i as u32);
-        log::info!("IDX: {:?}, POS: ({:?}, {:?}, {:?})", i, pos.0, pos.1, pos.2);
-    }
-
-    let downscale_factor_f = downscale_factor as f32;
-    let base_pos = HalfVec3::new_from_f32(12.0f32, 23.0f32, 34.0f32);
-
-    let mut cube_vertices: [HalfVec3; 12usize] =
-        [HalfVec3::new_from_f32(0.0f32, 0.0f32, 0.0f32); 12usize];
-    for i in 0usize..4usize {
-        cube_vertices[i] = (interpolate_vertices(
-            index_to_pos(i as u32),
-            index_to_pos((i as u32 + 1u32) % 4u32),
-            &value_lookup,
-            threshold,
-        ) + base_pos)
-            * scale;
-
-        cube_vertices[i + 4usize] = (interpolate_vertices(
-            index_to_pos(i as u32 + 4u32),
-            index_to_pos((i as u32 + 1u32) % 4u32 + 4u32),
-            &value_lookup,
-            threshold,
-        ) + base_pos)
-            * scale;
-
-        cube_vertices[i + 8usize] = (interpolate_vertices(
-            index_to_pos(i as u32),
-            index_to_pos(i as u32 + 4u32),
-            &value_lookup,
-            threshold,
-        ) + base_pos)
-            * scale;
-    }
-
-    let mut vertices = Vec::<HalfVec3>::new();
-    let mut i = 0usize;
-    while tri_table[key as usize][i] != -1 {
-        vertices.push(cube_vertices[tri_table[key as usize][i] as usize]);
-        vertices.push(cube_vertices[tri_table[key as usize][i + 1usize] as usize]);
-        vertices.push(cube_vertices[tri_table[key as usize][i + 2usize] as usize]);
-
-        /*log::info!(
-            "Triangle: {:?}\n{:?}\n{:?}",
-            cube_vertices[TRI_TABLE[key as usize][i] as usize],
-            cube_vertices[TRI_TABLE[key as usize][i + 1usize] as usize],
-            cube_vertices[TRI_TABLE[key as usize][i + 2usize] as usize]
-        );*/
-
-        i += 3usize;
-    }
-    vertices
 }
