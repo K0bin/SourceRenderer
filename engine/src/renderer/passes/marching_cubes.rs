@@ -430,6 +430,8 @@ impl MarchingCubesPass {
 
         command_buffer.begin_label("Marching Cubes pass");
 
+        let volume_texture = pass_params.assets.get_texture(volume_texture);
+
         let atomics_slice = pass_params.resources.access_buffer(
             command_buffer,
             Self::ATOMICS_BUFFER_NAME,
@@ -503,9 +505,25 @@ impl MarchingCubesPass {
             BarrierAccess::STORAGE_WRITE,
             HistoryResourceEntry::Current,
         );
-        command_buffer.flush_barriers();
 
-        let volume_texture = pass_params.assets.get_texture(volume_texture);
+        command_buffer.barrier(&[Barrier::TextureBarrier {
+            old_sync: BarrierSync::empty(),
+            new_sync: BarrierSync::COMPUTE_SHADER,
+            old_access: BarrierAccess::empty(),
+            new_access: BarrierAccess::STORAGE_READ,
+            old_layout: TextureLayout::Sampled,
+            new_layout: TextureLayout::Storage,
+            texture: volume_texture.view.texture().unwrap(),
+            range: BarrierTextureRange {
+                base_array_layer: 0u32,
+                base_mip_level: 0u32,
+                mip_level_length: 1u32,
+                array_layer_length: 1u32,
+            },
+            queue_ownership: None,
+        }]);
+
+        command_buffer.flush_barriers();
 
         let pipeline = pass_params
             .assets
@@ -567,6 +585,23 @@ impl MarchingCubesPass {
         );
 
         command_buffer.end_label();
+
+        command_buffer.barrier(&[Barrier::TextureBarrier {
+            old_sync: BarrierSync::COMPUTE_SHADER,
+            new_sync: BarrierSync::COMPUTE_SHADER | BarrierSync::FRAGMENT_SHADER,
+            old_access: BarrierAccess::empty(),
+            new_access: BarrierAccess::SAMPLING_READ,
+            old_layout: TextureLayout::Storage,
+            new_layout: TextureLayout::Sampled,
+            texture: volume_texture.view.texture().unwrap(),
+            range: BarrierTextureRange {
+                base_array_layer: 0u32,
+                base_mip_level: 0u32,
+                mip_level_length: 1u32,
+                array_layer_length: 1u32,
+            },
+            queue_ownership: None,
+        }]);
     }
 
     pub fn cluster_count(&self) -> Vec3UI {
