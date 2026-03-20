@@ -23,13 +23,7 @@ impl RawVolumeLoaderTexture {
     }
 }
 
-pub const RESOLUTION_DOWNSCALE_FACTOR: usize = 2usize;
-//const THRESHOLD: f32 = 0.08f32;
-const THRESHOLD: f32 = 0.0505f32;
-//const THRESHOLD: f32 = 0.0485f32;
-//const THRESHOLD: f32 = 0.046f32;
-//const THRESHOLD: f32 = 0.035f32;
-//const THRESHOLD: f32 = 0.026f32;
+pub const RESOLUTION_DOWNSCALE_FACTOR: usize = 1usize;
 
 impl AssetLoader for RawVolumeLoaderTexture {
     fn matches(&self, file: &mut AssetFile) -> bool {
@@ -151,10 +145,9 @@ impl AssetLoader for RawVolumeLoaderTexture {
             }
         }
         log::info!(
-            "Loaded density. Min density: {:?}, max density: {:?}, threshold: {:?}",
+            "Loaded density. Min density: {:?}, max density: {:?}",
             min_value,
-            max_value,
-            THRESHOLD
+            max_value
         );
 
         for val in &mut values {
