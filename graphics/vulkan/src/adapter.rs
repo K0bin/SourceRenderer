@@ -679,7 +679,10 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             | vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS
             | vk::PipelineStageFlags2::CONDITIONAL_RENDERING_EXT
             | vk::PipelineStageFlags2::DRAW_INDIRECT
-            | vk::PipelineStageFlags2::COMPUTE_SHADER;
+            | vk::PipelineStageFlags2::COMPUTE_SHADER
+            | vk::PipelineStageFlags2::VERTEX_ATTRIBUTE_INPUT
+            | vk::PipelineStageFlags2::INDEX_INPUT
+            | vk::PipelineStageFlags2::VERTEX_INPUT;
 
         let mut supported_access_flags = vk::AccessFlags2::SHADER_READ
             | vk::AccessFlags2::SHADER_WRITE
