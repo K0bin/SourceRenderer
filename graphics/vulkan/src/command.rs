@@ -1,8 +1,5 @@
 use std::cmp::min;
-use std::ffi::{
-    c_void,
-    CString,
-};
+use std::ffi::{c_void, CString};
 use std::hash::Hash;
 use std::sync::Arc;
 
@@ -10,12 +7,7 @@ use ash::vk;
 use crossbeam_utils::atomic::AtomicCell;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{
-    self,
-    Barrier,
-    BarrierSync,
-    Buffer as _,
-    QueueOwnershipTransfer,
-    SplitBarrierWait,
+    self, Barrier, BarrierSync, Buffer as _, QueueOwnershipTransfer, SplitBarrierWait,
 };
 
 use super::*;
@@ -853,7 +845,6 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         );
 
         if dependency_info_opt.is_none() {
-            log::warn!("Empty barrier call");
             return;
         }
         let dependency_info = dependency_info_opt.unwrap();
