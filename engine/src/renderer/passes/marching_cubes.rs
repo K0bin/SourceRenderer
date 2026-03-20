@@ -56,7 +56,7 @@ impl MarchingCubesPass {
             Self::ATOMICS_BUFFER_NAME,
             &BufferInfo {
                 size: std::mem::size_of::<MarchingCubesIndirectCall>() as u64,
-                usage: BufferUsage::STORAGE | BufferUsage::CONSTANT,
+                usage: BufferUsage::STORAGE | BufferUsage::CONSTANT | BufferUsage::INDIRECT,
                 sharing_mode: QueueSharingMode::Exclusive,
             },
             MemoryUsage::GPUMemory,
