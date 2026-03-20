@@ -1,8 +1,8 @@
+use crate::graphics::*;
+use bitflags::Flags;
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::sync::Arc;
-
-use crate::graphics::*;
 
 struct AB<T> {
     a: T,
@@ -59,7 +59,7 @@ struct GlobalMemoryBarrier {
 const USE_GLOBAL_MEMORY_BARRIERS_FOR_BUFFERS: bool = true;
 const USE_COARSE_BARRIERS_FOR_TEXTURES: bool = false;
 const USE_COARSE_BARRIERS_FOR_BUFFERS: bool = false;
-const WARN_ABOUT_READ_TO_READ_BARRIERS: bool = true;
+const WARN_ABOUT_READ_TO_READ_BARRIERS: bool = false;
 
 fn calculate_subresources(mip_length: u32, array_length: u32) -> u32 {
     array_length * mip_length
@@ -251,6 +251,10 @@ impl RendererResources {
             }
             access = BarrierAccess::MEMORY_READ;
         }
+
+        debug_assert!(
+            access.is_empty() || !stages.is_empty() || (access.is_empty() && stages.is_empty())
+        );
 
         let use_b_resource = (history == HistoryResourceEntry::Past)
             == (self.current_pass == ABEntry::A)
@@ -495,6 +499,10 @@ impl RendererResources {
             }
             access = BarrierAccess::MEMORY_READ;
         }
+
+        debug_assert!(
+            access.is_empty() || !stages.is_empty() || (access.is_empty() && stages.is_empty())
+        );
 
         let buffer_ab = self
             .buffers
