@@ -18,6 +18,7 @@ pub type Matrix3 = bevy_math::Mat3;
 pub type EulerRot = bevy_math::EulerRot;
 pub use half::f16;
 pub use half_vec::HalfVec3;
+pub use half_vec::HalfVec4;
 
 mod align;
 pub use align::*;
