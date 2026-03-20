@@ -1,7 +1,4 @@
-use std::cell::{
-    Ref,
-    RefCell,
-};
+use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -217,6 +214,14 @@ impl RendererResources {
         let entry = self.buffers.get(name);
         let buffer_ref = entry.unwrap().a.borrow();
         Ref::map(buffer_ref, |buffer| buffer.buffer.info())
+    }
+
+    #[allow(unused)]
+    #[inline]
+    pub fn buffer_range(&self, name: &str) -> Range {
+        let entry = self.buffers.get(name);
+        let buffer_ref = entry.unwrap().a.borrow();
+        buffer_ref.buffer.range()
     }
 
     fn access_texture_internal(
