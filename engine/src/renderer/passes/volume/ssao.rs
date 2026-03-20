@@ -165,7 +165,9 @@ impl SsaoPass {
                     mip_levels: 1,
                     array_length: 1,
                     samples: SampleCount::Samples1,
-                    usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
+                    usage: TextureUsage::STORAGE
+                        | TextureUsage::SAMPLED
+                        | TextureUsage::INITIAL_COPY,
                     supports_srgb: false,
                 },
                 Some("SSAONoise"),
