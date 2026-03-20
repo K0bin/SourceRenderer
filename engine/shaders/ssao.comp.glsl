@@ -50,7 +50,7 @@ void main() {
   float occlusion = 0.0;
 
   const uint kernelSize = 64;
-  const float radius = 0.5;
+  const float radius = 0.8;
 
   for (uint i = 0; i < kernelSize; i++) {
     vec3 samplePos = TBN * samples[i].xyz;

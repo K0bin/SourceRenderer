@@ -4,13 +4,15 @@ use crate::asset::{AssetLoadPriority, AssetLoaderProgress, AssetType, TextureHan
 use crate::graphics::{GraphicsContext, *};
 use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::passes::marching_cubes::MarchingCubesPass;
-use crate::renderer::passes::ssao::SsaoPass;
+use crate::renderer::passes::volume::compositing::CompositingPass;
+use crate::renderer::passes::volume::ssao::SsaoPass;
 use crate::renderer::render_path::{
     FrameInfo, RenderPassParameters, RenderPath, RenderPathResult, SceneInfo,
 };
 use crate::renderer::renderer_resources::RendererResources;
 use sourcerenderer_core::{Matrix4, Vec2UI, Vec3, Vec4};
 
+mod compositing;
 mod geometry;
 mod ssao;
 
@@ -41,6 +43,7 @@ pub struct VolumeRenderer {
     texture_handle: TextureHandle,
     texture_progress: Arc<AssetLoaderProgress>,
     threshold: f32,
+    compositing: CompositingPass,
 }
 
 impl VolumeRenderer {
@@ -71,6 +74,8 @@ impl VolumeRenderer {
             assets,
             false,
         );
+
+        let comp = CompositingPass::new(device, assets);
 
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
@@ -104,6 +109,7 @@ impl VolumeRenderer {
             texture_progress: progress,
             //threshold: 0.0505f32,
             threshold: 0.0f32,
+            compositing: comp,
         }
     }
 }
@@ -123,6 +129,7 @@ impl RenderPath for VolumeRenderer {
         self.marching_cubes_pass.is_ready(&assets)
             && self.geometry.is_ready(&assets)
             && self.texture_progress.is_done()
+            && self.compositing.is_ready(&assets)
     }
 
     fn render(
@@ -159,42 +166,60 @@ impl RenderPath for VolumeRenderer {
 
         let main_view = &scene.scene.views()[scene.active_view_index];
 
-        /*let camera_buffer = cmd_buffer.upload_dynamic_data(&[CameraBuffer {
-            view_proj: main_view.proj_matrix * main_view.view_matrix,
-            inv_proj: main_view.proj_matrix.inverse(),
-            view: main_view.view_matrix,
-            proj: main_view.proj_matrix,
-            inv_view: main_view.view_matrix.inverse(),
-            position: Vec4::new(main_view.camera_position.x, main_view.camera_position.y, main_view.camera_position.z, 1.0f32),
-            inv_proj_view: (main_view.proj_matrix * main_view.view_matrix).inverse(),
-            z_near: main_view.near_plane,
-            z_far: main_view.far_plane,
-            aspect_ratio: main_view.aspect_ratio,
-            fov: main_view.camera_fov
-        }], BufferUsage::CONSTANT).unwrap();*/
-
         let camera_buffer = cmd_buffer
             .upload_dynamic_data(
-                &[main_view.proj_matrix * main_view.view_matrix],
+                &[CameraBuffer {
+                    view_proj: main_view.proj_matrix * main_view.view_matrix,
+                    inv_proj: main_view.proj_matrix.inverse(),
+                    view: main_view.view_matrix,
+                    proj: main_view.proj_matrix,
+                    inv_view: main_view.view_matrix.inverse(),
+                    position: Vec4::new(
+                        main_view.camera_position.x,
+                        main_view.camera_position.y,
+                        main_view.camera_position.z,
+                        1.0f32,
+                    ),
+                    inv_proj_view: (main_view.proj_matrix * main_view.view_matrix).inverse(),
+                    z_near: main_view.near_plane,
+                    z_far: main_view.far_plane,
+                    aspect_ratio: main_view.aspect_ratio,
+                    fov: main_view.camera_fov,
+                }],
                 BufferUsage::CONSTANT,
             )
             .unwrap();
 
-        let backbuffer_view = swapchain.backbuffer_view(&backbuffer);
-        let backbuffer_handle = swapchain.backbuffer_handle(&backbuffer);
         self.geometry.execute(
             &mut cmd_buffer,
             scene.scene,
             main_view,
             &camera_buffer,
-            resources,
-            &backbuffer_view,
-            backbuffer_handle,
+            &params,
             swapchain.width(),
             swapchain.height(),
             assets,
             self.texture_handle,
             Vec3::new(0.488281f32, 0.488281f32, 0.700012f32) * 8f32 * 0.01f32,
+        );
+
+        self.ssao.execute(
+            &mut cmd_buffer,
+            &params,
+            GeometryPass::DEPTH_TEXTURE_NAME,
+            &camera_buffer,
+        );
+
+        let backbuffer_view = swapchain.backbuffer_view(&backbuffer);
+        let backbuffer_handle = swapchain.backbuffer_handle(&backbuffer);
+
+        self.compositing.execute(
+            &mut cmd_buffer,
+            &backbuffer_view,
+            backbuffer_handle,
+            &params,
+            GeometryPass::COLOR_TEXTURE_NAME,
+            SsaoPass::SSAO_TEXTURE_NAME,
         );
 
         return Ok(RenderPathResult {

@@ -10,6 +10,7 @@ use crate::renderer::drawable::View;
 use crate::renderer::passes::marching_cubes::{
     MarchingCubesIndirectCall, MarchingCubesPass, MarchingCubesVertex,
 };
+use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use crate::renderer::renderer_scene::RendererScene;
 use smallvec::SmallVec;
@@ -29,6 +30,7 @@ pub struct GeometryPass {
 }
 
 impl GeometryPass {
+    pub const COLOR_TEXTURE_NAME: &'static str = "GeometryColor";
     pub const DEPTH_TEXTURE_NAME: &'static str = "Depth";
 
     pub(crate) fn new(
@@ -53,6 +55,23 @@ impl GeometryPass {
         });
 
         resources.create_texture(
+            Self::COLOR_TEXTURE_NAME,
+            &TextureInfo {
+                dimension: TextureDimension::Dim2D,
+                format: Format::RGBA8UNorm,
+                width: swapchain.width(),
+                height: swapchain.height(),
+                depth: 1,
+                mip_levels: 1,
+                array_length: 1,
+                samples: SampleCount::Samples1,
+                usage: TextureUsage::SAMPLED | TextureUsage::RENDER_TARGET,
+                supports_srgb: false,
+            },
+            false,
+        );
+
+        resources.create_texture(
             Self::DEPTH_TEXTURE_NAME,
             &TextureInfo {
                 dimension: TextureDimension::Dim2D,
@@ -63,7 +82,7 @@ impl GeometryPass {
                 mip_levels: 1,
                 array_length: 1,
                 samples: SampleCount::Samples1,
-                usage: TextureUsage::DEPTH_STENCIL,
+                usage: TextureUsage::SAMPLED | TextureUsage::DEPTH_STENCIL,
                 supports_srgb: false,
             },
             false,
@@ -153,26 +172,25 @@ impl GeometryPass {
         scene: &RendererScene,
         view: &View,
         camera_buffer: &TransientBufferSlice,
-        resources: &RendererResources,
-        backbuffer: &Arc<TextureView>,
-        backbuffer_handle: &BackendTexture,
+        params: &RenderPassParameters,
         width: u32,
         height: u32,
         assets: &RendererAssetsReadOnly<'_>,
         volume_texture: TextureHandle,
         spacing: Vec3,
     ) {
-        cmd_buffer.barrier(&[Barrier::RawTextureBarrier {
-            old_sync: BarrierSync::empty(),
-            new_sync: BarrierSync::RENDER_TARGET,
-            old_access: BarrierAccess::empty(),
-            new_access: BarrierAccess::RENDER_TARGET_WRITE | BarrierAccess::RENDER_TARGET_READ,
-            old_layout: TextureLayout::Undefined,
-            new_layout: TextureLayout::RenderTarget,
-            texture: backbuffer_handle,
-            range: BarrierTextureRange::default(),
-            queue_ownership: None,
-        }]);
+        let resources = &params.resources;
+
+        let color_view = resources.access_view(
+            cmd_buffer,
+            Self::COLOR_TEXTURE_NAME,
+            BarrierSync::RENDER_TARGET,
+            BarrierAccess::RENDER_TARGET_READ | BarrierAccess::RENDER_TARGET_WRITE,
+            TextureLayout::RenderTarget,
+            true,
+            &TextureViewInfo::default(),
+            HistoryResourceEntry::Current,
+        );
 
         let dsv = resources.access_view(
             cmd_buffer,
@@ -210,7 +228,7 @@ impl GeometryPass {
         cmd_buffer.flush_barriers();
         cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
             render_targets: &[RenderTarget {
-                view: &backbuffer,
+                view: &color_view,
                 load_op: LoadOpColor::Clear(ClearColor::from_u32([0, 0, 0, 255])),
                 store_op: StoreOp::Store,
             }],
@@ -298,17 +316,5 @@ impl GeometryPass {
         );
 
         cmd_buffer.end_render_pass();
-
-        cmd_buffer.barrier(&[Barrier::RawTextureBarrier {
-            old_sync: BarrierSync::RENDER_TARGET,
-            new_sync: BarrierSync::empty(),
-            old_access: BarrierAccess::RENDER_TARGET_WRITE,
-            new_access: BarrierAccess::empty(),
-            old_layout: TextureLayout::RenderTarget,
-            new_layout: TextureLayout::Present,
-            texture: backbuffer_handle,
-            queue_ownership: None,
-            range: BarrierTextureRange::default(),
-        }]);
     }
 }

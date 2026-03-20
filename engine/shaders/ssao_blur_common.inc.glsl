@@ -7,6 +7,8 @@ layout(local_size_x = 8,
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0, r16f) uniform writeonly image2D outputTexture;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform sampler2D inputTexture;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform sampler2D history;
+
+#ifdef HISTORY
 #ifndef VISIBILITY_BUFFER
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3) uniform sampler2D motionTex;
 #else
@@ -14,6 +16,7 @@ layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3, r32ui) readonly uniform 
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 4, rg16) readonly uniform image2D barycentrics;
 #include "frame_set.inc.glsl"
 #include "vis_buf.inc.glsl"
+#endif
 #endif
 
 void main() {
@@ -35,10 +38,13 @@ void main() {
   }
   sum /= kernelSize * kernelSize;
 
+#ifdef HISTORY
   sum *= 0.3;
+#endif
 
   ivec2 storageTexCoord = ivec2(int(gl_GlobalInvocationID.x), int(gl_GlobalInvocationID.y));
 
+#ifdef HISTORY
   #ifndef VISIBILITY_BUFFER
   vec2 motion = texture(motionTex, texCoord).xy;
   #else
@@ -47,8 +53,11 @@ void main() {
   vec3 barycentrics = vec3(barycentricsXY, 1.0 - barycentricsXY.x - barycentricsXY.y);
   vec2 motion = getMotionVector(id, barycentrics, camera, oldCamera);
   #endif
+
+
   vec2 historyTexCoord = texCoord - motion;
   sum += texture(history, historyTexCoord).r * 0.7;
+#endif
 
   imageStore(outputTexture, storageTexCoord, vec4(sum, 0.0, 0.0, 0.0));
 }
