@@ -140,6 +140,7 @@ fn format_to_vertex_format(format: gpu::Format) -> GpuVertexFormat {
         gpu::Format::R32Float => GpuVertexFormat::Float32,
         gpu::Format::RG32Float => GpuVertexFormat::Float32x2,
         gpu::Format::RG16Float => GpuVertexFormat::Float16x2,
+        gpu::Format::RGB16Float => panic!("Unsupported vertex format"),
         gpu::Format::RGB32Float => GpuVertexFormat::Float32x3,
         gpu::Format::RGBA32Float => GpuVertexFormat::Float32x4,
         gpu::Format::RG16UNorm => GpuVertexFormat::Unorm16x2,
