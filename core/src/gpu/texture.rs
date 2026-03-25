@@ -51,6 +51,53 @@ impl Default for TextureLayout {
     }
 }
 
+impl TextureLayout {
+    pub fn applies_to_sync_stages(self, sync_stage: BarrierSync) -> bool {
+        match self {
+            TextureLayout::CopyDst | TextureLayout::CopySrc => {
+                sync_stage.contains(BarrierSync::COPY)
+            }
+            TextureLayout::Undefined => true,
+            TextureLayout::General => true,
+            TextureLayout::Sampled | TextureLayout::Storage => sync_stage.contains(
+                BarrierSync::TASK_SHADER
+                    | BarrierSync::MESH_SHADER
+                    | BarrierSync::COMPUTE_SHADER
+                    | BarrierSync::RAY_TRACING_SHADER
+                    | BarrierSync::VERTEX_SHADER
+                    | BarrierSync::FRAGMENT_SHADER,
+            ),
+            TextureLayout::Present => false,
+            TextureLayout::RenderTarget => sync_stage.contains(BarrierSync::RENDER_TARGET),
+            TextureLayout::DepthStencilRead | TextureLayout::DepthStencilReadWrite => {
+                sync_stage.contains(BarrierSync::LATE_DEPTH | BarrierSync::EARLY_DEPTH)
+            }
+            TextureLayout::ResolveSrc | TextureLayout::ResolveDst => {
+                sync_stage.contains(BarrierSync::RESOLVE)
+            }
+        }
+    }
+
+    pub fn merge_layouts(old_layout: TextureLayout, new_layout: TextureLayout) -> TextureLayout {
+        if old_layout == TextureLayout::Undefined {
+            return new_layout;
+        }
+
+        if (old_layout == TextureLayout::DepthStencilRead && new_layout == TextureLayout::Sampled)
+            || (old_layout == TextureLayout::Sampled
+                && new_layout == TextureLayout::DepthStencilRead)
+        {
+            return TextureLayout::DepthStencilRead;
+        }
+
+        if old_layout == new_layout {
+            return old_layout;
+        }
+
+        return TextureLayout::General;
+    }
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum TextureDimension {
     Dim1D,
