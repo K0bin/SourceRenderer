@@ -1,9 +1,6 @@
 use sourcerenderer_core::gpu::{self, Texture as _};
 use std::hash::Hash;
-use web_sys::{
-    js_sys, wasm_bindgen::JsValue, GpuDevice, GpuExtent3dDict, GpuTexture, GpuTextureDescriptor,
-    GpuTextureFormat, GpuTextureView, GpuTextureViewDescriptor, GpuTextureViewDimension,
-};
+use web_sys::{js_sys, wasm_bindgen::JsValue, Gpu, GpuDevice, GpuExtent3dDict, GpuTexture, GpuTextureDescriptor, GpuTextureFormat, GpuTextureView, GpuTextureViewDescriptor, GpuTextureViewDimension};
 
 pub(crate) fn format_to_webgpu(format: gpu::Format) -> GpuTextureFormat {
     match format {
@@ -35,6 +32,7 @@ pub(crate) fn format_to_webgpu(format: gpu::Format) -> GpuTextureFormat {
         gpu::Format::R16UInt => GpuTextureFormat::R16uint,
         gpu::Format::R16SNorm => panic!("Unsupported format"),
         gpu::Format::R16SInt => GpuTextureFormat::R16sint,
+        gpu::Format::RGB16Float => panic!("Unsupported format"),
         gpu::Format::D16 => GpuTextureFormat::Depth16unorm,
         gpu::Format::D16S8 => GpuTextureFormat::Depth24plusStencil8,
         gpu::Format::D32 => GpuTextureFormat::Depth32float,
