@@ -77,6 +77,25 @@ impl TextureLayout {
             }
         }
     }
+
+    pub fn merge_layouts(old_layout: TextureLayout, new_layout: TextureLayout) -> TextureLayout {
+        if old_layout == TextureLayout::Undefined {
+            return new_layout;
+        }
+
+        if (old_layout == TextureLayout::DepthStencilRead
+            && new_layout == TextureLayout::Sampled)
+            || (old_layout == TextureLayout::Sampled
+            && new_layout == TextureLayout::DepthStencilRead) {
+            return TextureLayout::DepthStencilRead;
+        }
+
+        if old_layout == new_layout {
+            return old_layout;
+        }
+
+        return TextureLayout::General;
+    }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
