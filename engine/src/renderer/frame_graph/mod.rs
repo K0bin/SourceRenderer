@@ -60,14 +60,14 @@ struct ResourceDescription<T: Clone> {
     has_history: bool,
 }
 
-pub struct FramePassResourceCreationContext<'a> {
+pub struct FramePassResourceCreationContext<'a, 'b> {
     pass_idx: PassIdx,
-    texture_descriptions: &'a mut BumpVec<'a, ResourceDescription<TextureInfo>>,
-    buffer_descriptions: &'a mut BumpVec<'a, ResourceDescription<(BufferInfo, MemoryUsage)>>,
-    texture_metadata: &'a mut BumpVec<'a, ResourceWrite<TextureHandle>>,
-    buffer_metadata: &'a mut BumpVec<'a, ResourceWrite<BufferHandle>>,
-    texture_handle_map: &'a mut HashMap<(&'static str, HistoryResourceEntry), TextureHandle>,
-    buffer_handle_map: &'a mut HashMap<(&'static str, HistoryResourceEntry), BufferHandle>,
+    texture_descriptions: &'a mut BumpVec<'b, ResourceDescription<TextureInfo>>,
+    buffer_descriptions: &'a mut BumpVec<'b, ResourceDescription<(BufferInfo, MemoryUsage)>>,
+    texture_metadata: &'a mut BumpVec<'b, ResourceWrite<TextureHandle>>,
+    buffer_metadata: &'a mut BumpVec<'b, ResourceWrite<BufferHandle>>,
+    texture_handle_map: &'a mut HashMap<&'static str, TextureHandle>,
+    buffer_handle_map: &'a mut HashMap<&'static str, BufferHandle>,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
@@ -76,34 +76,13 @@ struct TextureHandle(usize);
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 struct BufferHandle(usize);
 
-impl<'a> FramePassResourceCreationContext<'a> {
-    pub fn create_texture(&mut self, name: &'static str, info: &TextureInfo, has_history: bool) {
+impl<'a, 'b> FramePassResourceCreationContext<'a, 'b> {
+    pub fn create_texture(&mut self, name: &'static str, info: &TextureInfo) {
         self.texture_descriptions.push(ResourceDescription {
             name,
             info: info.clone(),
-            has_history,
+            has_history: false,
         });
-        let handle = TextureHandle(self.texture_metadata.len());
-        self.texture_metadata.push(ResourceWrite::<TextureHandle> {
-            previous: None,
-            next: None,
-            write_pass_idx: None,
-            last_used_in: None,
-            discard: true,
-            layout: TextureLayout::Undefined,
-            sync: BarrierSync::empty(),
-            access: BarrierAccess::empty(),
-            following_reads_layout: TextureLayout::Undefined,
-            following_reads_syncs: BarrierSync::empty(),
-            following_reads_accesses: BarrierAccess::empty(),
-            following_reads_last_pass_idx: None,
-        });
-        self.texture_handle_map
-            .insert(name, (handle, HistoryResourceEntry::Current));
-        if has_history {
-            self.texture_handle_map
-                .insert(name, (handle, HistoryResourceEntry::Past));
-        }
     }
 
     pub fn create_buffer(
@@ -111,34 +90,12 @@ impl<'a> FramePassResourceCreationContext<'a> {
         name: &'static str,
         info: &BufferInfo,
         memory_usage: MemoryUsage,
-        has_history: bool,
     ) {
         self.buffer_descriptions.push(ResourceDescription {
             name,
             info: (info.clone(), memory_usage),
-            has_history,
-        });
-        let handle = BufferHandle(self.buffer_metadata.len());
-        self.buffer_metadata.push(ResourceWrite::<BufferHandle> {
-            previous: None,
-            next: None,
-            write_pass_idx: None,
-            last_used_in: None,
-            discard: true,
-            layout: TextureLayout::Undefined,
-            sync: BarrierSync::empty(),
-            access: BarrierAccess::empty(),
-            following_reads_layout: TextureLayout::Undefined,
-            following_reads_syncs: BarrierSync::empty(),
-            following_reads_accesses: BarrierAccess::empty(),
-            following_reads_last_pass_idx: None,
-        });
-        self.buffer_handle_map
-            .insert(name, (handle, HistoryResourceEntry::Current));
-        if has_history {
-            self.buffer_handle_map
-                .insert(name, (handle, HistoryResourceEntry::Past));
-        }
+            has_history: false,
+        })
     }
 }
 
@@ -288,7 +245,7 @@ impl BufferAccessKind {
 }
 
 pub struct TextureAccess {
-    pass_idx: HistoryPassIdx,
+    history: HistoryResourceEntry,
     name: &'static str,
     kind: TextureAccessKind,
     range: BarrierTextureRange,
@@ -296,7 +253,7 @@ pub struct TextureAccess {
 }
 
 pub struct BufferAccess {
-    pass_idx: HistoryPassIdx,
+    history: HistoryResourceEntry,
     name: &'static str,
     kind: BufferAccessKind,
     range: BufferRange,
@@ -309,17 +266,18 @@ pub struct ResourceAvailability {
     available_since_pass_idx: u32,
 }
 
-pub struct FramePassResourceAccessContext<'a> {
+pub struct FramePassResourceAccessContext<'a, 'b> {
     pass_idx: PassIdx,
     pass_last_dependency_pass_idx: Option<HistoryPassIdx>,
-    pass_texture_accesses: &'a mut BumpVec<'a, TextureAccess>,
-    pass_buffer_accesses: &'a mut BumpVec<'a, BufferAccess>,
-    textures: &'a mut BumpVec<'a, ResourceWrite<TextureHandle>>,
-    buffers: &'a mut BumpVec<'a, ResourceWrite<BufferHandle>>,
-    texture_handle_map: &'a mut HashMap<(&'static str, HistoryResourceEntry), TextureHandle>,
-    buffer_handle_map: &'a mut HashMap<(&'static str, HistoryResourceEntry), BufferHandle>,
+    pass_texture_accesses: &'a mut BumpVec<'b, TextureAccess>,
+    pass_buffer_accesses: &'a mut BumpVec<'b, BufferAccess>,
+    textures: &'a mut BumpVec<'b, ResourceWrite<TextureHandle>>,
+    buffers: &'a mut BumpVec<'b, ResourceWrite<BufferHandle>>,
+    texture_handle_map: &'a mut HashMap<&'static str, TextureHandle>,
+    buffer_handle_map: &'a mut HashMap<&'static str, BufferHandle>,
 }
 
+#[derive(Clone)]
 pub struct BufferRange {
     pub offset: u64,
     pub len: u64,
@@ -327,21 +285,22 @@ pub struct BufferRange {
 
 #[derive(Debug, Clone)]
 struct ResourceWrite<THandle: Copy> {
+    handle: THandle,
     previous: Option<THandle>,
     next: Option<THandle>,
-    write_pass_idx: Option<PassIdx>,
-    last_used_in: Option<HistoryPassIdx>,
+    write_pass_idx: PassIdx,
+    last_used_in: PassIdx,
+    used_in_next_pass: bool,
     discard: bool,
     layout: TextureLayout,
     sync: BarrierSync,
     access: BarrierAccess,
-    following_reads_layout: TextureLayout,
-    following_reads_syncs: BarrierSync,
-    following_reads_accesses: BarrierAccess,
-    following_reads_last_pass_idx: Option<PassIdx>,
+    following_layout: TextureLayout,
+    following_syncs: BarrierSync,
+    following_accesses: BarrierAccess,
 }
 
-impl<'a> FramePassResourceAccessContext<'a> {
+impl<'a, 'b> FramePassResourceAccessContext<'a, 'b> {
     pub fn register_texture_access(
         &mut self,
         name: &'static str,
@@ -350,111 +309,90 @@ impl<'a> FramePassResourceAccessContext<'a> {
         access_kind: TextureAccessKind,
         history: HistoryResourceEntry,
     ) {
-        let history_pass_idx = HistoryPassIdx(history, self.pass_idx);
         self.pass_texture_accesses.push(TextureAccess {
-            pass_idx: history_pass_idx,
+            history,
             name,
             kind: access_kind,
             range,
             stages,
         });
 
-        let handle = self.texture_handle_map.get_mut(&(name, history)).unwrap();
-        let texture = if access_kind.is_write() {
+        let old_handle = self.texture_handle_map.get_mut(name);
+        if access_kind.is_write() {
             if history == HistoryResourceEntry::Past {
                 panic!("Writing to the previous frame resource is not allowed.");
             }
 
             let mut new_texture = ResourceWrite::<TextureHandle> {
+                handle: TextureHandle(self.textures.len()),
                 next: None,
-                previous: Some(*handle),
-                last_used_in: history_pass_idx,
-                write_pass_idx: Some(self.pass_idx),
+                previous: old_handle.as_ref().map(|h| **h),
+                last_used_in: self.pass_idx,
+                write_pass_idx: self.pass_idx,
+                used_in_next_pass: history == HistoryResourceEntry::Past,
                 discard: access_kind.can_discard(),
                 layout: access_kind.to_layout(),
                 sync: stages,
                 access: access_kind.to_access(),
-                following_reads_layout: TextureLayout::Undefined,
-                following_reads_syncs: BarrierSync::empty(),
-                following_reads_accesses: BarrierAccess::empty(),
-                following_reads_last_pass_idx: None,
+                following_layout: TextureLayout::Undefined,
+                following_syncs: BarrierSync::empty(),
+                following_accesses: BarrierAccess::empty(),
             };
 
             let is_initial_write: bool;
-            {
-                let previous_texture = &mut self.textures[handle.0];
+            if let Some(old_handle) = &old_handle {
+                let previous_texture = &mut self.textures[old_handle.0];
                 assert!(previous_texture.next.is_none());
                 is_initial_write = previous_texture
-                    .write_pass_idx
-                    .map(|pass_idx| pass_idx == self.pass_idx)
-                    .unwrap_or(true);
+                    .write_pass_idx == self.pass_idx;
 
                 if is_initial_write {
                     assert!(previous_texture.previous.is_none());
                     new_texture.previous = None;
                     *previous_texture = new_texture.clone();
                 } else {
-                    if let Some(old_dep_pass_idx) = self.pass_last_dependency_pass_idx.as_mut() {
-                        *old_dep_pass_idx = (*old_dep_pass_idx).max(HistoryPassIdx(
-                            HistoryResourceEntry::Current,
-                            previous_texture.write_pass_idx.unwrap(),
-                        ));
-                    } else {
-                        self.pass_last_dependency_pass_idx = Some(HistoryPassIdx(
-                            HistoryResourceEntry::Current,
-                            previous_texture.write_pass_idx.unwrap(),
-                        ));
-                    }
+                    self.pass_last_dependency_pass_idx = Some(
+                        self.pass_last_dependency_pass_idx.map_or(
+                            HistoryPassIdx(history, previous_texture.write_pass_idx),
+                            |last_dep| last_dep.max(HistoryPassIdx(history, previous_texture.write_pass_idx)))
+                    );
+                    previous_texture.last_used_in = previous_texture.last_used_in.max(self.pass_idx);
+
+                    previous_texture.following_syncs |= stages;
+                    previous_texture.following_accesses |= access_kind.to_access();
+                    previous_texture.following_layout = TextureLayout::merge_layouts(previous_texture.following_layout, access_kind.to_layout());
                 }
+            } else {
+                is_initial_write = true;
             }
+
+            let new_handle = new_texture.handle;
+            self.textures.push(new_texture);
 
             // Rename texture
             if !is_initial_write {
-                let new_handle = TextureHandle(self.textures.len());
-                self.textures.push(new_texture);
-                *handle = (new_handle, HistoryResourceEntry::Current);
-                self.textures.get_mut(handle.0).unwrap()
-            } else {
-                self.textures.last_mut().unwrap()
+                if let Some(old_handle) = old_handle {
+                    *old_handle = new_handle;
+                }
             }
         } else {
-            let previous_texture = self.textures.get_mut(handle.0).unwrap();
-            assert!(previous_texture.next.is_none());
-            previous_texture.last_used_in = previous_texture.last_used_in.max(history_pass_idx);
-            if let Some(old_dep_pass_idx) = self.pass_last_dependency_pass_idx.as_mut() {
-                *old_dep_pass_idx = (*old_dep_pass_idx).max(HistoryPassIdx(
-                    history,
-                    previous_texture.write_pass_idx.unwrap(),
-                ));
-            } else {
-                self.pass_last_dependency_pass_idx = Some(HistoryPassIdx(
-                    history,
-                    previous_texture.write_pass_idx.unwrap(),
-                ));
-            }
-            previous_texture.following_reads_last_pass_idx = Some(
-                previous_texture
-                    .following_reads_last_pass_idx
-                    .map_or(self.pass_idx, |idx| idx.max(self.pass_idx)),
-            );
-            previous_texture.following_reads_syncs |= stages;
-            previous_texture.following_reads_accesses |= access_kind.to_access();
-            let new_layout = access_kind.to_layout();
-            if previous_texture.following_reads_layout == TextureLayout::Undefined {
-                previous_texture.following_reads_layout = new_layout;
-            } else if (previous_texture.following_reads_layout == TextureLayout::DepthStencilRead
-                && new_layout == TextureLayout::Sampled)
-                || (previous_texture.following_reads_layout == TextureLayout::Sampled
-                    && new_layout == TextureLayout::DepthStencilRead)
-            {
-                previous_texture.following_reads_layout = TextureLayout::DepthStencilRead;
-            } else if previous_texture.following_reads_layout != new_layout {
-                previous_texture.following_reads_layout = TextureLayout::General;
-            }
+            let old_handle = old_handle.expect("The first access to a resource must be a write.");
 
-            previous_texture
-        };
-        texture.last_used_in = texture.last_used_in.max(history_pass_idx);
+            let previous_texture = self.textures.get_mut(old_handle.0).unwrap();
+            assert!(previous_texture.next.is_none());
+            self.pass_last_dependency_pass_idx = Some(
+                self.pass_last_dependency_pass_idx.map_or(
+                    HistoryPassIdx(history, previous_texture.write_pass_idx),
+                    |last_dep| last_dep.max(HistoryPassIdx(history, previous_texture.write_pass_idx)))
+            );
+
+            previous_texture.last_used_in = previous_texture.last_used_in.max(self.pass_idx);
+            previous_texture.used_in_next_pass |= history == HistoryResourceEntry::Past;
+
+            previous_texture.following_syncs |= stages;
+            previous_texture.following_accesses |= access_kind.to_access();
+            previous_texture.following_layout = TextureLayout::merge_layouts(previous_texture.following_layout, access_kind.to_layout());
+        }
     }
 
     pub fn register_buffer_access(
@@ -465,97 +403,87 @@ impl<'a> FramePassResourceAccessContext<'a> {
         access_kind: BufferAccessKind,
         history: HistoryResourceEntry,
     ) {
-        let history_pass_idx = HistoryPassIdx(history, self.pass_idx);
         self.pass_buffer_accesses.push(BufferAccess {
-            pass_idx: history_pass_idx,
+            history,
             name,
             kind: access_kind,
-            range,
+            range: range.clone(),
             stages,
         });
 
-        let handle = self.buffer_handle_map.get_mut(&(name, history)).unwrap();
-        let buffer = if access_kind.is_write() {
+        let old_handle = self.buffer_handle_map.get_mut(name);
+        if access_kind.is_write() {
             if history == HistoryResourceEntry::Past {
                 panic!("Writing to the previous frame resource is not allowed.");
             }
 
             let mut new_buffer = ResourceWrite::<BufferHandle> {
+                handle: BufferHandle(self.buffers.len()),
                 next: None,
-                previous: Some(*handle),
-                last_used_in: Some(history_pass_idx),
-                write_pass_idx: Some(self.pass_idx),
+                previous: old_handle.as_ref().map(|h| **h),
+                last_used_in: self.pass_idx,
+                write_pass_idx: self.pass_idx,
+                used_in_next_pass: history == HistoryResourceEntry::Past,
                 discard: range.offset == 0 && range.len == 0,
                 layout: TextureLayout::General,
                 sync: stages,
                 access: access_kind.to_access(),
-                following_reads_layout: TextureLayout::General,
-                following_reads_syncs: BarrierSync::empty(),
-                following_reads_accesses: BarrierAccess::empty(),
-                following_reads_last_pass_idx: None,
+                following_layout: TextureLayout::General,
+                following_syncs: BarrierSync::empty(),
+                following_accesses: BarrierAccess::empty(),
             };
 
             let is_initial_write: bool;
-            {
-                let previous_buffer = &mut self.buffers[handle.0];
+            if let Some(old_handle) = &old_handle {
+                let previous_buffer = &mut self.buffers[old_handle.0];
                 assert!(previous_buffer.next.is_none());
-                is_initial_write = previous_buffer
-                    .write_pass_idx
-                    .map(|pass_idx| pass_idx == self.pass_idx)
-                    .unwrap_or(true);
+                is_initial_write = previous_buffer.write_pass_idx == self.pass_idx;
 
                 if is_initial_write {
                     assert!(previous_buffer.previous.is_none());
                     new_buffer.previous = None;
                     *previous_buffer = new_buffer.clone();
                 } else {
-                    if let Some(old_dep_pass_idx) = self.pass_last_dependency_pass_idx.as_mut() {
-                        *old_dep_pass_idx = (*old_dep_pass_idx).max(HistoryPassIdx(
-                            HistoryResourceEntry::Current,
-                            previous_buffer.write_pass_idx.unwrap(),
-                        ));
-                    } else {
-                        self.pass_last_dependency_pass_idx = Some(HistoryPassIdx(
-                            HistoryResourceEntry::Current,
-                            previous_buffer.write_pass_idx.unwrap(),
-                        ));
-                    }
+                    self.pass_last_dependency_pass_idx = Some(
+                        self.pass_last_dependency_pass_idx.map_or(
+                            HistoryPassIdx(history, previous_buffer.write_pass_idx),
+                            |last_dep| last_dep.max(HistoryPassIdx(history, previous_buffer.write_pass_idx)))
+                    );
+                    previous_buffer.last_used_in = previous_buffer.last_used_in.max(self.pass_idx);
+
+                    previous_buffer.following_syncs |= stages;
+                    previous_buffer.following_accesses |= access_kind.to_access();
                 }
+            } else {
+                is_initial_write = true;
             }
+
+            let new_handle = new_buffer.handle;
+            self.buffers.push(new_buffer);
 
             // Rename buffer
             if !is_initial_write {
-                let new_handle = BufferHandle(self.buffers.len());
-                self.buffers.push(new_buffer);
-                *handle = new_handle;
-                self.buffers.get_mut(handle.0 .0).unwrap()
-            } else {
-                self.buffers.last_mut().unwrap()
+                if let Some(old_handle) = old_handle {
+                    *old_handle = new_handle;
+                }
             }
         } else {
-            let previous_buffer = self.buffers.get_mut(handle.0).unwrap();
+            let old_handle = old_handle.expect("The first access to a resource must be a write.");
+
+            let previous_buffer = self.buffers.get_mut(old_handle.0).unwrap();
             assert!(previous_buffer.next.is_none());
-            previous_buffer.last_used_in = previous_buffer.last_used_in.max(history_pass_idx);
-            if let Some(old_dep_pass_idx) = self.pass_last_dependency_pass_idx.as_mut() {
-                *old_dep_pass_idx = (*old_dep_pass_idx).max(HistoryPassIdx(
-                    history,
-                    previous_buffer.write_pass_idx.unwrap(),
-                ));
-            } else {
-                self.pass_last_dependency_pass_idx = Some(HistoryPassIdx(
-                    history,
-                    previous_buffer.write_pass_idx.unwrap(),
-                ));
-            }
-            previous_buffer.following_reads_last_pass_idx = Some(
-                previous_buffer
-                    .following_reads_last_pass_idx
-                    .map_or(self.pass_idx, |idx| idx.max(self.pass_idx)),
+            self.pass_last_dependency_pass_idx = Some(
+                self.pass_last_dependency_pass_idx.map_or(
+                    HistoryPassIdx(history, previous_buffer.write_pass_idx),
+                    |last_dep| last_dep.max(HistoryPassIdx(history, previous_buffer.write_pass_idx)))
             );
-            previous_buffer.following_reads_syncs |= stages;
-            previous_buffer.following_reads_accesses |= access_kind.to_access();
-            previous_buffer.last_used_in = previous_buffer.last_used_in.max(history_pass_idx);
-        };
+
+            previous_buffer.last_used_in = previous_buffer.last_used_in.max(self.pass_idx);
+            previous_buffer.used_in_next_pass |= history == HistoryResourceEntry::Past;
+
+            previous_buffer.following_syncs |= stages;
+            previous_buffer.following_accesses |= access_kind.to_access();
+        }
     }
 }
 
@@ -641,9 +569,9 @@ impl HistoryPassIdx {
     }
 }
 
-struct ResourceHolder<T> {
+struct ResourceHolder<T, THandle : Copy> {
     resource: AB<T>,
-    writes: SmallVec<[Vec<ResourceWrite>; 4]>,
+    writes: SmallVec<[Vec<ResourceWrite<THandle>>; 4]>,
     layouts: SmallVec<[TextureLayout; 4]>,
     flushed_write_idx: Option<PassIdx>,
 }
@@ -694,8 +622,8 @@ const BUFFER_PAGE_SIZE: u32 = 16_384;
 pub struct RenderGraph {
     device: Arc<Device>,
     passes: Vec<Box<dyn RenderPass>>,
-    textures: HashMap<&'static str, ResourceHolder<Arc<Texture>>>,
-    buffers: HashMap<&'static str, ResourceHolder<Arc<BufferSlice>>>,
+    textures: HashMap<&'static str, ResourceHolder<Arc<Texture>, TextureHandle>>,
+    buffers: HashMap<&'static str, ResourceHolder<Arc<BufferSlice>, BufferHandle>>,
     current_ab: ABEntry,
 
     // Builder
@@ -715,9 +643,9 @@ impl RenderGraph {
         let bump = Bump::with_capacity(16_384_000);
 
         let mut texture_handle_map =
-            HashMap::<(&'static str, HistoryResourceEntry), TextureHandle>::new();
+            HashMap::<&'static str, TextureHandle>::new();
         let mut buffer_handle_map =
-            HashMap::<(&'static str, HistoryResourceEntry), BufferHandle>::new();
+            HashMap::<&'static str, BufferHandle>::new();
 
         let mut texture_descriptions = BumpVec::<ResourceDescription<TextureInfo>>::new_in(&bump);
         let mut buffer_descriptions =
@@ -766,17 +694,21 @@ impl RenderGraph {
                 continue;
             }
 
-            let handle = texture_handle_map.get(&(texture_desc.name, HistoryResourceEntry::Current)).unwrap();
-            let mut texture = textures.get(handle.0).unwrap();
-            let mut first_used_in = HistoryPassIdx(HistoryResourceEntry::Current, texture.write_pass_idx.unwrap_or(PassIdx(0u32)));
-            let mut last_used_in = HistoryPassIdx(HistoryResourceEntry::Current, texture.last_used_in.unwrap_or(PassIdx(u32::MAX)));
-            while let Some(next) = texture.next {
-                texture = textures.get(next.0).unwrap();
-                last_used_in = last_used_in.max(texture.last_used_in.unwrap());
-            }
-            while let Some(previous) = texture.previous {
-                texture = textures.get(previous.0).unwrap();
-                first_used_in = first_used_in.max(HistoryPassIdx(HistoryResourceEntry::Current, texture.write_pass_idx.unwrap()));
+            let handle = texture_handle_map.get(texture_desc.name).unwrap();
+            let mut last_used_in: PassIdx;
+            let mut write_pass_idx: PassIdx;
+            {
+                let mut texture = textures.get(handle.0).unwrap();
+                let mut last = texture;
+                while let Some(next) = last.next {
+                    last = textures.get(next.0).unwrap();
+                }
+                let mut first = texture;
+                while let Some(previous) = first.previous {
+                    first = textures.get(previous.0).unwrap();
+                }
+                write_pass_idx = first.write_pass_idx;
+                last_used_in = last.last_used_in;
             }
 
 
@@ -786,7 +718,7 @@ impl RenderGraph {
                     || texture_desc_b.info != texture_desc.info {
                     continue;
                 }
-                let handle_b = texture_handle_map.get(&(texture_desc_b.name, HistoryResourceEntry::Current)).unwrap();
+                let handle_b = texture_handle_map.get(texture_desc_b.name).unwrap();
                 let mut texture_b = textures.get(handle_b.0).unwrap();
                 while let Some(next) = texture_b.next {
                     // Start at the last write.
@@ -796,8 +728,12 @@ impl RenderGraph {
                     let next_write_b = texture_b;
                     texture_b = textures.get(previous.0).unwrap();
                     if next_write_b.discard
-                        && next_write_b.write_pass_idx.unwrap() > last_used_in
-                        && texture_b.last_used_in < first_used_in {
+                        && next_write_b.write_pass_idx > last_used_in
+                        && texture_b.last_used_in < write_pass_idx {
+
+                        texture_b.next = first_us;
+                        tex
+
                         // Insert here
                     }
                 }
@@ -811,7 +747,7 @@ impl RenderGraph {
             let last_used_in = texture.last_used_in;
         }
 
-        for texture in &context.textures {
+        for (&name, &texture) in &self.texture_descriptions {
             let mut texture_ab = AB {
                 a: self
                     .device
@@ -828,7 +764,7 @@ impl RenderGraph {
             }
             let num_subresources = (texture.info.array_length * texture.info.mip_levels) as usize;
             let mut write_vecs =
-                SmallVec::<[Vec<ResourceWrite>; 4]>::with_capacity(num_subresources);
+                SmallVec::<[Vec<ResourceWrite<TextureHandle>>; 4]>::with_capacity(num_subresources);
             write_vecs.resize(num_subresources, Vec::new());
             let mut texture_layouts =
                 SmallVec::<[TextureLayout; 4]>::with_capacity(num_subresources);
@@ -846,7 +782,7 @@ impl RenderGraph {
                 panic!("A texture with the name {} already exists.", texture.name);
             }
         }
-        for buffer in &context.buffers {
+        for (&name, &buffer) in &self.buffer_descriptions {
             let (buffer_info, memory_usage) = &buffer.info;
             let mut buffer_ab = AB {
                 a: self
@@ -864,7 +800,7 @@ impl RenderGraph {
             }
             let num_subresources = ((buffer.info.0.size as u32) / BUFFER_PAGE_SIZE) as usize;
             let mut write_vecs =
-                SmallVec::<[Vec<ResourceWrite>; 4]>::with_capacity(num_subresources);
+                SmallVec::<[Vec<ResourceWrite<BufferHandle>>; 4]>::with_capacity(num_subresources);
             write_vecs.resize(num_subresources, Vec::new());
             let existing = self.buffers.insert(
                 buffer.name,
