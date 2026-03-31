@@ -90,6 +90,12 @@ impl TextureLayout {
             return TextureLayout::DepthStencilRead;
         }
 
+        if old_layout == TextureLayout::DepthStencilRead
+            && new_layout == TextureLayout::DepthStencilReadWrite
+        {
+            return TextureLayout::DepthStencilReadWrite;
+        }
+
         if old_layout == new_layout {
             return old_layout;
         }
