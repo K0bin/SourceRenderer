@@ -9,7 +9,7 @@ use std::sync::Arc;
 use crate::graphics::{
     Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BufferInfo, BufferRef, BufferSlice,
     ClearColor, ClearDepthStencilValue, CommandBuffer, Device, GraphicsContext, MemoryUsage,
-    QueueType, SplitBarrier, SplitBarrierWait, Texture, TextureInfo, TextureLayout, TextureView,
+    QueueType, Texture, TextureInfo, TextureLayout, TextureView,
 };
 use atomic_refcell::{AtomicRef, AtomicRefCell, AtomicRefMut};
 use bitvec::domain::PartialElement;
@@ -399,6 +399,7 @@ pub struct TextureAccess {
     range: BarrierTextureRange,
     sync: BarrierSync,
     history: HistoryResourceEntry,
+    write_pass_idx: PassIdx,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -410,6 +411,7 @@ pub struct BufferAccess {
     range: BufferRange,
     sync: BarrierSync,
     history: HistoryResourceEntry,
+    write_pass_idx: PassIdx,
 }
 
 pub struct ResourceAvailability {
@@ -462,7 +464,7 @@ struct ResourceWrite<THandle: Handle> {
 }
 
 impl<'a> RenderPassResourceAccessContext<'a> {
-    fn register_resource_access<TInfo: Clone, THandle: Handle, TResource>(
+    fn register_resource_access<'b, TInfo: Clone, THandle: Handle, TResource>(
         device: &Device,
         pass_idx: PassIdx,
         name: &'static str,
@@ -472,8 +474,8 @@ impl<'a> RenderPassResourceAccessContext<'a> {
         discard: bool,
         history: HistoryResourceEntry,
         handle_map: &mut HashMap<&'static str, ResourceDescription<TInfo, THandle, TResource>>,
-        resources: &mut Vec<ResourceWrite<THandle>>,
-    ) {
+        writes: &'b mut Vec<ResourceWrite<THandle>>,
+    ) -> &'b mut ResourceWrite<THandle> {
         let mut handle = handle_map.get_mut(&name).unwrap().last_handle;
         if access.is_write() {
             if history == HistoryResourceEntry::Past {
@@ -497,47 +499,38 @@ impl<'a> RenderPassResourceAccessContext<'a> {
                 following_reads_last_baked_pass_idx: None,
             };
 
-            let new_handle = THandle::from_index(resources.len());
-            resources.push(new_write);
+            let new_handle = THandle::from_index(writes.len());
+            writes.push(new_write);
             handle = new_handle;
-            resources.get_mut(handle.to_index()).unwrap();
+            writes.get_mut(handle.to_index()).unwrap()
         } else {
             if history == HistoryResourceEntry::Past {
                 // The first write represents the previous frame
-                let mut resource = &resources[handle.to_index()];
-                while let Some(previous_handle) = resource.previous {
+                let mut write = &writes[handle.to_index()];
+                while let Some(previous_handle) = write.previous {
                     handle = previous_handle;
-                    resource = &resources[handle.to_index()];
+                    write = &writes[handle.to_index()];
                 }
             }
 
-            let previous_resource = resources.get_mut(handle.to_index()).unwrap();
-            assert!(previous_resource.next.is_none());
+            let previous_write = writes.get_mut(handle.to_index()).unwrap();
+            assert!(previous_write.next.is_none());
             assert!(
-                history == HistoryResourceEntry::Past || previous_resource.write_pass_idx.is_some()
+                history == HistoryResourceEntry::Past || previous_write.write_pass_idx.is_some()
             ); // the placeholder write is only valid for reading the past frame resource
-            previous_resource.following_reads_last_pass_idx = previous_resource
+            previous_write.following_reads_last_pass_idx = previous_write
                 .following_reads_last_pass_idx
                 .max(Some(pass_idx));
-            previous_resource.following_reads_first_pass_idx = Some(
-                previous_resource
+            previous_write.following_reads_first_pass_idx = Some(
+                previous_write
                     .following_reads_first_pass_idx
                     .map_or(pass_idx, |pass_idx| pass_idx.min(pass_idx)),
             );
-            previous_resource.following_reads_syncs |= sync;
-            previous_resource.following_reads_accesses |= access;
-            let new_layout = layout;
-            if previous_resource.following_reads_layout == TextureLayout::Undefined {
-                previous_resource.following_reads_layout = new_layout;
-            } else if (previous_resource.following_reads_layout == TextureLayout::DepthStencilRead
-                && new_layout == TextureLayout::Sampled)
-                || (previous_resource.following_reads_layout == TextureLayout::Sampled
-                    && new_layout == TextureLayout::DepthStencilRead)
-            {
-                previous_resource.following_reads_layout = TextureLayout::DepthStencilRead;
-            } else if previous_resource.following_reads_layout != new_layout {
-                previous_resource.following_reads_layout = TextureLayout::General;
-            }
+            previous_write.following_reads_syncs |= sync;
+            previous_write.following_reads_accesses |= access;
+            previous_write.following_reads_layout =
+                TextureLayout::merge_layouts(previous_write.following_reads_layout, layout);
+            previous_write
         }
     }
 
@@ -558,6 +551,19 @@ impl<'a> RenderPassResourceAccessContext<'a> {
                 .first_use_handle;
         }
 
+        let write = Self::register_resource_access(
+            self.device,
+            self.pass_idx,
+            name,
+            sync,
+            access_kind.to_access(),
+            access_kind.to_layout(),
+            access_kind.discards(),
+            history,
+            self.textures,
+            self.texture_writes,
+        );
+
         self.pass_texture_accesses_range.start = self
             .pass_texture_accesses_range
             .start
@@ -570,24 +576,12 @@ impl<'a> RenderPassResourceAccessContext<'a> {
             range,
             sync,
             history,
+            write_pass_idx: write.write_pass_idx.unwrap(),
         });
         self.pass_texture_accesses_range.end = self
             .pass_texture_accesses_range
             .start
             .max(self.texture_accesses.len());
-
-        Self::register_resource_access(
-            self.device,
-            self.pass_idx,
-            name,
-            sync,
-            access_kind.to_access(),
-            access_kind.to_layout(),
-            access_kind.discards(),
-            history,
-            self.textures,
-            self.texture_writes,
-        );
     }
 
     pub fn register_buffer_access(
@@ -607,6 +601,19 @@ impl<'a> RenderPassResourceAccessContext<'a> {
                 RenderGraph::find_first_and_last_usage(handle, self.buffer_writes).first_use_handle;
         }
 
+        let write = Self::register_resource_access(
+            self.device,
+            self.pass_idx,
+            name,
+            sync,
+            access_kind.to_access(),
+            TextureLayout::General,
+            access_kind.discards(),
+            history,
+            self.textures,
+            self.texture_writes,
+        );
+
         self.pass_buffer_accesses_range.start = self
             .pass_buffer_accesses_range
             .start
@@ -619,24 +626,12 @@ impl<'a> RenderPassResourceAccessContext<'a> {
             range,
             sync,
             history,
+            write_pass_idx: write.write_pass_idx.unwrap(),
         });
         self.pass_buffer_accesses_range.end = self
             .pass_buffer_accesses_range
             .start
             .max(self.buffer_accesses.len());
-
-        Self::register_resource_access(
-            self.device,
-            self.pass_idx,
-            name,
-            sync,
-            access_kind.to_access(),
-            TextureLayout::General,
-            access_kind.discards(),
-            history,
-            self.textures,
-            self.texture_writes,
-        );
     }
 }
 
@@ -794,13 +789,6 @@ struct ResourceChainInfo<THandle: Handle> {
     first_used_in: PassIdx,
     last_used_in: PassIdx,
     history_last_used_in: Option<PassIdx>,
-}
-
-#[derive(Hash, Eq, PartialEq, Copy, Clone, Debug)]
-enum ReadWriteSplitBarrier {
-    None,
-    Write,
-    Read,
 }
 
 impl RenderGraph {
@@ -1212,13 +1200,13 @@ impl RenderGraph {
             // Also, it's only baked once.
             let mut max_dependency = PassIdx(0u32);
             for access in &self.texture_accesses[a.texture_accesses.start..a.texture_accesses.end] {
-                if access.pass_idx == b.pass_idx {
+                if access.write_pass_idx == b.pass_idx {
                     return Ordering::Greater;
                 }
-                max_dependency = max_dependency.min(access.pass_idx);
+                max_dependency = max_dependency.min(access.write_pass_idx);
             }
             for access in &self.buffer_accesses[a.buffer_accesses.start..a.buffer_accesses.end] {
-                if access.pass_idx == b.pass_idx {
+                if access.write_pass_idx == b.pass_idx {
                     return Ordering::Greater;
                 }
                 max_dependency = max_dependency.min(access.pass_idx);
@@ -1228,7 +1216,7 @@ impl RenderGraph {
                 if access.pass_idx == a.pass_idx {
                     return Ordering::Less;
                 }
-                other_max_dependency = other_max_dependency.min(access.pass_idx);
+                other_max_dependency = other_max_dependency.min(access.write_pass_idx);
             }
             for access in &self.buffer_accesses[b.buffer_accesses.start..b.buffer_accesses.end] {
                 if access.pass_idx == a.pass_idx {
@@ -1272,50 +1260,8 @@ impl RenderGraph {
         }
     }
 
-    const USE_SPLIT_BARRIERS: bool = true;
     pub fn execute(&mut self, ctx: &GraphicsContext) {
         let mut cmd_buffer = ctx.get_command_buffer(QueueType::Graphics);
-
-        let mut texture_split_barrier_map =
-            HashMap::<(TextureHandle, ReadWriteSplitBarrier), SplitBarrier>::new();
-        let mut buffer_split_barrier_map =
-            HashMap::<(BufferHandle, ReadWriteSplitBarrier), SplitBarrier>::new();
-        for (i, write) in self.texture_writes.iter().enumerate() {
-            if write.previous.is_none() || !Self::USE_SPLIT_BARRIERS {
-                // Write 0 represents the previous frame and we never use split barriers across frames.
-                continue;
-            }
-            if write.following_reads_first_pass_idx.is_none() {
-                texture_split_barrier_map.insert(
-                    (TextureHandle::from_index(i), ReadWriteSplitBarrier::Read),
-                    ctx.get_split_barrier(),
-                );
-            }
-            if write.next.is_some() {
-                texture_split_barrier_map.insert(
-                    (TextureHandle::from_index(i), ReadWriteSplitBarrier::Write),
-                    ctx.get_split_barrier(),
-                );
-            }
-        }
-        for (i, write) in self.buffer_writes.iter().enumerate() {
-            if write.previous.is_none() || !Self::USE_SPLIT_BARRIERS {
-                // Write 0 represents the previous frame and we never use split barriers across frames.
-                continue;
-            }
-            if write.following_reads_first_pass_idx.is_none() {
-                buffer_split_barrier_map.insert(
-                    (BufferHandle::from_index(i), ReadWriteSplitBarrier::Read),
-                    ctx.get_split_barrier(),
-                );
-            }
-            if write.next.is_some() {
-                buffer_split_barrier_map.insert(
-                    (BufferHandle::from_index(i), ReadWriteSplitBarrier::Write),
-                    ctx.get_split_barrier(),
-                );
-            }
-        }
 
         for (i, pass) in self.built_passes.iter().enumerate() {
             let baked_pass_idx = BakedPassIdx(i as u32);
@@ -1338,17 +1284,8 @@ impl RenderGraph {
 
                 let previous_write = &self.texture_writes[wait_for_handle.to_index()];
                 let texture = Self::get_resource(access.name, &self.textures);
-                let (barrier, read_write) = self.get_texture_barrier(texture, previous_write);
-                if let Some(split_barrier) =
-                    texture_split_barrier_map.get(&(wait_for_handle, read_write))
-                {
-                    cmd_buffer.split_barrier_wait(&[SplitBarrierWait {
-                        split_barrier,
-                        barriers: &[barrier],
-                    }]);
-                } else {
-                    cmd_buffer.barrier(&[barrier]);
-                }
+                let barrier = self.get_texture_barrier(texture, previous_write);
+                cmd_buffer.barrier(&[barrier]);
             }
 
             for access in
@@ -1369,17 +1306,8 @@ impl RenderGraph {
 
                 let previous_write = &self.buffer_writes[wait_for_handle.to_index()];
                 let buffer = Self::get_resource(access.name, &self.buffers);
-                let (barrier, read_write) = self.get_buffer_barrier(buffer, previous_write);
-                if let Some(split_barrier) =
-                    buffer_split_barrier_map.get(&(access.handle, read_write))
-                {
-                    cmd_buffer.split_barrier_wait(&[SplitBarrierWait {
-                        split_barrier,
-                        barriers: &[barrier],
-                    }]);
-                } else {
-                    cmd_buffer.barrier(&[barrier]);
-                }
+                let barrier = self.get_buffer_barrier(buffer, previous_write);
+                cmd_buffer.barrier(&[barrier]);
             }
 
             cmd_buffer.flush_barriers();
@@ -1390,57 +1318,6 @@ impl RenderGraph {
                 buffers: &pass.buffers,
             };
             self.passes[pass.pass_idx.to_index()].execute(&execute_ctx);
-
-            for access in
-                &self.texture_accesses[pass.texture_accesses.start..pass.texture_accesses.end]
-            {
-                let write = &self.texture_writes[access.handle.to_index()];
-                if !access.kind.is_write()
-                    && (write.following_reads_last_baked_pass_idx != Some(baked_pass_idx)
-                        || write.next.is_none())
-                {
-                    // It's a read followed by another read.
-                    continue;
-                }
-                if write.following_reads_first_pass_idx.is_none() {
-                    // Resource will be read in the next frame. We don't use split barriers across frames.
-                    continue;
-                }
-                let texture = Self::get_resource(access.name, &self.textures);
-                let (barrier, read_write) = self.get_texture_barrier(texture, write);
-                let split_barrier_opt = texture_split_barrier_map.get(&(access.handle, read_write));
-                if split_barrier_opt.is_none() {
-                    // No split barrier to signal.
-                    continue;
-                }
-                let split_barrier = split_barrier_opt.unwrap();
-                cmd_buffer.split_barrier_signal(split_barrier, &barrier);
-            }
-
-            for access in
-                &self.buffer_accesses[pass.buffer_accesses.start..pass.buffer_accesses.end]
-            {
-                let write = &self.buffer_writes[access.handle.to_index()];
-                if !access.kind.is_write()
-                    && write.following_reads_last_baked_pass_idx != Some(baked_pass_idx)
-                {
-                    // It's a read followed by another read.
-                    continue;
-                }
-                if write.following_reads_first_pass_idx.is_none() {
-                    // Resource will be read in the next frame. We don't use split barriers across frames.
-                    continue;
-                }
-                let buffer = Self::get_resource(access.name, &self.buffers);
-                let (barrier, read_write) = self.get_buffer_barrier(buffer, write);
-                let split_barrier_opt = buffer_split_barrier_map.get(&(access.handle, read_write));
-                if split_barrier_opt.is_none() {
-                    // No split barrier to signal.
-                    continue;
-                }
-                let split_barrier = split_barrier_opt.unwrap();
-                cmd_buffer.split_barrier_signal(split_barrier, &barrier);
-            }
         }
     }
 
@@ -1465,69 +1342,61 @@ impl RenderGraph {
         &self,
         texture: &'a Texture,
         write: &ResourceWrite<TextureHandle>,
-    ) -> (Barrier<'a>, ReadWriteSplitBarrier) {
+    ) -> Barrier<'a> {
         if write.access.is_write() && write.following_reads_first_pass_idx.is_some() {
             // Barrier for upcoming reads. There will be a barrier at the last of those reads.
-            (
-                Barrier::TextureBarrier {
-                    old_sync: write.sync,
-                    new_sync: write.following_reads_syncs,
-                    old_access: write.access,
-                    new_access: write.following_reads_accesses,
-                    old_layout: write.layout,
-                    new_layout: write.following_reads_layout,
-                    texture,
-                    range: BarrierTextureRange::default(),
-                    queue_ownership: None,
-                },
-                ReadWriteSplitBarrier::Write,
-            )
+            Barrier::TextureBarrier {
+                old_sync: write.sync,
+                new_sync: write.following_reads_syncs,
+                old_access: write.access,
+                new_access: write.following_reads_accesses,
+                old_layout: write.layout,
+                new_layout: write.following_reads_layout,
+                texture,
+                range: BarrierTextureRange::default(),
+                queue_ownership: None,
+            }
         } else if write.access.is_write() {
             // Barrier for the next write because there are no read passes (Can be the case for e.g. depth buffers)
             let next_write = &self.texture_writes[write.next.unwrap().to_index()];
-            (
-                Barrier::TextureBarrier {
-                    old_sync: write.following_reads_syncs,
-                    new_sync: next_write.sync,
-                    old_access: write.following_reads_accesses & BarrierAccess::write_mask(),
-                    new_access: if next_write.discard {
-                        BarrierAccess::empty()
-                    } else {
-                        next_write.following_reads_accesses
-                    },
-                    old_layout: if next_write.discard {
-                        TextureLayout::Undefined
-                    } else {
-                        write.following_reads_layout
-                    },
-                    new_layout: next_write.layout,
-                    texture,
-                    range: BarrierTextureRange::default(),
-                    queue_ownership: None,
+            Barrier::TextureBarrier {
+                old_sync: write.following_reads_syncs,
+                new_sync: next_write.sync,
+                old_access: write.following_reads_accesses & BarrierAccess::write_mask(),
+                new_access: if next_write.discard {
+                    BarrierAccess::empty()
+                } else {
+                    next_write.following_reads_accesses
                 },
-                ReadWriteSplitBarrier::Read,
-            )
+                old_layout: if next_write.discard {
+                    TextureLayout::Undefined
+                } else {
+                    write.following_reads_layout
+                },
+                new_layout: next_write.layout,
+                texture,
+                range: BarrierTextureRange::default(),
+                queue_ownership: None,
+            }
         } else if write.following_reads_first_pass_idx.is_some() {
             // Barrier for the next write from reads
             let next_write = &self.texture_writes[write.next.unwrap().to_index()];
-            (
-                Barrier::TextureBarrier {
-                    old_sync: write.following_reads_syncs,
-                    new_sync: next_write.sync,
-                    old_access: BarrierAccess::empty(),
-                    new_access: next_write.following_reads_accesses,
-                    old_layout: if next_write.discard {
-                        TextureLayout::Undefined
-                    } else {
-                        write.following_reads_layout
-                    },
-                    new_layout: next_write.layout,
-                    texture,
-                    range: BarrierTextureRange::default(),
-                    queue_ownership: None,
+
+            Barrier::TextureBarrier {
+                old_sync: write.following_reads_syncs,
+                new_sync: next_write.sync,
+                old_access: BarrierAccess::empty(),
+                new_access: next_write.following_reads_accesses,
+                old_layout: if next_write.discard {
+                    TextureLayout::Undefined
+                } else {
+                    write.following_reads_layout
                 },
-                ReadWriteSplitBarrier::Write,
-            )
+                new_layout: next_write.layout,
+                texture,
+                range: BarrierTextureRange::default(),
+                queue_ownership: None,
+            }
         } else {
             panic!("No barrier necessary.")
         }
@@ -1537,52 +1406,43 @@ impl RenderGraph {
         &self,
         buffer: &'a Arc<BufferSlice>,
         write: &ResourceWrite<BufferHandle>,
-    ) -> (Barrier<'a>, ReadWriteSplitBarrier) {
+    ) -> Barrier<'a> {
         if write.access.is_write() && write.following_reads_first_pass_idx.is_some() {
             // Barrier for upcoming reads. There will be a barrier at the last of those reads.
-            (
-                Barrier::BufferBarrier {
-                    old_sync: write.sync,
-                    new_sync: write.following_reads_syncs,
-                    old_access: write.access,
-                    new_access: write.following_reads_accesses,
-                    buffer: BufferRef::Regular(buffer),
-                    queue_ownership: None,
-                },
-                ReadWriteSplitBarrier::Write,
-            )
+            Barrier::BufferBarrier {
+                old_sync: write.sync,
+                new_sync: write.following_reads_syncs,
+                old_access: write.access,
+                new_access: write.following_reads_accesses,
+                buffer: BufferRef::Regular(buffer),
+                queue_ownership: None,
+            }
         } else if write.access.is_write() {
             // Barrier for the next write because there are no read passes (Can be the case for e.g. depth buffers)
             let next_write = &self.texture_writes[write.next.unwrap().to_index()];
-            (
-                Barrier::BufferBarrier {
-                    old_sync: write.following_reads_syncs,
-                    new_sync: next_write.sync,
-                    old_access: write.following_reads_accesses & BarrierAccess::write_mask(),
-                    new_access: if next_write.discard {
-                        BarrierAccess::empty()
-                    } else {
-                        next_write.following_reads_accesses
-                    },
-                    buffer: BufferRef::Regular(buffer),
-                    queue_ownership: None,
+            Barrier::BufferBarrier {
+                old_sync: write.following_reads_syncs,
+                new_sync: next_write.sync,
+                old_access: write.following_reads_accesses & BarrierAccess::write_mask(),
+                new_access: if next_write.discard {
+                    BarrierAccess::empty()
+                } else {
+                    next_write.following_reads_accesses
                 },
-                ReadWriteSplitBarrier::Read,
-            )
+                buffer: BufferRef::Regular(buffer),
+                queue_ownership: None,
+            }
         } else if write.following_reads_first_pass_idx.is_some() {
             // Barrier for the next write from reads
             let next_write = &self.texture_writes[write.next.unwrap().to_index()];
-            (
-                Barrier::BufferBarrier {
-                    old_sync: write.following_reads_syncs,
-                    new_sync: next_write.sync,
-                    old_access: BarrierAccess::empty(),
-                    new_access: next_write.following_reads_accesses,
-                    buffer: BufferRef::Regular(buffer),
-                    queue_ownership: None,
-                },
-                ReadWriteSplitBarrier::Write,
-            )
+            Barrier::BufferBarrier {
+                old_sync: write.following_reads_syncs,
+                new_sync: next_write.sync,
+                old_access: BarrierAccess::empty(),
+                new_access: next_write.following_reads_accesses,
+                buffer: BufferRef::Regular(buffer),
+                queue_ownership: None,
+            }
         } else {
             panic!("No barrier necessary.")
         }
