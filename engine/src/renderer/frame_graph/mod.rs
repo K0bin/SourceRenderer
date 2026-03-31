@@ -1,6 +1,6 @@
 use std::any::Any;
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::ops::Range;
 use std::ptr::{read, NonNull};
@@ -126,8 +126,6 @@ impl<'a> RenderPassResourceCreationContext<'a> {
             following_reads_accesses: BarrierAccess::empty(),
             following_reads_first_pass_idx: None,
             following_reads_last_pass_idx: None,
-            following_reads_first_baked_pass_idx: None,
-            following_reads_last_baked_pass_idx: None,
         });
         self.textures.insert(
             name,
@@ -164,8 +162,6 @@ impl<'a> RenderPassResourceCreationContext<'a> {
             following_reads_accesses: BarrierAccess::empty(),
             following_reads_first_pass_idx: None,
             following_reads_last_pass_idx: None,
-            following_reads_first_baked_pass_idx: None,
-            following_reads_last_baked_pass_idx: None,
         });
         self.buffers.insert(
             name,
@@ -392,26 +388,22 @@ impl BufferAccessKind {
 
 #[derive(Debug, PartialEq)]
 pub struct TextureAccess {
-    pass_idx: PassIdx,
     name: &'static str,
     handle: TextureHandle,
     kind: TextureAccessKind,
     range: BarrierTextureRange,
     sync: BarrierSync,
     history: HistoryResourceEntry,
-    write_pass_idx: PassIdx,
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct BufferAccess {
-    pass_idx: PassIdx,
     name: &'static str,
     handle: BufferHandle,
     kind: BufferAccessKind,
     range: BufferRange,
     sync: BarrierSync,
     history: HistoryResourceEntry,
-    write_pass_idx: PassIdx,
 }
 
 pub struct ResourceAvailability {
@@ -459,8 +451,6 @@ struct ResourceWrite<THandle: Handle> {
     following_reads_accesses: BarrierAccess,
     following_reads_first_pass_idx: Option<PassIdx>,
     following_reads_last_pass_idx: Option<PassIdx>,
-    following_reads_first_baked_pass_idx: Option<BakedPassIdx>,
-    following_reads_last_baked_pass_idx: Option<BakedPassIdx>,
 }
 
 impl<'a> RenderPassResourceAccessContext<'a> {
@@ -480,6 +470,10 @@ impl<'a> RenderPassResourceAccessContext<'a> {
         if access.is_write() {
             if history == HistoryResourceEntry::Past {
                 panic!("Writing to the previous frame resource is not allowed.");
+            } else if !discard {
+                let previous_write = writes.get_mut(handle.to_index()).unwrap();
+                assert!(previous_write.next.is_none());
+                assert!(previous_write.previous.is_none());
             }
 
             let new_write = ResourceWrite::<THandle> {
@@ -495,8 +489,6 @@ impl<'a> RenderPassResourceAccessContext<'a> {
                 following_reads_accesses: BarrierAccess::empty(),
                 following_reads_first_pass_idx: None,
                 following_reads_last_pass_idx: None,
-                following_reads_first_baked_pass_idx: None,
-                following_reads_last_baked_pass_idx: None,
             };
 
             let new_handle = THandle::from_index(writes.len());
@@ -512,6 +504,7 @@ impl<'a> RenderPassResourceAccessContext<'a> {
                     write = &writes[handle.to_index()];
                 }
             }
+            assert!(!discard);
 
             let previous_write = writes.get_mut(handle.to_index()).unwrap();
             assert!(previous_write.next.is_none());
@@ -551,7 +544,7 @@ impl<'a> RenderPassResourceAccessContext<'a> {
                 .first_use_handle;
         }
 
-        let write = Self::register_resource_access(
+        Self::register_resource_access(
             self.device,
             self.pass_idx,
             name,
@@ -569,14 +562,12 @@ impl<'a> RenderPassResourceAccessContext<'a> {
             .start
             .min(self.texture_accesses.len());
         self.texture_accesses.push(TextureAccess {
-            pass_idx: self.pass_idx,
             name,
             handle,
             kind: access_kind,
             range,
             sync,
             history,
-            write_pass_idx: write.write_pass_idx.unwrap(),
         });
         self.pass_texture_accesses_range.end = self
             .pass_texture_accesses_range
@@ -601,7 +592,7 @@ impl<'a> RenderPassResourceAccessContext<'a> {
                 RenderGraph::find_first_and_last_usage(handle, self.buffer_writes).first_use_handle;
         }
 
-        let write = Self::register_resource_access(
+        Self::register_resource_access(
             self.device,
             self.pass_idx,
             name,
@@ -619,14 +610,12 @@ impl<'a> RenderPassResourceAccessContext<'a> {
             .start
             .min(self.buffer_accesses.len());
         self.buffer_accesses.push(BufferAccess {
-            pass_idx: self.pass_idx,
             name,
             handle,
             kind: access_kind,
             range,
             sync,
             history,
-            write_pass_idx: write.write_pass_idx.unwrap(),
         });
         self.pass_buffer_accesses_range.end = self
             .pass_buffer_accesses_range
@@ -671,35 +660,10 @@ impl<T> AB<T> {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 struct PassIdx(u32);
 
 impl PassIdx {
-    fn to_index(self) -> usize {
-        self.0 as usize
-    }
-
-    fn min(self, other: Self) -> Self {
-        if self < other {
-            self
-        } else {
-            other
-        }
-    }
-
-    fn max(self, other: Self) -> Self {
-        if self < other {
-            self
-        } else {
-            other
-        }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-struct BakedPassIdx(u32);
-
-impl BakedPassIdx {
     fn to_index(self) -> usize {
         self.0 as usize
     }
@@ -872,7 +836,7 @@ impl RenderGraph {
                     .map_or(true, |last_used_in| last_used_in < first_used_in))
             {
                 // Insert it in between those two writes.
-                // Only possible if its not a history resource or it's after the last access
+                // Only possible if it's not a history resource or it's after the last access
                 // of the previous frames contents
                 insert_location = Some((handle_b, Insert::After));
             }
@@ -1194,74 +1158,45 @@ impl RenderGraph {
                     .insert(access.name, (buffer.clone(), access.range.clone()));
             }
         }
-
-        self.built_passes.sort_unstable_by(|a, b| {
-            // This is slow but the number of passes should be low enough that this doesn't become a problem.
-            // Also, it's only baked once.
-            let mut max_dependency = PassIdx(0u32);
-            for access in &self.texture_accesses[a.texture_accesses.start..a.texture_accesses.end] {
-                if access.write_pass_idx == b.pass_idx {
-                    return Ordering::Greater;
-                }
-                max_dependency = max_dependency.min(access.write_pass_idx);
-            }
-            for access in &self.buffer_accesses[a.buffer_accesses.start..a.buffer_accesses.end] {
-                if access.write_pass_idx == b.pass_idx {
-                    return Ordering::Greater;
-                }
-                max_dependency = max_dependency.min(access.pass_idx);
-            }
-            let mut other_max_dependency = PassIdx(0u32);
-            for access in &self.texture_accesses[b.texture_accesses.start..b.texture_accesses.end] {
-                if access.pass_idx == a.pass_idx {
-                    return Ordering::Less;
-                }
-                other_max_dependency = other_max_dependency.min(access.write_pass_idx);
-            }
-            for access in &self.buffer_accesses[b.buffer_accesses.start..b.buffer_accesses.end] {
-                if access.pass_idx == a.pass_idx {
-                    return Ordering::Less;
-                }
-                other_max_dependency = other_max_dependency.min(access.pass_idx);
-            }
-
-            max_dependency.cmp(&other_max_dependency)
-        });
-
-        // Update first and last following reads
-        for write in &mut self.texture_writes {
-            write.following_reads_first_baked_pass_idx = None;
-            write.following_reads_last_baked_pass_idx = None;
-        }
-        for write in &mut self.buffer_writes {
-            write.following_reads_first_baked_pass_idx = None;
-            write.following_reads_last_baked_pass_idx = None;
-        }
-        for (baked_pass_i, pass) in self.built_passes.iter().enumerate() {
-            let baked_pass_idx = BakedPassIdx(baked_pass_i as u32);
-            for access in
-                &self.texture_accesses[pass.texture_accesses.start..pass.texture_accesses.end]
-            {
-                let write = &mut self.texture_writes[access.handle.to_index()];
-                if write.following_reads_first_baked_pass_idx.is_none() {
-                    write.following_reads_first_baked_pass_idx = Some(baked_pass_idx);
-                }
-                write.following_reads_last_baked_pass_idx = Some(baked_pass_idx);
-            }
-            for access in
-                &self.buffer_accesses[pass.buffer_accesses.start..pass.buffer_accesses.end]
-            {
-                let write = &mut self.texture_writes[access.handle.to_index()];
-                if write.following_reads_first_baked_pass_idx.is_none() {
-                    write.following_reads_first_baked_pass_idx = Some(baked_pass_idx);
-                }
-                write.following_reads_last_baked_pass_idx = Some(baked_pass_idx);
-            }
-        }
     }
 
     pub fn execute(&mut self, ctx: &GraphicsContext) {
         let mut cmd_buffer = ctx.get_command_buffer(QueueType::Graphics);
+
+        let mut queued_passes = HashSet::<PassIdx>::with_capacity(self.built_passes.len());
+        let mut lowest_queued_pass_idx = Option::<PassIdx>::None;
+        let mut highest_queued_pass_idx = Option::<PassIdx>::None;
+
+        while queued_passes.len() < self.built_passes.len() {
+            let mut best_score = Option::<(PassIdx, usize)>::None;
+            for pass in &self.built_passes {
+                if queued_passes.contains(&pass.pass_idx) {
+                    continue;
+                }
+
+                for access in
+                    &self.texture_accesses[pass.texture_accesses.start..pass.texture_accesses.end]
+                {
+                    let write = &self.texture_writes[access.handle.to_index()];
+                    if let Some(write_pass_idx) = write.write_pass_idx {
+                        if !queued_passes.contains(&write_pass_idx) {
+                            continue;
+                        }
+                    }
+                }
+
+                for access in
+                    &self.buffer_accesses[pass.buffer_accesses.start..pass.buffer_accesses.end]
+                {
+                    let write = &self.buffer_writes[access.handle.to_index()];
+                    if let Some(write_pass_idx) = write.write_pass_idx {
+                        if !queued_passes.contains(&write_pass_idx) {
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
 
         for (i, pass) in self.built_passes.iter().enumerate() {
             let baked_pass_idx = BakedPassIdx(i as u32);
@@ -1271,7 +1206,7 @@ impl RenderGraph {
             {
                 let write = &self.texture_writes[access.handle.to_index()];
                 if write.write_pass_idx != Some(pass.pass_idx)
-                    && write.following_reads_first_baked_pass_idx != Some(baked_pass_idx)
+                    && write.following_reads_first_pass_idx != Some(baked_pass_idx)
                 {
                     continue;
                 }
