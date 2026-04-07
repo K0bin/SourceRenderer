@@ -960,6 +960,69 @@ impl RenderGraph {
         history_access_type
     }
 
+    fn remove_unused_passes(
+        passes: &mut Vec<BakedRenderPass>,
+        texture_accesses: &[TextureAccess],
+        buffer_accesses: &[BufferAccess],
+        texture_writes: &mut [ResourceWrite<TextureHandle>],
+        buffer_writes: &mut [ResourceWrite<BufferHandle>],
+    ) {
+
+        let mut pass_active_bitset = 0u64;
+        for pass in &passes[..] {
+            for access in &texture_accesses[pass.texture_accesses.clone()] {
+                let texture = &texture_writes[access.handle.to_index()];
+                if let Some(pass_id) = texture.write_pass_idx {
+                    pass_active_bitset |= 1u64 << (pass_id.to_index() as u64);
+                }
+            }
+            for access in &buffer_accesses[pass.buffer_accesses.clone()] {
+                let buffer = &buffer_writes[access.handle.to_index()];
+                if let Some(pass_id) = buffer.write_pass_idx {
+                    pass_active_bitset |= 1u64 << (pass_id.to_index() as u64);
+                }
+            }
+        }
+
+        let mut pass_idx = 0u64;
+        let mut total = passes.len() as u64;
+        while pass_idx < total {
+            if (pass_active_bitset & (1u64 << pass_idx)) == 0u64 {
+                // The resources, written by this pass, are never read.
+                // Remove it.
+
+                let pass_to_remove = &passes[pass_idx as usize];
+                for access in &texture_accesses[pass_to_remove.texture_accesses.clone()] {
+                    let write = texture_writes[access.handle.to_index()].clone();
+                    if let Some(previous) = write.previous {
+                        texture_writes[previous.to_index()].next = write.next;
+                    }
+                    if let Some(next) = write.next {
+                        texture_writes[next.to_index()].previous = write.previous;
+                    }
+                    texture_writes[access.handle.to_index()].write_pass_idx = None;
+                }
+
+                for access in &buffer_accesses[pass_to_remove.buffer_accesses.clone()] {
+                    let write = buffer_writes[access.handle.to_index()].clone();
+                    if let Some(previous) = write.previous {
+                        buffer_writes[previous.to_index()].next = write.next;
+                    }
+                    if let Some(next) = write.next {
+                        buffer_writes[next.to_index()].previous = write.previous;
+                    }
+                    buffer_writes[access.handle.to_index()].write_pass_idx = None;
+                }
+
+                passes.remove(pass_idx as usize);
+                total -= 1u64;
+            } else {
+                pass_idx += 1u64;
+            }
+        }
+
+    }
+
     fn bake(&mut self, device: &Device) {
         self.built_passes.clear();
         self.textures.clear();
@@ -1019,6 +1082,8 @@ impl RenderGraph {
             desc.history_type =
                 Self::identify_history_accesses(current_handle, &mut self.buffer_writes);
         }
+
+        Self::remove_unused_passes(&mut self.built_passes, &self.texture_accesses, &self.buffer_accesses, &mut self.texture_writes, &mut self.buffer_writes);
 
         // TODO: Remove unused passes and the associated resource writes (based on following reads sync & following reads access but be careful about depth buffer writes)
 
@@ -1177,10 +1242,24 @@ impl RenderGraph {
                 for access in
                     &self.texture_accesses[pass.texture_accesses.start..pass.texture_accesses.end]
                 {
-                    let write = &self.texture_writes[access.handle.to_index()];
+                    let access_write = &self.texture_writes[access.handle.to_index()];
+                    let write_handle = Self::find_write_to_wait_for(
+                        pass.pass_idx,
+                        access_write,
+                        access.handle,
+                        &self.texture_writes,
+                    );
+                    let write = &self.texture_writes[write_handle.to_index()];
                     if let Some(write_pass_idx) = write.write_pass_idx {
                         if !queued_passes.contains(&write_pass_idx) {
                             continue;
+                        }
+                    }
+                    if write.following_reads_first_pass_idx.is_some() && write.following_reads_last_pass_idx.is_some() {
+                        for i in write.following_reads_first_pass_idx.unwrap().to_index() ..write.following_reads_last_pass_idx.unwrap().to_index() {
+                            if !queued_passes.contains(&PassIdx(i as u32)) {
+                                continue;
+                            }
                         }
                     }
                 }
@@ -1188,10 +1267,24 @@ impl RenderGraph {
                 for access in
                     &self.buffer_accesses[pass.buffer_accesses.start..pass.buffer_accesses.end]
                 {
-                    let write = &self.buffer_writes[access.handle.to_index()];
+                    let access_write = &self.buffer_writes[access.handle.to_index()];
+                    let write_handle = Self::find_write_to_wait_for(
+                        pass.pass_idx,
+                        access_write,
+                        access.handle,
+                        &self.buffer_writes,
+                    );
+                    let write = &self.buffer_writes[write_handle.to_index()];
                     if let Some(write_pass_idx) = write.write_pass_idx {
                         if !queued_passes.contains(&write_pass_idx) {
                             continue;
+                        }
+                    }
+                    if write.following_reads_first_pass_idx.is_some() && write.following_reads_last_pass_idx.is_some() {
+                        for i in write.following_reads_first_pass_idx.unwrap().to_index() ..write.following_reads_last_pass_idx.unwrap().to_index() {
+                            if !queued_passes.contains(&PassIdx(i as u32)) {
+                                continue;
+                            }
                         }
                     }
                 }
@@ -1276,9 +1369,10 @@ impl RenderGraph {
     fn get_texture_barrier<'a>(
         &self,
         texture: &'a Texture,
-        write: &ResourceWrite<TextureHandle>,
+        access: &TextureAccess,
     ) -> Barrier<'a> {
-        if write.access.is_write() && write.following_reads_first_pass_idx.is_some() {
+        let write = &self.texture_writes[access.handle.to_index()];
+        if access.kind.is_write() && write.following_reads_first_pass_idx.is_some() {
             // Barrier for upcoming reads. There will be a barrier at the last of those reads.
             Barrier::TextureBarrier {
                 old_sync: write.sync,
@@ -1291,7 +1385,7 @@ impl RenderGraph {
                 range: BarrierTextureRange::default(),
                 queue_ownership: None,
             }
-        } else if write.access.is_write() {
+        } else if access.kind.is_write() {
             // Barrier for the next write because there are no read passes (Can be the case for e.g. depth buffers)
             let next_write = &self.texture_writes[write.next.unwrap().to_index()];
             Barrier::TextureBarrier {
@@ -1340,9 +1434,10 @@ impl RenderGraph {
     fn get_buffer_barrier<'a>(
         &self,
         buffer: &'a Arc<BufferSlice>,
-        write: &ResourceWrite<BufferHandle>,
+        access: &BufferAccess,
     ) -> Barrier<'a> {
-        if write.access.is_write() && write.following_reads_first_pass_idx.is_some() {
+        let write = &self.buffer_writes[access.handle.to_index()];
+        if access.kind.is_write() && write.following_reads_first_pass_idx.is_some() {
             // Barrier for upcoming reads. There will be a barrier at the last of those reads.
             Barrier::BufferBarrier {
                 old_sync: write.sync,
@@ -1352,9 +1447,9 @@ impl RenderGraph {
                 buffer: BufferRef::Regular(buffer),
                 queue_ownership: None,
             }
-        } else if write.access.is_write() {
+        } else if access.kind.is_write() {
             // Barrier for the next write because there are no read passes (Can be the case for e.g. depth buffers)
-            let next_write = &self.texture_writes[write.next.unwrap().to_index()];
+            let next_write = &self.buffer_writes[write.next.unwrap().to_index()];
             Barrier::BufferBarrier {
                 old_sync: write.following_reads_syncs,
                 new_sync: next_write.sync,
@@ -1369,7 +1464,7 @@ impl RenderGraph {
             }
         } else if write.following_reads_first_pass_idx.is_some() {
             // Barrier for the next write from reads
-            let next_write = &self.texture_writes[write.next.unwrap().to_index()];
+            let next_write = &self.buffer_writes[write.next.unwrap().to_index()];
             Barrier::BufferBarrier {
                 old_sync: write.following_reads_syncs,
                 new_sync: next_write.sync,
