@@ -1,3 +1,5 @@
+mod new;
+
 use std::any::Any;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
@@ -412,7 +414,7 @@ pub struct ResourceAvailability {
     available_since_pass_idx: u32,
 }
 
-pub struct RenderPassResourceAccessContext<'a> {
+pub struct RenderPassResourceAccessfContext<'a> {
     device: &'a Device,
     pass_idx: PassIdx,
     texture_accesses: &'a mut Vec<TextureAccess>,
