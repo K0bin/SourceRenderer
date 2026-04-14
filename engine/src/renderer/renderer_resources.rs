@@ -480,7 +480,7 @@ impl RendererResources {
                     | BarrierSync::INDEX_INPUT
                     | BarrierSync::INDIRECT
                     | BarrierSync::ACCELERATION_STRUCTURE_BUILD
-                    | BarrierSync::RAY_TRACING),
+                    | BarrierSync::RAY_TRACING_SHADER),
             BarrierSync::empty()
         );
 

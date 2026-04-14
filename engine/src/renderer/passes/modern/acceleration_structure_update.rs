@@ -143,7 +143,7 @@ impl AccelerationStructureUpdatePass {
 
         cmd_buffer.barrier(&[Barrier::GlobalBarrier {
             old_sync: BarrierSync::ACCELERATION_STRUCTURE_BUILD,
-            new_sync: BarrierSync::RAY_TRACING,
+            new_sync: BarrierSync::RAY_TRACING_SHADER,
             old_access: BarrierAccess::ACCELERATION_STRUCTURE_WRITE,
             new_access: BarrierAccess::ACCELERATION_STRUCTURE_READ,
         }]);
