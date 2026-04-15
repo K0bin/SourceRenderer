@@ -2,63 +2,32 @@ use std::sync::Arc;
 
 use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;
-use crossbeam_channel::{
-    unbounded,
-    Receiver,
-    SendError,
-    Sender,
-    TryRecvError,
-};
+use crossbeam_channel::{unbounded, Receiver, SendError, Sender, TryRecvError};
 use sourcerenderer_core::console::Console;
 use sourcerenderer_core::Vec3;
-use web_time::{
-    Duration,
-    Instant,
-};
+use web_time::{Duration, Instant};
 
 use super::asset::RendererAssets;
-use super::drawable::{
-    make_camera_proj,
-    make_camera_view,
-    RendererStaticDrawable,
-};
-use super::ecs::{
-    DirectionalLightComponent,
-    PointLightComponent,
-};
+use super::drawable::{make_camera_proj, make_camera_view, RendererStaticDrawable};
+use super::ecs::{DirectionalLightComponent, PointLightComponent};
 use super::light::DirectionalLight;
 #[cfg(not(target_arch = "wasm32"))]
 use super::passes::modern::ModernRenderer;
 #[allow(unused_imports)]
 use super::passes::web::WebRenderer;
-use super::render_path::{
-    FrameInfo,
-    RenderPath,
-    SceneInfo,
-};
+use super::render_path::{FrameInfo, RenderPath, SceneInfo};
 use super::renderer_culling::update_visibility;
 use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
-use super::{
-    PointLight,
-    StaticRenderableComponent,
-};
-use crate::asset::{
-    AssetManager,
-    AssetType,
-};
-use crate::engine::{
-    EngineLoopFuncResult,
-    WindowState,
-};
+use super::{PointLight, StaticRenderableComponent};
+use crate::asset::{AssetManager, AssetType};
+use crate::engine::{EngineLoopFuncResult, WindowState};
 use crate::graphics::*;
 use crate::renderer::command::RendererCommand;
+use crate::renderer::passes::volume::VolumeRenderer;
 use crate::transform::InterpolatedTransform;
 use crate::ui::UIDrawData;
-use crate::{
-    Condvar,
-    Mutex,
-};
+use crate::{Condvar, Mutex};
 
 struct RendererState {
     queued_frames_counter: Mutex<u32>, // we need the mutex for the condvar anyway
@@ -152,14 +121,21 @@ impl Renderer {
         ));
 
         #[cfg(not(target_arch = "wasm32"))]
-        let render_path = Box::new(ModernRenderer::new(
+        /*let render_path = Box::new(ModernRenderer::new(
+            device,
+            &swapchain,
+            &mut context,
+            &mut resources,
+            &assets,
+        ));*/
+        //let render_path: Box<dyn RenderPath> = Box::new(NoOpRenderPath);
+        let render_path = Box::new(VolumeRenderer::new(
             device,
             &swapchain,
             &mut context,
             &mut resources,
             &assets,
         ));
-        //let render_path: Box<dyn RenderPath> = Box::new(NoOpRenderPath);
 
         Self {
             device: device.clone(),
