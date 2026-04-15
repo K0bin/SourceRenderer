@@ -22,8 +22,16 @@ layout (set = DESCRIPTOR_SET_FREQUENT, binding = 1) uniform sampler2D transferFu
 
 void main(void) {
     float colorComponent = min((in_density / 0.15) * 6.0 - 1.5, 0.7);
-    vec3 albedo = vec3(0.7, colorComponent, colorComponent);
+    //vec3 albedo = vec3(0.7, colorComponent, colorComponent);
+
+    vec3 albedo = texture(transferFunction, vec2(in_density * 7.5, 0.8)).rgb;
+    albedo.r = mix(albedo.r, albedo.g, 0.3);
+
     vec3 lightDir = normalize(vec3(0.1, 1.0, 0.1));
     vec3 viewDir = normalize(camera.position.xyz - in_worldPosition.xyz);
     out_color = vec4(min(albedo, vec3(0.1) * albedo + pbr(lightDir, viewDir, in_normal, vec3(0.025), albedo, vec3(15.0), 0.1, 0.8) * 0.6), 1.0);
+
+    out_color.a = colorComponent;
+
+    //out_color.rgb = in_normal * 0.5 + 0.5;
 }
