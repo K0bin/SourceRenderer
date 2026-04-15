@@ -25,5 +25,5 @@ void main(void) {
     vec3 albedo = vec3(0.7, colorComponent, colorComponent);
     vec3 lightDir = normalize(vec3(0.1, 1.0, 0.1));
     vec3 viewDir = normalize(camera.position.xyz - in_worldPosition.xyz);
-    out_color = vec4(vec3(0.4) * albedo + pbr(lightDir, viewDir, in_normal, vec3(0.025), albedo, vec3(15.0), 0.1, 0.8) * 0.6, 1.0);
+    out_color = vec4(min(albedo, vec3(0.1) * albedo + pbr(lightDir, viewDir, in_normal, vec3(0.025), albedo, vec3(15.0), 0.1, 0.8) * 0.6), 1.0);
 }
