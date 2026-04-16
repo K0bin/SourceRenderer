@@ -60,7 +60,7 @@ vec4 interpolateVertices(uvec3 pos1, uvec3 pos2) {
         return vec4(vec3(pos2), value2);
     }
     float a = (threshold - value1) / (value2 - value1);
-    return vec4(pos1, value1) + a * (vec4(pos2, value2) - vec4(pos1, value1));
+    return mix(vec4(pos1, value1), vec4(pos2, value2), a);
 }
 
 void main() {
@@ -163,16 +163,6 @@ void main() {
         indices[firstIndex + 2u] = index2;
 
         // Calculate normals
-
-        Vertex v1 = vertices[index0];
-        Vertex v2 = vertices[index1];
-        Vertex v3 = vertices[index2];
-
-        //f16vec3 faceNormal = normalize(cross(v1.pos - v2.pos, v1.pos - v3.pos));
-
-        /*vertices[index0].normal = faceNormal;
-        vertices[index1].normal = faceNormal;
-        vertices[index2].normal = faceNormal;*/
 
         vertices[index0].normal = normalize(vertices[index0].normal);
         vertices[index1].normal = normalize(vertices[index1].normal);
