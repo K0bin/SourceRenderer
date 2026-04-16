@@ -11,6 +11,7 @@ use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResource
 
 pub struct SSSPass {
     pipeline: ComputePipelineHandle,
+    linear_sampler: Arc<Sampler>,
 }
 
 #[repr(C)]
@@ -53,7 +54,24 @@ impl SSSPass {
 
         let pipeline = assets.request_compute_pipeline("shaders/subsurface_scattering.comp.json");
 
-        Self { pipeline }
+        let sampler = device.create_sampler(&SamplerInfo {
+            mag_filter: Filter::Linear,
+            min_filter: Filter::Linear,
+            mip_filter: Filter::Linear,
+            address_mode_u: AddressMode::ClampToBorder,
+            address_mode_v: AddressMode::ClampToBorder,
+            address_mode_w: AddressMode::ClampToBorder,
+            mip_bias: 0.0f32,
+            max_anisotropy: 1f32,
+            compare_op: None,
+            min_lod: 0.0f32,
+            max_lod: None,
+        });
+
+        Self {
+            pipeline,
+            linear_sampler: Arc::new(sampler),
+        }
     }
 
     #[inline(always)]
@@ -113,14 +131,14 @@ impl SSSPass {
             BindingFrequency::VeryFrequent,
             0,
             &*color_view,
-            pass_params.resources.linear_sampler(),
+            &self.linear_sampler,
         );
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &*sss_uav);
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::VeryFrequent,
             2,
             &*depth_srv,
-            pass_params.resources.linear_sampler(),
+            &self.linear_sampler,
         );
         cmd_buffer.bind_uniform_buffer(
             BindingFrequency::VeryFrequent,
