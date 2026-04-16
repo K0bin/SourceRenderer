@@ -141,7 +141,16 @@ impl GeometryPass {
                 logic_op_enabled: false,
                 logic_op: LogicOp::And,
                 constants: [0f32, 0f32, 0f32, 0f32],
-                attachments: &[AttachmentBlendInfo::default()],
+                attachments: &[AttachmentBlendInfo {
+                    blend_enabled: false,
+                    src_color_blend_factor: BlendFactor::SrcAlpha,
+                    dst_color_blend_factor: BlendFactor::OneMinusSrcAlpha,
+                    color_blend_op: BlendOp::Add,
+                    src_alpha_blend_factor: BlendFactor::Zero,
+                    dst_alpha_blend_factor: BlendFactor::One,
+                    alpha_blend_op: BlendOp::Add,
+                    write_mask: ColorComponents::all(),
+                }],
             },
             render_target_formats: &[swapchain.format()],
             depth_stencil_format: Format::D32,
@@ -149,6 +158,7 @@ impl GeometryPass {
         let pipeline = assets.request_graphics_pipeline(&pipeline_info);
 
         let (transfer_function_handle, _) = assets.asset_manager().request_asset(
+            //"assets/transferfunction_colorful.png",
             "assets/transferfunction.png",
             AssetType::Texture,
             AssetLoadPriority::Normal,
