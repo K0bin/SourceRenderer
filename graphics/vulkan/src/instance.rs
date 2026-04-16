@@ -1,11 +1,5 @@
-use std::ffi::{
-    CStr,
-    CString,
-};
-use std::os::raw::{
-    c_char,
-    c_void,
-};
+use std::ffi::{CStr, CString};
+use std::os::raw::{c_char, c_void};
 use std::sync::Arc;
 
 use ash::vk;

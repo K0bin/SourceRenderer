@@ -1,0 +1,155 @@
+use std::cell::Ref;
+use std::sync::Arc;
+
+use rand::random;
+use sourcerenderer_core::{Vec2I, Vec2UI, Vec4};
+
+use crate::graphics::*;
+use crate::renderer::asset::*;
+use crate::renderer::render_path::RenderPassParameters;
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
+
+pub struct SSSPass {
+    pipeline: ComputePipelineHandle,
+}
+
+#[repr(C)]
+#[derive(Clone, Debug)]
+struct SSSParams {
+    resolution: Vec2I,
+    unit_size: f32,
+    scale: f32,
+    vertical: bool,
+    orthogonal: bool,
+    depth_scale: f32,
+}
+
+impl SSSPass {
+    pub const SSS_INTERNAL_TEXTURE_NAME: &'static str = "SSS";
+
+    #[allow(unused)]
+    pub fn new(
+        device: &Arc<Device>,
+        resolution: Vec2UI,
+        resources: &mut RendererResources,
+        assets: &RendererAssets,
+    ) -> Self {
+        resources.create_texture(
+            Self::SSS_INTERNAL_TEXTURE_NAME,
+            &TextureInfo {
+                dimension: TextureDimension::Dim2D,
+                format: Format::RGBA8UNorm,
+                width: resolution.x,
+                height: resolution.y,
+                depth: 1,
+                mip_levels: 1,
+                array_length: 1,
+                samples: SampleCount::Samples1,
+                usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
+                supports_srgb: false,
+            },
+            false,
+        );
+
+        let pipeline = assets.request_compute_pipeline("shaders/subsurface_scattering.comp.json");
+
+        Self { pipeline }
+    }
+
+    #[inline(always)]
+    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
+        assets.get_compute_pipeline(self.pipeline).is_some()
+    }
+
+    pub fn execute(
+        &mut self,
+        cmd_buffer: &mut CommandBuffer,
+        pass_params: &RenderPassParameters<'_>,
+        color_name: &str,
+        depth_name: &str,
+        camera: &TransientBufferSlice,
+    ) {
+        let sss_uav = pass_params.resources.access_view(
+            cmd_buffer,
+            Self::SSS_INTERNAL_TEXTURE_NAME,
+            BarrierSync::COMPUTE_SHADER,
+            BarrierAccess::STORAGE_WRITE,
+            TextureLayout::Storage,
+            true,
+            &TextureViewInfo::default(),
+            HistoryResourceEntry::Current,
+        );
+
+        let color_view = pass_params.resources.access_view(
+            cmd_buffer,
+            color_name,
+            BarrierSync::COMPUTE_SHADER,
+            BarrierAccess::SAMPLING_READ,
+            TextureLayout::Sampled,
+            false,
+            &TextureViewInfo::default(),
+            HistoryResourceEntry::Current,
+        );
+
+        let depth_srv = pass_params.resources.access_view(
+            cmd_buffer,
+            depth_name,
+            BarrierSync::COMPUTE_SHADER,
+            BarrierAccess::SAMPLING_READ,
+            TextureLayout::Sampled,
+            false,
+            &TextureViewInfo::default(),
+            HistoryResourceEntry::Current,
+        );
+
+        cmd_buffer.begin_label("SSS pass");
+        let pipeline = pass_params
+            .assets
+            .get_compute_pipeline(self.pipeline)
+            .unwrap();
+        cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
+        cmd_buffer.flush_barriers();
+        cmd_buffer.bind_sampling_view_and_sampler(
+            BindingFrequency::VeryFrequent,
+            0,
+            &*color_view,
+            pass_params.resources.linear_sampler(),
+        );
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &*sss_uav);
+        cmd_buffer.bind_sampling_view_and_sampler(
+            BindingFrequency::VeryFrequent,
+            2,
+            &*depth_srv,
+            pass_params.resources.linear_sampler(),
+        );
+        cmd_buffer.bind_uniform_buffer(
+            BindingFrequency::VeryFrequent,
+            3,
+            BufferRef::Transient(camera),
+            0,
+            WHOLE_BUFFER,
+        );
+        cmd_buffer.finish_binding();
+        let sss_info = sss_uav.texture().unwrap().info();
+
+        let params = SSSParams {
+            resolution: Vec2I::new(sss_info.width as i32, sss_info.height as i32),
+            unit_size: 1.0f32,
+            scale: 1.0f32,
+            vertical: false,
+            orthogonal: false,
+            depth_scale: 1.0f32,
+        };
+        cmd_buffer.set_push_constant_data(&[params], ShaderType::ComputeShader);
+
+        cmd_buffer.dispatch(
+            (sss_info.width + 7) / 8,
+            (sss_info.height + 7) / 8,
+            sss_info.depth,
+        );
+
+        std::mem::drop(sss_uav);
+
+        cmd_buffer.end_label();
+    }
+}

@@ -6,6 +6,7 @@ use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::passes::marching_cubes::MarchingCubesPass;
 use crate::renderer::passes::volume::compositing::CompositingPass;
 use crate::renderer::passes::volume::ssao::SsaoPass;
+use crate::renderer::passes::volume::subsurfacescattering::SSSPass;
 use crate::renderer::render_path::{
     FrameInfo, RenderPassParameters, RenderPath, RenderPathResult, SceneInfo,
 };
@@ -15,6 +16,7 @@ use sourcerenderer_core::{Matrix4, Vec2UI, Vec3, Vec4};
 mod compositing;
 mod geometry;
 mod ssao;
+mod subsurfacescattering;
 
 pub use self::geometry::GeometryPass;
 
@@ -40,6 +42,7 @@ pub struct VolumeRenderer {
     marching_cubes_pass: MarchingCubesPass,
     geometry: GeometryPass,
     ssao: SsaoPass,
+    sss_pass: SSSPass,
     texture_handle: TextureHandle,
     texture_progress: Arc<AssetLoaderProgress>,
     threshold: f32,
@@ -55,6 +58,7 @@ impl VolumeRenderer {
         assets: &RendererAssets,
     ) -> Self {
         let (texture_handle, progress) = assets.asset_manager().request_asset(
+            //"ct_head_256.raw.txt",
             "manix.raw.txt",
             AssetType::Texture,
             AssetLoadPriority::High,
@@ -73,6 +77,13 @@ impl VolumeRenderer {
             resources,
             assets,
             false,
+        );
+
+        let sss = SSSPass::new(
+            device,
+            Vec2UI::new(swapchain.width(), swapchain.height()),
+            resources,
+            assets,
         );
 
         let comp = CompositingPass::new(device, assets);
@@ -105,6 +116,7 @@ impl VolumeRenderer {
             marching_cubes_pass,
             geometry: geometry_pass,
             ssao,
+            sss_pass: sss,
             texture_handle: TextureHandle::from(texture_handle),
             texture_progress: progress,
             //threshold: 0.0505f32,
@@ -144,6 +156,10 @@ impl RenderPath for VolumeRenderer {
         //self.threshold += 0.000005f32;
         self.threshold += 0.00005f32;
         self.threshold = self.threshold % 0.10f32;
+        //self.threshold += 50.00005f32;
+        //self.threshold = self.threshold % 1.0f32;
+
+        //self.threshold = 0.00005f32 * 150.0f32;
 
         let backbuffer = swapchain.next_backbuffer()?;
 
@@ -210,6 +226,14 @@ impl RenderPath for VolumeRenderer {
             &camera_buffer,
         );
 
+        self.sss_pass.execute(
+            &mut cmd_buffer,
+            &params,
+            GeometryPass::COLOR_TEXTURE_NAME,
+            GeometryPass::DEPTH_TEXTURE_NAME,
+            &camera_buffer,
+        );
+
         let backbuffer_view = swapchain.backbuffer_view(&backbuffer);
         let backbuffer_handle = swapchain.backbuffer_handle(&backbuffer);
 
@@ -218,7 +242,8 @@ impl RenderPath for VolumeRenderer {
             &backbuffer_view,
             backbuffer_handle,
             &params,
-            GeometryPass::COLOR_TEXTURE_NAME,
+            SSSPass::SSS_INTERNAL_TEXTURE_NAME,
+            //GeometryPass::COLOR_TEXTURE_NAME,
             SsaoPass::SSAO_TEXTURE_NAME,
         );
 
