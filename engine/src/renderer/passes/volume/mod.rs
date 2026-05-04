@@ -15,6 +15,7 @@ use sourcerenderer_core::{Matrix4, Vec2UI, Vec3, Vec4};
 
 mod compositing;
 mod geometry;
+mod ibl;
 mod ssao;
 mod subsurfacescattering;
 

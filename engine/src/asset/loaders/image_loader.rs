@@ -1,22 +1,9 @@
 use std::sync::Arc;
 
-use image::{
-    GenericImageView,
-    ImageFormat,
-    ImageReader,
-};
+use image::{EncodableLayout, GenericImageView, ImageFormat, ImageReader};
 
-use crate::asset::asset_manager::{
-    AssetFile,
-    AssetLoader,
-};
-use crate::asset::{
-    AssetData,
-    AssetLoadPriority,
-    AssetLoaderProgress,
-    AssetManager,
-    TextureData,
-};
+use crate::asset::asset_manager::{AssetFile, AssetLoader};
+use crate::asset::{AssetData, AssetLoadPriority, AssetLoaderProgress, AssetManager, TextureData};
 use crate::graphics::*;
 
 pub struct ImageLoader {}
@@ -32,6 +19,7 @@ impl AssetLoader for ImageLoader {
         file.path().ends_with(".png")
             || file.path().ends_with(".jpg")
             || file.path().ends_with(".jpeg")
+            || file.path().ends_with(".hdr")
     }
 
     async fn load(
@@ -43,6 +31,8 @@ impl AssetLoader for ImageLoader {
     ) -> Result<(), ()> {
         let path = file.path().to_string();
         let is_png = file.path().ends_with(".png");
+        let is_jpeg = !is_png && (file.path().ends_with(".jpeg") || file.path().ends_with(".jpg"));
+        let is_hdr = !is_png && !is_jpeg && file.path().ends_with(".hdr");
 
         let cursor = file.into_memory_cursor().await.map_err(|_| ())?;
 
@@ -50,8 +40,12 @@ impl AssetLoader for ImageLoader {
             cursor,
             if is_png {
                 ImageFormat::Png
-            } else {
+            } else if is_jpeg {
                 ImageFormat::Jpeg
+            } else if is_hdr {
+                ImageFormat::Hdr
+            } else {
+                panic!("Unsupported image format")
             },
         );
         let img = image_reader
@@ -61,7 +55,13 @@ impl AssetLoader for ImageLoader {
 
         let (format, data) = match img {
             image::DynamicImage::ImageRgba8(data) => (Format::RGBA8UNorm, data.as_raw().clone()),
-            _ => (Format::RGBA8UNorm, img.into_rgba8().as_raw().clone()),
+            image::DynamicImage::ImageRgba16(data) => {
+                (Format::RGBA16Float, Vec::<u8>::from(data.as_bytes()))
+            }
+            image::DynamicImage::ImageRgba32F(data) => {
+                (Format::RGBA32Float, Vec::<u8>::from(data.as_bytes()))
+            }
+            _ => (Format::RGBA8UNorm, img.into_rgba8().into_raw()),
         };
 
         manager.add_asset_data_with_progress(
