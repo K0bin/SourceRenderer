@@ -69,6 +69,7 @@ impl Format {
             Format::RGB32Float => 12,
             Format::RGBA32Float => 16,
             Format::RGBA8UNorm => 4,
+            Format::RGBA16Float => 2,
 
             Format::BC1 => 8,
             Format::BC1Alpha => 8,
