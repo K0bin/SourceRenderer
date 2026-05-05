@@ -9,25 +9,13 @@ use bevy_input::keyboard::KeyboardInput;
 use bevy_input::mouse::MouseMotion;
 use bevy_input::InputPlugin;
 use bevy_log::LogPlugin;
-use bevy_time::{
-    Fixed,
-    Time,
-    TimePlugin,
-};
+use bevy_time::{Fixed, Time, TimePlugin};
 use bevy_transform::TransformPlugin;
 use sourcerenderer_core::console::Console;
-use sourcerenderer_core::platform::{
-    GraphicsPlatform,
-    PlatformIO,
-    Window,
-};
+use sourcerenderer_core::platform::{GraphicsPlatform, PlatformIO, Window};
 use sourcerenderer_core::Vec2UI;
 
-use crate::asset::{
-    AssetManager,
-    AssetManagerECSResource,
-    AssetManagerPlugin,
-};
+use crate::asset::{AssetManager, AssetManagerECSResource, AssetManagerPlugin};
 use crate::graphics::*;
 use crate::renderer::RendererPlugin;
 use crate::transform::InterpolationPlugin;
@@ -144,8 +132,9 @@ impl Engine {
     }
 
     pub fn is_mouse_locked(&self) -> bool {
-        false
-        //self.input.poll().mouse_locked()
+        //false
+        true
+        //self.app..poll().mouse_locked()
     }
 
     pub fn dispatch_keyboard_input(&mut self, input: KeyboardInput) {

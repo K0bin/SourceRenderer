@@ -1,6 +1,7 @@
 use crate::asset::{AssetHandle, AssetLoadPriority, AssetType, TextureHandle};
-use crate::graphics::{CommandBuffer, RenderPassBeginInfo, RenderTarget, StoreOp};
-use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
+use crate::graphics::{CommandBuffer, PipelineBinding, RenderPassBeginInfo, RenderTarget, StoreOp};
+use crate::renderer::asset::{ComputePipelineHandle, RendererAssets, RendererAssetsReadOnly};
+use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use sourcerenderer_core::gpu::{
     BindingFrequency, ClearColor, Format, LoadOpColor, SampleCount, TextureDimension, TextureInfo,
@@ -10,6 +11,7 @@ use std::sync::Arc;
 
 pub struct ImageBasedLightingPreparation {
     handle: TextureHandle,
+    pipeline: ComputePipelineHandle,
     prepared: bool,
 }
 
@@ -27,8 +29,11 @@ impl ImageBasedLightingPreparation {
             AssetLoadPriority::Normal,
         );
 
+        let pipeline = assets.request_compute_pipeline("shaders/project_equirectangular.comp.json");
+
         Self {
             handle: TextureHandle::from(ibl_map_handle),
+            pipeline,
             prepared: false,
         }
     }
@@ -36,10 +41,9 @@ impl ImageBasedLightingPreparation {
     pub fn execute(
         &mut self,
         cmd_buffer: &mut CommandBuffer,
-        assets: &RendererAssetsReadOnly<'_>,
-        resources: &mut RendererResources,
+        pass_params: RenderPassParameters<'_>,
     ) {
-        let texture = assets.get_texture_opt(self.handle);
+        let texture = pass_params.assets.get_texture_opt(self.handle);
         if texture.is_none() || self.prepared {
             return;
         }
@@ -47,7 +51,7 @@ impl ImageBasedLightingPreparation {
         let info = texture.view.texture().unwrap().info();
         let mips = 32u32 - u32::leading_zeros(info.width.max(info.height));
 
-        resources.create_texture(
+        pass_params.resources.create_texture(
             Self::ENVIRONMENT_MAP_TEXTURE_NAME,
             &TextureInfo {
                 dimension: TextureDimension::Dim2DArray,
@@ -64,41 +68,55 @@ impl ImageBasedLightingPreparation {
             false,
         );
 
-        for face in 0..6 {
-            for mip in 0..mips {
-                let rt = resources.get_view(
-                    Self::ENVIRONMENT_MAP_TEXTURE_NAME,
-                    &TextureViewInfo {
-                        base_mip_level: mip,
-                        mip_level_length: 1u32,
-                        base_array_layer: face,
-                        array_layer_length: 0,
-                        format: None,
-                    },
-                    HistoryResourceEntry::Current,
-                );
+        let pipeline = pass_params
+            .assets
+            .get_compute_pipeline(self.pipeline)
+            .unwrap();
+        cmd_buffer.set_pipeline(PipelineBinding::Compute(pipeline));
 
-                cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
-                    render_targets: &[RenderTarget {
-                        view: &rt,
-                        load_op: LoadOpColor::Clear(ClearColor::from_u32([0, 0, 0, 0])),
-                        store_op: StoreOp::Store,
-                    }],
-                    depth_stencil: None,
-                    query_range: None,
-                });
+        let cube = pass_params.resources.get_view(
+            Self::ENVIRONMENT_MAP_TEXTURE_NAME,
+            &TextureViewInfo {
+                base_mip_level: 0u32,
+                mip_level_length: 1u32,
+                base_array_layer: 0u32,
+                array_layer_length: 6u32,
+                format: None,
+            },
+            HistoryResourceEntry::Current,
+        );
+        cmd_buffer.bind_sampling_view_and_sampler(
+            BindingFrequency::VeryFrequent,
+            0u32,
+            &texture.view,
+            pass_params.resources.linear_sampler(),
+        );
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1u32, &cube);
 
-                cmd_buffer.bind_sampling_view_and_sampler(
-                    BindingFrequency::VeryFrequent,
-                    0,
-                    &texture.view,
-                    resources.linear_sampler(),
-                );
-                cmd_buffer.finish_binding();
-                cmd_buffer.draw(3, 1, 0, 0);
+        for mip in 0..mips {
+            cmd_buffer.finish_binding();
+            cmd_buffer.dispatch((info.width + 7) / 8, (info.height + 7) / 8, 6);
 
-                cmd_buffer.end_render_pass();
-            }
+            /*cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
+                render_targets: &[RenderTarget {
+                    view: &rt,
+                    load_op: LoadOpColor::Clear(ClearColor::from_u32([0, 0, 0, 0])),
+                    store_op: StoreOp::Store,
+                }],
+                depth_stencil: None,
+                query_range: None,
+            });
+
+            cmd_buffer.bind_sampling_view_and_sampler(
+                BindingFrequency::VeryFrequent,
+                0,
+                &texture.view,
+                resources.linear_sampler(),
+            );
+            cmd_buffer.finish_binding();
+            cmd_buffer.draw(3, 1, 0, 0);
+
+            cmd_buffer.end_render_pass();*/
         }
         self.prepared = true;
     }
