@@ -4,11 +4,11 @@ use std::hash::{Hash, Hasher};
 use std::pin::Pin;
 use std::sync::Arc;
 
+use super::*;
 use ash::vk;
 use ash::vk::Handle as _;
+use sourcerenderer_core::gpu::TextureDimension;
 use sourcerenderer_core::{gpu, FixedSizeSmallVec};
-
-use super::*;
 
 pub(crate) struct VkImageCreateInfoCollection<'a> {
     pub(crate) create_info: vk::ImageCreateInfo<'a>,
@@ -45,8 +45,18 @@ impl VkTexture {
         mut target: Pin<&mut VkImageCreateInfoCollection>,
         info: &gpu::TextureInfo,
     ) {
+        let mut array_layers = info.array_length;
+        let mut flags = vk::ImageCreateFlags::empty();
+
+        if info.dimension == TextureDimension::Cube || info.dimension == TextureDimension::CubeArray
+        {
+            array_layers *= 6u32;
+            flags |= vk::ImageCreateFlags::CUBE_COMPATIBLE;
+            debug_assert!(info.width == info.height);
+        }
+
         target.create_info = vk::ImageCreateInfo {
-            flags: vk::ImageCreateFlags::empty(),
+            flags,
             tiling: vk::ImageTiling::OPTIMAL,
             initial_layout: vk::ImageLayout::UNDEFINED,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
@@ -68,7 +78,7 @@ impl VkTexture {
             },
             format: format_to_vk(info.format, device.supports_d24),
             mip_levels: info.mip_levels,
-            array_layers: info.array_length,
+            array_layers,
             samples: samples_to_vk(info.samples),
             ..Default::default()
         };
@@ -76,14 +86,19 @@ impl VkTexture {
         debug_assert!(
             info.array_length == 1
                 || (info.dimension == gpu::TextureDimension::Dim1DArray
-                    || info.dimension == gpu::TextureDimension::Dim2DArray)
+                    || info.dimension == gpu::TextureDimension::Dim2DArray
+                    || info.dimension == gpu::TextureDimension::CubeArray)
         );
+        debug_assert!(info.dimension != gpu::TextureDimension::Cube || array_layers == 6);
+        debug_assert!(info.dimension != gpu::TextureDimension::CubeArray || array_layers % 6 == 0);
         debug_assert!(info.depth == 1 || info.dimension == gpu::TextureDimension::Dim3D);
         debug_assert!(
             info.height == 1
                 || (info.dimension == gpu::TextureDimension::Dim2D
                     || info.dimension == gpu::TextureDimension::Dim2DArray
-                    || info.dimension == gpu::TextureDimension::Dim3D)
+                    || info.dimension == gpu::TextureDimension::Dim3D
+                    || info.dimension == gpu::TextureDimension::Cube
+                    || info.dimension == gpu::TextureDimension::CubeArray)
         );
 
         let main_format = target.create_info.format;
@@ -477,9 +492,9 @@ impl VkTextureView {
                 gpu::TextureDimension::Dim2D => vk::ImageViewType::TYPE_2D,
                 gpu::TextureDimension::Dim3D => vk::ImageViewType::TYPE_3D,
                 gpu::TextureDimension::Dim1DArray => vk::ImageViewType::TYPE_1D_ARRAY,
-                gpu::TextureDimension::Dim2DArray
-                | gpu::TextureDimension::Cube
-                | gpu::TextureDimension::CubeArray => vk::ImageViewType::TYPE_2D_ARRAY,
+                gpu::TextureDimension::Dim2DArray => vk::ImageViewType::TYPE_2D_ARRAY,
+                gpu::TextureDimension::Cube => vk::ImageViewType::CUBE,
+                gpu::TextureDimension::CubeArray => vk::ImageViewType::CUBE_ARRAY,
             },
             format: format_to_vk(format, device.supports_d24),
             components: vk::ComponentMapping {

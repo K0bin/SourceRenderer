@@ -141,8 +141,16 @@ impl RendererResources {
 
     pub fn create_texture(&mut self, name: &str, info: &TextureInfo, has_history: bool) {
         let mut subresources: Vec<TrackedTextureSubresource> = Vec::new();
+        let array_layers = info.array_length
+            * if info.dimension == TextureDimension::Cube
+                || info.dimension == TextureDimension::CubeArray
+            {
+                6u32
+            } else {
+                1u32
+            };
         subresources.resize(
-            calculate_subresources(info.mip_levels, info.array_length) as usize,
+            calculate_subresources(info.mip_levels, array_layers) as usize,
             TrackedTextureSubresource::default(),
         );
 
