@@ -50,15 +50,20 @@ vec3 getSamplingVector()
     return normalize(ret);
 }
 
+vec2 directionToSphericalEnvmap(vec3 dir) {
+    // Convert Cartesian direction vector to spherical coordinates.
+    float phi   = atan(dir.z, dir.x);
+    float theta = acos(dir.y);
+    return vec2(0.5 - phi/TwoPI, theta/PI);
+}
+
 void main(void) {
     vec3 v = getSamplingVector();
 
-    // Convert Cartesian direction vector to spherical coordinates.
-    float phi   = atan(v.z, v.x);
-    float theta = acos(v.y);
+    vec2 sphericalUV = directionToSphericalEnvmap(v);
 
     // Sample equirectangular texture.
-    vec4 color = texture(envMap, vec2(phi/TwoPI, theta/PI));
+    vec4 color = texture(envMap, sphericalUV);
 
     // Write out color to output cubemap.
     imageStore(outputTexture, ivec3(gl_GlobalInvocationID), color);
