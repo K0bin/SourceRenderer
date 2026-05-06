@@ -152,7 +152,7 @@ impl GeometryPass {
                     write_mask: ColorComponents::all(),
                 }],
             },
-            render_target_formats: &[swapchain.format()],
+            render_target_formats: &[Format::RGBA8UNorm],
             depth_stencil_format: Format::D32,
         };
         let pipeline = assets.request_graphics_pipeline(&pipeline_info);

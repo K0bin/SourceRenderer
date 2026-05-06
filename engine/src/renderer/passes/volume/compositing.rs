@@ -22,7 +22,11 @@ pub struct CompositingPass {
 }
 
 impl CompositingPass {
-    pub fn new(device: &Arc<Device>, assets: &RendererAssets) -> Self {
+    pub fn new(
+        device: &Arc<Device>,
+        assets: &RendererAssets,
+        swapchain: &crate::graphics::Swapchain,
+    ) -> Self {
         let shader_file_extension = "json";
 
         let pipeline = assets.request_graphics_pipeline(&GraphicsPipelineInfo {
@@ -68,7 +72,7 @@ impl CompositingPass {
                 constants: [0.0f32; 4],
             },
             primitive_type: PrimitiveType::Triangles,
-            render_target_formats: &[Format::RGBA8UNorm],
+            render_target_formats: &[swapchain.format()],
             depth_stencil_format: Format::Unknown,
         });
 

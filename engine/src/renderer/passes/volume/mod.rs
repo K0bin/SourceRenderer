@@ -5,6 +5,7 @@ use crate::graphics::{GraphicsContext, *};
 use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::passes::marching_cubes::MarchingCubesPass;
 use crate::renderer::passes::volume::compositing::CompositingPass;
+use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
 use crate::renderer::passes::volume::ssao::SsaoPass;
 use crate::renderer::passes::volume::subsurfacescattering::SSSPass;
 use crate::renderer::render_path::{
@@ -44,6 +45,7 @@ pub struct VolumeRenderer {
     geometry: GeometryPass,
     ssao: SsaoPass,
     sss_pass: SSSPass,
+    ibl_pass: ImageBasedLightingPreparation,
     texture_handle: TextureHandle,
     texture_progress: Arc<AssetLoaderProgress>,
     threshold: f32,
@@ -87,7 +89,10 @@ impl VolumeRenderer {
             assets,
         );
 
-        let comp = CompositingPass::new(device, assets);
+        let comp = CompositingPass::new(device, assets, swapchain);
+
+        let ibl_prep =
+            ImageBasedLightingPreparation::new(device, assets, &mut init_cmd_buffer, resources);
 
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
@@ -118,6 +123,7 @@ impl VolumeRenderer {
             geometry: geometry_pass,
             ssao,
             sss_pass: sss,
+            ibl_pass: ibl_prep,
             texture_handle: TextureHandle::from(texture_handle),
             texture_progress: progress,
             //threshold: 0.0505f32,
@@ -166,7 +172,7 @@ impl RenderPath for VolumeRenderer {
 
         let mut cmd_buffer = context.get_command_buffer(QueueType::Graphics);
 
-        let params = RenderPassParameters {
+        let mut params = RenderPassParameters {
             device: self.device.as_ref(),
             scene,
             resources,
@@ -180,6 +186,8 @@ impl RenderPath for VolumeRenderer {
             self.threshold,
             Vec3::new(0.488281f32, 0.488281f32, 0.700012f32) * 8f32 * 0.01f32,
         );
+
+        self.ibl_pass.execute(&mut cmd_buffer, &mut params);
 
         let main_view = &scene.scene.views()[scene.active_view_index];
 

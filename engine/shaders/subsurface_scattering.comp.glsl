@@ -104,7 +104,7 @@ layout(push_constant, std430) uniform Params {
 } params;
 
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform sampler2D source_image;
-layout(rgba16f, set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform restrict writeonly image2D dest_image;
+layout(rgba8, set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform restrict writeonly image2D dest_image;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform sampler2D source_depth;
 
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3) uniform CameraUBO {
@@ -139,7 +139,7 @@ void main() {
 	// Pixel being shaded
 	ivec2 ssC = ivec2(gl_GlobalInvocationID.xy);
 
-	if (any(greaterThanEqual(ssC, params.screen_size))) { //too large, do nothing
+	if (any(greaterThanEqual(ssC - ivec2(1,1), params.screen_size))) { //too large, do nothing
 		return;
 	}
 
