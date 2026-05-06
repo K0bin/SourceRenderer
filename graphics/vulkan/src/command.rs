@@ -1816,7 +1816,17 @@ fn barriers_to_vk<'a>(
                 range,
                 queue_ownership,
             } => {
+                let mut base_array_layer = range.base_array_layer;
+                let mut array_length = range.array_layer_length;
+
                 let info = texture.info();
+                if info.dimension == gpu::TextureDimension::Cube
+                    || info.dimension == gpu::TextureDimension::CubeArray
+                {
+                    array_length *= 6u32;
+                    base_array_layer *= 6u32;
+                };
+
                 let mut aspect_mask = vk::ImageAspectFlags::empty();
                 if info.format.is_depth() {
                     aspect_mask |= vk::ImageAspectFlags::DEPTH;
@@ -1849,10 +1859,10 @@ fn barriers_to_vk<'a>(
                     image: texture.handle(),
                     subresource_range: vk::ImageSubresourceRange {
                         aspect_mask,
-                        base_array_layer: range.base_array_layer,
+                        base_array_layer: base_array_layer,
                         base_mip_level: range.base_mip_level,
                         level_count: range.mip_level_length,
-                        layer_count: range.array_layer_length,
+                        layer_count: array_length,
                     },
                     ..Default::default()
                 };

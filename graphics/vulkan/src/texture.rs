@@ -484,6 +484,15 @@ impl VkTextureView {
         info: &gpu::TextureViewInfo,
         name: Option<&str>,
     ) -> Self {
+        let mut array_length = info.array_layer_length;
+        let mut base_array_layer = info.base_array_layer;
+        if texture.info.dimension == gpu::TextureDimension::Cube
+            || texture.info.dimension == gpu::TextureDimension::CubeArray
+        {
+            array_length *= 6u32;
+            base_array_layer *= 6u32;
+        };
+        // TODO: Support 2D views of cubemaps
         let format = info.format.unwrap_or(texture.info.format);
         let view_create_info = vk::ImageViewCreateInfo {
             image: texture.handle(),
@@ -507,8 +516,8 @@ impl VkTextureView {
                 aspect_mask: aspect_mask_from_format(format),
                 base_mip_level: info.base_mip_level,
                 level_count: info.mip_level_length,
-                base_array_layer: info.base_array_layer,
-                layer_count: info.array_layer_length,
+                base_array_layer,
+                layer_count: array_length,
             },
             ..Default::default()
         };
