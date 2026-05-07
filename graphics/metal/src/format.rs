@@ -26,6 +26,7 @@ pub(crate) fn format_to_mtl(format: Format) -> MTLPixelFormat {
         Format::RG8UNorm => MTLPixelFormat::RG8Unorm,
         Format::R32UInt => MTLPixelFormat::R32Uint,
         Format::RGBA16Float => MTLPixelFormat::RGBA16Float,
+        Format::RGBA16Unorm => MTLPixelFormat::RGBA16Unorm,
         Format::R11G11B10Float => MTLPixelFormat::RG11B10Float,
         Format::RG16UInt => MTLPixelFormat::RG16Uint,
         Format::R16UInt => MTLPixelFormat::R16Uint,

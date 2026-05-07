@@ -27,6 +27,7 @@ pub enum Format {
     RG8UNorm,
     R32UInt,
     RGBA16Float,
+    RGBA16Unorm,
     R11G11B10Float,
     RG16UInt,
     RG16SInt,
@@ -70,6 +71,7 @@ impl Format {
             Format::RGBA32Float => 16,
             Format::RGBA8UNorm => 4,
             Format::RGBA16Float => 2,
+            Format::RGBA16Unorm => 2,
 
             Format::BC1 => 8,
             Format::BC1Alpha => 8,
@@ -118,7 +120,8 @@ impl Format {
             | Format::BGR8UNorm
             | Format::RG16UNorm
             | Format::RGBA8UNorm
-            | Format::BGRA8UNorm => true,
+            | Format::BGRA8UNorm
+            | Format::RGBA16Unorm => true,
             _ => false,
         }
     }
