@@ -341,6 +341,7 @@ impl MTLGraphicsPipeline {
                 gpu::Format::RG16UNorm => objc2_metal::MTLVertexFormat::UShort2Normalized,
                 gpu::Format::R32UInt => objc2_metal::MTLVertexFormat::UInt,
                 gpu::Format::RGB16Float => objc2_metal::MTLVertexFormat::Half3,
+                gpu::Format::RGBA16Float => objc2_metal::MTLVertexFormat::Half4,
                 _ => panic!("Unsupported format"),
             });
             vertex_descriptor
