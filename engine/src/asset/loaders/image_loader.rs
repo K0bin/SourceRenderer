@@ -56,7 +56,7 @@ impl AssetLoader for ImageLoader {
         let (format, data) = match img {
             image::DynamicImage::ImageRgba8(data) => (Format::RGBA8UNorm, data.as_raw().clone()),
             image::DynamicImage::ImageRgba16(data) => {
-                (Format::RGBA16Float, Vec::<u8>::from(data.as_bytes()))
+                (Format::RGBA16Unorm, Vec::<u8>::from(data.as_bytes()))
             }
             image::DynamicImage::ImageRgba32F(data) => {
                 (Format::RGBA32Float, Vec::<u8>::from(data.as_bytes()))
