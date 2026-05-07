@@ -24,7 +24,7 @@ layout(local_size_x = 8,
 #include "util.inc.glsl"
 
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform samplerCube envMap;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, rgba16f) uniform coherent writeonly imageCube outputTexture;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, rgba8) uniform coherent writeonly imageCube outputTexture;
 
 // from http://holger.dammertz.org/stuff/notes_HammersleyOnHemisphere.html
 // Hacker's Delight, Henry S. Warren, 2001

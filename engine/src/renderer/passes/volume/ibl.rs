@@ -50,6 +50,7 @@ impl ImageBasedLightingPreparation {
         cmd_buffer: &mut CommandBuffer,
         pass_params: &mut RenderPassParameters<'_>,
     ) {
+        cmd_buffer.begin_label("Environment Map deprojecting");
         let texture = pass_params.assets.get_texture_opt(self.handle);
         let texture = texture.unwrap();
         let info = texture.view.texture().unwrap().info();
@@ -59,7 +60,7 @@ impl ImageBasedLightingPreparation {
             Self::ENVIRONMENT_MAP_TEXTURE_NAME,
             &TextureInfo {
                 dimension: TextureDimension::Cube,
-                format: Format::RGBA16Float,
+                format: Format::RGBA8UNorm,
                 width: size,
                 height: size,
                 depth: 1u32,
@@ -103,6 +104,7 @@ impl ImageBasedLightingPreparation {
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1u32, &cube);
         cmd_buffer.finish_binding();
         cmd_buffer.dispatch((size + 7) / 8, (size + 7) / 8, 6);
+        cmd_buffer.end_label();
     }
 
     fn filter_env_map(
@@ -110,6 +112,7 @@ impl ImageBasedLightingPreparation {
         cmd_buffer: &mut CommandBuffer,
         pass_params: &mut RenderPassParameters<'_>,
     ) {
+        cmd_buffer.begin_label("Environment Map prefiltering");
         let mut info = pass_params
             .resources
             .texture_info(Self::ENVIRONMENT_MAP_TEXTURE_NAME)
@@ -169,6 +172,7 @@ impl ImageBasedLightingPreparation {
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1u32, &filtered_cube);
         cmd_buffer.finish_binding();
         cmd_buffer.dispatch((info.width + 7) / 8, (info.height + 7) / 8, 6);
+        cmd_buffer.end_label();
     }
 
     pub fn execute(

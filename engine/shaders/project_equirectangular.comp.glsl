@@ -24,7 +24,7 @@ layout(local_size_x = 8,
 #include "util.inc.glsl"
 
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform sampler2D envMap;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, rgba16f) uniform coherent writeonly imageCube outputTexture;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, rgba8) uniform coherent writeonly imageCube outputTexture;
 
 const float PI = 3.141592;
 const float TwoPI = 2 * PI;
