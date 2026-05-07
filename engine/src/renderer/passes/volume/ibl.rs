@@ -15,6 +15,7 @@ pub struct ImageBasedLightingPreparation {
     project_to_cube_pipeline: ComputePipelineHandle,
     prefilter_diffuse_pipeline: ComputePipelineHandle,
     prefilter_specular_pipeline: ComputePipelineHandle,
+    preintegrate_pipeline: ComputePipelineHandle,
     prepared: bool,
 }
 
@@ -24,11 +25,12 @@ impl ImageBasedLightingPreparation {
         "FilteredDiffuseEnvironmentMap";
     pub const FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME: &'static str =
         "FilteredSpecularEnvironmentMap";
+    pub const PREINTEGRATION_MAP_TEXTURE_NAME: &'static str = "PreintegrationMap";
     pub(crate) fn new(
         _device: &Arc<crate::graphics::Device>,
         assets: &RendererAssets,
         _init_cmd_buffer: &mut crate::graphics::CommandBuffer,
-        _resources: &mut RendererResources,
+        resources: &mut RendererResources,
     ) -> Self {
         let (ibl_map_handle, _) = assets.asset_manager().request_asset(
             //"assets/little_paris_eiffel_tower_4k.hdr",
@@ -37,20 +39,76 @@ impl ImageBasedLightingPreparation {
             AssetLoadPriority::Normal,
         );
 
+        resources.create_texture(
+            Self::PREINTEGRATION_MAP_TEXTURE_NAME,
+            &TextureInfo {
+                dimension: TextureDimension::Dim2D,
+                format: Format::RG16UNorm,
+                width: 512,
+                height: 512,
+                depth: 1u32,
+                mip_levels: 1u32,
+                array_length: 1u32,
+                samples: SampleCount::Samples1,
+                usage: TextureUsage::SAMPLED | TextureUsage::STORAGE,
+                supports_srgb: false,
+            },
+            false,
+        );
+
         let project_to_cube_pipeline =
             assets.request_compute_pipeline("shaders/project_equirectangular.comp.json");
         let prefilter_diffuse_pipeline =
             assets.request_compute_pipeline("shaders/prefilter_env_map_diffuse.comp.json");
         let prefilter_specular_pipeline =
             assets.request_compute_pipeline("shaders/prefilter_env_map_specular.comp.json");
+        let preintegrate_pipeline =
+            assets.request_compute_pipeline("shaders/preintegrate_brdf.comp.json");
 
         Self {
             handle: TextureHandle::from(ibl_map_handle),
             project_to_cube_pipeline,
             prefilter_diffuse_pipeline,
             prefilter_specular_pipeline,
+            preintegrate_pipeline,
             prepared: false,
         }
+    }
+
+    fn calculate_preintegration_lut(
+        &mut self,
+        cmd_buffer: &mut CommandBuffer,
+        pass_params: &mut RenderPassParameters<'_>,
+    ) {
+        cmd_buffer.begin_label("Calculate integration LUT");
+
+        let lut = pass_params.resources.access_view(
+            cmd_buffer,
+            Self::PREINTEGRATION_MAP_TEXTURE_NAME,
+            BarrierSync::COMPUTE_SHADER,
+            BarrierAccess::STORAGE_WRITE,
+            TextureLayout::Storage,
+            true,
+            &TextureViewInfo {
+                base_mip_level: 0u32,
+                mip_level_length: 1u32,
+                base_array_layer: 0u32,
+                array_layer_length: 1u32,
+                format: None,
+            },
+            HistoryResourceEntry::Current,
+        );
+
+        let pipeline = pass_params
+            .assets
+            .get_compute_pipeline(self.preintegrate_pipeline)
+            .unwrap();
+        cmd_buffer.set_pipeline(PipelineBinding::Compute(pipeline));
+
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0u32, &lut);
+        cmd_buffer.finish_binding();
+        cmd_buffer.dispatch((512 + 7) / 8, (512 + 7) / 8, 6);
+        cmd_buffer.end_label();
     }
 
     fn deproject_env_map(
@@ -245,6 +303,7 @@ impl ImageBasedLightingPreparation {
         }
         self.deproject_env_map(cmd_buffer, pass_params);
         self.filter_env_map(cmd_buffer, pass_params);
+        self.calculate_preintegration_lut(cmd_buffer, pass_params);
         //self.prepared = true;
     }
 }

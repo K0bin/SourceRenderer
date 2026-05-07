@@ -53,6 +53,12 @@ float geometrySmith(vec3 normal, vec3 viewDir, vec3 lightDir, float roughness, b
   return ggx1 * ggx2;
 }
 
+float geometrySmithBasic(float nDotV, float nDotL, float roughness) {
+  float ggx2 = geometrySchlickGGX(nDotV, roughness, false);
+  float ggx1 = geometrySchlickGGX(nDotL, roughness, false);
+  return ggx1 * ggx2;
+}
+
 vec3 fresnelSchlick(float cosTheta, vec3 f0) {
   return f0 + (1.0 - f0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }

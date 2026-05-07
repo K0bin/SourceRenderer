@@ -81,7 +81,7 @@ mat3 getNormalMat(vec3 normal) {
 
 // Returns a halfway vector that was sampled according to GGX
 const float PI = 3.141592;
-vec3 importantSampleGGX(vec2 uniformSample, float roughness, vec3 normal) {
+vec3 importantSampleGGX(vec2 uniformSample, float roughness) {
     float phi = 2.0 * PI * uniformSample.x;
     float u = uniformSample.y;
     float a = roughness * roughness;
@@ -102,7 +102,7 @@ void main(void) {
 	float totalWeight = 0.0;
 	for(uint i=0; i<NumSamples; ++i) {
 		vec2 uniformRandomSamples  = sampleHammersley(i);
-		vec3 halfwayLocal = importantSampleGGX(uniformRandomSamples, roughness, normal);
+		vec3 halfwayLocal = importantSampleGGX(uniformRandomSamples, roughness);
 		vec3 halfway = normalMat * halfwayLocal;
 		vec3 lightDir = 2.0 * dot(view, halfway) * halfway - view;
         float normalDotLight = clamp(dot(normal, lightDir), 0.0, 1.0);
@@ -114,7 +114,7 @@ void main(void) {
 	irradiance /= totalWeight;
 
     ivec2 imgSize = imageSize(outputTexture);
-    if (gl_GlobalInvocationID.x > imgSize.x && gl_GlobalInvocationID.y > imgSize.y) {
+    if (gl_GlobalInvocationID.x < imgSize.x && gl_GlobalInvocationID.y < imgSize.y) {
 	    imageStore(outputTexture, ivec3(gl_GlobalInvocationID), vec4(irradiance, 1.0));
 	}
 }
