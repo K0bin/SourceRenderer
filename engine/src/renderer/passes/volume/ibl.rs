@@ -4,21 +4,26 @@ use crate::renderer::asset::{ComputePipelineHandle, RendererAssets, RendererAsse
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use sourcerenderer_core::gpu::{
-    BarrierAccess, BarrierSync, BindingFrequency, ClearColor, Format, LoadOpColor, SampleCount,
-    TextureDimension, TextureInfo, TextureLayout, TextureUsage, TextureViewInfo,
+    BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, ClearColor, Format,
+    LoadOpColor, SampleCount, ShaderType, TextureDimension, TextureInfo, TextureLayout,
+    TextureUsage, TextureViewInfo,
 };
 use std::sync::Arc;
 
 pub struct ImageBasedLightingPreparation {
     handle: TextureHandle,
     project_to_cube_pipeline: ComputePipelineHandle,
-    prefilter_pipeline: ComputePipelineHandle,
+    prefilter_diffuse_pipeline: ComputePipelineHandle,
+    prefilter_specular_pipeline: ComputePipelineHandle,
     prepared: bool,
 }
 
 impl ImageBasedLightingPreparation {
     pub const ENVIRONMENT_MAP_TEXTURE_NAME: &'static str = "EnvironmentMap";
-    pub const FILTERED_ENVIRONMENT_MAP_TEXTURE_NAME: &'static str = "FilteredEnvironmentMap";
+    pub const FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME: &'static str =
+        "FilteredDiffuseEnvironmentMap";
+    pub const FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME: &'static str =
+        "FilteredSpecularEnvironmentMap";
     pub(crate) fn new(
         _device: &Arc<crate::graphics::Device>,
         assets: &RendererAssets,
@@ -34,13 +39,16 @@ impl ImageBasedLightingPreparation {
 
         let project_to_cube_pipeline =
             assets.request_compute_pipeline("shaders/project_equirectangular.comp.json");
-        let prefilter_pipeline =
-            assets.request_compute_pipeline("shaders/prefilter_env_map.comp.json");
+        let prefilter_diffuse_pipeline =
+            assets.request_compute_pipeline("shaders/prefilter_env_map_diffuse.comp.json");
+        let prefilter_specular_pipeline =
+            assets.request_compute_pipeline("shaders/prefilter_env_map_specular.comp.json");
 
         Self {
             handle: TextureHandle::from(ibl_map_handle),
             project_to_cube_pipeline,
-            prefilter_pipeline,
+            prefilter_diffuse_pipeline,
+            prefilter_specular_pipeline,
             prepared: false,
         }
     }
@@ -85,7 +93,7 @@ impl ImageBasedLightingPreparation {
             BarrierSync::COMPUTE_SHADER,
             BarrierAccess::STORAGE_WRITE,
             TextureLayout::Storage,
-            false,
+            true,
             &TextureViewInfo {
                 base_mip_level: 0u32,
                 mip_level_length: 1u32,
@@ -117,17 +125,23 @@ impl ImageBasedLightingPreparation {
             .resources
             .texture_info(Self::ENVIRONMENT_MAP_TEXTURE_NAME)
             .clone();
-        info.mip_levels = 32u32 - u32::leading_zeros(info.width);
 
         pass_params.resources.create_texture(
-            Self::FILTERED_ENVIRONMENT_MAP_TEXTURE_NAME,
+            Self::FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME,
+            &info,
+            false,
+        );
+
+        info.mip_levels = 32u32 - u32::leading_zeros(info.width);
+        pass_params.resources.create_texture(
+            Self::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
             &info,
             false,
         );
 
         let pipeline = pass_params
             .assets
-            .get_compute_pipeline(self.prefilter_pipeline)
+            .get_compute_pipeline(self.prefilter_diffuse_pipeline)
             .unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(pipeline));
 
@@ -149,11 +163,11 @@ impl ImageBasedLightingPreparation {
         );
         let filtered_cube = pass_params.resources.access_view(
             cmd_buffer,
-            Self::FILTERED_ENVIRONMENT_MAP_TEXTURE_NAME,
+            Self::FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME,
             BarrierSync::COMPUTE_SHADER,
             BarrierAccess::STORAGE_WRITE,
             TextureLayout::Storage,
-            false,
+            true,
             &TextureViewInfo {
                 base_mip_level: 0u32,
                 mip_level_length: 1u32,
@@ -172,6 +186,51 @@ impl ImageBasedLightingPreparation {
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1u32, &filtered_cube);
         cmd_buffer.finish_binding();
         cmd_buffer.dispatch((info.width + 7) / 8, (info.height + 7) / 8, 6);
+
+        let pipeline = pass_params
+            .assets
+            .get_compute_pipeline(self.prefilter_specular_pipeline)
+            .unwrap();
+        cmd_buffer.set_pipeline(PipelineBinding::Compute(pipeline));
+
+        let texture_temp = pass_params.resources.access_texture(
+            cmd_buffer,
+            Self::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
+            &BarrierTextureRange {
+                base_mip_level: 0u32,
+                mip_level_length: info.mip_levels,
+                base_array_layer: 0u32,
+                array_layer_length: 1u32,
+            },
+            BarrierSync::COMPUTE_SHADER,
+            BarrierAccess::STORAGE_WRITE,
+            TextureLayout::Storage,
+            true,
+            HistoryResourceEntry::Current,
+        );
+        std::mem::drop(texture_temp);
+
+        for i in 0..info.mip_levels {
+            cmd_buffer.set_push_constant_data(
+                &[(1.0f32 / ((info.mip_levels - 1u32) as f32)) * (i as f32)],
+                ShaderType::ComputeShader,
+            );
+            let output_view = pass_params.resources.get_view(
+                Self::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
+                &TextureViewInfo {
+                    mip_level_length: 1,
+                    array_layer_length: 1,
+                    base_array_layer: 0,
+                    base_mip_level: i,
+                    format: None,
+                },
+                HistoryResourceEntry::Current,
+            );
+            cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1u32, &output_view);
+            cmd_buffer.finish_binding();
+            cmd_buffer.dispatch(((info.width >> i) + 7) / 8, ((info.height >> i) + 7) / 8, 6);
+        }
+
         cmd_buffer.end_label();
     }
 
