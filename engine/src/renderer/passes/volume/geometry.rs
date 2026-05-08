@@ -10,6 +10,7 @@ use crate::renderer::drawable::View;
 use crate::renderer::passes::marching_cubes::{
     MarchingCubesIndirectCall, MarchingCubesPass, MarchingCubesVertex,
 };
+use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use crate::renderer::renderer_scene::RendererScene;
@@ -21,6 +22,14 @@ use sourcerenderer_core::{HalfVec3, Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
 struct PushConstantData {
     model_matrix: Matrix4,
     size: Vec3,
+}
+
+#[repr(C)]
+#[derive(Clone)]
+struct MaterialData {
+    roughness: f32,
+    metalness: f32,
+    f0: Vec3,
 }
 
 pub struct GeometryPass {
@@ -90,9 +99,9 @@ impl GeometryPass {
 
         let shader_file_extension = "json";
 
-        let fs_name = format!("shaders/volume_geometry.web.frag.{}", shader_file_extension);
+        let fs_name = format!("shaders/volume_geometry.frag.{}", shader_file_extension);
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
-            vs: &format!("shaders/volume_geometry.web.vert.{}", shader_file_extension),
+            vs: &format!("shaders/volume_geometry.vert.{}", shader_file_extension),
             fs: Some(&fs_name),
             primitive_type: PrimitiveType::Triangles,
             vertex_layout: VertexLayoutInfo {
@@ -235,6 +244,48 @@ impl GeometryPass {
             HistoryResourceEntry::Current,
         );
 
+        let integration_lut = resources.access_view(
+            cmd_buffer,
+            ImageBasedLightingPreparation::PREINTEGRATION_MAP_TEXTURE_NAME,
+            BarrierSync::FRAGMENT_SHADER,
+            BarrierAccess::SAMPLING_READ,
+            TextureLayout::Sampled,
+            false,
+            &TextureViewInfo::default(),
+            HistoryResourceEntry::Current,
+        );
+        let env_map_diffuse = resources.access_view(
+            cmd_buffer,
+            ImageBasedLightingPreparation::FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME,
+            BarrierSync::FRAGMENT_SHADER,
+            BarrierAccess::SAMPLING_READ,
+            TextureLayout::Sampled,
+            false,
+            &TextureViewInfo::default(),
+            HistoryResourceEntry::Current,
+        );
+        let env_specular_info = resources.texture_info(
+            ImageBasedLightingPreparation::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
+        );
+        let env_specular_mips = env_specular_info.mip_levels;
+        std::mem::drop(env_specular_info);
+        let env_map_specular = resources.access_view(
+            cmd_buffer,
+            ImageBasedLightingPreparation::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
+            BarrierSync::FRAGMENT_SHADER,
+            BarrierAccess::SAMPLING_READ,
+            TextureLayout::Sampled,
+            false,
+            &TextureViewInfo {
+                base_mip_level: 0u32,
+                base_array_layer: 0u32,
+                array_layer_length: 1u32,
+                mip_level_length: env_specular_mips,
+                format: None,
+            },
+            HistoryResourceEntry::Current,
+        );
+
         cmd_buffer.flush_barriers();
         cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
             render_targets: &[RenderTarget {
@@ -274,6 +325,25 @@ impl GeometryPass {
             WHOLE_BUFFER,
         );
 
+        cmd_buffer.bind_sampling_view_and_sampler(
+            BindingFrequency::Frequent,
+            2u32,
+            &env_map_diffuse,
+            resources.linear_sampler(),
+        );
+        cmd_buffer.bind_sampling_view_and_sampler(
+            BindingFrequency::Frequent,
+            3u32,
+            &env_map_specular,
+            resources.linear_sampler(),
+        );
+        cmd_buffer.bind_sampling_view_and_sampler(
+            BindingFrequency::Frequent,
+            4u32,
+            &integration_lut,
+            resources.linear_sampler(),
+        );
+
         let volume_texture = assets.get_texture(volume_texture);
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::Frequent,
@@ -310,6 +380,14 @@ impl GeometryPass {
                 ) * spacing,
             }],
             ShaderType::VertexShader,
+        );
+        cmd_buffer.set_push_constant_data(
+            &[MaterialData {
+                roughness: 0.1f32,
+                metalness: 0.9f32,
+                f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
+            }],
+            ShaderType::FragmentShader,
         );
         cmd_buffer.set_vertex_buffer(0u32, BufferRef::Regular(&*marchingcubes_vbo), 0u64);
         cmd_buffer.set_index_buffer(

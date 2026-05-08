@@ -304,6 +304,6 @@ impl ImageBasedLightingPreparation {
         self.deproject_env_map(cmd_buffer, pass_params);
         self.filter_env_map(cmd_buffer, pass_params);
         self.calculate_preintegration_lut(cmd_buffer, pass_params);
-        //self.prepared = true;
+        self.prepared = true;
     }
 }

@@ -1,28 +1,12 @@
 use std::ffi::CString;
-use std::hash::{
-    Hash,
-    Hasher,
-};
-use std::os::raw::{
-    c_char,
-    c_void,
-};
+use std::hash::{Hash, Hasher};
+use std::os::raw::{c_char, c_void};
 use std::sync::Arc;
 
-use ash::vk::{
-    self,
-    Handle as _,
-};
+use ash::vk::{self, Handle as _};
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{
-    self,
-    Buffer as _,
-    Shader as _,
-};
-use sourcerenderer_core::{
-    align_up_32,
-    align_up_64,
-};
+use sourcerenderer_core::gpu::{self, Buffer as _, Shader as _};
+use sourcerenderer_core::{align_up_32, align_up_64};
 
 use super::*;
 

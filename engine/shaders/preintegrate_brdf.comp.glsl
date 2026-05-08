@@ -80,7 +80,7 @@ vec2 integrateBRDF(float roughness, float normalDotViewDir) {
 		}
     }
 
-    return vec2(a, b) / NumSamples;
+    return vec2(b, a) / NumSamples;
 }
 
 // Adapted from "Real Shading in Unreal Engine 4", presented by Brian Karis (Epic Games) at Siggraph 2013
@@ -90,6 +90,6 @@ void main(void) {
     vec2 value = integrateBRDF(pos.x, pos.y);
 
     if (gl_GlobalInvocationID.x < imgSize.x && gl_GlobalInvocationID.y < imgSize.y) {
-	    imageStore(outputTexture, ivec2(gl_GlobalInvocationID.x, 1.0 - gl_GlobalInvocationID.y), vec4(value, 0.0, 0.0));
+	    imageStore(outputTexture, ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y), vec4(value, 0.0, 0.0));
 	}
 }
