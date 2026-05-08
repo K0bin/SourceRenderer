@@ -4,6 +4,7 @@ use crate::asset::{AssetLoadPriority, AssetLoaderProgress, AssetType, TextureHan
 use crate::graphics::{GraphicsContext, *};
 use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::passes::marching_cubes::MarchingCubesPass;
+use crate::renderer::passes::volume::background::BackgroundPass;
 use crate::renderer::passes::volume::compositing::CompositingPass;
 use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
 use crate::renderer::passes::volume::ssao::SsaoPass;
@@ -14,6 +15,7 @@ use crate::renderer::render_path::{
 use crate::renderer::renderer_resources::RendererResources;
 use sourcerenderer_core::{Matrix4, Vec2UI, Vec3, Vec4};
 
+mod background;
 mod compositing;
 mod geometry;
 mod ibl;
@@ -50,6 +52,7 @@ pub struct VolumeRenderer {
     texture_progress: Arc<AssetLoaderProgress>,
     threshold: f32,
     compositing: CompositingPass,
+    background: BackgroundPass,
 }
 
 impl VolumeRenderer {
@@ -94,6 +97,8 @@ impl VolumeRenderer {
         let ibl_prep =
             ImageBasedLightingPreparation::new(device, assets, &mut init_cmd_buffer, resources);
 
+        let background = BackgroundPass::new(device, assets, &mut init_cmd_buffer, resources);
+
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
 
@@ -129,6 +134,7 @@ impl VolumeRenderer {
             //threshold: 0.0505f32,
             threshold: 0.0f32,
             compositing: comp,
+            background,
         }
     }
 }
@@ -149,6 +155,7 @@ impl RenderPath for VolumeRenderer {
             && self.geometry.is_ready(&assets)
             && self.texture_progress.is_done()
             && self.compositing.is_ready(&assets)
+            && self.background.is_ready(&assets)
     }
 
     fn render(
@@ -214,6 +221,15 @@ impl RenderPath for VolumeRenderer {
                 BufferUsage::CONSTANT,
             )
             .unwrap();
+
+        self.background.execute(
+            &mut cmd_buffer,
+            scene.scene,
+            main_view,
+            &camera_buffer,
+            &params,
+            assets,
+        );
 
         self.geometry.execute(
             &mut cmd_buffer,

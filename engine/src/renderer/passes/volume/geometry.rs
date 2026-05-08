@@ -206,7 +206,7 @@ impl GeometryPass {
             BarrierSync::RENDER_TARGET,
             BarrierAccess::RENDER_TARGET_READ | BarrierAccess::RENDER_TARGET_WRITE,
             TextureLayout::RenderTarget,
-            true,
+            false,
             &TextureViewInfo::default(),
             HistoryResourceEntry::Current,
         );
@@ -290,7 +290,7 @@ impl GeometryPass {
         cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
             render_targets: &[RenderTarget {
                 view: &color_view,
-                load_op: LoadOpColor::Clear(ClearColor::from_u32([0, 0, 0, 255])),
+                load_op: LoadOpColor::Load,
                 store_op: StoreOp::Store,
             }],
             depth_stencil: Some(&DepthStencilAttachment {
