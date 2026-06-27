@@ -71,7 +71,7 @@ void main(void) {
     //out_color.a = in_density;
     //out_color.rgb = in_normal * 0.5 + 0.5;
 
-    out_color.rgb = vec3(in_density) * 5.0;
+    //out_color.rgb = vec3(in_density) * 5.0;
 
     //out_color.rgb = in_normal.rgb * 0.5 + vec3(0.5);
     //out_color.rgb = in_normal.rgb;

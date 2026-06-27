@@ -74,7 +74,6 @@ vec3 calculateNormal(vec3 pos) {
                                 - imageLoad(densityImage, imgPos + ivec3(0, 0, 1))).x;
     return normalize(normal);
 }
-// TODO calculate normal in vertex shader to save memory
 
 void main() {
     uvec3 base = gl_GlobalInvocationID;

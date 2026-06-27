@@ -39,30 +39,23 @@ vec3 calculateNormal(vec3 pos, vec3 densityMapSize) {
 }
 
 void main(void) {
-  vec4 pos = vec4(in_pos, 1);
-
-  mat4 mvp = camera.viewProj * model;
-
   vec3 densityMapSize = textureSize(densityMap, 0);
   vec3 normal = calculateNormal(in_pos, densityMapSize);
 
-  mat4 normalModelMat = transpose(inverse(model));
+  mat4 inverseModelMat = inverse(model);
+  mat4 normalModelMat = transpose(inverseModelMat);
   out_normal = normalize(normalModelMat * vec4(normal, 0)).xyz;
-  //out_normal = normal;
 
   out_density = texture(densityMap, (in_pos / size + 0.5) / densityMapSize).x;
 
   vec4 rayDir = vec4(0.0, 0.0, 1.0, 0.0);
-  //rayDir = camera.invView * rayDir;
-  rayDir = (camera.invView * normalModelMat) * rayDir;
+  rayDir = (camera.invView * inverseModelMat) * rayDir;
   rayDir = normalize(rayDir);
 
   out_density = max(out_density, texture(densityMap, (in_pos / size + 0.5 + rayDir.xyz * 3.0) / densityMapSize).x);
   //out_density = max(out_density, texture(densityMap, (in_pos / size - in_normal.xyz * 3.0) / densityMapSize).x);
 
-  //out_density = max(out_density, texture(densityMap, (in_pos - in_normal * 0.2) / size).x);
-  //out_density = max(out_density, texture(densityMap, (in_pos - in_normal * 2.0) / size).x);
-
-  gl_Position = mvp * pos;
+  mat4 mvp = camera.viewProj * model;
+  gl_Position = mvp * vec4(in_pos, 1.0);
   out_worldPosition = gl_Position.xyz;
 }
