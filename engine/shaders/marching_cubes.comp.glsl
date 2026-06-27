@@ -10,7 +10,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
 struct Vertex {
     f16vec3 pos;
-    f16vec3 normal;
+    //f16vec3 normal;
 };
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0, std430) buffer readonly EdgeTable {
@@ -63,6 +63,19 @@ vec4 interpolateVertices(uvec3 pos1, uvec3 pos2) {
     return mix(vec4(pos1, value1), vec4(pos2, value2), a);
 }
 
+vec3 calculateNormal(vec3 pos) {
+    ivec3 imgPos = ivec3(round(pos / scale));
+    vec3 normal = vec3(0.0);
+    normal.x = (imageLoad(densityImage, imgPos - ivec3(1, 0, 0))
+                                - imageLoad(densityImage, imgPos + ivec3(1, 0, 0))).x;
+    normal.y = (imageLoad(densityImage, imgPos - ivec3(0, 1, 0))
+                                - imageLoad(densityImage, imgPos + ivec3(0, 1, 0))).x;
+    normal.z = (imageLoad(densityImage, imgPos - ivec3(0, 0, 1))
+                                - imageLoad(densityImage, imgPos + ivec3(0, 0, 1))).x;
+    return normalize(normal);
+}
+// TODO calculate normal in vertex shader to save memory
+
 void main() {
     uvec3 base = gl_GlobalInvocationID;
 
@@ -96,56 +109,31 @@ void main() {
     for (uint i = 0u; i < 4u; i++) {
         if ((edges[key] & (1u << i)) != 0u) {
             vec4 vertex = interpolateVertices(indexToCubePos(i), indexToCubePos((i + 1u) % 4u)) * vec4(scale, 1.0);
-            //vertex = vec4(0.2);
             uint index = atomicAdd(vertexCount, 1u);
             vertices[index].pos = f16vec3(vertex.xyz);
             cubeVertexIndices[i] = index;
 
-            vertices[index].normal = f16vec3(0.0);
-            ivec3 imgPos = ivec3(vertex.xyz / scale);
-            vertices[index].normal.x = float16_t(imageLoad(densityImage, imgPos - ivec3(1, 0, 0)))
-                                        - float16_t(imageLoad(densityImage, imgPos + ivec3(1, 0, 0)));
-            vertices[index].normal.y = float16_t(imageLoad(densityImage, imgPos - ivec3(0, 1, 0)))
-                                        - float16_t(imageLoad(densityImage, imgPos + ivec3(0, 1, 0)));
-            vertices[index].normal.z = float16_t(imageLoad(densityImage, imgPos - ivec3(0, 0, 1)))
-                                        - float16_t(imageLoad(densityImage, imgPos + ivec3(0, 0, 1)));
-
+            //vertices[index].normal = f16vec3(calculateNormal(vertex.xyz));
         } else {
             cubeVertexIndices[i] = 0u;
         }
         if ((edges[key] & (16u << i)) != 0u) {
             vec4 vertex = interpolateVertices(indexToCubePos(i + 4u), indexToCubePos((i + 1u) % 4u + 4u)) * vec4(scale, 1.0);
-            //vertex = vec4(0.5);
             uint index = atomicAdd(vertexCount, 1u);
             vertices[index].pos = f16vec3(vertex.xyz);
             cubeVertexIndices[i + 4u] = index;
 
-            vertices[index].normal = f16vec3(0.0);
-            ivec3 imgPos = ivec3(vertex.xyz / scale);
-            vertices[index].normal.x = float16_t(imageLoad(densityImage, imgPos - ivec3(1, 0, 0)))
-                                        - float16_t(imageLoad(densityImage, imgPos + ivec3(1, 0, 0)));
-            vertices[index].normal.y = float16_t(imageLoad(densityImage, imgPos - ivec3(0, 1, 0)))
-                                        - float16_t(imageLoad(densityImage, imgPos + ivec3(0, 1, 0)));
-            vertices[index].normal.z = float16_t(imageLoad(densityImage, imgPos - ivec3(0, 0, 1)))
-                                        - float16_t(imageLoad(densityImage, imgPos + ivec3(0, 0, 1)));
+            //vertices[index].normal = f16vec3(calculateNormal(vertex.xyz));
         } else {
             cubeVertexIndices[i + 4u] = 0u;
         }
         if ((edges[key] & (256u << i)) != 0u) {
             vec4 vertex = interpolateVertices(indexToCubePos(i), indexToCubePos(i + 4u)) * vec4(scale, 1.0);
-            //vertex = vec4(1.0);
             uint index = atomicAdd(vertexCount, 1u);
             vertices[index].pos = f16vec3(vertex.xyz);
             cubeVertexIndices[i + 8u] = index;
 
-            vertices[index].normal = f16vec3(0.0);
-            ivec3 imgPos = ivec3(vertex.xyz / scale);
-            vertices[index].normal.x = float16_t(imageLoad(densityImage, imgPos - ivec3(1, 0, 0)))
-                                        - float16_t(imageLoad(densityImage, imgPos + ivec3(1, 0, 0)));
-            vertices[index].normal.y = float16_t(imageLoad(densityImage, imgPos - ivec3(0, 1, 0)))
-                                        - float16_t(imageLoad(densityImage, imgPos + ivec3(0, 1, 0)));
-            vertices[index].normal.z = float16_t(imageLoad(densityImage, imgPos - ivec3(0, 0, 1)))
-                                        - float16_t(imageLoad(densityImage, imgPos + ivec3(0, 0, 1)));
+            //vertices[index].normal = f16vec3(calculateNormal(vertex.xyz));
         } else {
             cubeVertexIndices[i + 8u] = 0u;
         }
@@ -161,11 +149,5 @@ void main() {
         indices[firstIndex + 0u] = index0;
         indices[firstIndex + 1u] = index1;
         indices[firstIndex + 2u] = index2;
-
-        // Calculate normals
-
-        vertices[index0].normal = normalize(vertices[index0].normal);
-        vertices[index1].normal = normalize(vertices[index1].normal);
-        vertices[index2].normal = normalize(vertices[index2].normal);
     }
 }

@@ -119,14 +119,14 @@ impl GeometryPass {
                         offset: 0,
                         format: Format::RGB16Float,
                     },
-                    ShaderInputElement {
+                    /*ShaderInputElement {
                         input_assembler_binding: 0,
                         location_vk_mtl: 1,
                         semantic_name_d3d: String::from(""),
                         semantic_index_d3d: 0,
                         offset: std::mem::size_of::<HalfVec3>(),
                         format: Format::RGB16Float,
-                    },
+                    },*/
                 ],
             },
             rasterizer: RasterizerInfo {
@@ -199,6 +199,14 @@ impl GeometryPass {
         spacing: Vec3,
     ) {
         let resources = &params.resources;
+
+        if !resources.has_resource(
+            ImageBasedLightingPreparation::FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME,
+        ) || !resources.has_resource(
+            ImageBasedLightingPreparation::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
+        ) {
+            return;
+        }
 
         let color_view = resources.access_view(
             cmd_buffer,
@@ -371,20 +379,17 @@ impl GeometryPass {
 
         cmd_buffer.set_push_constant_data(
             &[PushConstantData {
-                model_matrix: Matrix4::from_rotation_z(-1.57f32)
-                    * Matrix4::from_rotation_y(-1.57f32),
-                size: Vec3::new(
-                    texture_info.width as f32,
-                    texture_info.height as f32,
-                    texture_info.depth as f32,
-                ) * spacing,
+                model_matrix: Matrix4::from_rotation_x(-1.57f32) * Matrix4::from_rotation_z(3.14),
+                size: spacing,
             }],
             ShaderType::VertexShader,
         );
         cmd_buffer.set_push_constant_data(
             &[MaterialData {
-                roughness: 0.1f32,
-                metalness: 0.9f32,
+                roughness: 0.6f32,
+                metalness: 0.3f32,
+                //roughness: 0.1f32,
+                //metalness: 0.9f32,
                 f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
             }],
             ShaderType::FragmentShader,

@@ -18,7 +18,7 @@ struct MarchingCubesConfig {
 #[derive(Debug, Clone, Copy)]
 pub struct MarchingCubesVertex {
     pub pos: HalfVec3,
-    pub normal: HalfVec3,
+    //pub normal: HalfVec3,
 }
 
 #[repr(C)]
@@ -63,10 +63,18 @@ impl MarchingCubesPass {
             false,
         );
 
+        //let resolution_multiplied = 256 * 256 * 230;
+        let mut resolution_multiplied = 128 * 128 * 115;
+
+        // Assume there's a lot of empty space and voxels with fewer triangles/vertices to avoid
+        // huge buffers
+        resolution_multiplied /= 8;
+
         resources.create_buffer(
             Self::VERTICES_BUFFER_NAME,
             &BufferInfo {
-                size: (std::mem::size_of::<MarchingCubesVertex>() * 100_000_000) as u64,
+                size: (std::mem::size_of::<MarchingCubesVertex>() * 4 * 3 * resolution_multiplied)
+                    as u64,
                 usage: BufferUsage::STORAGE | BufferUsage::VERTEX,
                 sharing_mode: QueueSharingMode::Exclusive,
             },
@@ -77,7 +85,7 @@ impl MarchingCubesPass {
         resources.create_buffer(
             Self::INDICES_BUFFER_NAME,
             &BufferInfo {
-                size: (std::mem::size_of::<u32>() * 600_000_000) as u64,
+                size: (std::mem::size_of::<u32>() * 16 * resolution_multiplied) as u64,
                 usage: BufferUsage::STORAGE | BufferUsage::INDEX,
                 sharing_mode: QueueSharingMode::Exclusive,
             },
@@ -120,7 +128,7 @@ impl MarchingCubesPass {
             [0, 8, 3, 1, 2, 10, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
             [9, 2, 10, 0, 2, 9, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
             [2, 8, 3, 2, 10, 8, 10, 9, 8, -1, -1, -1, -1, -1, -1, -1],
-            [3, 11, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1], //
+            [3, 11, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
             [0, 11, 2, 8, 11, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
             [1, 9, 0, 2, 3, 11, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
             [1, 11, 2, 1, 9, 11, 9, 8, 11, -1, -1, -1, -1, -1, -1, -1],
@@ -371,6 +379,7 @@ impl MarchingCubesPass {
                 -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
             ],
         ];
+
         let edges_buffer = device
             .create_buffer(
                 &BufferInfo {

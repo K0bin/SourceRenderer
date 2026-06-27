@@ -6,7 +6,7 @@
 #include "camera.inc.glsl"
 
 layout(location = 0) in vec3 in_pos;
-layout(location = 1) in vec3 in_normal;
+//layout(location = 1) in vec3 in_normal;
 //layout(location = 3) in vec2 in_lightmap_uv;
 //layout(location = 4) in float in_alpha;
 
@@ -25,14 +25,42 @@ layout(push_constant) uniform VeryHighFrequencyUbo {
 
 layout (set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform sampler3D densityMap;
 
+
+vec3 calculateNormal(vec3 pos, vec3 densityMapSize) {
+    vec3 imgPos = pos / size + 0.5;
+    vec3 normal = vec3(0.0);
+    normal.x = (texture(densityMap, (imgPos - vec3(1, 0, 0)) / densityMapSize)
+                                - texture(densityMap, (imgPos + vec3(1, 0, 0)) / densityMapSize)).x;
+    normal.y = (texture(densityMap, (imgPos - vec3(0, 1, 0)) / densityMapSize)
+                                - texture(densityMap, (imgPos + vec3(0, 1, 0)) / densityMapSize)).x;
+    normal.z = (texture(densityMap, (imgPos - vec3(0, 0, 1)) / densityMapSize)
+                                - texture(densityMap, (imgPos + vec3(0, 0, 1)) / densityMapSize)).x;
+    return normalize(normal);
+}
+
 void main(void) {
   vec4 pos = vec4(in_pos, 1);
 
   mat4 mvp = camera.viewProj * model;
 
-  out_normal = normalize((model * vec4(in_normal, 0)).xyz);
-  out_density = texture(densityMap, in_pos / size).x;
-  out_density = max(out_density, texture(densityMap, (in_pos - in_normal * 0.2) / size).x);
+  vec3 densityMapSize = textureSize(densityMap, 0);
+  vec3 normal = calculateNormal(in_pos, densityMapSize);
+
+  mat4 normalModelMat = transpose(inverse(model));
+  out_normal = normalize(normalModelMat * vec4(normal, 0)).xyz;
+  //out_normal = normal;
+
+  out_density = texture(densityMap, (in_pos / size + 0.5) / densityMapSize).x;
+
+  vec4 rayDir = vec4(0.0, 0.0, 1.0, 0.0);
+  //rayDir = camera.invView * rayDir;
+  rayDir = (camera.invView * normalModelMat) * rayDir;
+  rayDir = normalize(rayDir);
+
+  out_density = max(out_density, texture(densityMap, (in_pos / size + 0.5 + rayDir.xyz * 3.0) / densityMapSize).x);
+  //out_density = max(out_density, texture(densityMap, (in_pos / size - in_normal.xyz * 3.0) / densityMapSize).x);
+
+  //out_density = max(out_density, texture(densityMap, (in_pos - in_normal * 0.2) / size).x);
   //out_density = max(out_density, texture(densityMap, (in_pos - in_normal * 2.0) / size).x);
 
   gl_Position = mvp * pos;

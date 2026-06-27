@@ -96,6 +96,12 @@ impl BackgroundPass {
     ) {
         let resources = &params.resources;
 
+        if !resources.has_resource(
+            ImageBasedLightingPreparation::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
+        ) {
+            return;
+        }
+
         let color_view = resources.access_view(
             cmd_buffer,
             GeometryPass::COLOR_TEXTURE_NAME,

@@ -23,7 +23,7 @@ impl RawVolumeLoaderTexture {
     }
 }
 
-pub const RESOLUTION_DOWNSCALE_FACTOR: usize = 1usize;
+pub const RESOLUTION_DOWNSCALE_FACTOR: usize = 4usize;
 
 impl AssetLoader for RawVolumeLoaderTexture {
     fn matches(&self, file: &mut AssetFile) -> bool {

@@ -450,6 +450,10 @@ impl RendererResources {
         }
     }
 
+    pub fn has_resource(&self, name: &str) -> bool {
+        self.textures.contains_key(name) || self.buffers.contains_key(name)
+    }
+
     pub fn access_buffer(
         &self,
         cmd_buffer: &mut CommandBuffer,
