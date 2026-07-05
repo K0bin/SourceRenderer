@@ -49,11 +49,11 @@ void main(void) {
   out_density = texture(densityMap, (in_pos / size + 0.5) / densityMapSize).x;
 
   vec4 rayDir = vec4(0.0, 0.0, 1.0, 0.0);
-  rayDir = (camera.invView * inverseModelMat) * rayDir;
+  rayDir = (inverseModelMat * camera.invView) * rayDir;
   rayDir = normalize(rayDir);
 
-  out_density = max(out_density, texture(densityMap, (in_pos / size + 0.5 + rayDir.xyz * 3.0) / densityMapSize).x);
-  //out_density = max(out_density, texture(densityMap, (in_pos / size - in_normal.xyz * 3.0) / densityMapSize).x);
+  out_density = max(out_density, texture(densityMap, (in_pos / size + 0.5 + rayDir.xyz) / densityMapSize).x);
+  //out_density = max(out_density, texture(densityMap, (in_pos / size + 0.5 - in_normal.xyz) / densityMapSize).x);
 
   mat4 mvp = camera.viewProj * model;
   gl_Position = mvp * vec4(in_pos, 1.0);
