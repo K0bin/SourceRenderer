@@ -111,6 +111,13 @@ impl ImageBasedLightingPreparation {
         cmd_buffer.end_label();
     }
 
+    pub fn is_ready(&self, assets: &RendererAssetsReadOnly) -> bool {
+        assets.get_compute_pipeline(self.preintegrate_pipeline).is_some()
+        && assets.get_compute_pipeline(self.prefilter_diffuse_pipeline).is_some()
+        && assets.get_compute_pipeline(self.prefilter_specular_pipeline).is_some()
+        && assets.get_compute_pipeline(self.project_to_cube_pipeline).is_some()
+    }
+
     fn deproject_env_map(
         &mut self,
         cmd_buffer: &mut CommandBuffer,

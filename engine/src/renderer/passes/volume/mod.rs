@@ -65,7 +65,7 @@ impl VolumeRenderer {
     ) -> Self {
         let (texture_handle, progress) = assets.asset_manager().request_asset(
             //"ct_head_256.raw.txt",
-            "manix.raw.txt",
+            "assets/manix.raw.txt",
             AssetType::Texture,
             AssetLoadPriority::High,
         );
@@ -151,11 +151,12 @@ impl RenderPath for VolumeRenderer {
     fn on_swapchain_changed(&mut self, _swapchain: &Swapchain) {}
 
     fn is_ready(&self, assets: &RendererAssetsReadOnly) -> bool {
-        self.marching_cubes_pass.is_ready(&assets)
-            && self.geometry.is_ready(&assets)
+        self.marching_cubes_pass.is_ready(assets)
+            && self.geometry.is_ready(assets)
             && self.texture_progress.is_done()
-            && self.compositing.is_ready(&assets)
-            && self.background.is_ready(&assets)
+            && self.compositing.is_ready(assets)
+            && self.background.is_ready(assets)
+            && self.ibl_pass.is_ready(assets)
     }
 
     fn render(
