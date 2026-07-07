@@ -55,7 +55,8 @@ pub use sourcerenderer_core::gpu;
     target_os = "freebsd",
     target_os = "dragonfly",
     target_os = "netbsd",
-    target_os = "openbsd"
+    target_os = "openbsd",
+    target_os = "macos"
 ))]
 mod active_gpu_backend {
     pub use sourcerenderer_vulkan::{
@@ -136,7 +137,7 @@ mod active_gpu_backend {
     pub type RayTracingPipelineInfo<'a> = super::gpu::RayTracingPipelineInfo<'a, self::Backend>;
 }
 
-#[cfg(any(target_os = "macos", target_os = "ios"))]
+#[cfg(any(target_os = "ios"))]
 mod active_gpu_backend {
     pub use sourcerenderer_metal::{
         MTLAccelerationStructure as AccelerationStructure,

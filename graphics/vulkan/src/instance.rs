@@ -18,6 +18,7 @@ const SURFACE_XCB_EXT_NAME: &str = "VK_KHR_xcb_surface";
 const SURFACE_XLIB_EXT_NAME: &str = "VK_KHR_xlib_surface";
 const SURFACE_ANDROID_EXT_NAME: &str = "VK_KHR_android_surface";
 const SURFACE_WIN32_EXT_NAME: &str = "VK_KHR_win32_surface";
+const SURFACE_MACOS_EXT_NAME: &str = "VK_EXT_metal_surface";
 const DEBUG_UTILS_EXT_NAME: &str = "VK_EXT_debug_utils";
 const VALIDATION_LAYER_NAME: &str = "VK_LAYER_KHRONOS_validation";
 
@@ -71,6 +72,7 @@ impl VkInstance {
             SURFACE_XLIB_EXT_NAME,
             SURFACE_ANDROID_EXT_NAME,
             SURFACE_WIN32_EXT_NAME,
+            SURFACE_MACOS_EXT_NAME,
         ];
         let mut supports_surface_extension = false;
         let mut supports_platform_surface_extension = false;
