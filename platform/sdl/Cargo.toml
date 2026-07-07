@@ -30,7 +30,9 @@ objc2 = { version = "0.6", features = ["std", "disable-encoding-assertions"] } #
 objc2-foundation = "0.3"
 objc2-quartz-core = "0.3"
 objc2-app-kit = "0.3"
-sourcerenderer_metal = { path = "../../graphics/metal" }
+ash = { git = "https://github.com/ash-rs/ash" }
+sourcerenderer_vulkan = { path = "../../graphics/vulkan" }
+# sourcerenderer_metal = { path = "../../graphics/metal" }
 
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 ash = { git = "https://github.com/ash-rs/ash" }

@@ -5,10 +5,10 @@ pub use sdl_platform::SDLPlatform;
 use sdl_platform::StdIO;
 use sourcerenderer_engine::{Engine, EngineLoopFuncResult};
 
-#[cfg(target_os = "macos")]
+#[cfg(target_os = "ios")]
 mod sdl_metal;
 mod sdl_platform;
-#[cfg(target_os = "macos")]
+#[cfg(target_os = "ios")]
 pub(crate) use sdl_metal as sdl_gpu;
 
 #[cfg(target_os = "windows")]
@@ -20,6 +20,12 @@ pub(crate) use sdl_vulkan as sdl_gpu;
 mod sdl_vulkan;
 #[cfg(target_os = "linux")]
 pub(crate) use sdl_vulkan as sdl_gpu;
+
+#[cfg(target_os = "macos")]
+mod sdl_vulkan;
+#[cfg(target_os = "macos")]
+pub(crate) use sdl_vulkan as sdl_gpu;
+
 use sourcerenderer_game::GamePlugin;
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
