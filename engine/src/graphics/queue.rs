@@ -134,12 +134,12 @@ impl Queue {
         struct SubmissionHolder<'a> {
             queue: &'a active_gpu_backend::Queue,
             command_buffers:
-                SmallVec<[&'a active_gpu_backend::CommandBuffer; COMMAND_BUFFER_CAPACITY]>,
+                SmallVec<[&'a active_gpu_backend::CommandBuffer; 2]>,
             cmd_buffer_range: Range<usize>,
-            submissions: SmallVec<[active_gpu_backend::Submission<'a>; SUBMISSION_CAPACITY]>,
-            fences: SmallVec<[active_gpu_backend::FenceValuePairRef<'a>; FENCE_CAPACITY]>,
+            submissions: SmallVec<[active_gpu_backend::Submission<'a>; 2]>,
+            fences: SmallVec<[active_gpu_backend::FenceValuePairRef<'a>; 2]>,
             swapchain_guards:
-                SmallVec<[(SharedSwapchainPtr, SwapchainGuard<'a>); SUBMISSION_CAPACITY]>,
+                SmallVec<[(SharedSwapchainPtr, SwapchainGuard<'a>); 2]>,
         }
 
         fn flush_command_buffers<'a>(holder: &mut SubmissionHolder<'a>) {
