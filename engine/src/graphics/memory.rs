@@ -84,7 +84,7 @@ impl MemoryAllocator {
             });
         }
 
-        let heap = unsafe { self.device.create_heap(memory_type_index, CHUNK_SIZE) };
+        let heap = unsafe { self.device.create_heap(memory_type_index, CHUNK_SIZE.max(size)) };
         if heap.is_err() {
             return Err(OutOfMemoryError {});
         }
