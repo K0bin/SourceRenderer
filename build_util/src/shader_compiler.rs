@@ -1295,6 +1295,8 @@ pub fn compile_shader(
                 ShadingLanguage::Msl,
                 CompiledShaderType::Source(&source),
             );
+        } else {
+            panic!("Failed to compile shader with spirv-cross {:?}", source.err().unwrap());
         }
     }
     if output_shading_languages.contains(ShadingLanguage::Hlsl) {
