@@ -20,8 +20,9 @@ float linearizeDepth(Camera camera, float depth) {
 }
 
 // Aspect ratio is width/height
+// TODO: Do this on the CPU and add it to the camera buffer
 float calculateVerticalFov(float fov, float aspectRatio) {
-    return 2.0 * atan(tan((fov / 2.0) / aspectRatio));
+    return 2.0 * atan(tan((fov / 2.0)) / aspectRatio);
 }
 
 #endif
