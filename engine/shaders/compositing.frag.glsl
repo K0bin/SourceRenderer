@@ -12,5 +12,6 @@ layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform sampler2D color;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform sampler2D ssao;
 
 void main(void) {
-    out_color = textureLod(color, in_uv, 0) * vec4(textureLod(ssao, in_uv, 0).x);
+    vec4 withSSAO = textureLod(color, in_uv, 0) * vec4(textureLod(ssao, in_uv, 0).x);
+    out_color = vec4(pow(withSSAO.rgb, vec3(1.0 / 2.2)), 1.0);
 }
