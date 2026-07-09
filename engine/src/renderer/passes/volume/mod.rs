@@ -258,6 +258,7 @@ impl RenderPath for VolumeRenderer {
             GeometryPass::COLOR_TEXTURE_NAME,
             GeometryPass::DEPTH_TEXTURE_NAME,
             &camera_buffer,
+            0.025f32,
         );
 
         let backbuffer_view = swapchain.backbuffer_view(&backbuffer);

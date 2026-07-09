@@ -2,7 +2,7 @@ use std::cell::Ref;
 use std::sync::Arc;
 
 use rand::random;
-use sourcerenderer_core::{Vec2I, Vec2UI, Vec4};
+use sourcerenderer_core::{Vec2, Vec2I, Vec2UI, Vec4};
 
 use crate::graphics::*;
 use crate::renderer::asset::*;
@@ -17,16 +17,13 @@ pub struct SSSPass {
 #[repr(C)]
 #[derive(Clone, Debug)]
 struct SSSParams {
-    resolution: Vec2I,
-    unit_size: f32,
-    scale: f32,
-    vertical: bool,
-    orthogonal: bool,
-    depth_scale: f32,
+    dir: Vec2,
+    sss_width: f32,
 }
 
 impl SSSPass {
     pub const SSS_INTERNAL_TEXTURE_NAME: &'static str = "SSS";
+    const SSS_INTERNAL_TEMP_TEXTURE_NAME: &'static str = "SSSTemp";
 
     #[allow(unused)]
     pub fn new(
@@ -35,6 +32,22 @@ impl SSSPass {
         resources: &mut RendererResources,
         assets: &RendererAssets,
     ) -> Self {
+        resources.create_texture(
+            Self::SSS_INTERNAL_TEMP_TEXTURE_NAME,
+            &TextureInfo {
+                dimension: TextureDimension::Dim2D,
+                format: Format::RGBA8UNorm,
+                width: resolution.x,
+                height: resolution.y,
+                depth: 1,
+                mip_levels: 1,
+                array_length: 1,
+                samples: SampleCount::Samples1,
+                usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
+                supports_srgb: false,
+            },
+            false,
+        );
         resources.create_texture(
             Self::SSS_INTERNAL_TEXTURE_NAME,
             &TextureInfo {
@@ -86,10 +99,13 @@ impl SSSPass {
         color_name: &str,
         depth_name: &str,
         camera: &TransientBufferSlice,
+        sss_width: f32,
     ) {
-        let sss_uav = pass_params.resources.access_view(
+        // Horizonal pass
+
+        let sss_temp_uav = pass_params.resources.access_view(
             cmd_buffer,
-            Self::SSS_INTERNAL_TEXTURE_NAME,
+            Self::SSS_INTERNAL_TEMP_TEXTURE_NAME,
             BarrierSync::COMPUTE_SHADER,
             BarrierAccess::STORAGE_WRITE,
             TextureLayout::Storage,
@@ -120,7 +136,7 @@ impl SSSPass {
             HistoryResourceEntry::Current,
         );
 
-        cmd_buffer.begin_label("SSS pass");
+        cmd_buffer.begin_label("SSS horizonal pass");
         let pipeline = pass_params
             .assets
             .get_compute_pipeline(self.pipeline)
@@ -133,7 +149,7 @@ impl SSSPass {
             &*color_view,
             &self.linear_sampler,
         );
-        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &*sss_uav);
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &*sss_temp_uav);
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::VeryFrequent,
             2,
@@ -148,15 +164,63 @@ impl SSSPass {
             WHOLE_BUFFER,
         );
         cmd_buffer.finish_binding();
+        let sss_temp_info = sss_temp_uav.texture().unwrap().info();
+
+        let params = SSSParams {
+            dir: Vec2::new(1.0f32, 0.0f32),
+            sss_width: sss_width,
+        };
+        cmd_buffer.set_push_constant_data(&[params], ShaderType::ComputeShader);
+
+        cmd_buffer.dispatch(
+            (sss_temp_info.width + 7) / 8,
+            (sss_temp_info.height + 7) / 8,
+            sss_temp_info.depth,
+        );
+        std::mem::drop(sss_temp_uav);
+        std::mem::drop(color_view);
+
+        cmd_buffer.end_label();
+
+        // Vertical pass
+
+        cmd_buffer.begin_label("SSS vertical pass");
+
+        let sss_uav = pass_params.resources.access_view(
+            cmd_buffer,
+            Self::SSS_INTERNAL_TEXTURE_NAME,
+            BarrierSync::COMPUTE_SHADER,
+            BarrierAccess::STORAGE_WRITE,
+            TextureLayout::Storage,
+            true,
+            &TextureViewInfo::default(),
+            HistoryResourceEntry::Current,
+        );
+
+        let sss_temp_srv = pass_params.resources.access_view(
+            cmd_buffer,
+            Self::SSS_INTERNAL_TEMP_TEXTURE_NAME,
+            BarrierSync::COMPUTE_SHADER,
+            BarrierAccess::SAMPLING_READ,
+            TextureLayout::Sampled,
+            false,
+            &TextureViewInfo::default(),
+            HistoryResourceEntry::Current,
+        );
+
+        cmd_buffer.bind_sampling_view_and_sampler(
+            BindingFrequency::VeryFrequent,
+            0,
+            &*sss_temp_srv,
+            &self.linear_sampler,
+        );
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &*sss_uav);
+        cmd_buffer.finish_binding();
         let sss_info = sss_uav.texture().unwrap().info();
 
         let params = SSSParams {
-            resolution: Vec2I::new(sss_info.width as i32, sss_info.height as i32),
-            unit_size: 1.0f32,
-            scale: 1.0f32,
-            vertical: false,
-            orthogonal: false,
-            depth_scale: 1.0f32,
+            dir: Vec2::new(0.0f32, 1.0f32),
+            sss_width: sss_width,
         };
         cmd_buffer.set_push_constant_data(&[params], ShaderType::ComputeShader);
 
