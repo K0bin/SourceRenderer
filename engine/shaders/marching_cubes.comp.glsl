@@ -42,12 +42,16 @@ layout(push_constant) uniform Config {
     float threshold;
 };
 
+uvec3 indexOffset(uint idx) {
+    return uvec3(
+         ((idx >> 1u) ^ idx) & 1u,
+         (idx >> 2u) & 1u,
+         (idx >> 1u) & 1u
+     );
+}
+
 uvec3 indexToCubePos(uint idx) {
-    return gl_GlobalInvocationID + uvec3(
-        (((~(idx >> 1u) & (idx & 1u)) | ((idx >> 1u) & ~(idx & 1u))) & 1u),
-        ((idx >> 2u) & 1u),
-        ((idx >> 1u) & 1u)
-    );
+    return gl_GlobalInvocationID + indexOffset(idx);
 }
 
 vec4 interpolateVertices(uvec3 pos1, uvec3 pos2) {
