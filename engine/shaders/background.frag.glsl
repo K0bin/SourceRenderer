@@ -28,5 +28,5 @@ void main(void) {
 	vec4 viewPos = camera.invProj * ndc;
     mat4 reducedCam = mat4(mat3(camera.invView));
 	vec3 worldDir = (reducedCam * viewPos).xyz;
-    out_color = textureLod(envMapSpecular, worldDir, 0.0);
+    out_color = vec4(textureLod(envMapSpecular, worldDir, 0.0).rgb, 0.0);
 }
