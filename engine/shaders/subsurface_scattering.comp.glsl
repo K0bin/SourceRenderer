@@ -43,6 +43,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 #include "descriptor_sets.inc.glsl"
 #include "camera.inc.glsl"
+#include "util.inc.glsl"
 
 #define USE_17_SAMPLES
 
@@ -149,7 +150,7 @@ void main() {
     }
 
     float depth = textureLod(sourceDepth, texcoord, 0.0).r;
-	float depthM = linearizeDepth(camera, depth);
+	float depthM = linearizeDepth(depth, camera.zNear, camera.zFar);
 
     // Calculate the sssWidth scale (1.0 for a unit plane sitting on the
     // projection window)

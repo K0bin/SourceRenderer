@@ -15,10 +15,6 @@ struct Camera {
   float fov;
 };
 
-float linearizeDepth(Camera camera, float depth) {
-    return camera.zNear * camera.zFar / (camera.zFar - depth * (camera.zFar - camera.zNear));
-}
-
 // Aspect ratio is width/height
 // TODO: Do this on the CPU and add it to the camera buffer
 float calculateVerticalFov(float fov, float aspectRatio) {
