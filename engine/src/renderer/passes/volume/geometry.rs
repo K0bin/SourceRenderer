@@ -295,6 +295,9 @@ impl GeometryPass {
         );
 
         cmd_buffer.flush_barriers();
+
+        cmd_buffer.begin_label("Geometry");
+
         cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
             render_targets: &[RenderTarget {
                 view: &color_view,
@@ -409,5 +412,7 @@ impl GeometryPass {
         );
 
         cmd_buffer.end_render_pass();
+
+        cmd_buffer.end_label();
     }
 }

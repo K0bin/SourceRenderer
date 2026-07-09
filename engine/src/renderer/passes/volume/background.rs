@@ -133,10 +133,13 @@ impl BackgroundPass {
         );
 
         cmd_buffer.flush_barriers();
+
+        cmd_buffer.begin_label("Background");
+
         cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
             render_targets: &[RenderTarget {
                 view: &color_view,
-                load_op: LoadOpColor::Clear(ClearColor::from_u32([0, 0, 0, 255])),
+                load_op: LoadOpColor::DontCare,
                 store_op: StoreOp::Store,
             }],
             depth_stencil: None,
@@ -177,5 +180,7 @@ impl BackgroundPass {
         cmd_buffer.draw(3u32, 1u32, 0u32, 0u32);
 
         cmd_buffer.end_render_pass();
+
+        cmd_buffer.end_label();
     }
 }
