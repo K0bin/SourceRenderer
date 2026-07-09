@@ -44,38 +44,66 @@ impl AssetLoader for RawVolumeLoaderTexture {
         let mut metadata = String::new();
         file.read_to_string(&mut metadata).await.map_err(|_| ())?;
 
-        let mut words = metadata.split(" ");
-        let mut word = words.next();
-        if word != Some("size:") {
-            return Err(());
-        }
-        word = words.next();
-        if word.is_none() {
-            return Err(());
-        }
-        let width: u32 = word.unwrap().parse().map_err(|_| ())?;
-        word = words.next();
-        if word.is_none() {
-            return Err(());
-        }
-        let height: u32 = word.unwrap().parse().map_err(|_| ())?;
-        word = words.next();
-        if word.is_none() {
-            return Err(());
-        }
-        let depth: u32 = word.unwrap().parse().map_err(|_| ())?;
+        let mut words = metadata.split(&[' ', '\r', '\n']);
 
-        let mut word = words.next();
-        if word != Some("spacing:") {
-            return Err(());
-        }
+        let mut width = 0u32;
+        let mut height = 0u32;
+        let mut depth = 0u32;
         let mut spacing = Vec3::new(0.0f32, 0.0f32, 0.0f32);
-        for i in 0..3 {
-            word = words.next();
-            if word.is_none() {
-                return Err(());
+        let mut min_value = 0.0f32;
+        let mut max_value = f32::MAX;
+        let mut has_min_value = false;
+        let mut has_max_value = false;
+
+        let mut word_opt = words.next();
+        while word_opt.is_some() {
+            let word = word_opt.unwrap();
+            match word {
+                "size:" => {
+                    word_opt = words.next();
+                    if word_opt.is_none() {
+                        return Err(());
+                    }
+                    width = word_opt.unwrap().parse().map_err(|_| ())?;
+                    word_opt = words.next();
+                    if word_opt.is_none() {
+                        return Err(());
+                    }
+                    height = word_opt.unwrap().parse().map_err(|_| ())?;
+                    word_opt = words.next();
+                    if word_opt.is_none() {
+                        return Err(());
+                    }
+                    depth = word_opt.unwrap().parse().map_err(|_| ())?;
+                }
+                "spacing:" => {
+                    for i in 0..3 {
+                        word_opt = words.next();
+                        if word_opt.is_none() {
+                            return Err(());
+                        }
+                        spacing[i] = word_opt.unwrap().parse().map_err(|_| ())?;
+                    }
+                }
+                "min_level:" => {
+                    word_opt = words.next();
+                    if word_opt.is_none() {
+                        return Err(());
+                    }
+                    min_value = word_opt.unwrap().parse().map_err(|_| ())?;
+                    has_min_value = true;
+                }
+                "relevant_max_level:" => {
+                    word_opt = words.next();
+                    if word_opt.is_none() {
+                        return Err(());
+                    }
+                    max_value = word_opt.unwrap().parse().map_err(|_| ())?;
+                    has_max_value = true;
+                }
+                _ => {}
             }
-            spacing[i] = word.unwrap().parse().map_err(|_| ())?;
+            word_opt = words.next();
         }
 
         let values_count = (width as usize) * (height as usize) * (depth as usize);
@@ -101,8 +129,6 @@ impl AssetLoader for RawVolumeLoaderTexture {
         );
         let mut values = Vec::<f32>::with_capacity(values_count);
 
-        let mut min_value = f32::MAX;
-        let mut max_value = 0.0f32;
         for z_base in (0usize..(depth as usize)).step_by(RESOLUTION_DOWNSCALE_FACTOR) {
             if z_base + RESOLUTION_DOWNSCALE_FACTOR > depth as usize {
                 continue;
@@ -130,8 +156,12 @@ impl AssetLoader for RawVolumeLoaderTexture {
                                         | ((data[i * 2usize + 1usize] as u16) << 8u16))
                                         as f32
                                 };
-                                min_value = min_value.min(val);
-                                max_value = max_value.max(val);
+                                if !has_min_value {
+                                    min_value = min_value.min(val);
+                                }
+                                if !has_max_value {
+                                    max_value = max_value.max(val);
+                                }
                                 value += val;
                             }
                         }

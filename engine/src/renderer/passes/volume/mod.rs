@@ -65,7 +65,7 @@ impl VolumeRenderer {
     ) -> Self {
         let (texture_handle, progress) = assets.asset_manager().request_asset(
             //"ct_head_256.raw.txt",
-            "assets/manix.raw.txt",
+            "manix.raw.txt",
             AssetType::Texture,
             AssetLoadPriority::High,
         );
@@ -168,9 +168,11 @@ impl RenderPath for VolumeRenderer {
         resources: &mut RendererResources,
         assets: &RendererAssetsReadOnly<'_>,
     ) -> Result<RenderPathResult, sourcerenderer_core::gpu::SwapchainError> {
-        //self.threshold += 0.000005f32;
+        //self.threshold += 0.0000005f32;
+        //self.threshold += 0.00005f32;
         self.threshold += 0.00005f32;
-        self.threshold = self.threshold % 0.10f32;
+        //self.threshold = self.threshold % 0.10f32;
+        self.threshold = self.threshold % 1.0f32;
         //self.threshold += 50.00005f32;
         //self.threshold = self.threshold % 1.0f32;
 
@@ -243,6 +245,7 @@ impl RenderPath for VolumeRenderer {
             assets,
             self.texture_handle,
             Vec3::new(0.488281f32, 0.488281f32, 0.700012f32) * 8f32 * 0.01f32,
+            self.threshold,
         );
 
         self.ssao.execute(

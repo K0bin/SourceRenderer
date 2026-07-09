@@ -38,10 +38,7 @@ vec3 approximateSpecularIBL(vec3 specularColor, float roughness, vec3 normal, ve
 }
 
 void main(void) {
-    float colorComponent = min((in_density / 0.15) * 6.0 - 1.5, 0.7);
-    //vec3 albedo = vec3(0.7, colorComponent, colorComponent);
-
-    float densityNormalized = in_density * 7.5;
+    float densityNormalized = in_density;
 
     vec3 albedo = texture(transferFunction, vec2(densityNormalized, 0.8 + 0.5 * 0.25)).rgb;
     albedo.r = mix(albedo.r, albedo.g, 0.3);
