@@ -63,7 +63,8 @@ void main(void) {
     radiance += approximateSpecularIBL(f0, roughness, in_normal, viewDir);
 
     out_color.rgb = radiance;
-    out_color.a = densityNormalized;
+    // TODO use transferFunction texture to get SSS intensity
+    out_color.a = clamp((1.0 - densityNormalized) * 0.33, 0.0, 1.0);
 
     //out_color = vec4(min(albedo, vec3(0.1) * albedo + pbr(lightDir, viewDir, in_normal, vec3(0.025), albedo, vec3(15.0), 0.1, 0.8) * 0.6), 1.0);
     //out_color.a = in_density;
