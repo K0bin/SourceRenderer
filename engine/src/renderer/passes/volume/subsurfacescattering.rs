@@ -136,7 +136,6 @@ impl SSSPass {
             HistoryResourceEntry::Current,
         );
 
-        cmd_buffer.begin_label("SSS horizonal pass");
         let pipeline = pass_params
             .assets
             .get_compute_pipeline(self.pipeline)
@@ -164,6 +163,9 @@ impl SSSPass {
             WHOLE_BUFFER,
         );
         cmd_buffer.finish_binding();
+
+        cmd_buffer.begin_label("SSS horizonal pass");
+
         let sss_temp_info = sss_temp_uav.texture().unwrap().info();
 
         let params = SSSParams {
