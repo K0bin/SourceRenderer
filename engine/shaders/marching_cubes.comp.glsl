@@ -67,6 +67,19 @@ vec4 interpolateVertices(uvec3 pos1, uvec3 pos2) {
     return mix(vec4(pos1, value1), vec4(pos2, value2), a);
 }
 
+uint calculateAndAddVertex(uint idx1, uint idx2) {
+    uint minIdx = min(idx1, idx2);
+    uint maxIdx = max(idx1, idx2);
+
+    uvec3 vertexPos1 = indexToCubePos(minIdx);
+    uvec3 vertexPos2 = indexToCubePos(maxIdx);
+    vec4 vertex = interpolateVertices(vertexPos1, vertexPos2) * vec4(scale, 1.0);
+
+    uint index = atomicAdd(vertexCount, 1u);
+    vertices[index].pos = f16vec3(vertex.xyz);
+    return index;
+}
+
 vec3 calculateNormal(vec3 pos) {
     ivec3 imgPos = ivec3(round(pos / scale));
     vec3 normal = vec3(0.0);
@@ -111,32 +124,23 @@ void main() {
     uint[12u] cubeVertexIndices;
     for (uint i = 0u; i < 4u; i++) {
         if ((edges[key] & (1u << i)) != 0u) {
-            vec4 vertex = interpolateVertices(indexToCubePos(i), indexToCubePos((i + 1u) % 4u)) * vec4(scale, 1.0);
-            uint index = atomicAdd(vertexCount, 1u);
-            vertices[index].pos = f16vec3(vertex.xyz);
-            cubeVertexIndices[i] = index;
-
-            //vertices[index].normal = f16vec3(calculateNormal(vertex.xyz));
+            uint idx1 = i;
+            uint idx2 = (i + 1u) % 4u;
+            cubeVertexIndices[i] = calculateAndAddVertex(idx1, idx2);
         } else {
             cubeVertexIndices[i] = 0u;
         }
         if ((edges[key] & (16u << i)) != 0u) {
-            vec4 vertex = interpolateVertices(indexToCubePos(i + 4u), indexToCubePos((i + 1u) % 4u + 4u)) * vec4(scale, 1.0);
-            uint index = atomicAdd(vertexCount, 1u);
-            vertices[index].pos = f16vec3(vertex.xyz);
-            cubeVertexIndices[i + 4u] = index;
-
-            //vertices[index].normal = f16vec3(calculateNormal(vertex.xyz));
+            uint idx1 = i + 4u;
+            uint idx2 = (i + 1u) % 4u + 4u;
+            cubeVertexIndices[i + 4u] = calculateAndAddVertex(idx1, idx2);
         } else {
             cubeVertexIndices[i + 4u] = 0u;
         }
         if ((edges[key] & (256u << i)) != 0u) {
-            vec4 vertex = interpolateVertices(indexToCubePos(i), indexToCubePos(i + 4u)) * vec4(scale, 1.0);
-            uint index = atomicAdd(vertexCount, 1u);
-            vertices[index].pos = f16vec3(vertex.xyz);
-            cubeVertexIndices[i + 8u] = index;
-
-            //vertices[index].normal = f16vec3(calculateNormal(vertex.xyz));
+            uint idx1 = i;
+            uint idx2 = i + 4u;
+            cubeVertexIndices[i + 8u] = calculateAndAddVertex(idx1, idx2);
         } else {
             cubeVertexIndices[i + 8u] = 0u;
         }
