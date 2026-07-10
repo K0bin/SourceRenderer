@@ -53,7 +53,7 @@ vec3 importantSampleGGX(vec2 uniformSample, float roughness) {
     return vec3(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
 }
 
-vec2 integrateBRDF(float roughness, float normalDotViewDir) {
+vec2 integrateBRDF(float normalDotViewDir, float roughness) {
     vec3 viewDir = vec3(
         sqrt(1.0 - normalDotViewDir * normalDotViewDir),
         0.0,
@@ -80,7 +80,7 @@ vec2 integrateBRDF(float roughness, float normalDotViewDir) {
 		}
     }
 
-    return vec2(b, a) / NumSamples;
+    return vec2(a, b) / NumSamples;
 }
 
 // Adapted from "Real Shading in Unreal Engine 4", presented by Brian Karis (Epic Games) at Siggraph 2013

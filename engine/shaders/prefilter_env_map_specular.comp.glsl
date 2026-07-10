@@ -50,10 +50,6 @@ vec2 sampleHammersley(uint i)
 	return vec2(i * InvNumSamples, radicalInverse(i));
 }
 
-// Calculate normalized sampling direction vector based on current fragment coordinates (gl_GlobalInvocationID.xyz).
-// This is essentially "inverse-sampling": we reconstruct what the sampling vector would be if we wanted it to "hit"
-// this particular fragment in a cubemap.
-// See: OpenGL core profile specs, section 8.13.
 vec3 getSamplingVector()
 {
     vec2 st = gl_GlobalInvocationID.xy/vec2(imageSize(outputTexture));
