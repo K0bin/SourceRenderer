@@ -28,11 +28,14 @@ layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 4, r16f) uniform writeonly 
 // https://github.com/SaschaWillems/Vulkan/blob/master/data/shaders/glsl/ssao/ssao.frag
 
 void main() {
-  ivec2 texSize = imageSize(outputTexture);
-  if (gl_GlobalInvocationID.x >= texSize.x || gl_GlobalInvocationID.y >= texSize.y) {
-    return;
+  ivec2 outputPx = ivec2(gl_GlobalInvocationID.xy);
+
+  ivec2 outputSize = imageSize(outputTexture);
+  if (any(greaterThanEqual(outputPx, outputSize))) {
+      return;
   }
-  vec2 texCoord = vec2((float(gl_GlobalInvocationID.x) + 0.5) / float(texSize.x), (float(gl_GlobalInvocationID.y) + 0.5) / float(texSize.y));
+
+  vec2 texCoord = (vec2(outputPx) + 0.5) / vec2(outputSize);
 
   float depth = textureLod(depthMap, texCoord, 0).x;
   vec3 fragPos = viewSpacePosition(texCoord, depth, camera.invProj);
@@ -69,6 +72,5 @@ void main() {
     occlusion += (sampleZ <= samplePos.z - bias ? 1.0 : 0.0) * rangeCheck;
   }
   occlusion = 1.0 - (occlusion / kernelSize);
-  ivec2 storageTexCoord = ivec2(int(gl_GlobalInvocationID.x), int(gl_GlobalInvocationID.y));
-  imageStore(outputTexture, storageTexCoord, vec4(occlusion, 0.0, 0.0, 0.0));
+  imageStore(outputTexture, outputPx, vec4(occlusion, 0.0, 0.0, 0.0));
 }
