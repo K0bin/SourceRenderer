@@ -588,9 +588,9 @@ impl MarchingCubesPass {
 
         command_buffer.finish_binding();
         command_buffer.dispatch(
-            (texture_info.width + 7u32) / 8u32,
-            (texture_info.height + 7u32) / 8u32,
-            (texture_info.depth + 7u32) / 8u32,
+            (texture_info.width + 3u32) / 4u32,
+            (texture_info.height + 3u32) / 4u32,
+            (texture_info.depth + 3u32) / 4u32,
         );
 
         command_buffer.end_label();
