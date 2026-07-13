@@ -4,12 +4,15 @@
 #extension GL_EXT_scalar_block_layout : enable
 #extension GL_EXT_shader_explicit_arithmetic_types_float16 : enable
 
-//#define USE_SUBGROUP_CACHE
+#define CACHE 1
 
 #extension GL_KHR_shader_subgroup_basic : enable
 #extension GL_KHR_shader_subgroup_arithmetic : enable
 #extension GL_KHR_shader_subgroup_vote : enable
 #extension GL_KHR_shader_subgroup_ballot : enable
+
+#extension GL_KHR_memory_scope_semantics : enable
+
 
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
@@ -18,6 +21,11 @@ layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 struct Vertex {
     f16vec3 pos;
     //f16vec3 normal;
+};
+
+struct HashmapEntry {
+    uint key;
+    uint vertexIndex;
 };
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0, std430) buffer readonly EdgeTable {
@@ -43,6 +51,9 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 5, std430) buffer bufferatomics 
     uint firstInstance;
     uint vertexCount;
 };
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 6, std430) buffer hashmap {
+    HashmapEntry[] hashmapEntries;
+};
 
 layout(push_constant) uniform Config {
     vec3 scale;
@@ -61,8 +72,6 @@ uvec3 localInvocationFromIndex(uint index) {
 uint localVertexKey(uint idx1, uint idx2) {
     uint minIdx = min(idx1, idx2);
     uint maxIdx = max(idx1, idx2);
-    //return ((gl_LocalInvocationIndex + minIdx) << 3u) | maxIdx;
-
     uint diff = maxIdx - minIdx;
     // Max value: 4. That's 3 bits just like the original value.
     // Min value: 1. So we can subtract that. Max value 3 only takes 2 bits.
@@ -78,6 +87,38 @@ uvec3 indexOffset(uint idx) {
          (idx >> 2u) & 1u,
          (idx >> 1u) & 1u
     );
+}
+
+uint offsetToIndex(uvec3 offset) {
+    uint index = 0u;
+    index |= min(offset.z, 1u) << 1u;
+    index |= min(offset.y, 1u) << 2u;
+    index |= min(offset.x, 1u) & min(offset.z, 1u);
+    return index;
+}
+
+uint vertexKey(uint idx1, uint idx2) {
+    uint minIdx = min(idx1, idx2);
+    uint maxIdx = max(idx1, idx2);
+
+    uvec3 minPos = indexOffset(minIdx);
+    uvec3 maxPos = indexOffset(maxIdx);
+
+    ivec3 diff = ivec3(maxPos) - ivec3(minPos);
+
+    uvec3 invocationCount = gl_NumWorkGroups * gl_WorkGroupSize;
+    uvec3 invocation = min(invocationCount, gl_GlobalInvocationID + minPos);
+
+    uint baseIndex = invocation.z * invocationCount.x * invocationCount.y +
+         invocation.y * invocationCount.x +
+         invocation.x;
+
+    uint key = baseIndex << 8u; // 24 Bits for the position. Works up to 256x256x256!
+    key |= (uint(diff.x < 0 ? (diff.x * -1) : (diff.x | 4)) & 7) << 5u; // Could be optimized with unreadable bit operations.
+    key |= (uint(diff.z < 0 ? (diff.z * -1) : (diff.z | 4)) & 7) << 2u;
+    key |= uint(diff.y & 3); // diff.y can never be negative
+
+    return key;
 }
 
 uvec3 indexToCubePos(uint idx) {
@@ -124,6 +165,77 @@ vec3 calculateNormal(vec3 pos) {
     normal.z = (imageLoad(densityImage, imgPos - ivec3(0, 0, 1))
                                 - imageLoad(densityImage, imgPos + ivec3(0, 0, 1))).x;
     return normalize(normal);
+}
+
+
+// https://nosferalatu.com/SimpleGPUHashTable.html
+
+const uint HashmapEmptyKey = ~0u;
+const uint HashmapEmptyValue = ~0u;
+const uint HashmapCapacity = 300000u;
+const uint HashmapMaxProbing = 25u;
+
+uint hash(uint key) {
+    uint hash = key;
+    hash ^= hash >> 16;
+    hash *= 0x85ebca6b;
+    hash ^= hash >> 13;
+    hash *= 0xc2b2ae35;
+    hash ^= hash >> 16;
+    return hash;
+}
+
+void hashmapInsert(uint key, uint vertexIndex) {
+    uint slot = hash(key) % HashmapCapacity;
+    uint startSlot = slot;
+    uint probes = 0u;
+
+    while (true) {
+        uint prev = atomicCompSwap(hashmapEntries[slot].key, HashmapEmptyKey, key, gl_ScopeQueueFamily,
+            gl_StorageSemanticsBuffer, gl_SemanticsAcquireRelease | gl_SemanticsMakeAvailable,
+            gl_StorageSemanticsNone, gl_SemanticsRelaxed);
+        //uint prev = atomicCompSwap(hashmapEntries[slot].key, HashmapEmptyKey, key);
+        if (prev == key || prev == HashmapEmptyKey) {
+            atomicStore(hashmapEntries[slot].vertexIndex, vertexIndex, gl_ScopeQueueFamily, gl_StorageSemanticsBuffer, gl_SemanticsRelease | gl_SemanticsMakeAvailable);
+            //atomicExchange(hashmapEntries[slot].vertexIndex, vertexIndex);
+            return;
+        }
+        slot = (slot + 1u) % HashmapCapacity;
+        if (slot == startSlot) {
+            return;
+        }
+        if (probes >= HashmapMaxProbing) {
+            return;
+        }
+        probes++;
+    }
+}
+
+uint hashmapLookup(uint key) {
+    uint slot = hash(key) % HashmapCapacity;
+    uint startSlot = slot;
+    uint probes = 0u;
+
+    while (true) {
+       //uint slotKey = atomicAdd(hashmapEntries[slot].key, 0u);
+       uint slotKey = atomicLoad(hashmapEntries[slot].key, gl_ScopeQueueFamily, gl_StorageSemanticsBuffer, gl_SemanticsAcquire | gl_SemanticsMakeVisible);
+       if (slotKey == key) {
+           //return atomicAdd(hashmapEntries[slot].vertexIndex, 0u);
+           return atomicLoad(hashmapEntries[slot].vertexIndex, gl_ScopeQueueFamily, gl_StorageSemanticsBuffer, gl_SemanticsAcquire | gl_SemanticsMakeVisible);
+       }
+       if (slotKey == HashmapEmptyKey) {
+           return HashmapEmptyValue;
+       }
+       slot = (slot + 1u) % HashmapCapacity;
+       if (slot == startSlot) {
+           return HashmapEmptyValue;
+       }
+       if (probes >= HashmapMaxProbing) {
+           return HashmapEmptyValue;
+       }
+       probes++;
+    }
+    return HashmapEmptyValue;
 }
 
 void main() {
@@ -196,7 +308,7 @@ void main() {
         }
     }
 
-#ifdef USE_SUBGROUP_CACHE
+#if CACHE == 2
     // The subgroup based cache has a terrible hit rate.
     // I probably need to change the addressing to go over the image in subgroup sized cubes.
     // Right now I just use the addressing done by the driver (global/local invocation id).
@@ -256,7 +368,6 @@ void main() {
         uniformIndicesMask &= ~(1u << lsb);
         lsb = findLSB(uniformIndicesMask);
     }
-
 #else
     int lsb = findLSB(usedIndices);
     while (lsb != -1) {
@@ -272,8 +383,22 @@ void main() {
 
         // Skipped invocations never end up here because the edge lookup table value for 0 or 255 is 0.
         // See the loop above.
-        uint index = atomicAdd(vertexCount, 1u);
+
+        uint index;
+        #if CACHE == 1
+        uint cacheKey = vertexKey(minIdx, maxIdx);
+        index = hashmapLookup(cacheKey);
+        if (index == HashmapEmptyValue) {
+        #endif
+
+        index = atomicAdd(vertexCount, 1u);
         vertices[index].pos = f16vec3(vertex.xyz);
+
+        #if CACHE == 1
+        hashmapInsert(cacheKey, index);
+        }
+        #endif
+
         cubeVertexIndices[lsb] = index;
 
         usedIndices &= ~(1u << lsb);
