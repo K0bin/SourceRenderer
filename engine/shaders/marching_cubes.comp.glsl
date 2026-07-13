@@ -6,11 +6,10 @@
 
 //#define USE_SUBGROUP_CACHE
 
-#ifdef USE_SUBGROUP_CACHE
 #extension GL_KHR_shader_subgroup_basic : enable
 #extension GL_KHR_shader_subgroup_arithmetic : enable
+#extension GL_KHR_shader_subgroup_vote : enable
 #extension GL_KHR_shader_subgroup_ballot : enable
-#endif
 
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
@@ -147,9 +146,10 @@ void main() {
         }
     }
 
-    if (key == 0u || key == 255u) {
+    bool skipInvocation = key == 0u || key == 255u;
+
+    if (subgroupAll(skipInvocation))
         return;
-    }
 
     instanceCount = 1u;
     firstIndex = 0u;
@@ -197,29 +197,45 @@ void main() {
     }
 
 #ifdef USE_SUBGROUP_CACHE
-    // The subgroup based cache is too slow and has a terrible hit rate.
+    // The subgroup based cache has a terrible hit rate.
     // I probably need to change the addressing to go over the image in subgroup sized cubes.
     // Right now I just use the addressing done by the driver (global/local invocation id).
     // I wonder if this works better on older AMD GPUs with warp64.
 
     subgroupBarrier();
 
-    uint uniformMinKey = subgroupMin(minKey);
-    uint uniformMaxKey = subgroupMax(maxKey);
-    // max loop iterations: (1u << (4u + 4u + 4u + 5u))
     uint uniformIndicesMask = subgroupOr(usedIndices);
-    for (uint key = uniformMinKey; key <= uniformMaxKey; key++) {
-        uint loopIndicesMask = uniformIndicesMask;
-        int lsb = findLSB(loopIndicesMask);
-        while (lsb != -1) {
-            uint tempIdxWithoutMarkingBit = cubeVertexIndices[lsb] & ~(1u << 31u);
-            bool hasMarkingBit = (cubeVertexIndices[lsb] & (1u << 31u)) != 0u;
-            if (tempIdxWithoutMarkingBit == key && hasMarkingBit) {
+    int lsb = findLSB(uniformIndicesMask);
+    while (lsb != -1) {
+        uint key = cubeVertexIndices[lsb];
+        uint sharedKey = subgroupMax(key);
+
+        // As long as any invocation has a key in this array slot, all invocations will search their arrays for usages of this key.
+        while ((sharedKey & (1u << 31u)) != 0) {
+            int indicesIndex = -1;
+            uint innerMask = usedIndices;
+            int innerLsb = findLSB(innerMask);
+            while (innerLsb != -1) {
+                if (cubeVertexIndices[innerLsb] == sharedKey) {
+                    indicesIndex = innerLsb;
+                    innerMask = 0u;
+                }
+
+                innerMask &= ~(1u << innerLsb);
+                innerLsb = findLSB(innerMask);
+            }
+
+            if (indicesIndex != -1) {
+                // The invocation found the key in their array.
+                // Pick an invocation that adds it to the vertex buffer.
+
                 uint index;
                 if (subgroupElect()) {
-                    uint minIdx = key & 7u; // 7u = 0b111
-                    uint maxIdx = ((key >> 3u) & 3u) + minIdx + 1u; // 3u = 0b11
-                    uint localIndex = key >> 5u;
+                    uint appendKey = sharedKey;
+                    appendKey &= ~(1u << 31u);
+                    uint minIdx = appendKey & 7u; // 7u = 0b111
+                    uint maxIdx = ((appendKey >> 3u) & 3u) + minIdx + 1u; // 3u = 0b11
+                    uint localIndex = appendKey >> 5u;
                     uvec3 localInvocation = localInvocationFromIndex(localIndex);
 
                     uvec3 vertexPos1 = indexToCubePos(localInvocation, minIdx);
@@ -230,15 +246,17 @@ void main() {
                     vertices[index].pos = f16vec3(vertex.xyz);
                 }
                 index = subgroupBroadcastFirst(index);
-                cubeVertexIndices[lsb] = index;
+                cubeVertexIndices[indicesIndex] = index;
+                key = index;
             }
 
-            loopIndicesMask &= ~(1u << lsb);
-            lsb = findLSB(loopIndicesMask);
+            sharedKey = subgroupMax(key);
         }
+
+        uniformIndicesMask &= ~(1u << lsb);
+        lsb = findLSB(uniformIndicesMask);
     }
 
-    subgroupBarrier();
 #else
     int lsb = findLSB(usedIndices);
     while (lsb != -1) {
@@ -252,6 +270,8 @@ void main() {
         uvec3 vertexPos2 = indexToCubePos(localInvocation, maxIdx);
         vec4 vertex = interpolateVertices(vertexPos1, vertexPos2) * vec4(scale, 1.0);
 
+        // Skipped invocations never end up here because the edge lookup table value for 0 or 255 is 0.
+        // See the loop above.
         uint index = atomicAdd(vertexCount, 1u);
         vertices[index].pos = f16vec3(vertex.xyz);
         cubeVertexIndices[lsb] = index;
@@ -260,6 +280,9 @@ void main() {
         lsb = findLSB(usedIndices);
     }
 #endif
+
+    if (skipInvocation)
+        return;
 
     for (uint i = 0u; i < 16u && tris[key][i] != -1; i += 3u) {
         uint firstIndex = atomicAdd(indexCount, 3u);
