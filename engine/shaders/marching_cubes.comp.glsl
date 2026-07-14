@@ -192,13 +192,9 @@ void hashmapInsert(uint key, uint vertexIndex) {
     uint probes = 0u;
 
     while (true) {
-        uint prev = atomicCompSwap(hashmapEntries[slot].key, HashmapEmptyKey, key, gl_ScopeQueueFamily,
-            gl_StorageSemanticsBuffer, gl_SemanticsAcquireRelease | gl_SemanticsMakeAvailable,
-            gl_StorageSemanticsNone, gl_SemanticsRelaxed);
-        //uint prev = atomicCompSwap(hashmapEntries[slot].key, HashmapEmptyKey, key);
+        uint prev = atomicCompSwap(hashmapEntries[slot].key, HashmapEmptyKey, key);
         if (prev == key || prev == HashmapEmptyKey) {
-            atomicStore(hashmapEntries[slot].vertexIndex, vertexIndex, gl_ScopeQueueFamily, gl_StorageSemanticsBuffer, gl_SemanticsRelease | gl_SemanticsMakeAvailable);
-            //atomicExchange(hashmapEntries[slot].vertexIndex, vertexIndex);
+            atomicExchange(hashmapEntries[slot].vertexIndex, vertexIndex);
             return;
         }
         slot = (slot + 1u) % HashmapCapacity;
@@ -218,11 +214,9 @@ uint hashmapLookup(uint key) {
     uint probes = 0u;
 
     while (true) {
-       //uint slotKey = atomicAdd(hashmapEntries[slot].key, 0u);
-       uint slotKey = atomicLoad(hashmapEntries[slot].key, gl_ScopeQueueFamily, gl_StorageSemanticsBuffer, gl_SemanticsAcquire | gl_SemanticsMakeVisible);
+       uint slotKey = atomicAdd(hashmapEntries[slot].key, 0u);
        if (slotKey == key) {
-           //return atomicAdd(hashmapEntries[slot].vertexIndex, 0u);
-           return atomicLoad(hashmapEntries[slot].vertexIndex, gl_ScopeQueueFamily, gl_StorageSemanticsBuffer, gl_SemanticsAcquire | gl_SemanticsMakeVisible);
+           return atomicAdd(hashmapEntries[slot].vertexIndex, 0u);
        }
        if (slotKey == HashmapEmptyKey) {
            return HashmapEmptyValue;
