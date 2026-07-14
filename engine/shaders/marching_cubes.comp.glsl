@@ -169,11 +169,12 @@ vec3 calculateNormal(vec3 pos) {
 
 
 // https://nosferalatu.com/SimpleGPUHashTable.html
+// Modified it to add a probing maximum and prevent hangs if it runs out of space.
 
 const uint HashmapEmptyKey = ~0u;
 const uint HashmapEmptyValue = ~0u;
-const uint HashmapCapacity = 300000u;
-const uint HashmapMaxProbing = 25u;
+const uint HashmapCapacity = 400000u;
+const uint HashmapMaxProbing = 0u; // 0 to disable the limit.
 
 uint hash(uint key) {
     uint hash = key;
@@ -204,7 +205,7 @@ void hashmapInsert(uint key, uint vertexIndex) {
         if (slot == startSlot) {
             return;
         }
-        if (probes >= HashmapMaxProbing) {
+        if (HashmapMaxProbing != 0u && probes >= HashmapMaxProbing) {
             return;
         }
         probes++;
@@ -230,7 +231,7 @@ uint hashmapLookup(uint key) {
        if (slot == startSlot) {
            return HashmapEmptyValue;
        }
-       if (probes >= HashmapMaxProbing) {
+       if (HashmapMaxProbing != 0u && probes >= HashmapMaxProbing) {
            return HashmapEmptyValue;
        }
        probes++;
