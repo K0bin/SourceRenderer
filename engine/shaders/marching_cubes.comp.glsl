@@ -98,25 +98,17 @@ uint offsetToIndex(uvec3 offset) {
 }
 
 uint vertexKey(uint idx1, uint idx2) {
-    uint minIdx = min(idx1, idx2);
-    uint maxIdx = max(idx1, idx2);
+    uvec3 pos1 = indexOffset(idx1);
+    uvec3 pos2 = indexOffset(idx2);
 
-    uvec3 minPos = indexOffset(minIdx);
-    uvec3 maxPos = indexOffset(maxIdx);
+    uvec3 pos = gl_GlobalInvocationID * 2u + pos1 + pos2;
 
-    ivec3 diff = ivec3(maxPos) - ivec3(minPos);
+    uvec3 sizes = gl_NumWorkGroups * gl_WorkGroupSize * 2;
+    pos = min(sizes, pos);
 
-    uvec3 invocationCount = gl_NumWorkGroups * gl_WorkGroupSize;
-    uvec3 invocation = min(invocationCount, gl_GlobalInvocationID + minPos);
-
-    uint baseIndex = invocation.z * invocationCount.x * invocationCount.y +
-         invocation.y * invocationCount.x +
-         invocation.x;
-
-    uint key = baseIndex << 8u; // 24 Bits for the position. Works up to 256x256x256!
-    key |= (uint(diff.x < 0 ? (diff.x * -1) : (diff.x | 4)) & 7) << 5u; // Could be optimized with unreadable bit operations.
-    key |= (uint(diff.z < 0 ? (diff.z * -1) : (diff.z | 4)) & 7) << 2u;
-    key |= uint(diff.y & 3); // diff.y can never be negative
+    uint key = pos.z * sizes.x * sizes.y +
+         pos.y * sizes.x +
+         pos.x;
 
     return key;
 }
