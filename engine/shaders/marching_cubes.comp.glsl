@@ -10,7 +10,7 @@
 #extension GL_KHR_shader_subgroup_ballot : enable
 
 
-#define GLOBAL_HASHMAP
+//#define GLOBAL_HASHMAP
 #define SUBGROUP_SHARING
 
 
@@ -325,7 +325,8 @@ void main() {
                 break;
 
             uint vertexIndex = ~0u;
-            uint innerLoopMask = subgroupOr(arrayIndexMask);
+            // The vertices are scalarized and done linearly, so only check the the indices before (and including) this one.
+            uint innerLoopMask = subgroupOr(arrayIndexMask) & ((2u << i) - 1u);
             while (innerLoopMask != 0u) {
                 uint j = findLSB(innerLoopMask);
                 innerLoopMask &= ~(1u << j);
