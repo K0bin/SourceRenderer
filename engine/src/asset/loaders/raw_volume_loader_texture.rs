@@ -50,8 +50,8 @@ impl AssetLoader for RawVolumeLoaderTexture {
         let mut height = 0u32;
         let mut depth = 0u32;
         let mut spacing = Vec3::new(0.0f32, 0.0f32, 0.0f32);
-        let mut min_value = 0.0f32;
-        let mut max_value = f32::MAX;
+        let mut min_value = f32::MAX;
+        let mut max_value = 0.0f32;
         let mut has_min_value = false;
         let mut has_max_value = false;
 
