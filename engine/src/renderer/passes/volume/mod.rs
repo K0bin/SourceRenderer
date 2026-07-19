@@ -178,6 +178,8 @@ impl RenderPath for VolumeRenderer {
 
         //self.threshold = 0.00005f32 * 150.0f32;
 
+        let marching_cube_scale = Vec3::new(0.488281f32, 0.488281f32, 0.700012f32) * 8f32 * 0.01f32;
+
         let backbuffer = swapchain.next_backbuffer()?;
 
         let mut cmd_buffer = context.get_command_buffer(QueueType::Graphics);
@@ -194,7 +196,7 @@ impl RenderPath for VolumeRenderer {
             &params,
             self.texture_handle,
             self.threshold,
-            Vec3::new(0.488281f32, 0.488281f32, 0.700012f32) * 8f32 * 0.01f32,
+            marching_cube_scale,
         );
 
         self.ibl_pass.execute(&mut cmd_buffer, &mut params);
@@ -244,8 +246,7 @@ impl RenderPath for VolumeRenderer {
             swapchain.height(),
             assets,
             self.texture_handle,
-            Vec3::new(0.488281f32, 0.488281f32, 0.700012f32) * 8f32 * 0.01f32,
-            self.threshold,
+            marching_cube_scale,
         );
 
         self.ssao.execute(
