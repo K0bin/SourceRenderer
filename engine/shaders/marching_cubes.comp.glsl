@@ -260,6 +260,7 @@ void main() {
 
     uint[12u] vertexKeys;
     uint[12u] cubeVertexIndices;
+    uint arrayIndexMask = 0u;
 
     for (uint i = 0u; i < 4u; i++) {
         if ((edges[voxelKey] & (1u << i)) != 0u) {
@@ -270,6 +271,7 @@ void main() {
 
             uint vtxKey = vertexKeyFromIndexOffsets(idx1, idx2);
             vertexKeys[i] = vtxKey;
+            arrayIndexMask |= 1u << i;
         } else {
             cubeVertexIndices[i] = 0u;
             vertexKeys[i] = ~0u;
@@ -282,6 +284,7 @@ void main() {
 
             uint vtxKey = vertexKeyFromIndexOffsets(idx1, idx2);
             vertexKeys[i + 4u] = vtxKey;
+            arrayIndexMask |= 1u << (i + 4u);
         } else {
             cubeVertexIndices[i + 4u] = 0u;
             vertexKeys[i + 4u] = ~0u;
@@ -294,6 +297,7 @@ void main() {
 
             uint vtxKey = vertexKeyFromIndexOffsets(idx1, idx2);
             vertexKeys[i + 8u] = vtxKey;
+            arrayIndexMask |= 1u << (i + 8u);
         } else {
             cubeVertexIndices[i + 8u] = 0u;
             vertexKeys[i + 8u] = ~0u;
@@ -308,7 +312,11 @@ void main() {
 
     subgroupBarrier();
 
-    for (uint i = 0u; i < 12u; i++) {
+    uint outerLoopMask = subgroupOr(arrayIndexMask);
+    while (outerLoopMask != 0u) {
+        uint i = findLSB(outerLoopMask);
+        outerLoopMask &= ~(1u << i);
+
         uint keyAtI = vertexKeys[i];
 
         while (true) {
@@ -317,7 +325,11 @@ void main() {
                 break;
 
             uint vertexIndex = ~0u;
-            for (uint j = 0u; j < 12u; j++) {
+            uint innerLoopMask = subgroupOr(arrayIndexMask);
+            while (innerLoopMask != 0u) {
+                uint j = findLSB(innerLoopMask);
+                innerLoopMask &= ~(1u << j);
+
                 if (subgroupAny(vertexIndex != ~0u)) {
                     vertexIndex = subgroupMin(vertexIndex);
                     break;
