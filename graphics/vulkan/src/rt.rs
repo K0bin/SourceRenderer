@@ -111,7 +111,7 @@ impl VkAccelerationStructure {
             acceleration_structure_funcs.get_acceleration_structure_build_sizes(
                 vk::AccelerationStructureBuildTypeKHR::DEVICE,
                 &build_info,
-                &[info.instances_count],
+                Some(&[info.instances_count]),
                 &mut size_info,
             );
 
@@ -199,12 +199,12 @@ impl VkAccelerationStructure {
             acceleration_structure_funcs.cmd_build_acceleration_structures(
                 *cmd_buffer,
                 &[build_info],
-                &[&[vk::AccelerationStructureBuildRangeInfoKHR {
+                &[Some(&[vk::AccelerationStructureBuildRangeInfoKHR {
                     primitive_count: info.instances_count,
                     primitive_offset: 0,
                     first_vertex: 0,
                     transform_offset: 0,
-                }]],
+                }])],
             );
         }
 
@@ -301,7 +301,7 @@ impl VkAccelerationStructure {
             acceleration_structure_funcs.get_acceleration_structure_build_sizes(
                 vk::AccelerationStructureBuildTypeKHR::DEVICE,
                 &build_info,
-                &max_primitive_counts[..],
+                Some(&max_primitive_counts[..]),
                 &mut size_info,
             );
 
@@ -434,7 +434,7 @@ impl VkAccelerationStructure {
             acceleration_structure_funcs.cmd_build_acceleration_structures(
                 *cmd_buffer,
                 &[build_info],
-                &[&range_infos[..]],
+                &[Some(&range_infos[..])],
             );
         }
         Self {

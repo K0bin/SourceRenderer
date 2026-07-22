@@ -268,7 +268,7 @@ impl VkSwapchain {
         device: &Arc<RawVkDevice>,
         surface: VkSurface,
     ) -> Result<Self, SwapchainError> {
-        let swapchain_device = SwapchainDevice::new(&device.instance.instance, &device.device);
+        let swapchain_device = SwapchainDevice::load(&device.instance.instance, &device.device);
         let (swapchain, textures, matrix, max_image_count) = Self::create_swapchain_and_textures(
             device,
             &swapchain_device,

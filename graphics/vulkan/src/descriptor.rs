@@ -333,7 +333,7 @@ impl VkDescriptorSet {
         layout: &Arc<VkDescriptorSetLayout>,
         is_transient: bool,
         bindings: &'a [T],
-    ) -> ash::prelude::VkResult<Self>
+    ) -> ash::VkResult<Self>
     where
         VkBoundResource: From<&'a T>,
     {

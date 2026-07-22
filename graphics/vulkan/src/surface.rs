@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use ash::khr::surface::Instance as SurfaceLoader;
-use ash::prelude::VkResult;
+use ash::VkResult;
 use ash::vk;
 use ash::vk::Handle;
 use sourcerenderer_core::gpu;

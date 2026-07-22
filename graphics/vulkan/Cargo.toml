@@ -6,7 +6,7 @@ edition = "2021"
 build = "build.rs"
 
 [dependencies]
-ash = "0.38"
+ash = { git = "https://github.com/ash-rs/ash" }
 sourcerenderer_core = { path = "../../core" }
 bitflags = "2.9"
 thread_local = "1.1"

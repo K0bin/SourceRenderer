@@ -190,7 +190,7 @@ impl SDLPlatform {
 
 impl SDLWindow {
     fn new(_sdl_context: &Sdl, video_subsystem: &VideoSubsystem) -> SDLWindow {
-        let mut window_builder = video_subsystem.window("sourcerenderer", 1920, 1080);
+        let mut window_builder = video_subsystem.window("sourcerenderer", 1280, 720);
         window_builder.position_centered();
         //window_builder.fullscreen();
 

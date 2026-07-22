@@ -61,7 +61,7 @@ impl Default for VkPhysicalDeviceFragmentShaderBarycentricFeaturesNV {
 pub struct VkAdapter {
     instance: Arc<RawVkInstance>,
     physical_device: vk::PhysicalDevice,
-    properties: vk::PhysicalDeviceProperties,
+    pub properties: vk::PhysicalDeviceProperties,
 }
 
 impl VkAdapter {
@@ -128,7 +128,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             };
         }
 
-        let surface_loader = KhrSurface::new(&self.instance.entry, &self.instance.instance);
+        let surface_loader = KhrSurface::load(&self.instance.entry, &self.instance.instance);
         let queue_properties = self
             .instance
             .instance
@@ -696,7 +696,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         let rt = if supports_rt_pipeline || supports_rt_query {
             Some(RawVkRTEntries {
                 rt_pipelines: if supports_rt_pipeline {
-                    Some(ash::khr::ray_tracing_pipeline::Device::new(
+                    Some(ash::khr::ray_tracing_pipeline::Device::load(
                         &self.instance,
                         &vk_device,
                     ))
@@ -706,14 +706,14 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                 deferred_operations: if extensions
                     .contains(VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS)
                 {
-                    Some(ash::khr::deferred_host_operations::Device::new(
+                    Some(ash::khr::deferred_host_operations::Device::load(
                         &self.instance,
                         &vk_device,
                     ))
                 } else {
                     None
                 },
-                acceleration_structure: ash::khr::acceleration_structure::Device::new(
+                acceleration_structure: ash::khr::acceleration_structure::Device::load(
                     &self.instance,
                     &vk_device,
                 ),
@@ -735,12 +735,12 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             .instance
             .debug_utils
             .as_ref()
-            .map(|_d| ash::ext::debug_utils::Device::new(&self.instance.instance, &vk_device));
+            .map(|_d| ash::ext::debug_utils::Device::load(&self.instance.instance, &vk_device));
 
         let mut host_image_copy = Option::<RawVkHostImageCopyEntries>::None;
         if features_host_image_copy.host_image_copy == vk::TRUE {
             host_image_copy = Some(RawVkHostImageCopyEntries {
-                host_image_copy: ash::ext::host_image_copy::Device::new(&self.instance, &vk_device),
+                host_image_copy: ash::ext::host_image_copy::Device::load(&self.instance, &vk_device),
                 properties_host_image_copy: std::mem::transmute(properties_host_image_copy),
             });
         }
@@ -748,7 +748,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         let mut mesh_shader = Option::<RawVkMeshShaderEntries>::None;
         if features_mesh_shader.mesh_shader == vk::TRUE {
             mesh_shader = Some(RawVkMeshShaderEntries {
-                mesh_shader: ash::ext::mesh_shader::Device::new(&self.instance, &vk_device),
+                mesh_shader: ash::ext::mesh_shader::Device::load(&self.instance, &vk_device),
                 features_mesh_shader: std::mem::transmute(features_mesh_shader),
                 properties_mesh_shader: std::mem::transmute(properties_mesh_shader),
             });

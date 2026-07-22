@@ -148,7 +148,7 @@ impl VkInstance {
             let instance = entry.create_instance(&instance_create_info, None).unwrap();
 
             let debug_utils = if supports_debug_utils {
-                let debug_utils_instance = ash::ext::debug_utils::Instance::new(&entry, &instance);
+                let debug_utils_instance = ash::ext::debug_utils::Instance::load(&entry, &instance);
                 let debug_messenger = debug_utils_instance
                     .create_debug_utils_messenger(
                         &vk::DebugUtilsMessengerCreateInfoEXT {

@@ -1,7 +1,7 @@
 use std::ops::Deref;
 use std::sync::Arc;
 
-use ash::prelude::VkResult;
+use ash::VkResult;
 use ash::vk;
 
 use crate::raw::RawVkDevice;

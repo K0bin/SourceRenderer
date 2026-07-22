@@ -26,7 +26,7 @@ pub(crate) fn create_surface(
             )
             .unwrap()
     };
-    let surface_loader = SurfaceLoader::new(&instance_raw.entry, &instance_raw.instance);
+    let surface_loader = SurfaceLoader::load(&instance_raw.entry, &instance_raw.instance);
     VkSurface::new(
         graphics_instance.raw(),
         SurfaceKHR::from_raw(unsafe { std::mem::transmute(surface) }),
