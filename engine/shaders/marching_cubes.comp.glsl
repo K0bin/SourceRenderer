@@ -10,7 +10,7 @@
 #extension GL_KHR_shader_subgroup_ballot : enable
 
 
-//#define GLOBAL_HASHMAP
+#define GLOBAL_HASHMAP
 #define SUBGROUP_SHARING
 
 
@@ -230,6 +230,18 @@ vec4 vertexPosFromKey(uint vertexKey) {
 }
 
 
+uint localKeyFromIndexOffsets(uint localIndex, uint idx1, uint idx2) {
+    uint key = localIndex * 2u;
+
+    uvec3 offset1 = indexOffset(idx1);
+    key += offset1.z * gl_WorkGroupSize.y * gl_WorkGroupSize.x + offset1.y * gl_WorkGroupSize.x + offset1.x;
+    uvec3 offset2 = indexOffset(idx2);
+    key += offset2.z * gl_WorkGroupSize.y * gl_WorkGroupSize.x + offset2.y * gl_WorkGroupSize.x + offset2.x;
+
+    return key;
+}
+
+
 void main() {
     uvec3 base = gl_GlobalInvocationID;
 
@@ -250,7 +262,7 @@ void main() {
         }
     }
 
-    if (voxelKey == 0u || voxelKey == 255u)
+    if (subgroupAll(voxelKey == 0u || voxelKey == 255u))
         return;
 
     instanceCount = 1u;
@@ -262,6 +274,12 @@ void main() {
     uint[12u] cubeVertexIndices;
     uint arrayIndexMask = 0u;
 
+    uint subgroupMinKey = localKeyFromIndexOffsets((gl_LocalInvocationIndex / gl_SubgroupSize) * gl_SubgroupSize, 0u, 0u);
+    uint[64u * 2u / 32u] localKeyUsedBitMask;
+    for (uint i = 0u; i < 64u * 2u / 32u; i++) {
+        localKeyUsedBitMask[i] = 0u;
+    }
+
     for (uint i = 0u; i < 4u; i++) {
         if ((edges[voxelKey] & (1u << i)) != 0u) {
             uint idx1 = i;
@@ -272,6 +290,10 @@ void main() {
             uint vtxKey = vertexKeyFromIndexOffsets(idx1, idx2);
             vertexKeys[i] = vtxKey;
             arrayIndexMask |= 1u << i;
+
+            uint localKey = localKeyFromIndexOffsets(gl_LocalInvocationIndex, idx1, idx2);
+            uint diff = localKey - subgroupMinKey;
+            localKeyUsedBitMask[diff / 32u] |= 1u << (diff % 32u);
         } else {
             cubeVertexIndices[i] = 0u;
             vertexKeys[i] = ~0u;
@@ -285,6 +307,10 @@ void main() {
             uint vtxKey = vertexKeyFromIndexOffsets(idx1, idx2);
             vertexKeys[i + 4u] = vtxKey;
             arrayIndexMask |= 1u << (i + 4u);
+
+            uint localKey = localKeyFromIndexOffsets(gl_LocalInvocationIndex, idx1, idx2);
+            uint diff = localKey - subgroupMinKey;
+            localKeyUsedBitMask[diff / 32u] |= 1u << (diff % 32u);
         } else {
             cubeVertexIndices[i + 4u] = 0u;
             vertexKeys[i + 4u] = ~0u;
@@ -298,6 +324,10 @@ void main() {
             uint vtxKey = vertexKeyFromIndexOffsets(idx1, idx2);
             vertexKeys[i + 8u] = vtxKey;
             arrayIndexMask |= 1u << (i + 8u);
+
+            uint localKey = localKeyFromIndexOffsets(gl_LocalInvocationIndex, idx1, idx2);
+            uint diff = localKey - subgroupMinKey;
+            localKeyUsedBitMask[diff / 32u] |= 1u << (diff % 32u);
         } else {
             cubeVertexIndices[i + 8u] = 0u;
             vertexKeys[i + 8u] = ~0u;
@@ -305,7 +335,7 @@ void main() {
     }
 
 
-#ifdef SUBGROUP_SHARING
+#ifdef SUBGROUP_SHARING_OLD
     for (uint i = 0u; i < 12u; i++) {
         cubeVertexIndices[i] = ~0u;
     }
@@ -371,6 +401,20 @@ void main() {
         }
     }
 #endif
+
+subgroupBarrier();
+uint[2u] vtxIndices;
+for (uint i = 0u; i < gl_WorkgroupSize / gl_SubgroupSize; i++) {
+    uint mask1 = subgroupOr(localKeyUsedBitMask[i]);
+    uint mask2 = gl_SubgroupSize > 32u ? subgroupOr(localKeyUsedBitMask[i + 1u]) : 0u;
+    if (mask1 == 0u && mask2 == 0u)
+        continue;
+
+    uint mask = gl_SubgroupInvocationID > 32u ? mask2 : mask1;
+    if ((mask & (1u << (gl_SubgroupInvocationID % 32u))) != 0u) {
+
+    }
+}
 
 
     for (uint i = 0u; i < 16u && tris[voxelKey][i] != -1; i += 3u) {
