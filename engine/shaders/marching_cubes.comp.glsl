@@ -11,6 +11,8 @@
 
 
 #define GLOBAL_HASHMAP
+
+// Only supports warp sizes <= 64
 #define SUBGROUP_SHARING
 
 
@@ -230,16 +232,22 @@ vec4 vertexPosFromKey(uint vertexKey) {
 }
 
 
-uint localKeyFromIndexOffsets(uint localIndex, uint idx1, uint idx2) {
-    uint key = localIndex * 2u;
-
-    uvec3 offset1 = indexOffset(idx1);
-    key += offset1.z * gl_WorkGroupSize.y * gl_WorkGroupSize.x + offset1.y * gl_WorkGroupSize.x + offset1.x;
-    uvec3 offset2 = indexOffset(idx2);
-    key += offset2.z * gl_WorkGroupSize.y * gl_WorkGroupSize.x + offset2.y * gl_WorkGroupSize.x + offset2.x;
-
-    return key;
+uint localKeyFromOffsets(uint localIndex, uvec3 offset1, uvec3 offset2) {
+        uint key = localIndex * 2u;
+        key += offset1.z * gl_WorkGroupSize.y * gl_WorkGroupSize.x + offset1.y * gl_WorkGroupSize.x + offset1.x;
+        key += offset2.z * gl_WorkGroupSize.y * gl_WorkGroupSize.x + offset2.y * gl_WorkGroupSize.x + offset2.x;
+        return key;
 }
+
+uint localKeyFromIndexOffsets(uint localIndex, uint idx1, uint idx2) {
+    return localKeyFromOffsets(localIndex, indexOffset(idx1), indexOffset(idx2));
+}
+
+
+/* 4 * 4 * 4 Workgroup size
+   * 2 * 2 * 2 because of the doubled resolution to vertex positions inbetween two voxels.
+*/
+shared uint sharedVertexIndices[512u];
 
 
 void main() {
@@ -275,8 +283,9 @@ void main() {
     uint arrayIndexMask = 0u;
 
     uint subgroupMinKey = localKeyFromIndexOffsets((gl_LocalInvocationIndex / gl_SubgroupSize) * gl_SubgroupSize, 0u, 0u);
-    uint[64u * 2u / 32u] localKeyUsedBitMask;
-    for (uint i = 0u; i < 64u * 2u / 32u; i++) {
+    const uint localKeyBitMasksCount = 64u * 2u / 32u;
+    uint[localKeyBitMasksCount] localKeyUsedBitMask;
+    for (uint i = 0u; i < localKeyBitMasksCount; i++) {
         localKeyUsedBitMask[i] = 0u;
     }
 
@@ -403,8 +412,59 @@ void main() {
 #endif
 
 subgroupBarrier();
-uint[2u] vtxIndices;
-for (uint i = 0u; i < gl_WorkgroupSize / gl_SubgroupSize; i++) {
+
+/* We double the resolution of the voxel grid so we can store 'in between' coordinates.
+So every invocation can at most store 2 * 2 * 2 vertices. */
+
+for (uint i = 0u; i < localKeyBitMasksCount; i++) {
+    localKeyUsedBitMask[i] = subgroupOr(localKeyUsedBitMask[i]);
+}
+
+uint workGroupMinKey = localKeyFromOffsets(uvec3(0u), uvec3(0u), uvec3(0u));
+uint[2u * 2u * 2u] vtxIndices;
+for (uint z = 0u; z < 2u; z++) {
+    for (uint y = 0u; y < 2u; y++) {
+        for (uint x = 0u; x < 2u; x++) {
+            uint localKey = localKeyFromOffsets(gl_LocalInvocationIndex, uvec3(0u, 0u, 0u), uvec3(x, y, z));
+            uint diff = localKey - workGroupMinKey;
+
+            if ((localKeyUsedBitMask[diff / 32u] & (1u << (diff % 32u))) == 0u)
+                continue;
+
+            uvec3 pos1 = gl_GlobalInvocationID + uvec3(0u);
+            uvec3 pos2 = gl_GlobalInvocationID + uvec3(x, y, z);
+            uint key = vertexKey(pos1, pos2);
+
+            uint index;
+#ifdef GLOBAL_HASHMAP
+            index = hashmapLookup(key);
+            if (index == HashmapEmptyValue) {
+#endif
+
+            vec4 vertexPos = interpolateVertices(pos1, pos2) * vec4(scale, 1.0);
+            index = addVertex(vertexPos);
+
+#ifdef GLOBAL_HASHMAP
+            hashmapInsert(key, index);
+            }
+#endif
+
+            vtxIndices[z * 2u * 2u + y * 2u + x] = index;
+        }
+    }
+}
+
+uint outerLoopMask = subgroupOr(arrayIndexMask);
+while (outerLoopMask != 0u) {
+    uint i = findLSB(outerLoopMask);
+    outerLoopMask &= ~(1u << i);
+
+
+}
+
+
+
+for (uint i = 0u; i < (gl_WorkGroupSize.x * gl_WorkGroupSize.y * gl_WorkGroupSize.z) / gl_SubgroupSize; i++) {
     uint mask1 = subgroupOr(localKeyUsedBitMask[i]);
     uint mask2 = gl_SubgroupSize > 32u ? subgroupOr(localKeyUsedBitMask[i + 1u]) : 0u;
     if (mask1 == 0u && mask2 == 0u)
@@ -415,6 +475,8 @@ for (uint i = 0u; i < gl_WorkgroupSize / gl_SubgroupSize; i++) {
 
     }
 }
+
+barrier();
 
 
     for (uint i = 0u; i < 16u && tris[voxelKey][i] != -1; i += 3u) {
