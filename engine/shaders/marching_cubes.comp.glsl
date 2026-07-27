@@ -9,9 +9,11 @@
 #extension GL_KHR_shader_subgroup_vote : enable
 #extension GL_KHR_shader_subgroup_ballot : enable
 
+#extension GL_EXT_shader_atomic_float : enable
 
-//#define GLOBAL_HASHMAP
-#define SUBGROUP_SHARING
+
+#define GLOBAL_HASHMAP
+//#define SUBGROUP_SHARING
 
 
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
@@ -21,7 +23,7 @@ layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 struct Vertex {
     uint key;
     //f16vec3 pos;
-    //f16vec3 normal;
+    vec3 normal;
 };
 
 struct HashmapEntry {
@@ -86,13 +88,29 @@ uint vertexKey(uvec3 pos1, uvec3 pos2) {
 }
 
 
+vec4 interpolateVertices(uvec3 pos1, uvec3 pos2) {
+    vec3 imgSize = vec3(textureSize(sampler3D(densityImage, nearestSampler), 0));
+
+    float value1 = textureLod(sampler3D(densityImage, nearestSampler), (vec3(pos1) + vec3(0.5)) / imgSize, 0u).x;
+    float value2 = textureLod(sampler3D(densityImage, nearestSampler), (vec3(pos2) + vec3(0.5)) / imgSize, 0u).x;
+    if (abs(value1 - threshold) < 0.00001 || abs(value1 - value2) < 0.00001) {
+        return vec4(vec3(pos1), value1);
+    }
+    if (abs(value2 - threshold) < 0.00001) {
+        return vec4(vec3(pos2), value2);
+    }
+    float a = (threshold - value1) / (value2 - value1);
+    return mix(vec4(pos1, value1), vec4(pos2, value2), a);
+}
+
+
 // https://nosferalatu.com/SimpleGPUHashTable.html
 // Modified it to add a probing maximum and prevent hangs if it runs out of space.
 
 const uint HashmapEmptyKey = ~0u;
 const uint HashmapEmptyValue = ~0u;
 const uint HashmapCapacity = 400000u;
-const uint HashmapMaxProbing = 0u; //99u; //0u; // 0 to disable the limit.
+const uint HashmapMaxProbing = 99u; //0u; // 0 to disable the limit.
 
 uint hash(uint key) {
     uint hash = key;
@@ -160,10 +178,25 @@ uint vertexKeyFromIndexOffsets(uint idx1, uint idx2) {
 }
 
 
+vec4 vertexPosFromKey(uint vertexKey) {
+    uvec3 sizes = gl_NumWorkGroups * gl_WorkGroupSize * 2;
+
+    uvec3 pos = uvec3(vertexKey % sizes.x,
+        (vertexKey / sizes.x) % sizes.y,
+        vertexKey / (sizes.x * sizes.y));
+
+    uvec3 pos1 = pos / 2u;
+    uvec3 pos2 = pos1 + (pos % 2u);
+
+    return interpolateVertices(pos1, pos2) * vec4(scale, 1.0);
+}
+
+
 
 uint addVertex(uint vtxKey) {
     uint index = atomicAdd(vertexCount, 1u);
     vertices[index].key = vtxKey;
+    vertices[index].normal = vec3(0.0);
     return index;
 }
 
@@ -348,5 +381,30 @@ void main() {
         indices[firstIndex + 0u] = index0;
         indices[firstIndex + 1u] = index1;
         indices[firstIndex + 2u] = index2;
+
+        // Calculate normal for primitive and add
+
+        uint key0 = vertexKeys[tris[voxelKey][i + 0u]];
+        uint key1 = vertexKeys[tris[voxelKey][i + 1u]];
+        uint key2 = vertexKeys[tris[voxelKey][i + 2u]];
+
+        vec3 pos0 = vertexPosFromKey(key0).xyz;
+        vec3 pos1 = vertexPosFromKey(key1).xyz;
+        vec3 pos2 = vertexPosFromKey(key2).xyz;
+
+        vec3 triangleCross = cross(pos1 - pos0, pos2 - pos0);
+        float len = length(triangleCross);
+        vec3 normal = triangleCross / len;
+        atomicAdd(vertices[index0].normal.x, normal.x);
+        atomicAdd(vertices[index0].normal.y, normal.y);
+        atomicAdd(vertices[index0].normal.z, normal.z);
+
+        atomicAdd(vertices[index1].normal.x, normal.x);
+        atomicAdd(vertices[index1].normal.y, normal.y);
+        atomicAdd(vertices[index1].normal.z, normal.z);
+
+        atomicAdd(vertices[index2].normal.x, normal.x);
+        atomicAdd(vertices[index2].normal.y, normal.y);
+        atomicAdd(vertices[index2].normal.z, normal.z);
     }
 }

@@ -6,9 +6,9 @@
 #include "camera.inc.glsl"
 
 layout(location = 0) in uint in_key;
+layout(location = 1) in vec3 in_normal;
 
 //layout(location = 0) in vec3 in_pos;
-//layout(location = 1) in vec3 in_normal;
 //layout(location = 3) in vec2 in_lightmap_uv;
 //layout(location = 4) in float in_alpha;
 
@@ -69,23 +69,31 @@ vec4 vertexPosFromKey(uint vertexKey, ivec3 densityMapSize) {
 }
 
 
-vec3 calculateNormal(vec3 pos, vec3 densityMapSize) {
-    vec3 imgPos = pos / scale + 0.5;
+vec3 calculateNormal(vec3 pos) {
+    vec3 imgPos = pos / scale;
     vec3 normal = vec3(0.0);
-    normal.x = (texture(densityMap, (imgPos - vec3(1, 0, 0)) / densityMapSize)
-                                - texture(densityMap, (imgPos + vec3(1, 0, 0)) / densityMapSize)).x;
-    normal.y = (texture(densityMap, (imgPos - vec3(0, 1, 0)) / densityMapSize)
-                                - texture(densityMap, (imgPos + vec3(0, 1, 0)) / densityMapSize)).x;
-    normal.z = (texture(densityMap, (imgPos - vec3(0, 0, 1)) / densityMapSize)
-                                - texture(densityMap, (imgPos + vec3(0, 0, 1)) / densityMapSize)).x;
+
+    vec3 imgSize = vec3(textureSize(densityMap, 0));
+    vec3 singlePixel = vec3(1.0) / imgSize;
+    vec3 halfPixel = singlePixel * 0.5;
+    vec3 texPos = imgPos / imgSize + halfPixel;
+
+    normal.x = textureLod(densityMap, texPos - vec3(singlePixel.x, 0, 0), 0u).x
+                                - textureLod(densityMap, texPos + vec3(singlePixel.x, 0, 0), 0u).x;
+    normal.y = textureLod(densityMap, texPos - vec3(0, singlePixel.y, 0), 0u).x
+                                - textureLod(densityMap, texPos + vec3(0, singlePixel.y, 0), 0u).x;
+    normal.z = textureLod(densityMap, texPos - vec3(0, 0, singlePixel.z), 0u).x
+                                - textureLod(densityMap, texPos + vec3(0, 0, singlePixel.z), 0u).x;
     return normalize(normal);
 }
+
 
 void main(void) {
   vec3 densityMapSize = textureSize(densityMap, 0);
 
   vec3 pos = vertexPosFromKey(in_key, ivec3(densityMapSize)).xyz;
-  vec3 normal = calculateNormal(pos, densityMapSize);
+  vec3 normal = calculateNormal(pos);
+  //vec3 normal = (normalize(in_normal) + calculateNormal(pos)) * 0.5;
 
   mat4 inverseModelMat = inverse(model);
   mat4 normalModelMat = transpose(inverseModelMat);

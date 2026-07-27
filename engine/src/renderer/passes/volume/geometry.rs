@@ -120,19 +120,19 @@ impl GeometryPass {
                         offset: 0,
                         format: Format::R32UInt,
                     },
-                    /*ShaderInputElement {
+                    ShaderInputElement {
                         input_assembler_binding: 0,
                         location_vk_mtl: 1,
                         semantic_name_d3d: String::from(""),
                         semantic_index_d3d: 0,
-                        offset: std::mem::size_of::<HalfVec3>(),
-                        format: Format::RGB16Float,
-                    },*/
+                        offset: std::mem::size_of::<u32>(),
+                        format: Format::RGB32Float,
+                    },
                 ],
             },
             rasterizer: RasterizerInfo {
                 fill_mode: FillMode::Fill,
-                cull_mode: CullMode::None,
+                cull_mode: CullMode::Back,
                 front_face: FrontFace::Clockwise,
                 sample_count: SampleCount::Samples1,
             },

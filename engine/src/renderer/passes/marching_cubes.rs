@@ -18,6 +18,7 @@ struct MarchingCubesConfig {
 #[derive(Debug, Clone, Copy)]
 pub struct MarchingCubesVertex {
     pub key: u32,
+    pub normal: Vec3,
     //pub pos: HalfVec3,
     //pub normal: HalfVec3,
 }
