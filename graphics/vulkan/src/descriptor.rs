@@ -238,6 +238,14 @@ impl VkDescriptorPool {
                 descriptor_count: 256,
             },
             vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::SAMPLED_IMAGE,
+                descriptor_count: 256,
+            },
+            vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::SAMPLER,
+                descriptor_count: 64,
+            },
+            vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
                 descriptor_count: 512,
             },
