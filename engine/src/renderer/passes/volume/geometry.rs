@@ -22,6 +22,7 @@ use sourcerenderer_core::{HalfVec3, Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
 struct PushConstantData {
     model_matrix: Matrix4,
     size: Vec3,
+    threshold: f32,
 }
 
 #[repr(C)]
@@ -117,7 +118,7 @@ impl GeometryPass {
                         semantic_name_d3d: String::from(""),
                         semantic_index_d3d: 0,
                         offset: 0,
-                        format: Format::RGB16Float,
+                        format: Format::R32UInt,
                     },
                     /*ShaderInputElement {
                         input_assembler_binding: 0,
@@ -197,6 +198,7 @@ impl GeometryPass {
         assets: &RendererAssetsReadOnly<'_>,
         volume_texture: TextureHandle,
         spacing: Vec3,
+        threshold: f32,
     ) {
         let resources = &params.resources;
 
@@ -384,6 +386,7 @@ impl GeometryPass {
             &[PushConstantData {
                 model_matrix: Matrix4::from_rotation_x(-1.57f32) * Matrix4::from_rotation_z(3.14),
                 size: spacing,
+                threshold,
             }],
             ShaderType::VertexShader,
         );

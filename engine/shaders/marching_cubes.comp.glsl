@@ -19,7 +19,8 @@ layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 #include "descriptor_sets.inc.glsl"
 
 struct Vertex {
-    f16vec3 pos;
+    uint key;
+    //f16vec3 pos;
     //f16vec3 normal;
 };
 
@@ -82,39 +83,6 @@ uint vertexKey(uvec3 pos1, uvec3 pos2) {
          pos.x;
 
     return key;
-}
-
-vec4 interpolateVertices(uvec3 pos1, uvec3 pos2) {
-    vec3 imgSize = vec3(textureSize(sampler3D(densityImage, nearestSampler), 0));
-
-    float value1 = textureLod(sampler3D(densityImage, nearestSampler), (vec3(pos1) + vec3(0.5)) / imgSize, 0u).x;
-    float value2 = textureLod(sampler3D(densityImage, nearestSampler), (vec3(pos2) + vec3(0.5)) / imgSize, 0u).x;
-    if (abs(value1 - threshold) < 0.00001 || abs(value1 - value2) < 0.00001) {
-        return vec4(vec3(pos1), value1);
-    }
-    if (abs(value2 - threshold) < 0.00001) {
-        return vec4(vec3(pos2), value2);
-    }
-    float a = (threshold - value1) / (value2 - value1);
-    return mix(vec4(pos1, value1), vec4(pos2, value2), a);
-}
-
-vec3 calculateNormal(vec3 pos) {
-    ivec3 imgPos = ivec3(round(pos / scale));
-    vec3 normal = vec3(0.0);
-
-    vec3 imgSize = vec3(textureSize(sampler3D(densityImage, linearSampler), 0));
-    vec3 singlePixel = vec3(1.0) / imgSize;
-    vec3 halfPixel = singlePixel * 0.5;
-    vec3 texPos = vec3(imgPos) / imgSize + halfPixel;
-
-    normal.x = textureLod(sampler3D(densityImage, linearSampler), texPos - vec3(halfPixel.x, 0, 0), 0u).x
-                                - textureLod(sampler3D(densityImage, linearSampler), texPos + vec3(halfPixel.x, 0, 0), 0u).x;
-    normal.y = textureLod(sampler3D(densityImage, linearSampler), texPos - vec3(0, halfPixel.y, 0), 0u).x
-                                - textureLod(sampler3D(densityImage, linearSampler), texPos + vec3(0, halfPixel.y, 0), 0u).x;
-    normal.z = textureLod(sampler3D(densityImage, linearSampler), texPos - vec3(0, 0, halfPixel.z), 0u).x
-                                - textureLod(sampler3D(densityImage, linearSampler), texPos + vec3(0, 0, halfPixel.z), 0u).x;
-    return normalize(normal);
 }
 
 
@@ -192,9 +160,10 @@ uint vertexKeyFromIndexOffsets(uint idx1, uint idx2) {
 }
 
 
-uint addVertex(vec4 vertexPos) {
+
+uint addVertex(uint vtxKey) {
     uint index = atomicAdd(vertexCount, 1u);
-    vertices[index].pos = f16vec3(vertexPos.xyz);
+    vertices[index].key = vtxKey;
     return index;
 }
 
@@ -207,16 +176,16 @@ uint calculateAndAddVertex(uint idx1, uint idx2) {
     uvec3 vertexPos1 = gl_GlobalInvocationID + indexOffset(idx1);
     uvec3 vertexPos2 = gl_GlobalInvocationID + indexOffset(idx2);
 
+    uint vtxKey = vertexKey(vertexPos1, vertexPos2);
+
     uint index;
 
 #ifdef GLOBAL_HASHMAP
-    uint vtxKey = vertexKey(vertexPos1, vertexPos2);
     index = hashmapLookup(vtxKey);
     if (index == HashmapEmptyValue) {
 #endif
 
-    vec4 vertexPos = interpolateVertices(vertexPos1, vertexPos2) * vec4(scale, 1.0);
-    index = addVertex(vertexPos);
+    index = addVertex(vtxKey);
 
 #ifdef GLOBAL_HASHMAP
     hashmapInsert(vtxKey, index);
@@ -224,20 +193,6 @@ uint calculateAndAddVertex(uint idx1, uint idx2) {
 #endif
 
     return index;
-}
-
-
-vec4 vertexPosFromKey(uint vertexKey) {
-    uvec3 sizes = gl_NumWorkGroups * gl_WorkGroupSize * 2;
-
-    uvec3 pos = uvec3(vertexKey % sizes.x,
-        (vertexKey / sizes.x) % sizes.y,
-        vertexKey / (sizes.x * sizes.y));
-
-    uvec3 pos1 = pos / 2u;
-    uvec3 pos2 = pos1 + (pos % 2u);
-
-    return interpolateVertices(pos1, pos2) * vec4(scale, 1.0);
 }
 
 
@@ -365,8 +320,7 @@ void main() {
                         if (index == HashmapEmptyValue) {
                         #endif
 
-                        vec4 vertexPos = vertexPosFromKey(refkey);
-                        index = addVertex(vertexPos);
+                        index = addVertex(refkey);
 
                         #ifdef GLOBAL_HASHMAP
                         hashmapInsert(refkey, index);

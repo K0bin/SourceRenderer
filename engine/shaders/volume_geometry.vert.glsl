@@ -5,7 +5,9 @@
 #include "descriptor_sets.inc.glsl"
 #include "camera.inc.glsl"
 
-layout(location = 0) in vec3 in_pos;
+layout(location = 0) in uint in_key;
+
+//layout(location = 0) in vec3 in_pos;
 //layout(location = 1) in vec3 in_normal;
 //layout(location = 3) in vec2 in_lightmap_uv;
 //layout(location = 4) in float in_alpha;
@@ -20,14 +22,55 @@ layout(set = DESCRIPTOR_SET_FRAME, binding = 0) uniform CameraUBO {
 
 layout(push_constant) uniform VeryHighFrequencyUbo {
   mat4 model;
-  vec3 size;
+  vec3 scale;
+  float threshold;
 };
 
 layout (set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform sampler3D densityMap;
 
 
+vec4 interpolateVertices(uvec3 pos1, uvec3 pos2) {
+    vec3 imgSize = vec3(textureSize(densityMap, 0));
+
+    float value1 = textureLod(densityMap, (vec3(pos1) + vec3(0.5)) / imgSize, 0u).x;
+    float value2 = textureLod(densityMap, (vec3(pos2) + vec3(0.5)) / imgSize, 0u).x;
+    if (abs(value1 - threshold) < 0.00001 || abs(value1 - value2) < 0.00001) {
+        return vec4(vec3(pos1), value1);
+    }
+    if (abs(value2 - threshold) < 0.00001) {
+        return vec4(vec3(pos2), value2);
+    }
+    float a = (threshold - value1) / (value2 - value1);
+    return mix(vec4(pos1, value1), vec4(pos2, value2), a);
+}
+
+vec3 getVertexPosFromKey(uint vtxKey) {
+
+    return vec3(0.0);
+}
+
+vec4 vertexPosFromKey(uint vertexKey, ivec3 densityMapSize) {
+    uvec3 sizes = uvec3(densityMapSize);
+
+    // Round up. The key is calculated with NumWorkgroups * WorkgroupSize.
+    // WorkgroupSize is 4,4,4; NumWorkgroups gets rounded up.
+    sizes = ((sizes + uvec3(3u)) / uvec3(4u)) * uvec3(4u);
+
+    sizes *= 2;
+
+    uvec3 pos = uvec3(vertexKey % sizes.x,
+        (vertexKey / sizes.x) % sizes.y,
+        vertexKey / (sizes.x * sizes.y));
+
+    uvec3 pos1 = pos / 2u;
+    uvec3 pos2 = pos1 + (pos % 2u);
+
+    return interpolateVertices(pos1, pos2) * vec4(scale, 1.0);
+}
+
+
 vec3 calculateNormal(vec3 pos, vec3 densityMapSize) {
-    vec3 imgPos = pos / size + 0.5;
+    vec3 imgPos = pos / scale + 0.5;
     vec3 normal = vec3(0.0);
     normal.x = (texture(densityMap, (imgPos - vec3(1, 0, 0)) / densityMapSize)
                                 - texture(densityMap, (imgPos + vec3(1, 0, 0)) / densityMapSize)).x;
@@ -40,22 +83,24 @@ vec3 calculateNormal(vec3 pos, vec3 densityMapSize) {
 
 void main(void) {
   vec3 densityMapSize = textureSize(densityMap, 0);
-  vec3 normal = calculateNormal(in_pos, densityMapSize);
+
+  vec3 pos = vertexPosFromKey(in_key, ivec3(densityMapSize)).xyz;
+  vec3 normal = calculateNormal(pos, densityMapSize);
 
   mat4 inverseModelMat = inverse(model);
   mat4 normalModelMat = transpose(inverseModelMat);
   out_normal = normalize(normalModelMat * vec4(normal, 0)).xyz;
 
-  out_density = texture(densityMap, (in_pos / size + 0.5) / densityMapSize).x;
+  out_density = texture(densityMap, (pos / scale + 0.5) / densityMapSize).x;
 
   vec4 rayDir = vec4(0.0, 0.0, 1.0, 0.0);
   rayDir = (inverseModelMat * camera.invView) * rayDir;
   rayDir = normalize(rayDir);
 
-  out_density = max(out_density, texture(densityMap, (in_pos / size + 0.5 + rayDir.xyz) / densityMapSize).x);
-  //out_density = max(out_density, texture(densityMap, (in_pos / size + 0.5 - in_normal.xyz) / densityMapSize).x);
+  out_density = max(out_density, texture(densityMap, (pos / scale + 0.5 + rayDir.xyz) / densityMapSize).x);
+  //out_density = max(out_density, texture(densityMap, (pos / scale + 0.5 - in_normal.xyz) / densityMapSize).x);
 
   mat4 mvp = camera.viewProj * model;
-  gl_Position = mvp * vec4(in_pos, 1.0);
+  gl_Position = mvp * vec4(pos, 1.0);
   out_worldPosition = gl_Position.xyz;
 }

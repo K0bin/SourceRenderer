@@ -247,6 +247,7 @@ impl RenderPath for VolumeRenderer {
             assets,
             self.texture_handle,
             marching_cube_scale,
+            self.threshold,
         );
 
         self.ssao.execute(

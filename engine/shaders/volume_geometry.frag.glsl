@@ -13,7 +13,7 @@ layout (location = 2) in vec3 in_worldPosition;
 layout (location = 0) out vec4 out_color;
 
 layout(push_constant, std430) uniform Params {
-    layout(offset = 76) float roughness;
+    layout(offset = 80) float roughness;
     float metalness;
     vec3 f0;
 };
