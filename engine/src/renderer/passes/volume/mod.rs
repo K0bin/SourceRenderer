@@ -157,6 +157,8 @@ impl RenderPath for VolumeRenderer {
             && self.compositing.is_ready(assets)
             && self.background.is_ready(assets)
             && self.ibl_pass.is_ready(assets)
+            && self.ssao.is_ready(assets)
+            && self.sss_pass.is_ready(assets)
     }
 
     fn render(
