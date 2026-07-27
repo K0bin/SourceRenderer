@@ -7,9 +7,6 @@ use crate::renderer::asset::{
     RendererMaterial, RendererMaterialValue,
 };
 use crate::renderer::drawable::View;
-use crate::renderer::passes::marching_cubes::{
-    MarchingCubesIndirectCall, MarchingCubesPass, MarchingCubesVertex,
-};
 use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
 use crate::renderer::passes::volume::GeometryPass;
 use crate::renderer::render_path::RenderPassParameters;

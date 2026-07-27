@@ -7,9 +7,7 @@ use crate::renderer::asset::{
     RendererMaterial, RendererMaterialValue,
 };
 use crate::renderer::drawable::View;
-use crate::renderer::passes::marching_cubes::{
-    MarchingCubesIndirectCall, MarchingCubesPass, MarchingCubesVertex,
-};
+use crate::renderer::passes::marching_cubes::{MarchingCubesIndirectCall, MarchingCubesPass};
 use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
@@ -107,29 +105,8 @@ impl GeometryPass {
             fs: Some(&fs_name),
             primitive_type: PrimitiveType::Triangles,
             vertex_layout: VertexLayoutInfo {
-                input_assembler: &[InputAssemblerElement {
-                    binding: 0,
-                    stride: std::mem::size_of::<MarchingCubesVertex>(),
-                    input_rate: InputRate::PerVertex,
-                }],
-                shader_inputs: &[
-                    ShaderInputElement {
-                        input_assembler_binding: 0,
-                        location_vk_mtl: 0,
-                        semantic_name_d3d: String::from(""),
-                        semantic_index_d3d: 0,
-                        offset: 0,
-                        format: Format::R32UInt,
-                    },
-                    ShaderInputElement {
-                        input_assembler_binding: 0,
-                        location_vk_mtl: 1,
-                        semantic_name_d3d: String::from(""),
-                        semantic_index_d3d: 0,
-                        offset: std::mem::size_of::<u32>(),
-                        format: Format::RGB32Float,
-                    },
-                ],
+                input_assembler: &[],
+                shader_inputs: &[],
             },
             rasterizer: RasterizerInfo {
                 fill_mode: FillMode::Fill,
@@ -233,13 +210,6 @@ impl GeometryPass {
             HistoryResourceEntry::Current,
         );
 
-        let marchingcubes_vbo = resources.access_buffer(
-            cmd_buffer,
-            MarchingCubesPass::VERTICES_BUFFER_NAME,
-            BarrierSync::VERTEX_INPUT,
-            BarrierAccess::VERTEX_INPUT_READ,
-            HistoryResourceEntry::Current,
-        );
         let marchingcubes_ibo = resources.access_buffer(
             cmd_buffer,
             MarchingCubesPass::INDICES_BUFFER_NAME,
@@ -402,7 +372,6 @@ impl GeometryPass {
             }],
             ShaderType::FragmentShader,
         );
-        cmd_buffer.set_vertex_buffer(0u32, BufferRef::Regular(&*marchingcubes_vbo), 0u64);
         cmd_buffer.set_index_buffer(
             BufferRef::Regular(&*marchingcubes_ibo),
             0u64,

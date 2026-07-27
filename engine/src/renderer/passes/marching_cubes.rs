@@ -16,15 +16,6 @@ struct MarchingCubesConfig {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct MarchingCubesVertex {
-    pub key: u32,
-    pub normal: Vec3,
-    //pub pos: HalfVec3,
-    //pub normal: HalfVec3,
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
 pub struct MarchingCubesIndirectCall {
     index_count: u32,
     instance_count: u32,
@@ -43,7 +34,6 @@ pub struct MarchingCubesPass {
 
 impl MarchingCubesPass {
     pub const ATOMICS_BUFFER_NAME: &'static str = "marchingcubes_atomics";
-    pub const VERTICES_BUFFER_NAME: &'static str = "marchingcubes_vertices";
     pub const INDICES_BUFFER_NAME: &'static str = "marchingcubes_indices";
     pub const INDICES_HASHMAP: &'static str = "marching_cube_hashmap";
 
@@ -72,18 +62,6 @@ impl MarchingCubesPass {
         // Assume there's a lot of empty space and voxels with fewer triangles/vertices to avoid
         // huge buffers
         //resolution_multiplied /= 8;
-
-        resources.create_buffer(
-            Self::VERTICES_BUFFER_NAME,
-            &BufferInfo {
-                size: (std::mem::size_of::<MarchingCubesVertex>() * 4 * 3 * resolution_multiplied)
-                    as u64,
-                usage: BufferUsage::STORAGE | BufferUsage::VERTEX,
-                sharing_mode: QueueSharingMode::Exclusive,
-            },
-            MemoryUsage::GPUMemory,
-            false,
-        );
 
         resources.create_buffer(
             Self::INDICES_BUFFER_NAME,
@@ -463,13 +441,6 @@ impl MarchingCubesPass {
             BarrierAccess::STORAGE_WRITE,
             HistoryResourceEntry::Current,
         );
-        let vertices_slice = pass_params.resources.access_buffer(
-            command_buffer,
-            Self::VERTICES_BUFFER_NAME,
-            BarrierSync::COMPUTE_SHADER,
-            BarrierAccess::STORAGE_WRITE,
-            HistoryResourceEntry::Current,
-        );
         let indices_slice = pass_params.resources.access_buffer(
             command_buffer,
             Self::INDICES_BUFFER_NAME,
@@ -491,16 +462,6 @@ impl MarchingCubesPass {
             pass_params
                 .resources
                 .buffer_range(Self::ATOMICS_BUFFER_NAME)
-                .length
-                / 4,
-            0u32,
-        );
-        command_buffer.clear_storage_buffer(
-            BufferRef::Regular(&vertices_slice),
-            0u64,
-            pass_params
-                .resources
-                .buffer_range(Self::VERTICES_BUFFER_NAME)
                 .length
                 / 4,
             0u32,
@@ -530,13 +491,6 @@ impl MarchingCubesPass {
             Self::ATOMICS_BUFFER_NAME,
             BarrierSync::COMPUTE_SHADER,
             BarrierAccess::STORAGE_WRITE | BarrierAccess::STORAGE_READ,
-            HistoryResourceEntry::Current,
-        );
-        let vertices_slice = pass_params.resources.access_buffer(
-            command_buffer,
-            Self::VERTICES_BUFFER_NAME,
-            BarrierSync::COMPUTE_SHADER,
-            BarrierAccess::STORAGE_WRITE,
             HistoryResourceEntry::Current,
         );
         let indices_slice = pass_params.resources.access_buffer(
@@ -576,13 +530,6 @@ impl MarchingCubesPass {
             WHOLE_BUFFER,
         );
         command_buffer.bind_sampling_view(BindingFrequency::Frequent, 2, &volume_texture.view);
-        command_buffer.bind_storage_buffer(
-            BindingFrequency::Frequent,
-            3,
-            BufferRef::Regular(&vertices_slice),
-            0,
-            WHOLE_BUFFER,
-        );
         command_buffer.bind_storage_buffer(
             BindingFrequency::Frequent,
             4,
