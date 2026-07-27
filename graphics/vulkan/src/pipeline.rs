@@ -427,7 +427,7 @@ fn remap_push_constant_ranges(context: &mut DescriptorSetLayoutSetupContext) {
                 size: range.size,
                 shader_stage: range.shader_stage,
             });
-            offset += range.size;
+            offset += ((range.size + 15) / 16) * 16; // Pad to 16 bytes for std430
         }
     }
     context.push_constants_ranges = remapped_push_constant_ranges;
