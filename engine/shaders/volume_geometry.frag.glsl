@@ -15,6 +15,8 @@ layout (location = 0) out vec4 out_color;
 layout(push_constant, std430) uniform Params {
     layout(offset = 80) float roughness;
     float metalness;
+    float _padding;
+    float _padding1;
     vec3 f0;
 };
 
@@ -28,6 +30,7 @@ layout (set = DESCRIPTOR_SET_FREQUENT, binding = 1) uniform sampler2D transferFu
 layout (set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform samplerCube envMapDiffuse;
 layout (set = DESCRIPTOR_SET_FREQUENT, binding = 3) uniform samplerCube envMapSpecular;
 layout (set = DESCRIPTOR_SET_FREQUENT, binding = 4) uniform sampler2D integrationLUT;
+
 
 vec3 approximateSpecularIBL(vec3 specularColor, float roughness, vec3 normal, vec3 viewDir) {
     float normalDotViewDir = clamp(dot(normal, viewDir), 0.0, 1.0);

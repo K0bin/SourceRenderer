@@ -30,6 +30,7 @@ struct PushConstantData {
 struct MaterialData {
     roughness: f32,
     metalness: f32,
+    _padding: u64,
     f0: Vec3,
 }
 
@@ -394,6 +395,7 @@ impl GeometryPass {
             &[MaterialData {
                 roughness: 0.6f32,
                 metalness: 0.3f32,
+                _padding: 0u64,
                 //roughness: 0.1f32,
                 //metalness: 0.9f32,
                 f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
