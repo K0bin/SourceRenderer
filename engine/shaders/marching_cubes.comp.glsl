@@ -36,7 +36,7 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 1, std430) buffer readonly TriTa
   int[256u][16u] tris;
 };
 
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2, r32f) uniform readonly image3D densityImage;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform texture3D densityImage;
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 3, scalar) buffer verticesBuffer {
     Vertex[] vertices;
 };
@@ -54,6 +54,9 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 5, std430) buffer bufferatomics 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 6, std430) buffer hashmap {
     HashmapEntry[] hashmapEntries;
 };
+
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 7) uniform sampler linearSampler;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 8) uniform sampler nearestSampler;
 
 layout(push_constant) uniform Config {
     vec3 scale;
@@ -82,8 +85,10 @@ uint vertexKey(uvec3 pos1, uvec3 pos2) {
 }
 
 vec4 interpolateVertices(uvec3 pos1, uvec3 pos2) {
-    float value1 = imageLoad(densityImage, ivec3(pos1)).x;
-    float value2 = imageLoad(densityImage, ivec3(pos2)).x;
+    vec3 imgSize = vec3(textureSize(sampler3D(densityImage, nearestSampler), 0));
+
+    float value1 = textureLod(sampler3D(densityImage, nearestSampler), (vec3(pos1) + vec3(0.5)) / imgSize, 0u).x;
+    float value2 = textureLod(sampler3D(densityImage, nearestSampler), (vec3(pos2) + vec3(0.5)) / imgSize, 0u).x;
     if (abs(value1 - threshold) < 0.00001 || abs(value1 - value2) < 0.00001) {
         return vec4(vec3(pos1), value1);
     }
@@ -97,12 +102,18 @@ vec4 interpolateVertices(uvec3 pos1, uvec3 pos2) {
 vec3 calculateNormal(vec3 pos) {
     ivec3 imgPos = ivec3(round(pos / scale));
     vec3 normal = vec3(0.0);
-    normal.x = (imageLoad(densityImage, imgPos - ivec3(1, 0, 0))
-                                - imageLoad(densityImage, imgPos + ivec3(1, 0, 0))).x;
-    normal.y = (imageLoad(densityImage, imgPos - ivec3(0, 1, 0))
-                                - imageLoad(densityImage, imgPos + ivec3(0, 1, 0))).x;
-    normal.z = (imageLoad(densityImage, imgPos - ivec3(0, 0, 1))
-                                - imageLoad(densityImage, imgPos + ivec3(0, 0, 1))).x;
+
+    vec3 imgSize = vec3(textureSize(sampler3D(densityImage, linearSampler), 0));
+    vec3 singlePixel = vec3(1.0) / imgSize;
+    vec3 halfPixel = singlePixel * 0.5;
+    vec3 texPos = vec3(imgPos) / imgSize + halfPixel;
+
+    normal.x = textureLod(sampler3D(densityImage, linearSampler), texPos - vec3(halfPixel.x, 0, 0), 0u).x
+                                - textureLod(sampler3D(densityImage, linearSampler), texPos + vec3(halfPixel.x, 0, 0), 0u).x;
+    normal.y = textureLod(sampler3D(densityImage, linearSampler), texPos - vec3(0, halfPixel.y, 0), 0u).x
+                                - textureLod(sampler3D(densityImage, linearSampler), texPos + vec3(0, halfPixel.y, 0), 0u).x;
+    normal.z = textureLod(sampler3D(densityImage, linearSampler), texPos - vec3(0, 0, halfPixel.z), 0u).x
+                                - textureLod(sampler3D(densityImage, linearSampler), texPos + vec3(0, 0, halfPixel.z), 0u).x;
     return normalize(normal);
 }
 
@@ -233,7 +244,7 @@ vec4 vertexPosFromKey(uint vertexKey) {
 void main() {
     uvec3 base = gl_GlobalInvocationID;
 
-    ivec3 imgSize = imageSize(densityImage);
+    ivec3 imgSize = textureSize(sampler3D(densityImage, nearestSampler), 0);
     uint voxelKey = 0u;
     for (uint z = 0u; z < 2u; z++) {
         for (uint y = 0u; y < 2u; y++) {
@@ -241,7 +252,7 @@ void main() {
                 uint index = ((x + z) & 1u) + z * 2u + y * 4u;
                 ivec3 pos = ivec3(int(base.x + x), int(base.y + y), int(base.z + z));
 
-                float value = imageLoad(densityImage, pos).x;
+                float value = textureLod(sampler3D(densityImage, nearestSampler), (vec3(pos) + vec3(0.5)) / vec3(imgSize), 0u).x;
                 bool inRange = gl_GlobalInvocationID.x < imgSize.x - 1u
                     && gl_GlobalInvocationID.y < imgSize.y - 1u
                     && gl_GlobalInvocationID.z < imgSize.z - 1u;

@@ -444,6 +444,7 @@ impl MarchingCubesPass {
         threshold: f32,
         spacing: Vec3,
     ) {
+        let resources = &pass_params.resources;
         if self.executed_count > 0u32 {
             //return;
         }
@@ -551,23 +552,6 @@ impl MarchingCubesPass {
             HistoryResourceEntry::Current,
         );
 
-        command_buffer.barrier(&[Barrier::TextureBarrier {
-            old_sync: BarrierSync::empty(),
-            new_sync: BarrierSync::COMPUTE_SHADER,
-            old_access: BarrierAccess::empty(),
-            new_access: BarrierAccess::STORAGE_READ,
-            old_layout: TextureLayout::Sampled,
-            new_layout: TextureLayout::Storage,
-            texture: volume_texture.view.texture().unwrap(),
-            range: BarrierTextureRange {
-                base_array_layer: 0u32,
-                base_mip_level: 0u32,
-                mip_level_length: 1u32,
-                array_layer_length: 1u32,
-            },
-            queue_ownership: None,
-        }]);
-
         command_buffer.flush_barriers();
 
         let pipeline = pass_params
@@ -589,7 +573,7 @@ impl MarchingCubesPass {
             0,
             WHOLE_BUFFER,
         );
-        command_buffer.bind_storage_texture(BindingFrequency::Frequent, 2, &volume_texture.view);
+        command_buffer.bind_sampling_view(BindingFrequency::Frequent, 2, &volume_texture.view);
         command_buffer.bind_storage_buffer(
             BindingFrequency::Frequent,
             3,
@@ -619,6 +603,9 @@ impl MarchingCubesPass {
             WHOLE_BUFFER,
         );
 
+        command_buffer.bind_sampler(BindingFrequency::Frequent, 7, resources.linear_sampler());
+        command_buffer.bind_sampler(BindingFrequency::Frequent, 8, resources.nearest_sampler());
+
         command_buffer.set_push_constant_data(
             &[MarchingCubesConfig {
                 threshold,
@@ -637,23 +624,6 @@ impl MarchingCubesPass {
         );
 
         command_buffer.end_label();
-
-        command_buffer.barrier(&[Barrier::TextureBarrier {
-            old_sync: BarrierSync::COMPUTE_SHADER,
-            new_sync: BarrierSync::COMPUTE_SHADER | BarrierSync::FRAGMENT_SHADER,
-            old_access: BarrierAccess::empty(),
-            new_access: BarrierAccess::SAMPLING_READ,
-            old_layout: TextureLayout::Storage,
-            new_layout: TextureLayout::Sampled,
-            texture: volume_texture.view.texture().unwrap(),
-            range: BarrierTextureRange {
-                base_array_layer: 0u32,
-                base_mip_level: 0u32,
-                mip_level_length: 1u32,
-                array_layer_length: 1u32,
-            },
-            queue_ownership: None,
-        }]);
     }
 
     pub fn cluster_count(&self) -> Vec3UI {
