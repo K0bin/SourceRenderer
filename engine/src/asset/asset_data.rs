@@ -1,13 +1,10 @@
-use std::collections::HashMap;
-
+use smallvec::SmallVec;
 use sourcerenderer_core::Vec4;
+use std::collections::HashMap;
 
 use super::loaded_level::LevelData;
 use super::AssetType;
-use crate::graphics::{
-    PackedShader,
-    TextureInfo,
-};
+use crate::graphics::{PackedShader, TextureInfo};
 use crate::math::BoundingBox;
 
 #[derive(Clone)]
@@ -18,7 +15,7 @@ pub struct MeshRange {
 
 pub struct TextureData {
     pub info: TextureInfo,
-    pub data: Box<[Box<[u8]>]>,
+    pub data: SmallVec<[Box<[u8]>; 4]>,
 }
 
 pub struct MeshData {

@@ -7,6 +7,7 @@ use crate::asset::{
 use crate::renderer::asset::RendererMaterialValue;
 use futures_lite::AsyncReadExt;
 use half::f16;
+use smallvec::smallvec;
 use sourcerenderer_core::gpu::{Format, SampleCount, TextureDimension, TextureInfo, TextureUsage};
 use sourcerenderer_core::{HalfVec3, Vec3, Vec4};
 use std::collections::HashMap;
@@ -216,7 +217,7 @@ impl AssetLoader for RawVolumeLoaderTexture {
                         | TextureUsage::INITIAL_COPY,
                     supports_srgb: false,
                 },
-                data: Box::new([data]),
+                data: smallvec![data],
             }),
             Some(progress),
             priority,

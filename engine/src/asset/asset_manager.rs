@@ -1,3 +1,4 @@
+use smallvec::smallvec;
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::hash::Hash;
@@ -337,7 +338,7 @@ impl AssetManager {
             path,
             AssetData::Texture(TextureData {
                 info: info.clone(),
-                data: Box::new([texture_data.to_vec().into_boxed_slice()]),
+                data: smallvec![texture_data.to_vec().into_boxed_slice()],
             }),
             AssetLoadPriority::Normal,
         );
