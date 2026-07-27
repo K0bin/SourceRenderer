@@ -35,7 +35,6 @@ pub struct MarchingCubesPass {
 impl MarchingCubesPass {
     pub const ATOMICS_BUFFER_NAME: &'static str = "marchingcubes_atomics";
     pub const INDICES_BUFFER_NAME: &'static str = "marchingcubes_indices";
-    pub const INDICES_HASHMAP: &'static str = "marching_cube_hashmap";
 
     #[allow(unused)]
     pub fn new(
@@ -68,17 +67,6 @@ impl MarchingCubesPass {
             &BufferInfo {
                 size: (std::mem::size_of::<u32>() * 16 * resolution_multiplied) as u64,
                 usage: BufferUsage::STORAGE | BufferUsage::INDEX,
-                sharing_mode: QueueSharingMode::Exclusive,
-            },
-            MemoryUsage::GPUMemory,
-            false,
-        );
-
-        resources.create_buffer(
-            Self::INDICES_HASHMAP,
-            &BufferInfo {
-                size: (8 * resolution_multiplied) as u64,
-                usage: BufferUsage::STORAGE,
                 sharing_mode: QueueSharingMode::Exclusive,
             },
             MemoryUsage::GPUMemory,
@@ -448,13 +436,6 @@ impl MarchingCubesPass {
             BarrierAccess::STORAGE_WRITE,
             HistoryResourceEntry::Current,
         );
-        let hashmap_slice = pass_params.resources.access_buffer(
-            command_buffer,
-            Self::INDICES_HASHMAP,
-            BarrierSync::COMPUTE_SHADER,
-            BarrierAccess::STORAGE_WRITE,
-            HistoryResourceEntry::Current,
-        );
         command_buffer.flush_barriers();
         command_buffer.clear_storage_buffer(
             BufferRef::Regular(&atomics_slice),
@@ -476,16 +457,6 @@ impl MarchingCubesPass {
                 / 4,
             0u32,
         );
-        command_buffer.clear_storage_buffer(
-            BufferRef::Regular(&hashmap_slice),
-            0u64,
-            pass_params
-                .resources
-                .buffer_range(Self::INDICES_HASHMAP)
-                .length
-                / 4,
-            !0u32,
-        );
         let atomics_slice = pass_params.resources.access_buffer(
             command_buffer,
             Self::ATOMICS_BUFFER_NAME,
@@ -498,13 +469,6 @@ impl MarchingCubesPass {
             Self::INDICES_BUFFER_NAME,
             BarrierSync::COMPUTE_SHADER,
             BarrierAccess::STORAGE_WRITE,
-            HistoryResourceEntry::Current,
-        );
-        let hashmap_slice = pass_params.resources.access_buffer(
-            command_buffer,
-            Self::INDICES_HASHMAP,
-            BarrierSync::COMPUTE_SHADER,
-            BarrierAccess::STORAGE_WRITE | BarrierAccess::STORAGE_READ,
             HistoryResourceEntry::Current,
         );
 
@@ -541,13 +505,6 @@ impl MarchingCubesPass {
             BindingFrequency::Frequent,
             5,
             BufferRef::Regular(&atomics_slice),
-            0,
-            WHOLE_BUFFER,
-        );
-        command_buffer.bind_storage_buffer(
-            BindingFrequency::Frequent,
-            6,
-            BufferRef::Regular(&hashmap_slice),
             0,
             WHOLE_BUFFER,
         );
