@@ -5,13 +5,6 @@
 #include "descriptor_sets.inc.glsl"
 #include "camera.inc.glsl"
 
-layout(location = 0) in uint in_key;
-layout(location = 1) in vec3 in_normal;
-
-//layout(location = 0) in vec3 in_pos;
-//layout(location = 3) in vec2 in_lightmap_uv;
-//layout(location = 4) in float in_alpha;
-
 layout(location = 0) out vec3 out_normal;
 layout(location = 1) out float out_density;
 layout(location = 2) out vec3 out_worldPosition;
@@ -90,10 +83,10 @@ vec3 calculateNormal(vec3 pos) {
 
 void main(void) {
   vec3 densityMapSize = textureSize(densityMap, 0);
+  uint vtxkey = gl_VertexIndex;
 
-  vec3 pos = vertexPosFromKey(in_key, ivec3(densityMapSize)).xyz;
+  vec3 pos = vertexPosFromKey(vtxkey, ivec3(densityMapSize)).xyz;
   vec3 normal = calculateNormal(pos);
-  //vec3 normal = (normalize(in_normal) + calculateNormal(pos)) * 0.5;
 
   mat4 inverseModelMat = inverse(model);
   mat4 normalModelMat = transpose(inverseModelMat);
