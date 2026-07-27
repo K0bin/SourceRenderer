@@ -6,6 +6,7 @@ use crate::asset::{
 };
 use crate::renderer::asset::RendererMaterialValue;
 use futures_lite::AsyncReadExt;
+use half::f16;
 use sourcerenderer_core::gpu::{Format, SampleCount, TextureDimension, TextureInfo, TextureUsage};
 use sourcerenderer_core::{HalfVec3, Vec3, Vec4};
 use std::collections::HashMap;
@@ -23,7 +24,7 @@ impl RawVolumeLoaderTexture {
     }
 }
 
-pub const RESOLUTION_DOWNSCALE_FACTOR: usize = 4usize;
+pub const RESOLUTION_DOWNSCALE_FACTOR: usize = 1usize;
 
 impl AssetLoader for RawVolumeLoaderTexture {
     fn matches(&self, file: &mut AssetFile) -> bool {
@@ -127,7 +128,7 @@ impl AssetLoader for RawVolumeLoaderTexture {
             (downsampled_width as usize) * (downsampled_height as usize) * (downsampled_depth as usize),
             spacing,
         );
-        let mut values = Vec::<f32>::with_capacity(values_count);
+        let mut values = Vec::<f16>::with_capacity(values_count);
 
         for z_base in (0usize..(depth as usize)).step_by(RESOLUTION_DOWNSCALE_FACTOR) {
             if z_base + RESOLUTION_DOWNSCALE_FACTOR > depth as usize {
@@ -170,7 +171,7 @@ impl AssetLoader for RawVolumeLoaderTexture {
                         / ((RESOLUTION_DOWNSCALE_FACTOR
                             * RESOLUTION_DOWNSCALE_FACTOR
                             * RESOLUTION_DOWNSCALE_FACTOR) as f32);
-                    values.push(val);
+                    values.push(f16::from_f32(val));
                 }
             }
         }
@@ -181,7 +182,8 @@ impl AssetLoader for RawVolumeLoaderTexture {
         );
 
         for val in &mut values {
-            *val = (*val - min_value) / (max_value - min_value);
+            let val32 = val.to_f32();
+            *val = f16::from_f32((val32 - min_value) / (max_value - min_value));
         }
 
         values.shrink_to_fit();
@@ -201,7 +203,7 @@ impl AssetLoader for RawVolumeLoaderTexture {
             AssetData::Texture(TextureData {
                 info: TextureInfo {
                     dimension: TextureDimension::Dim3D,
-                    format: Format::R32Float,
+                    format: Format::R16Float,
                     width: downsampled_width,
                     height: downsampled_height,
                     depth: downsampled_depth,

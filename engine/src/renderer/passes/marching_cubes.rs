@@ -55,17 +55,18 @@ impl MarchingCubesPass {
             false,
         );
 
-        //let resolution_multiplied = 256 * 256 * 230;
-        let mut resolution_multiplied = 128 * 128 * 115;
+        let mut resolution_multiplied = 512 * 512 * 512;
 
-        // Assume there's a lot of empty space and voxels with fewer triangles/vertices to avoid
-        // huge buffers
-        //resolution_multiplied /= 8;
+        // Assume there's a lot of empty space/fully filled space and voxels with fewer triangles
+        // to avoid huge buffers.
+        // In case of the manix, the theoretical space is 148x larger than the actually necessary one.
+        resolution_multiplied /= 100;
 
+        // The theoretical maximum is that every voxel adds 5 triangles, so 15 indices.
         resources.create_buffer(
             Self::INDICES_BUFFER_NAME,
             &BufferInfo {
-                size: (std::mem::size_of::<u32>() * 16 * resolution_multiplied) as u64,
+                size: (std::mem::size_of::<u32>() * 15 * resolution_multiplied) as u64,
                 usage: BufferUsage::STORAGE | BufferUsage::INDEX,
                 sharing_mode: QueueSharingMode::Exclusive,
             },
