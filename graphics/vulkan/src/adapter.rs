@@ -22,6 +22,7 @@ const PIPELINE_LIBRARY_EXT_NAME: &str = "VK_KHR_pipeline_library";
 const HOST_IMAGE_COPY_EXT_NAME: &str = "VK_EXT_host_image_copy";
 const BARYCENTRICS_EXT_NAME: &str = "VK_KHR_fragment_shader_barycentric";
 const MESH_SHADER_EXT_NAME: &str = "VK_EXT_msh_shader";
+const SHADER_ATOMIC_FLOAT_EXT_NAME: &str = "VK_EXT_shader_atomic_float";
 
 bitflags! {
   #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -36,6 +37,7 @@ bitflags! {
     const PIPELINE_LIBRARY           = 0b100000000000;
     const HOST_IMAGE_COPY            = 0b1000000000000;
     const MESH_SHADER                = 0b10000000000000;
+    const SHADER_ATOMIC_FLOAT        = 0b100000000000000;
     const BARYCENTRICS               = 0b1000000000000000000;
   }
 }
@@ -124,6 +126,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                 BARYCENTRICS_EXT_NAME => VkAdapterExtensionSupport::BARYCENTRICS,
                 MESH_SHADER_EXT_NAME => VkAdapterExtensionSupport::MESH_SHADER,
                 HOST_IMAGE_COPY_EXT_NAME => VkAdapterExtensionSupport::HOST_IMAGE_COPY,
+                SHADER_ATOMIC_FLOAT_EXT_NAME => VkAdapterExtensionSupport::SHADER_ATOMIC_FLOAT,
                 _ => VkAdapterExtensionSupport::NONE,
             };
         }
@@ -261,6 +264,8 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             vk::PhysicalDeviceHostImageCopyFeaturesEXT::default();
         let mut supported_features_mesh_shader = vk::PhysicalDeviceMeshShaderFeaturesEXT::default();
         let mut properties_mesh_shader = vk::PhysicalDeviceMeshShaderPropertiesEXT::default();
+        let mut supported_features_shader_atomic_float =
+            vk::PhysicalDeviceShaderAtomicFloatFeaturesEXT::default();
 
         supported_features_11.p_next = std::mem::replace(
             &mut supported_features.p_next,
@@ -326,6 +331,14 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             supported_features_rt_query.p_next = std::mem::replace(
                 &mut supported_features.p_next,
                 &mut supported_features_rt_query as *mut vk::PhysicalDeviceRayQueryFeaturesKHR
+                    as *mut c_void,
+            );
+        }
+        if extensions.intersects(VkAdapterExtensionSupport::SHADER_ATOMIC_FLOAT) {
+            supported_features_shader_atomic_float.p_next = std::mem::replace(
+                &mut supported_features.p_next,
+                &mut supported_features_shader_atomic_float
+                    as *mut vk::PhysicalDeviceShaderAtomicFloatFeaturesEXT
                     as *mut c_void,
             );
         }
@@ -400,6 +413,8 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             vk::PhysicalDeviceFragmentShaderBarycentricFeaturesKHR::default();
         let mut features_host_image_copy = vk::PhysicalDeviceHostImageCopyFeaturesEXT::default();
         let mut features_mesh_shader = vk::PhysicalDeviceMeshShaderFeaturesEXT::default();
+        let mut features_shader_atomic_float =
+            vk::PhysicalDeviceShaderAtomicFloatFeaturesEXT::default();
         let mut enabled_extensions: Vec<&str> = vec![SWAPCHAIN_EXT_NAME];
 
         enabled_features
@@ -410,6 +425,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         enabled_features_12.scalar_block_layout = supported_features_12.scalar_block_layout;
         enabled_features_12.shader_float16 = supported_features_12.shader_float16;
         enabled_features_13.dynamic_rendering = vk::TRUE;
+        features_shader_atomic_float = supported_features_shader_atomic_float;
 
         enabled_features_11.p_next = std::mem::replace(
             &mut enabled_features.p_next,
@@ -435,6 +451,18 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
 
         if extensions.intersects(VkAdapterExtensionSupport::MEMORY_BUDGET) {
             enabled_extensions.push(MEMORY_BUDGET_EXT_NAME);
+        }
+
+        if extensions.intersects(VkAdapterExtensionSupport::SHADER_ATOMIC_FLOAT)
+            && supported_features_shader_atomic_float.shader_buffer_float32_atomics == vk::TRUE
+        {
+            enabled_extensions.push(SHADER_ATOMIC_FLOAT_EXT_NAME);
+            features_shader_atomic_float.p_next = std::mem::replace(
+                &mut enabled_features.p_next,
+                &mut features_shader_atomic_float
+                    as *mut vk::PhysicalDeviceShaderAtomicFloatFeaturesEXT
+                    as *mut c_void,
+            );
         }
 
         let supports_descriptor_indexing = supported_features_12
@@ -740,7 +768,10 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         let mut host_image_copy = Option::<RawVkHostImageCopyEntries>::None;
         if features_host_image_copy.host_image_copy == vk::TRUE {
             host_image_copy = Some(RawVkHostImageCopyEntries {
-                host_image_copy: ash::ext::host_image_copy::Device::load(&self.instance, &vk_device),
+                host_image_copy: ash::ext::host_image_copy::Device::load(
+                    &self.instance,
+                    &vk_device,
+                ),
                 properties_host_image_copy: std::mem::transmute(properties_host_image_copy),
             });
         }
