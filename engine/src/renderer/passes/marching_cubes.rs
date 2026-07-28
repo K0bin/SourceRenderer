@@ -10,7 +10,6 @@ use std::sync::Arc;
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 struct MarchingCubesConfig {
-    pub scale: Vec3,
     pub threshold: f32,
     pub lod: u32,
 }
@@ -412,7 +411,6 @@ impl MarchingCubesPass {
         pass_params: &RenderPassParameters<'_>,
         volume_texture: TextureHandle,
         threshold: f32,
-        spacing: Vec3,
         lod: u32,
     ) {
         let resources = &pass_params.resources;
@@ -516,11 +514,7 @@ impl MarchingCubesPass {
         command_buffer.bind_sampler(BindingFrequency::Frequent, 8, resources.nearest_sampler());
 
         command_buffer.set_push_constant_data(
-            &[MarchingCubesConfig {
-                threshold,
-                scale: spacing,
-                lod,
-            }],
+            &[MarchingCubesConfig { threshold, lod }],
             ShaderType::ComputeShader,
         );
 

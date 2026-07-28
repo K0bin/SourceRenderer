@@ -31,7 +31,6 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 7) uniform sampler linearSampler
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 8) uniform sampler nearestSampler;
 
 layout(push_constant) uniform Config {
-    vec3 scale;
     float threshold;
     uint lod;
 };

@@ -24,8 +24,6 @@ layout(set = DESCRIPTOR_SET_FRAME, binding = 0) uniform CameraUBO {
   Camera camera;
 };
 
-//layout (set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform sampler2D albedo;
-
 layout (set = DESCRIPTOR_SET_FREQUENT, binding = 1) uniform sampler2D transferFunction;
 layout (set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform samplerCube envMapDiffuse;
 layout (set = DESCRIPTOR_SET_FREQUENT, binding = 3) uniform samplerCube envMapSpecular;

@@ -190,6 +190,10 @@ impl RenderPath for VolumeRenderer {
 
         let marching_cube_scale = Vec3::new(0.488281f32, 0.488281f32, 0.700012f32) * 8f32 * 0.01f32;
 
+        let model_matrix = Matrix4::from_rotation_x(-1.57f32)
+            * Matrix4::from_rotation_z(3.14)
+            * Matrix4::from_scale(marching_cube_scale);
+
         let backbuffer = swapchain.next_backbuffer()?;
 
         let mut cmd_buffer = context.get_command_buffer(QueueType::Graphics);
@@ -206,7 +210,6 @@ impl RenderPath for VolumeRenderer {
             &params,
             self.texture_handle,
             self.threshold,
-            marching_cube_scale,
             geometry_lod,
         );
 
@@ -257,7 +260,7 @@ impl RenderPath for VolumeRenderer {
             swapchain.height(),
             assets,
             self.texture_handle,
-            marching_cube_scale,
+            model_matrix,
             self.threshold,
             geometry_lod,
         );

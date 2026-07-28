@@ -19,7 +19,6 @@ use sourcerenderer_core::{HalfVec3, Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
 #[derive(Clone)]
 struct PushConstantData {
     model_matrix: Matrix4,
-    size: Vec3,
     threshold: f32,
     lod: u32,
 }
@@ -177,7 +176,7 @@ impl GeometryPass {
         height: u32,
         assets: &RendererAssetsReadOnly<'_>,
         volume_texture: TextureHandle,
-        spacing: Vec3,
+        model_matrix: Matrix4,
         threshold: f32,
         lod: u32,
     ) {
@@ -358,8 +357,7 @@ impl GeometryPass {
 
         cmd_buffer.set_push_constant_data(
             &[PushConstantData {
-                model_matrix: Matrix4::from_rotation_x(-1.57f32) * Matrix4::from_rotation_z(3.14),
-                size: spacing,
+                model_matrix,
                 threshold,
                 lod,
             }],

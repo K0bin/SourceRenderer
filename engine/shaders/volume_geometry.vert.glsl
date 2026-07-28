@@ -15,7 +15,6 @@ layout(set = DESCRIPTOR_SET_FRAME, binding = 0) uniform CameraUBO {
 
 layout(push_constant) uniform VeryHighFrequencyUbo {
   mat4 model;
-  vec3 scale;
   float threshold;
   uint lod;
 };
@@ -39,7 +38,7 @@ vec4 interpolateVertices(uvec3 pos1, uvec3 pos2) {
 }
 
 
-vec4 vertexPosFromKey(uint vertexKey, ivec3 densityMapSize) {
+vec4 vertexPosFromKey(uint vertexKey) {
     uvec3 sizes = uvec3(512 * 2);
 
     uvec3 pos = uvec3(vertexKey % sizes.x,
@@ -49,8 +48,7 @@ vec4 vertexPosFromKey(uint vertexKey, ivec3 densityMapSize) {
     uvec3 pos1 = pos / 2u;
     uvec3 pos2 = pos1 + (pos % 2u);
 
-    float lodScale = exp2(lod);
-    return interpolateVertices(pos1, pos2) * vec4(scale * lodScale, 1.0);
+    return interpolateVertices(pos1, pos2);
 }
 
 
@@ -76,10 +74,11 @@ void main(void) {
   vec3 densityMapSize = textureSize(densityMap, int(lod));
   uint vtxkey = gl_VertexIndex;
 
-  vec4 posAndDensity = vertexPosFromKey(vtxkey, ivec3(densityMapSize));
+  vec4 posAndDensity = vertexPosFromKey(vtxkey);
   vec3 pos = posAndDensity.xyz;
   float density = posAndDensity.w;
-  vec3 densityMapPosition = pos / (textureSize(densityMap, int(lod)) * scale * exp2(lod));
+
+  vec3 densityMapPosition = (pos + 0.5) / densityMapSize;
   vec3 normal = calculateNormal(densityMapPosition, lod);
 
   mat4 inverseModelMat = inverse(model);
@@ -92,8 +91,11 @@ void main(void) {
   rayDir = (inverseModelMat * camera.invView) * rayDir;
   rayDir = normalize(rayDir);
 
-  out_density = max(out_density, textureLod(densityMap, (pos / scale + 0.5 + rayDir.xyz) / densityMapSize, lod).x);
-  //out_density = max(out_density, textureLod(densityMap, (pos / scale + 0.5 - in_normal.xyz) / densityMapSize, lod).x);
+  out_density = max(out_density, textureLod(densityMap, (pos + 0.5 + rayDir.xyz) / densityMapSize, lod).x);
+  //out_density = max(out_density, textureLod(densityMap, (pos + 0.5 - in_normal.xyz) / densityMapSize, lod).x);
+
+  float lodScale = exp2(lod);
+  pos *= vec3(lodScale);
 
   mat4 mvp = camera.viewProj * model;
   gl_Position = mvp * vec4(pos, 1.0);
