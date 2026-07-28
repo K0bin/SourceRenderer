@@ -1,22 +1,11 @@
-use std::collections::{
-    HashSet,
-    VecDeque,
-};
+use std::collections::{HashSet, VecDeque};
 use std::ffi::c_void;
 use std::sync::Arc;
 
 use sourcerenderer_core::Vec3UI;
 
-use super::gpu::{
-    CommandBuffer as _,
-    CommandPool as _,
-    Queue as _,
-    Texture as _,
-};
-use super::{
-    gpu,
-    *,
-};
+use super::gpu::{CommandBuffer as _, CommandPool as _, Queue as _, Texture as _};
+use super::{gpu, *};
 use crate::Mutex;
 
 const DEBUG_FORCE_FAT_BARRIER: bool = false;
@@ -193,9 +182,9 @@ impl Transfer {
                 },
                 texture_offset: Vec3UI::new(0u32, 0u32, 0u32),
                 texture_extent: Vec3UI::new(
-                    texture.info().width,
-                    texture.info().height,
-                    texture.info().depth,
+                    texture.info().width / (1u32 << mip_level),
+                    texture.info().height / (1u32 << mip_level),
+                    texture.info().depth / (1u32 << mip_level),
                 ),
             },
         });
@@ -420,9 +409,9 @@ impl Transfer {
                     },
                     texture_offset: Vec3UI::new(0u32, 0u32, 0u32),
                     texture_extent: Vec3UI::new(
-                        texture.info().width,
-                        texture.info().height,
-                        texture.info().depth,
+                        texture.info().width / (1u32 << mip_level),
+                        texture.info().height / (1u32 << mip_level),
+                        texture.info().depth / (1u32 << mip_level),
                     ),
                 },
             );
@@ -507,9 +496,9 @@ impl Transfer {
                     },
                     texture_offset: Vec3UI::new(0u32, 0u32, 0u32),
                     texture_extent: Vec3UI::new(
-                        texture.info().width,
-                        texture.info().height,
-                        texture.info().depth,
+                        texture.info().width / (1u32 << mip_level),
+                        texture.info().height / (1u32 << mip_level),
+                        texture.info().depth / (1u32 << mip_level),
                     ),
                 },
             });
