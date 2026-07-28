@@ -54,14 +54,13 @@ vec4 vertexPosFromKey(uint vertexKey, ivec3 densityMapSize) {
 }
 
 
-vec3 calculateNormal(vec3 pos, uint normalLod) {
-    vec3 imgPos = pos / scale;
+vec3 calculateNormal(vec3 densityMapPosition, uint normalLod) {
     vec3 normal = vec3(0.0);
 
     vec3 imgSize = vec3(textureSize(densityMap, int(normalLod)));
     vec3 singlePixel = vec3(1.0) / imgSize;
     vec3 halfPixel = singlePixel * 0.5;
-    vec3 texPos = imgPos / imgSize + halfPixel;
+    vec3 texPos = densityMapPosition + halfPixel;
 
     normal.x = textureLod(densityMap, texPos - vec3(singlePixel.x, 0, 0), normalLod).x
                                 - textureLod(densityMap, texPos + vec3(singlePixel.x, 0, 0), normalLod).x;
@@ -80,13 +79,14 @@ void main(void) {
   vec4 posAndDensity = vertexPosFromKey(vtxkey, ivec3(densityMapSize));
   vec3 pos = posAndDensity.xyz;
   float density = posAndDensity.w;
-  vec3 normal = calculateNormal(pos, lod);
+  vec3 densityMapPosition = pos / (textureSize(densityMap, int(lod)) * scale * exp2(lod));
+  vec3 normal = calculateNormal(densityMapPosition, lod);
 
   mat4 inverseModelMat = inverse(model);
   mat4 normalModelMat = transpose(inverseModelMat);
   out_normal = normalize(normalModelMat * vec4(normal, 0)).xyz;
 
-  out_density = textureLod(densityMap, (pos / scale + 0.5) / densityMapSize, lod).x;
+  out_density = density;
 
   vec4 rayDir = vec4(0.0, 0.0, 1.0, 0.0);
   rayDir = (inverseModelMat * camera.invView) * rayDir;
