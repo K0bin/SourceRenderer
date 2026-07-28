@@ -7,17 +7,10 @@ use smallvec::SmallVec;
 use super::*;
 use crate::asset::*;
 use crate::graphics::{
-    BufferSlice,
-    ComputePipeline,
-    GraphicsContext,
-    GraphicsPipeline,
-    MeshGraphicsPipeline,
+    BufferSlice, ComputePipeline, GraphicsContext, GraphicsPipeline, MeshGraphicsPipeline,
     RayTracingPipeline,
 };
-use crate::{
-    RwLock,
-    RwLockReadGuard,
-};
+use crate::{RwLock, RwLockReadGuard};
 // The parking lot variant is fair (write-preferring) and consistent across platforms.
 
 pub enum RendererAssetWithHandle {
@@ -296,6 +289,7 @@ impl RendererAssetsReadOnly<'_> {
         self.placeholders.material()
     }
 
+    // TODO Support custom views
     #[inline(always)]
     pub fn get_texture(&self, handle: TextureHandle) -> &RendererTexture {
         self.maps
