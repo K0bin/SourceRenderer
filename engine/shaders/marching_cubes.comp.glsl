@@ -33,6 +33,7 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 8) uniform sampler nearestSample
 layout(push_constant) uniform Config {
     vec3 scale;
     float threshold;
+    uint lod;
 };
 
 uvec3 indexOffset(uint idx) {
@@ -46,7 +47,7 @@ uvec3 indexOffset(uint idx) {
 uint vertexKey(uvec3 pos1, uvec3 pos2) {
     uvec3 pos = pos1 + pos2;
 
-    uvec3 sizes = gl_NumWorkGroups * gl_WorkGroupSize * 2;
+    uvec3 sizes = uvec3(512 * 2);
     pos = min(sizes, pos);
 
     uint key = pos.z * sizes.x * sizes.y +
@@ -68,15 +69,18 @@ uint vertexKeyFromIndexOffsets(uint idx1, uint idx2) {
 void main() {
     uvec3 base = gl_GlobalInvocationID;
 
-    ivec3 imgSize = textureSize(sampler3D(densityImage, nearestSampler), 0);
+    uvec3 imgSize = textureSize(sampler3D(densityImage, nearestSampler), int(lod));
+    if (any(greaterThan(base, imgSize)))
+        return;
+
     uint voxelKey = 0u;
     for (uint z = 0u; z < 2u; z++) {
         for (uint y = 0u; y < 2u; y++) {
             for (uint x = 0u; x < 2u; x++) {
                 uint index = ((x + z) & 1u) + z * 2u + y * 4u;
-                ivec3 pos = ivec3(int(base.x + x), int(base.y + y), int(base.z + z));
+                uvec3 pos = base + uvec3(x, y, z);
 
-                float value = textureLod(sampler3D(densityImage, nearestSampler), (vec3(pos) + vec3(0.5)) / vec3(imgSize), 0u).x;
+                float value = textureLod(sampler3D(densityImage, nearestSampler), (vec3(pos) + vec3(0.5)) / vec3(imgSize), lod).x;
                 bool inRange = gl_GlobalInvocationID.x < imgSize.x - 1u
                     && gl_GlobalInvocationID.y < imgSize.y - 1u
                     && gl_GlobalInvocationID.z < imgSize.z - 1u;

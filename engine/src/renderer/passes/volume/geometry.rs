@@ -21,6 +21,7 @@ struct PushConstantData {
     model_matrix: Matrix4,
     size: Vec3,
     threshold: f32,
+    lod: u32,
 }
 
 #[repr(C)]
@@ -30,6 +31,7 @@ struct MaterialData {
     metalness: f32,
     _padding: u64,
     f0: Vec3,
+    normal_lod: u32,
 }
 
 pub struct GeometryPass {
@@ -177,6 +179,7 @@ impl GeometryPass {
         volume_texture: TextureHandle,
         spacing: Vec3,
         threshold: f32,
+        lod: u32,
     ) {
         let resources = &params.resources;
 
@@ -358,6 +361,7 @@ impl GeometryPass {
                 model_matrix: Matrix4::from_rotation_x(-1.57f32) * Matrix4::from_rotation_z(3.14),
                 size: spacing,
                 threshold,
+                lod,
             }],
             ShaderType::VertexShader,
         );
@@ -369,6 +373,7 @@ impl GeometryPass {
                 //roughness: 0.1f32,
                 //metalness: 0.9f32,
                 f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
+                normal_lod: lod,
             }],
             ShaderType::FragmentShader,
         );

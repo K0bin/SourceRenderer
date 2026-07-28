@@ -12,6 +12,7 @@ use std::sync::Arc;
 struct MarchingCubesConfig {
     pub scale: Vec3,
     pub threshold: f32,
+    pub lod: u32,
 }
 
 #[repr(C)]
@@ -412,6 +413,7 @@ impl MarchingCubesPass {
         volume_texture: TextureHandle,
         threshold: f32,
         spacing: Vec3,
+        lod: u32,
     ) {
         let resources = &pass_params.resources;
         if self.executed_count > 0u32 {
@@ -517,6 +519,7 @@ impl MarchingCubesPass {
             &[MarchingCubesConfig {
                 threshold,
                 scale: spacing,
+                lod,
             }],
             ShaderType::ComputeShader,
         );
@@ -525,9 +528,9 @@ impl MarchingCubesPass {
 
         command_buffer.finish_binding();
         command_buffer.dispatch(
-            (texture_info.width + 3u32) / 4u32,
-            (texture_info.height + 3u32) / 4u32,
-            (texture_info.depth + 3u32) / 4u32,
+            ((texture_info.width / (1u32 << lod)) + 3u32) / 4u32,
+            ((texture_info.height / (1u32 << lod)) + 3u32) / 4u32,
+            ((texture_info.depth / (1u32 << lod)) + 3u32) / 4u32,
         );
 
         command_buffer.end_label();

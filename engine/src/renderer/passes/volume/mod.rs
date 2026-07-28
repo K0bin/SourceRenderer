@@ -51,6 +51,7 @@ pub struct VolumeRenderer {
     texture_handle: TextureHandle,
     texture_progress: Arc<AssetLoaderProgress>,
     threshold: f32,
+    lod: f32,
     compositing: CompositingPass,
     background: BackgroundPass,
 }
@@ -133,6 +134,7 @@ impl VolumeRenderer {
             texture_progress: progress,
             //threshold: 0.0505f32,
             threshold: 0.0f32,
+            lod: 0.0f32,
             compositing: comp,
             background,
         }
@@ -172,13 +174,19 @@ impl RenderPath for VolumeRenderer {
     ) -> Result<RenderPathResult, sourcerenderer_core::gpu::SwapchainError> {
         //self.threshold += 0.0000005f32;
         //self.threshold += 0.00005f32;
-        self.threshold += 0.00005f32;
+        //self.threshold += 0.00005f32;
+        self.threshold = 0.00005f32 * 144f32 * 4f32;
         //self.threshold = self.threshold % 0.10f32;
         self.threshold = self.threshold % 1.0f32;
+        self.lod += 0.001f32;
+        self.lod = self.lod % 6.9f32;
         //self.threshold += 50.00005f32;
         //self.threshold = self.threshold % 1.0f32;
 
         //self.threshold = 0.00005f32 * 150.0f32;
+
+        //let geometry_lod = 3u32;
+        let geometry_lod = self.lod as u32;
 
         let marching_cube_scale = Vec3::new(0.488281f32, 0.488281f32, 0.700012f32) * 8f32 * 0.01f32;
 
@@ -199,6 +207,7 @@ impl RenderPath for VolumeRenderer {
             self.texture_handle,
             self.threshold,
             marching_cube_scale,
+            geometry_lod,
         );
 
         self.ibl_pass.execute(&mut cmd_buffer, &mut params);
@@ -250,6 +259,7 @@ impl RenderPath for VolumeRenderer {
             self.texture_handle,
             marching_cube_scale,
             self.threshold,
+            geometry_lod,
         );
 
         self.ssao.execute(

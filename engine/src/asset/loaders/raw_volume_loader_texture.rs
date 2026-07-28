@@ -7,7 +7,7 @@ use crate::asset::{
 use crate::renderer::asset::RendererMaterialValue;
 use futures_lite::AsyncReadExt;
 use half::f16;
-use smallvec::smallvec;
+use smallvec::{smallvec, SmallVec};
 use sourcerenderer_core::gpu::{Format, SampleCount, TextureDimension, TextureInfo, TextureUsage};
 use sourcerenderer_core::{HalfVec3, Vec3, Vec4};
 use std::collections::HashMap;
@@ -26,6 +26,7 @@ impl RawVolumeLoaderTexture {
 }
 
 pub const RESOLUTION_DOWNSCALE_FACTOR: usize = 1usize;
+pub const LOAD_MIPS: bool = true;
 
 impl AssetLoader for RawVolumeLoaderTexture {
     fn matches(&self, file: &mut AssetFile) -> bool {
@@ -110,8 +111,8 @@ impl AssetLoader for RawVolumeLoaderTexture {
 
         let values_count = (width as usize) * (height as usize) * (depth as usize);
 
-        let mut data = Vec::<u8>::with_capacity(values_count);
-        let file_size = data_file.read_to_end(&mut data).await.map_err(|_| ())?;
+        let mut src_data = Vec::<u8>::with_capacity(values_count);
+        let file_size = data_file.read_to_end(&mut src_data).await.map_err(|_| ())?;
         let value_size = file_size / values_count;
 
         let downsampled_width = width / (RESOLUTION_DOWNSCALE_FACTOR as u32);
@@ -129,75 +130,128 @@ impl AssetLoader for RawVolumeLoaderTexture {
             (downsampled_width as usize) * (downsampled_height as usize) * (downsampled_depth as usize),
             spacing,
         );
-        let mut values = Vec::<f16>::with_capacity(values_count);
 
-        for z_base in (0usize..(depth as usize)).step_by(RESOLUTION_DOWNSCALE_FACTOR) {
-            if z_base + RESOLUTION_DOWNSCALE_FACTOR > depth as usize {
-                continue;
+        let mut data = SmallVec::<[Vec<f16>; 1]>::new();
+
+        let mip_count = if LOAD_MIPS {
+            downsampled_width
+                .ilog2()
+                .min(downsampled_height.ilog2())
+                .min(downsampled_depth.ilog2())
+        } else {
+            1u32
+        };
+
+        for mip in 0..mip_count {
+            let downscale_factor = if mip == 0 {
+                RESOLUTION_DOWNSCALE_FACTOR
+            } else {
+                2usize
+            };
+            let mut source_image_width = width;
+            let mut source_image_height = height;
+            let mut source_image_depth = depth;
+            if mip != 0 {
+                let scale_factor = (RESOLUTION_DOWNSCALE_FACTOR as u32) * 2u32.pow(mip - 1);
+                source_image_width = downsampled_width / scale_factor;
+                source_image_height = downsampled_height / scale_factor;
+                source_image_depth = downsampled_depth / scale_factor;
             }
-            for y_base in (0usize..(height as usize)).step_by(RESOLUTION_DOWNSCALE_FACTOR) {
-                if y_base + RESOLUTION_DOWNSCALE_FACTOR > height as usize {
+
+            let mut mip_data = Vec::<f16>::with_capacity(
+                (width as usize) / downscale_factor * (height as usize) / downscale_factor
+                    * (depth as usize)
+                    / downscale_factor,
+            );
+
+            // The way this is implemented is pretty slow and doesn't reuse the downscaled values from previous mip levels...
+            for z_base in (0usize..(source_image_depth as usize)).step_by(downscale_factor) {
+                if z_base + downscale_factor > source_image_depth as usize {
                     continue;
                 }
-                for x_base in (0usize..(width as usize)).step_by(RESOLUTION_DOWNSCALE_FACTOR) {
-                    if x_base + RESOLUTION_DOWNSCALE_FACTOR > width as usize {
+                for y_base in (0usize..(source_image_height as usize)).step_by(downscale_factor) {
+                    if y_base + downscale_factor > source_image_height as usize {
                         continue;
                     }
+                    for x_base in (0usize..(source_image_width as usize)).step_by(downscale_factor)
+                    {
+                        if x_base + downscale_factor > source_image_width as usize {
+                            continue;
+                        }
 
-                    let mut value = 0f32;
-                    for z in 0usize..RESOLUTION_DOWNSCALE_FACTOR {
-                        for y in 0usize..RESOLUTION_DOWNSCALE_FACTOR {
-                            for x in 0usize..RESOLUTION_DOWNSCALE_FACTOR {
-                                let i = (z_base + z) * (width as usize) * (height as usize)
-                                    + (y_base + y) * (width as usize)
-                                    + (x_base + x);
-                                let val = if value_size == 1usize {
-                                    data[i] as f32
-                                } else {
-                                    ((data[i * 2usize] as u16)
-                                        | ((data[i * 2usize + 1usize] as u16) << 8u16))
-                                        as f32
-                                };
-                                if !has_min_value {
-                                    min_value = min_value.min(val);
+                        let mut value = 0f32;
+                        for z in 0usize..downscale_factor {
+                            for y in 0usize..downscale_factor {
+                                for x in 0usize..downscale_factor {
+                                    let i = (z_base + z)
+                                        * (source_image_width as usize)
+                                        * (source_image_height as usize)
+                                        + (y_base + y) * (source_image_width as usize)
+                                        + (x_base + x);
+
+                                    if mip == 0 {
+                                        let val = if value_size == 1usize {
+                                            src_data[i] as f32
+                                        } else {
+                                            ((src_data[i * 2usize] as u16)
+                                                | ((src_data[i * 2usize + 1usize] as u16) << 8u16))
+                                                as f32
+                                        };
+                                        if !has_min_value {
+                                            min_value = min_value.min(val);
+                                        }
+                                        if !has_max_value {
+                                            max_value = max_value.max(val);
+                                        }
+                                        value += val;
+                                    } else {
+                                        value += data.last().unwrap()[i].to_f32();
+                                    }
                                 }
-                                if !has_max_value {
-                                    max_value = max_value.max(val);
-                                }
-                                value += val;
                             }
                         }
+                        let val = value
+                            / ((downscale_factor * downscale_factor * downscale_factor) as f32);
+                        mip_data.push(f16::from_f32(val));
                     }
-                    let val = value
-                        / ((RESOLUTION_DOWNSCALE_FACTOR
-                            * RESOLUTION_DOWNSCALE_FACTOR
-                            * RESOLUTION_DOWNSCALE_FACTOR) as f32);
-                    values.push(f16::from_f32(val));
                 }
             }
+
+            if mip == 0 {
+                src_data.clear();
+                src_data.shrink_to_fit();
+            }
+
+            mip_data.shrink_to_fit();
+            data.push(mip_data);
         }
         log::info!(
-            "Loaded density. Min density: {:?}, max density: {:?}",
+            "Loaded density. Min density: {:?}, max density: {:?}, mip maps: {:?}",
             min_value,
-            max_value
+            max_value,
+            mip_count
         );
 
-        for val in &mut values {
-            let val32 = val.to_f32();
-            *val = f16::from_f32((val32 - min_value) / (max_value - min_value));
+        for mip_values in &mut data {
+            for val in mip_values {
+                let val32 = val.to_f32();
+                *val = f16::from_f32((val32 - min_value) / (max_value - min_value));
+            }
         }
 
-        values.shrink_to_fit();
-
-        let data = unsafe {
-            let values_box = values.into_boxed_slice();
-            let values_len = values_box.len();
-            let values_raw = Box::into_raw(values_box);
-            Box::from_raw(slice::from_raw_parts_mut(
-                values_raw as *mut u8,
-                values_len * std::mem::size_of::<f32>(),
-            ))
-        };
+        let mut mips_boxed = SmallVec::<[Box<[u8]>; 4]>::new();
+        for mip_values in data {
+            let mip_box = unsafe {
+                let values_box = mip_values.into_boxed_slice();
+                let values_len = values_box.len();
+                let values_raw = Box::into_raw(values_box);
+                Box::from_raw(slice::from_raw_parts_mut(
+                    values_raw as *mut u8,
+                    values_len * std::mem::size_of::<f16>(),
+                ))
+            };
+            mips_boxed.push(mip_box);
+        }
 
         manager.add_asset_data_with_progress(
             file.path(),
@@ -208,7 +262,7 @@ impl AssetLoader for RawVolumeLoaderTexture {
                     width: downsampled_width,
                     height: downsampled_height,
                     depth: downsampled_depth,
-                    mip_levels: 1,
+                    mip_levels: mip_count,
                     array_length: 1,
                     samples: SampleCount::Samples1,
                     usage: TextureUsage::STORAGE
@@ -217,7 +271,7 @@ impl AssetLoader for RawVolumeLoaderTexture {
                         | TextureUsage::INITIAL_COPY,
                     supports_srgb: false,
                 },
-                data: smallvec![data],
+                data: mips_boxed,
             }),
             Some(progress),
             priority,
