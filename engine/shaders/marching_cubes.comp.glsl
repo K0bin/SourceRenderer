@@ -31,6 +31,7 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 7) uniform sampler linearSampler
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 8) uniform sampler nearestSampler;
 
 layout(push_constant) uniform Config {
+    uvec3 textureResolution;
     float threshold;
     uint lod;
 };
@@ -82,8 +83,7 @@ uvec3 localInvocationID(uint invocationIndex) {
 void main() {
     uvec3 base = gl_GlobalInvocationID;
 
-    uvec3 imgSize = textureSize(sampler3D(densityImage, nearestSampler), int(lod));
-    if (any(greaterThanEqual(base + uvec3(1u), imgSize)))
+    if (any(greaterThanEqual(base + uvec3(1u), textureResolution)))
         return;
 
     uint voxelKey = 0u;
