@@ -95,12 +95,12 @@ void main() [[maximally_reconverges]] {
 
     uvec3 workgroupBase = gl_WorkGroupID * gl_WorkGroupSize;
 
-    const bool useSubgroups = false;
+    const bool useSubgroups = gl_NumSubgroups <= 2 && false;
 
     float densityInvocation1 = 0.0;
     float densityInvocation2 = 0.0;
 
-    if (gl_NumSubgroups <= 2 && useSubgroups) {
+    if (useSubgroups) {
         densityInvocation1 = texelFetch(sampler3D(densityImage, nearestSampler), min(ivec3(workgroupBase + localInvocationID(gl_SubgroupInvocationID)), ivec3(imgSize)), int(lod)).x;
 
         const uint workGroupSizeFlat = gl_WorkGroupSize.x * gl_WorkGroupSize.y * gl_WorkGroupSize.z;
@@ -133,7 +133,6 @@ void main() [[maximally_reconverges]] {
                 }
 
                 if (!useSubgroups
-                    || gl_NumSubgroups > 2u
                     || any(greaterThanEqual(gl_LocalInvocationID + offset, gl_WorkGroupSize))
                     || !targetIsActive) {
                     uvec3 pos = base + offset;
