@@ -2,6 +2,13 @@
 #extension GL_GOOGLE_include_directive : enable
 // #extension GL_EXT_debug_printf : enable
 
+#extension GL_KHR_shader_subgroup_basic : enable
+#extension GL_KHR_shader_subgroup_arithmetic : enable
+#extension GL_KHR_shader_subgroup_vote : enable
+#extension GL_KHR_shader_subgroup_ballot : enable
+#extension GL_KHR_shader_subgroup_shuffle : enable
+#extension GL_EXT_maximal_reconvergence : enable
+
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
 #include "descriptor_sets.inc.glsl"
@@ -65,37 +72,87 @@ uint vertexKeyFromIndexOffsets(uint idx1, uint idx2) {
 }
 
 
-void main() {
+uint localInvocationIndex(uvec3 invocationId) {
+    return invocationId.z * gl_WorkGroupSize.x * gl_WorkGroupSize.y +
+        invocationId.y * gl_WorkGroupSize.x +
+        invocationId.x;
+}
+
+
+uvec3 localInvocationID(uint invocationIndex) {
+    return uvec3(invocationIndex % gl_WorkGroupSize.x,
+        (invocationIndex / gl_WorkGroupSize.x) % gl_WorkGroupSize.y,
+        invocationIndex / (gl_WorkGroupSize.x * gl_WorkGroupSize.y));
+}
+
+
+void main() [[maximally_reconverges]] {
     uvec3 base = gl_GlobalInvocationID;
 
     uvec3 imgSize = textureSize(sampler3D(densityImage, nearestSampler), int(lod));
-    if (any(greaterThan(base, imgSize)))
+    if (subgroupAll(any(greaterThanEqual(base + uvec3(1u), imgSize))))
         return;
+
+    uvec3 workgroupBase = gl_WorkGroupID * gl_WorkGroupSize;
+
+    const bool useSubgroups = false;
+
+    float densityInvocation1 = 0.0;
+    float densityInvocation2 = 0.0;
+
+    if (gl_NumSubgroups <= 2 && useSubgroups) {
+        densityInvocation1 = texelFetch(sampler3D(densityImage, nearestSampler), min(ivec3(workgroupBase + localInvocationID(gl_SubgroupInvocationID)), ivec3(imgSize)), int(lod)).x;
+
+        const uint workGroupSizeFlat = gl_WorkGroupSize.x * gl_WorkGroupSize.y * gl_WorkGroupSize.z;
+        densityInvocation2 = gl_NumSubgroups > 1u
+            ? texelFetch(sampler3D(densityImage, nearestSampler),
+              min(ivec3(workgroupBase + localInvocationID((gl_SubgroupInvocationID + gl_SubgroupSize) % workGroupSizeFlat)),
+              ivec3(imgSize)), int(lod)).x
+            : densityInvocation1;
+    }
 
     uint voxelKey = 0u;
     for (uint z = 0u; z < 2u; z++) {
         for (uint y = 0u; y < 2u; y++) {
             for (uint x = 0u; x < 2u; x++) {
-                uint index = ((x + z) & 1u) + z * 2u + y * 4u;
-                uvec3 pos = base + uvec3(x, y, z);
+                uvec3 offset = uvec3(x, y, z);
 
-                float value = textureLod(sampler3D(densityImage, nearestSampler), (vec3(pos) + vec3(0.5)) / vec3(imgSize), lod).x;
-                bool inRange = gl_GlobalInvocationID.x < imgSize.x - 1u
-                    && gl_GlobalInvocationID.y < imgSize.y - 1u
-                    && gl_GlobalInvocationID.z < imgSize.z - 1u;
-                voxelKey |= ((value >= threshold && inRange) ? 1u : 0u) << index;
+                float value;
+                bool targetIsActive = true;
+                if (useSubgroups) {
+                    uint densityInvocationIndex = localInvocationIndex(gl_LocalInvocationID + offset);
+                    uint densitySubgroupInvocationIndex = densityInvocationIndex % gl_SubgroupSize;
+                    uint densitySubgroupIndex = densityInvocationIndex / gl_SubgroupSize;
+
+                    float densities[2u];
+                    densities[0u] = subgroupShuffle(densityInvocation1, densitySubgroupInvocationIndex);
+                    densities[1u] = subgroupShuffle(densityInvocation2, densitySubgroupInvocationIndex);
+                    value = densities[densitySubgroupIndex % 2u];
+                    uvec4 activeInvocations = subgroupBallot(true);
+                    targetIsActive = subgroupBallotBitExtract(activeInvocations, densitySubgroupIndex);
+                }
+
+                if (!useSubgroups
+                    || gl_NumSubgroups > 2u
+                    || any(greaterThanEqual(gl_LocalInvocationID + offset, gl_WorkGroupSize))
+                    || !targetIsActive) {
+                    uvec3 pos = base + offset;
+                    value = texelFetch(sampler3D(densityImage, nearestSampler), ivec3(pos), int(lod)).x;
+                }
+
+                uint index = ((x + z) & 1u) + z * 2u + y * 4u;
+                voxelKey |= uint(value >= threshold) << index;
             }
         }
     }
+
+    if (any(greaterThanEqual(base + uvec3(1u), imgSize)))
+            return;
 
     if (voxelKey == 0u || voxelKey == 255u)
         return;
 
     instanceCount = 1u;
-    firstIndex = 0u;
-    vertexOffset = 0;
-    firstInstance = 0u;
-    vertexCount = 0u;
 
     uint[12u] vertexKeys;
 
