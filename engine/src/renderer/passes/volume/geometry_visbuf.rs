@@ -19,30 +19,18 @@ use sourcerenderer_core::{HalfVec3, Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
 #[derive(Clone)]
 struct PushConstantData {
     model_matrix: Matrix4,
-    inv_model_matrix: Matrix4,
     threshold: f32,
     lod: u32,
 }
 
-#[repr(C)]
-#[derive(Clone)]
-struct MaterialData {
-    roughness: f32,
-    metalness: f32,
-    _padding: u64,
-    f0: Vec3,
-    lod: u32,
-}
-
-pub struct GeometryPass {
+pub struct GeometryVisibilityBufferPass {
     pipeline: GraphicsPipelineHandle,
     sampler: Arc<crate::graphics::Sampler>,
-    transfer_function_handle: TextureHandle,
+    depth_texture_name: &'static str,
 }
 
-impl GeometryPass {
-    pub const COLOR_TEXTURE_NAME: &'static str = "GeometryColor";
-    pub const DEPTH_TEXTURE_NAME: &'static str = "Depth";
+impl GeometryVisibilityBufferPass {
+    pub const VISIBILITY_BUFFER_NAME: &'static str = "VisBuf";
 
     pub(crate) fn new(
         device: &Arc<crate::graphics::Device>,
@@ -50,6 +38,7 @@ impl GeometryPass {
         swapchain: &crate::graphics::Swapchain,
         _init_cmd_buffer: &mut crate::graphics::CommandBuffer,
         resources: &mut RendererResources,
+        depth_texture_name: &'static str,
     ) -> Self {
         let sampler = device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Linear,
@@ -66,10 +55,10 @@ impl GeometryPass {
         });
 
         resources.create_texture(
-            Self::COLOR_TEXTURE_NAME,
+            Self::VISIBILITY_BUFFER_NAME,
             &TextureInfo {
                 dimension: TextureDimension::Dim2D,
-                format: Format::RGBA8UNorm,
+                format: Format::R32UInt,
                 width: swapchain.width(),
                 height: swapchain.height(),
                 depth: 1,
@@ -82,11 +71,11 @@ impl GeometryPass {
             false,
         );
 
-        resources.create_texture(
+        /*resources.create_texture(
             Self::DEPTH_TEXTURE_NAME,
             &TextureInfo {
                 dimension: TextureDimension::Dim2D,
-                format: Format::D32,
+                format: Format::D16,
                 width: swapchain.width(),
                 height: swapchain.height(),
                 depth: 1,
@@ -97,13 +86,19 @@ impl GeometryPass {
                 supports_srgb: false,
             },
             false,
-        );
+        );*/
 
         let shader_file_extension = "json";
 
-        let fs_name = format!("shaders/volume_geometry.frag.{}", shader_file_extension);
+        let fs_name = format!(
+            "shaders/volume_geometry_visbuf.frag.{}",
+            shader_file_extension
+        );
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
-            vs: &format!("shaders/volume_geometry.vert.{}", shader_file_extension),
+            vs: &format!(
+                "shaders/volume_geometry_visbuf.vert.{}",
+                shader_file_extension
+            ),
             fs: Some(&fs_name),
             primitive_type: PrimitiveType::Triangles,
             vertex_layout: VertexLayoutInfo {
@@ -142,32 +137,21 @@ impl GeometryPass {
                     write_mask: ColorComponents::all(),
                 }],
             },
-            render_target_formats: &[Format::RGBA8UNorm],
+            render_target_formats: &[Format::R32UInt],
             depth_stencil_format: Format::D32,
         };
         let pipeline = assets.request_graphics_pipeline(&pipeline_info);
 
-        let (transfer_function_handle, _) = assets.asset_manager().request_asset(
-            //"assets/transferfunction_colorful.png",
-            "assets/transferfunction.png",
-            AssetType::Texture,
-            AssetLoadPriority::Normal,
-        );
-
         Self {
             pipeline,
             sampler: Arc::new(sampler),
-            transfer_function_handle: TextureHandle::from(transfer_function_handle),
+            depth_texture_name,
         }
     }
 
     #[inline(always)]
     pub(crate) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_graphics_pipeline(self.pipeline).is_some()
-    }
-
-    pub(crate) fn transfer_function_handle(&self) -> TextureHandle {
-        self.transfer_function_handle
     }
 
     pub(crate) fn execute(
@@ -185,21 +169,14 @@ impl GeometryPass {
     ) {
         let resources = &params.resources;
 
-        if !resources.has_resource(
-            ImageBasedLightingPreparation::FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME,
-        ) || !resources.has_resource(
-            ImageBasedLightingPreparation::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
-        ) {
-            return;
-        }
+        let vis_buf_texture_info = resources.texture_info(Self::VISIBILITY_BUFFER_NAME);
+        let vis_buf_tex_extent =
+            Vec2UI::new(vis_buf_texture_info.width, vis_buf_texture_info.height);
+        std::mem::drop(vis_buf_texture_info);
 
-        let color_tex_info = resources.texture_info(Self::COLOR_TEXTURE_NAME);
-        let color_tex_extent = Vec2UI::new(color_tex_info.width, color_tex_info.height);
-        std::mem::drop(color_tex_info);
-
-        let color_view = resources.access_view(
+        let rt = resources.access_view(
             cmd_buffer,
-            Self::COLOR_TEXTURE_NAME,
+            Self::VISIBILITY_BUFFER_NAME,
             BarrierSync::RENDER_TARGET,
             BarrierAccess::RENDER_TARGET_READ | BarrierAccess::RENDER_TARGET_WRITE,
             TextureLayout::RenderTarget,
@@ -210,7 +187,7 @@ impl GeometryPass {
 
         let dsv = resources.access_view(
             cmd_buffer,
-            Self::DEPTH_TEXTURE_NAME,
+            self.depth_texture_name,
             BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
             BarrierAccess::DEPTH_STENCIL_READ | BarrierAccess::DEPTH_STENCIL_WRITE,
             TextureLayout::DepthStencilReadWrite,
@@ -234,56 +211,14 @@ impl GeometryPass {
             HistoryResourceEntry::Current,
         );
 
-        let integration_lut = resources.access_view(
-            cmd_buffer,
-            ImageBasedLightingPreparation::PREINTEGRATION_MAP_TEXTURE_NAME,
-            BarrierSync::FRAGMENT_SHADER,
-            BarrierAccess::SAMPLING_READ,
-            TextureLayout::Sampled,
-            false,
-            &TextureViewInfo::default(),
-            HistoryResourceEntry::Current,
-        );
-        let env_map_diffuse = resources.access_view(
-            cmd_buffer,
-            ImageBasedLightingPreparation::FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME,
-            BarrierSync::FRAGMENT_SHADER,
-            BarrierAccess::SAMPLING_READ,
-            TextureLayout::Sampled,
-            false,
-            &TextureViewInfo::default(),
-            HistoryResourceEntry::Current,
-        );
-        let env_specular_info = resources.texture_info(
-            ImageBasedLightingPreparation::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
-        );
-        let env_specular_mips = env_specular_info.mip_levels;
-        std::mem::drop(env_specular_info);
-        let env_map_specular = resources.access_view(
-            cmd_buffer,
-            ImageBasedLightingPreparation::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
-            BarrierSync::FRAGMENT_SHADER,
-            BarrierAccess::SAMPLING_READ,
-            TextureLayout::Sampled,
-            false,
-            &TextureViewInfo {
-                base_mip_level: 0u32,
-                base_array_layer: 0u32,
-                array_layer_length: 1u32,
-                mip_level_length: env_specular_mips,
-                format: None,
-            },
-            HistoryResourceEntry::Current,
-        );
-
         cmd_buffer.flush_barriers();
 
-        cmd_buffer.begin_label("Geometry");
+        cmd_buffer.begin_label("Geometry (Visiblity buffer)");
 
         cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
             render_targets: &[RenderTarget {
-                view: &color_view,
-                load_op: LoadOpColor::Load,
+                view: &rt,
+                load_op: LoadOpColor::Clear(ClearColor::from_u32([!0u32, !0u32, !0u32, !0u32])),
                 store_op: StoreOp::Store,
             }],
             depth_stencil: Some(&DepthStencilAttachment {
@@ -300,13 +235,13 @@ impl GeometryPass {
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         cmd_buffer.set_viewports(&[Viewport {
             position: Vec2::new(0.0f32, 0.0f32),
-            extent: Vec2::new(color_tex_extent.x as f32, color_tex_extent.y as f32),
+            extent: Vec2::new(vis_buf_tex_extent.x as f32, vis_buf_tex_extent.y as f32),
             min_depth: 0.0f32,
             max_depth: 1.0f32,
         }]);
         cmd_buffer.set_scissors(&[Scissor {
             position: Vec2I::new(0, 0),
-            extent: color_tex_extent,
+            extent: vis_buf_tex_extent,
         }]);
 
         //let camera_buffer = cmd_buffer.upload_dynamic_data(&[view.proj_matrix * view.view_matrix], BufferUsage::CONSTANT);
@@ -316,25 +251,6 @@ impl GeometryPass {
             BufferRef::Transient(camera_buffer),
             0,
             WHOLE_BUFFER,
-        );
-
-        cmd_buffer.bind_sampling_view_and_sampler(
-            BindingFrequency::Frequent,
-            2u32,
-            &env_map_diffuse,
-            resources.linear_sampler(),
-        );
-        cmd_buffer.bind_sampling_view_and_sampler(
-            BindingFrequency::Frequent,
-            3u32,
-            &env_map_specular,
-            resources.linear_sampler(),
-        );
-        cmd_buffer.bind_sampling_view_and_sampler(
-            BindingFrequency::Frequent,
-            4u32,
-            &integration_lut,
-            resources.linear_sampler(),
         );
 
         let volume_texture = assets.get_texture(volume_texture);
@@ -353,34 +269,13 @@ impl GeometryPass {
             WHOLE_BUFFER,
         );
 
-        let transfer_function = assets.get_texture(self.transfer_function_handle);
-        cmd_buffer.bind_sampling_view_and_sampler(
-            BindingFrequency::Frequent,
-            1u32,
-            &transfer_function.view,
-            resources.linear_sampler(),
-        );
-
         cmd_buffer.set_push_constant_data(
             &[PushConstantData {
                 model_matrix,
-                inv_model_matrix: Matrix4::inverse(&model_matrix),
                 threshold,
                 lod,
             }],
             ShaderType::VertexShader,
-        );
-        cmd_buffer.set_push_constant_data(
-            &[MaterialData {
-                roughness: 0.6f32,
-                metalness: 0.3f32,
-                _padding: 0u64,
-                //roughness: 0.1f32,
-                //metalness: 0.9f32,
-                f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
-                lod,
-            }],
-            ShaderType::FragmentShader,
         );
         cmd_buffer.set_index_buffer(
             BufferRef::Regular(&*marchingcubes_ibo),

@@ -6,9 +6,11 @@ use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::passes::marching_cubes::MarchingCubesPass;
 use crate::renderer::passes::volume::background::BackgroundPass;
 use crate::renderer::passes::volume::compositing::CompositingPass;
+use crate::renderer::passes::volume::geometry_visbuf::GeometryVisibilityBufferPass;
 use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
 use crate::renderer::passes::volume::ssao::SsaoPass;
 use crate::renderer::passes::volume::subsurfacescattering::SSSPass;
+use crate::renderer::passes::volume::visbuf_resolve::VisibilityBufferResolvePass;
 use crate::renderer::render_path::{
     FrameInfo, RenderPassParameters, RenderPath, RenderPathResult, SceneInfo,
 };
@@ -18,9 +20,11 @@ use sourcerenderer_core::{Matrix4, Vec2UI, Vec3, Vec4};
 mod background;
 mod compositing;
 mod geometry;
+mod geometry_visbuf;
 mod ibl;
 mod ssao;
 mod subsurfacescattering;
+mod visbuf_resolve;
 
 pub use self::geometry::GeometryPass;
 
@@ -45,6 +49,8 @@ pub struct VolumeRenderer {
     device: Arc<Device>,
     marching_cubes_pass: MarchingCubesPass,
     geometry: GeometryPass,
+    geometry_visbuf: GeometryVisibilityBufferPass,
+    visbuf_resolve: VisibilityBufferResolvePass,
     ssao: SsaoPass,
     sss_pass: SSSPass,
     ibl_pass: ImageBasedLightingPreparation,
@@ -57,6 +63,8 @@ pub struct VolumeRenderer {
 }
 
 impl VolumeRenderer {
+    const USE_VISIBILITY_BUFFER: bool = false;
+
     pub fn new(
         device: &Arc<Device>,
         swapchain: &Swapchain,
@@ -77,6 +85,23 @@ impl VolumeRenderer {
 
         let geometry_pass =
             GeometryPass::new(device, assets, swapchain, &mut init_cmd_buffer, resources);
+
+        let geometry_visbuf_pass = GeometryVisibilityBufferPass::new(
+            device,
+            assets,
+            swapchain,
+            &mut init_cmd_buffer,
+            resources,
+            GeometryPass::DEPTH_TEXTURE_NAME,
+        );
+
+        let visbuf_resolve_pass = VisibilityBufferResolvePass::new(
+            device,
+            assets,
+            resources,
+            swapchain,
+            GeometryPass::COLOR_TEXTURE_NAME,
+        );
 
         let ssao = SsaoPass::new(
             device,
@@ -127,6 +152,8 @@ impl VolumeRenderer {
             device: device.clone(),
             marching_cubes_pass,
             geometry: geometry_pass,
+            geometry_visbuf: geometry_visbuf_pass,
+            visbuf_resolve: visbuf_resolve_pass,
             ssao,
             sss_pass: sss,
             ibl_pass: ibl_prep,
@@ -161,6 +188,8 @@ impl RenderPath for VolumeRenderer {
             && self.ibl_pass.is_ready(assets)
             && self.ssao.is_ready(assets)
             && self.sss_pass.is_ready(assets)
+            && self.geometry_visbuf.is_ready(assets)
+            && self.visbuf_resolve.is_ready(assets)
     }
 
     fn render(
@@ -178,7 +207,8 @@ impl RenderPath for VolumeRenderer {
         self.threshold = 0.00005f32 * 144f32 * 4f32;
         //self.threshold = self.threshold % 0.10f32;
         self.threshold = self.threshold % 1.0f32;
-        self.lod += 0.001f32;
+        //self.lod += 0.0001f32 / self.lod.max(1.0f32);
+        //self.lod = 3f32;
         self.lod = self.lod % 6.9f32;
         //self.threshold += 50.00005f32;
         //self.threshold = self.threshold % 1.0f32;
@@ -250,20 +280,48 @@ impl RenderPath for VolumeRenderer {
             assets,
         );
 
-        self.geometry.execute(
-            &mut cmd_buffer,
-            scene.scene,
-            main_view,
-            &camera_buffer,
-            &params,
-            swapchain.width(),
-            swapchain.height(),
-            assets,
-            self.texture_handle,
-            model_matrix,
-            self.threshold,
-            geometry_lod,
-        );
+        //if (self.lod % 1.0f32) < 0.5f32 {
+        if !Self::USE_VISIBILITY_BUFFER {
+            self.geometry.execute(
+                &mut cmd_buffer,
+                scene.scene,
+                main_view,
+                &camera_buffer,
+                &params,
+                assets,
+                self.texture_handle,
+                model_matrix,
+                self.threshold,
+                geometry_lod,
+            );
+        } else {
+            self.geometry_visbuf.execute(
+                &mut cmd_buffer,
+                scene.scene,
+                main_view,
+                &camera_buffer,
+                &params,
+                assets,
+                self.texture_handle,
+                model_matrix,
+                self.threshold,
+                geometry_lod,
+            );
+
+            self.visbuf_resolve.execute(
+                &mut cmd_buffer,
+                &params,
+                GeometryVisibilityBufferPass::VISIBILITY_BUFFER_NAME,
+                GeometryPass::DEPTH_TEXTURE_NAME,
+                MarchingCubesPass::INDICES_BUFFER_NAME,
+                self.texture_handle,
+                self.geometry.transfer_function_handle(),
+                assets,
+                model_matrix,
+                self.threshold,
+                geometry_lod,
+            );
+        }
 
         self.ssao.execute(
             &mut cmd_buffer,

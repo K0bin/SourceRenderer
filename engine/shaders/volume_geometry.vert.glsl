@@ -15,6 +15,7 @@ layout(set = DESCRIPTOR_SET_FRAME, binding = 0) uniform CameraUBO {
 
 layout(push_constant) uniform VeryHighFrequencyUbo {
   mat4 model;
+  mat4 invModel;
   float threshold;
   uint lod;
 };
@@ -51,21 +52,18 @@ vec4 vertexPosFromKey(uint vertexKey) {
     return interpolateVertices(pos1, pos2);
 }
 
-
-vec3 calculateNormal(vec3 densityMapPosition, uint normalLod) {
+vec3 calculateNormal(vec3 densityMapUV, uint normalLod) {
     vec3 normal = vec3(0.0);
 
     vec3 imgSize = vec3(textureSize(densityMap, int(normalLod)));
     vec3 singlePixel = vec3(1.0) / imgSize;
-    vec3 halfPixel = singlePixel * 0.5;
-    vec3 texPos = densityMapPosition + halfPixel;
 
-    normal.x = textureLod(densityMap, texPos - vec3(singlePixel.x, 0, 0), normalLod).x
-                                - textureLod(densityMap, texPos + vec3(singlePixel.x, 0, 0), normalLod).x;
-    normal.y = textureLod(densityMap, texPos - vec3(0, singlePixel.y, 0), normalLod).x
-                                - textureLod(densityMap, texPos + vec3(0, singlePixel.y, 0), normalLod).x;
-    normal.z = textureLod(densityMap, texPos - vec3(0, 0, singlePixel.z), normalLod).x
-                                - textureLod(densityMap, texPos + vec3(0, 0, singlePixel.z), normalLod).x;
+    normal.x = textureLod(densityMap, densityMapUV - vec3(singlePixel.x, 0, 0), normalLod).x
+                                - textureLod(densityMap, densityMapUV + vec3(singlePixel.x, 0, 0), normalLod).x;
+    normal.y = textureLod(densityMap, densityMapUV - vec3(0, singlePixel.y, 0), normalLod).x
+                                - textureLod(densityMap, densityMapUV + vec3(0, singlePixel.y, 0), normalLod).x;
+    normal.z = textureLod(densityMap, densityMapUV - vec3(0, 0, singlePixel.z), normalLod).x
+                                - textureLod(densityMap, densityMapUV + vec3(0, 0, singlePixel.z), normalLod).x;
     return normalize(normal);
 }
 
@@ -81,18 +79,16 @@ void main(void) {
   vec3 densityMapPosition = (pos + 0.5) / densityMapSize;
   vec3 normal = calculateNormal(densityMapPosition, lod);
 
-  mat4 inverseModelMat = inverse(model);
-  mat4 normalModelMat = transpose(inverseModelMat);
+  mat4 normalModelMat = transpose(invModel);
   out_normal = normalize(normalModelMat * vec4(normal, 0)).xyz;
 
   out_density = density;
 
   vec4 rayDir = vec4(0.0, 0.0, 1.0, 0.0);
-  rayDir = (inverseModelMat * camera.invView) * rayDir;
+  rayDir = (invModel * camera.invView) * rayDir;
   rayDir = normalize(rayDir);
 
   out_density = max(out_density, textureLod(densityMap, (pos + 0.5 + rayDir.xyz) / densityMapSize, lod).x);
-  //out_density = max(out_density, textureLod(densityMap, (pos + 0.5 - in_normal.xyz) / densityMapSize, lod).x);
 
   float lodScale = exp2(lod);
   pos *= vec3(lodScale);
