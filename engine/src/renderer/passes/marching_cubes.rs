@@ -12,7 +12,9 @@ use std::sync::Arc;
 struct MarchingCubesConfig {
     pub texture_res: Vec3UI,
     pub threshold: f32,
+    pub min: Vec3UI,
     pub lod: u32,
+    pub extent: Vec3UI,
 }
 
 #[repr(C)]
@@ -413,6 +415,8 @@ impl MarchingCubesPass {
         volume_texture: TextureHandle,
         threshold: f32,
         lod: u32,
+        min: Vec3UI,
+        max: Vec3UI,
     ) {
         let resources = &pass_params.resources;
         if self.executed_count > 0u32 {
@@ -516,6 +520,8 @@ impl MarchingCubesPass {
 
         let texture_info = volume_texture.view.texture().unwrap().info();
 
+        let extent = max - min;
+
         command_buffer.set_push_constant_data(
             &[MarchingCubesConfig {
                 threshold,
@@ -525,16 +531,21 @@ impl MarchingCubesPass {
                     texture_info.height,
                     texture_info.depth,
                 ),
+                min,
+                extent,
             }],
             ShaderType::ComputeShader,
         );
 
         command_buffer.finish_binding();
-        command_buffer.dispatch(
-            ((texture_info.width / (1u32 << lod)) + 3u32) / 4u32,
-            ((texture_info.height / (1u32 << lod)) + 3u32) / 4u32,
-            ((texture_info.depth / (1u32 << lod)) + 3u32) / 4u32,
-        );
+
+        if extent.x > 0 && extent.y > 0 && extent.z > 0 {
+            command_buffer.dispatch(
+                ((extent.x / (1u32 << lod)) + 3u32) / 4u32,
+                ((extent.y / (1u32 << lod)) + 3u32) / 4u32,
+                ((extent.z / (1u32 << lod)) + 3u32) / 4u32,
+            );
+        }
 
         command_buffer.end_label();
     }

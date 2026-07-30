@@ -15,7 +15,7 @@ use crate::renderer::render_path::{
     FrameInfo, RenderPassParameters, RenderPath, RenderPathResult, SceneInfo,
 };
 use crate::renderer::renderer_resources::RendererResources;
-use sourcerenderer_core::{Matrix4, Vec2UI, Vec3, Vec4};
+use sourcerenderer_core::{Matrix4, Vec2UI, Vec3, Vec3UI, Vec4};
 
 mod background;
 mod compositing;
@@ -235,17 +235,88 @@ impl RenderPath for VolumeRenderer {
             assets,
         };
 
+        let main_view = &scene.scene.views()[scene.active_view_index];
+
+        let inv_view_proj = (main_view.proj_matrix * main_view.view_matrix).inverse();
+        let inv_model = model_matrix.inverse();
+        let mut start = Vec3::new(f32::MAX, f32::MAX, f32::MAX);
+        let mut end = Vec3::new(f32::MIN, f32::MIN, f32::MIN);
+        for x in 0..=1 {
+            for y in 0..=1 {
+                for z in 0..=1 {
+                    let ndc_pos =
+                        Vec4::new((x * 2 - 1) as f32, (y * 2 - 1) as f32, z as f32, 1.0f32);
+                    let mut world_space_pos = inv_view_proj * ndc_pos;
+                    world_space_pos.x /= world_space_pos.w;
+                    world_space_pos.y /= world_space_pos.w;
+                    world_space_pos.z /= world_space_pos.w;
+                    let model_space_pos = inv_model * world_space_pos;
+                    start = Vec3::new(
+                        start.x.min(model_space_pos.x),
+                        start.y.min(model_space_pos.y),
+                        start.z.min(model_space_pos.z),
+                    );
+                    end = Vec3::new(
+                        end.x.max(model_space_pos.x),
+                        end.y.max(model_space_pos.y),
+                        end.z.max(model_space_pos.z),
+                    );
+                }
+            }
+        }
+
+        let volume_texture_info = {
+            assets
+                .get_texture(self.texture_handle)
+                .view
+                .texture()
+                .unwrap()
+                .info()
+                .clone()
+        };
+
         self.marching_cubes_pass.execute(
             &mut cmd_buffer,
             &params,
             self.texture_handle,
             self.threshold,
             geometry_lod,
+            Vec3UI::new(
+                (start.x.max(0.0f32) as u32).min(volume_texture_info.width),
+                (start.y.max(0.0f32) as u32).min(volume_texture_info.height),
+                (start.z.max(0.0f32) as u32).min(volume_texture_info.depth),
+            ),
+            Vec3UI::new(
+                ((end.x.max(0.0f32) + 0.5f32) as u32).min(volume_texture_info.width),
+                ((end.y.max(0.0f32) + 0.5f32) as u32).min(volume_texture_info.height),
+                ((end.z.max(0.0f32) + 0.5f32) as u32).min(volume_texture_info.depth),
+            ),
+        );
+
+        println!(
+            "Min {:?}, max {:?}, extent {:?}",
+            Vec3UI::new(
+                (start.x.max(0.0f32) as u32).min(volume_texture_info.width),
+                (start.y.max(0.0f32) as u32).min(volume_texture_info.height),
+                (start.z.max(0.0f32) as u32).min(volume_texture_info.depth),
+            ),
+            Vec3UI::new(
+                ((end.x.max(0.0f32) + 0.5f32) as u32).min(volume_texture_info.width),
+                ((end.y.max(0.0f32) + 0.5f32) as u32).min(volume_texture_info.height),
+                ((end.z.max(0.0f32) + 0.5f32) as u32).min(volume_texture_info.depth),
+            ),
+            Vec3UI::new(
+                ((end.x.max(0.0f32) + 0.5f32) as u32).min(volume_texture_info.width),
+                ((end.y.max(0.0f32) + 0.5f32) as u32).min(volume_texture_info.height),
+                ((end.z.max(0.0f32) + 0.5f32) as u32).min(volume_texture_info.depth),
+            ) - Vec3UI::new(
+                (start.x.max(0.0f32) as u32).min(volume_texture_info.width),
+                (start.y.max(0.0f32) as u32).min(volume_texture_info.height),
+                (start.z.max(0.0f32) as u32).min(volume_texture_info.depth),
+            )
         );
 
         self.ibl_pass.execute(&mut cmd_buffer, &mut params);
-
-        let main_view = &scene.scene.views()[scene.active_view_index];
 
         let camera_buffer = cmd_buffer
             .upload_dynamic_data(

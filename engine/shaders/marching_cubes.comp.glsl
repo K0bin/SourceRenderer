@@ -33,7 +33,9 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 8) uniform sampler nearestSample
 layout(push_constant) uniform Config {
     uvec3 textureResolution;
     float threshold;
+    uvec3 minBox;
     uint lod;
+    uvec3 extent;
 };
 
 uvec3 indexOffset(uint idx) {
@@ -59,8 +61,8 @@ uint vertexKey(uvec3 pos1, uvec3 pos2) {
 
 
 uint vertexKeyFromIndexOffsets(uint idx1, uint idx2) {
-    uvec3 vertexPos1 = gl_GlobalInvocationID + indexOffset(idx1);
-    uvec3 vertexPos2 = gl_GlobalInvocationID + indexOffset(idx2);
+    uvec3 vertexPos1 = gl_GlobalInvocationID + minBox + indexOffset(idx1);
+    uvec3 vertexPos2 = gl_GlobalInvocationID + minBox + indexOffset(idx2);
     uint vtxKey = vertexKey(vertexPos1, vertexPos2);
     return vtxKey;
 }
@@ -81,10 +83,10 @@ uvec3 localInvocationID(uint invocationIndex) {
 
 
 void main() {
-    uvec3 base = gl_GlobalInvocationID;
-
-    if (any(greaterThanEqual(base + uvec3(1u), textureResolution)))
+    if (any(greaterThanEqual(gl_GlobalInvocationID + uvec3(1u), extent)))
         return;
+
+    uvec3 base = gl_GlobalInvocationID + minBox;
 
     uint voxelKey = 0u;
     for (uint z = 0u; z < 2u; z++) {
