@@ -282,38 +282,18 @@ impl RenderPath for VolumeRenderer {
             self.threshold,
             geometry_lod,
             Vec3UI::new(
-                (start.x.max(0.0f32) as u32).min(volume_texture_info.width),
-                (start.y.max(0.0f32) as u32).min(volume_texture_info.height),
-                (start.z.max(0.0f32) as u32).min(volume_texture_info.depth),
+                (start.x.max(0.0f32) as u32).min(volume_texture_info.width >> geometry_lod),
+                (start.y.max(0.0f32) as u32).min(volume_texture_info.height >> geometry_lod),
+                (start.z.max(0.0f32) as u32).min(volume_texture_info.depth >> geometry_lod),
             ),
             Vec3UI::new(
-                ((end.x.max(0.0f32) + 0.5f32) as u32).min(volume_texture_info.width),
-                ((end.y.max(0.0f32) + 0.5f32) as u32).min(volume_texture_info.height),
-                ((end.z.max(0.0f32) + 0.5f32) as u32).min(volume_texture_info.depth),
+                ((end.x.max(0.0f32) + 0.5f32) as u32)
+                    .min(volume_texture_info.width >> geometry_lod),
+                ((end.y.max(0.0f32) + 0.5f32) as u32)
+                    .min(volume_texture_info.height >> geometry_lod),
+                ((end.z.max(0.0f32) + 0.5f32) as u32)
+                    .min(volume_texture_info.depth >> geometry_lod),
             ),
-        );
-
-        println!(
-            "Min {:?}, max {:?}, extent {:?}",
-            Vec3UI::new(
-                (start.x.max(0.0f32) as u32).min(volume_texture_info.width),
-                (start.y.max(0.0f32) as u32).min(volume_texture_info.height),
-                (start.z.max(0.0f32) as u32).min(volume_texture_info.depth),
-            ),
-            Vec3UI::new(
-                ((end.x.max(0.0f32) + 0.5f32) as u32).min(volume_texture_info.width),
-                ((end.y.max(0.0f32) + 0.5f32) as u32).min(volume_texture_info.height),
-                ((end.z.max(0.0f32) + 0.5f32) as u32).min(volume_texture_info.depth),
-            ),
-            Vec3UI::new(
-                ((end.x.max(0.0f32) + 0.5f32) as u32).min(volume_texture_info.width),
-                ((end.y.max(0.0f32) + 0.5f32) as u32).min(volume_texture_info.height),
-                ((end.z.max(0.0f32) + 0.5f32) as u32).min(volume_texture_info.depth),
-            ) - Vec3UI::new(
-                (start.x.max(0.0f32) as u32).min(volume_texture_info.width),
-                (start.y.max(0.0f32) as u32).min(volume_texture_info.height),
-                (start.z.max(0.0f32) as u32).min(volume_texture_info.depth),
-            )
         );
 
         self.ibl_pass.execute(&mut cmd_buffer, &mut params);

@@ -31,11 +31,10 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 7) uniform sampler linearSampler
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 8) uniform sampler nearestSampler;
 
 layout(push_constant) uniform Config {
-    uvec3 textureResolution;
+    uvec3 extent;
     float threshold;
     uvec3 minBox;
     uint lod;
-    uvec3 extent;
 };
 
 uvec3 indexOffset(uint idx) {
