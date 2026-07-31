@@ -381,13 +381,18 @@ impl RenderPath for VolumeRenderer {
             &camera_buffer,
         );
 
+        /*
+         * Renderer tries to use 1 unit = 1 meter
+         * SSS width for skin is typically between 0.012 to 0.015.
+         */
+
         self.sss_pass.execute(
             &mut cmd_buffer,
             &params,
             GeometryPass::COLOR_TEXTURE_NAME,
             GeometryPass::DEPTH_TEXTURE_NAME,
             &camera_buffer,
-            0.025f32 * 0.2f32,
+            0.015,
         );
 
         let backbuffer_view = swapchain.backbuffer_view(&backbuffer);
