@@ -79,7 +79,6 @@ vec3 rayMarchPositionInMip(vec3 startPosNormalized, uint targetLod) {
     vec3 pos1 = floor(startPosNormalized * currentTexSize) * float(lodFactor);
     vec3 pos2 = ceil(startPosNormalized * currentTexSize) * float(lodFactor);
     vec3 origin = startPosNormalized * currentTexSize * float(lodFactor);
-    origin = modelPos.xyz;
 
     vec3 bbMin = min(pos1, pos2);
     vec3 bbMax = max(pos1, pos2);
@@ -98,10 +97,17 @@ vec3 rayMarchPositionInMip(vec3 startPosNormalized, uint targetLod) {
     if (tExit < 0.0 || tEnter > tExit)
         return vec3(0.0);
 
-    vec3 entry = origin + tEnter * modelRay.xyz;
+    // even when we find hits, the position doesnt always work with the normal calc algorithm
+    // maybe i can do something with subgroup quads?
+
+    float stepLen = 1.0;
+
+    // Actual hit might not be in the current small res voxel :(
+    // Adding extra size before and after works around that.
+    tEnter -= stepLen;
+    tExit += stepLen;
 
     float t = tEnter;
-    float stepLen = length(modelRay);
 
     uint debugMaxSteps = 255;
     uint debugSteps = 0;
