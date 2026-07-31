@@ -8,6 +8,7 @@
 layout(location = 0) out vec3 out_normal;
 layout(location = 1) out float out_density;
 layout(location = 2) out vec3 out_worldPosition;
+layout(location = 3) out vec3 out_densityMapUV;
 
 layout(set = DESCRIPTOR_SET_FRAME, binding = 0) uniform CameraUBO {
   Camera camera;
@@ -77,6 +78,7 @@ void main(void) {
   float density = posAndDensity.w;
 
   vec3 densityMapPosition = (pos + 0.5) / densityMapSize;
+  out_densityMapUV = densityMapPosition;
   vec3 normal = calculateNormal(densityMapPosition, lod);
 
   mat4 normalModelMat = transpose(invModel);
