@@ -29,9 +29,12 @@ struct PushConstantData {
 struct MaterialData {
     roughness: f32,
     metalness: f32,
-    _padding: u64,
+    width: f32,
+    height: f32,
+    inv_model_matrix: Matrix4,
     f0: Vec3,
     lod: u32,
+    threshold: f32,
 }
 
 pub struct GeometryPass {
@@ -374,11 +377,14 @@ impl GeometryPass {
             &[MaterialData {
                 roughness: 0.6f32,
                 metalness: 0.3f32,
-                _padding: 0u64,
                 //roughness: 0.1f32,
                 //metalness: 0.9f32,
                 f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
+                inv_model_matrix: Matrix4::inverse(&model_matrix),
                 lod,
+                width: color_tex_extent.x as f32,
+                height: color_tex_extent.y as f32,
+                threshold,
             }],
             ShaderType::FragmentShader,
         );
