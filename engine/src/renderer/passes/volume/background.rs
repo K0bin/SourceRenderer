@@ -69,7 +69,7 @@ impl BackgroundPass {
                     write_mask: ColorComponents::all(),
                 }],
             },
-            render_target_formats: &[Format::RGBA8UNorm],
+            render_target_formats: &[Format::RGBA16Unorm],
             depth_stencil_format: Format::D32,
         };
         let pipeline = assets.request_graphics_pipeline(&pipeline_info);
