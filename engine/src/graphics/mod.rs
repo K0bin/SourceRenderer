@@ -137,48 +137,6 @@ mod active_gpu_backend {
     pub type RayTracingPipelineInfo<'a> = super::gpu::RayTracingPipelineInfo<'a, self::Backend>;
 }
 
-#[cfg(any(target_os = "ios"))]
-mod active_gpu_backend {
-    pub use sourcerenderer_metal::{
-        MTLAccelerationStructure as AccelerationStructure,
-        MTLAdapter as Adapter,
-        MTLBackend as Backend,
-        MTLBuffer as Buffer,
-        MTLCommandBuffer as CommandBuffer,
-        MTLCommandPool as CommandPool,
-        MTLDevice as Device,
-        MTLHeap as Heap,
-        MTLInstance as Instance,
-        MTLSampler as Sampler,
-        MTLTexture as Texture,
-        MTLTextureView as TextureView,
-    };
-    pub type CommandBufferInheritance =
-        std::sync::Arc<std::sync::Mutex<sourcerenderer_metal::MTLInnerCommandBufferInheritance>>;
-    pub use sourcerenderer_metal::{
-        MTLBackbuffer as Backbuffer,
-        MTLComputePipeline as ComputePipeline,
-        MTLFence as Fence,
-        MTLGraphicsPipeline as GraphicsPipeline,
-        MTLGraphicsPipeline as MeshGraphicsPipeline,
-        MTLQueryPool as QueryPool,
-        MTLQueue as Queue,
-        MTLSurface as Surface,
-        MTLSwapchain as Swapchain,
-    };
-    pub type RayTracingPipeline = ();
-    pub use sourcerenderer_metal::MTLShader as Shader;
-    pub type Barrier<'a> = super::gpu::Barrier<'a, self::Backend>;
-    pub type RenderTarget<'a> = super::gpu::RenderTarget<'a, self::Backend>;
-    pub type AccelerationStructureInstance<'a> =
-        super::gpu::AccelerationStructureInstance<'a, self::Backend>;
-    pub type FenceValuePairRef<'a> = super::gpu::FenceValuePairRef<'a, self::Backend>;
-    pub type Submission<'a> = super::gpu::Submission<'a, self::Backend>;
-    pub type GraphicsPipelineInfo<'a> = super::gpu::GraphicsPipelineInfo<'a, self::Backend>;
-    pub type MeshGraphicsPipelineInfo<'a> = super::gpu::MeshGraphicsPipelineInfo<'a, self::Backend>;
-    pub type RayTracingPipelineInfo<'a> = super::gpu::RayTracingPipelineInfo<'a, self::Backend>;
-}
-
 pub use active_gpu_backend::{
     Backbuffer,
     Backend as ActiveBackend,

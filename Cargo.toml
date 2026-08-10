@@ -6,7 +6,6 @@ members = [
     "core",
     "engine",
     "graphics/vulkan",
-    "graphics/metal",
     "game",
     "build_util",
     "platform/sdl",
