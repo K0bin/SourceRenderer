@@ -22,8 +22,7 @@ struct SSSParams {
 }
 
 impl SSSPass {
-    pub const SSS_INTERNAL_TEXTURE_NAME: &'static str = "SSS";
-    const SSS_INTERNAL_TEMP_TEXTURE_NAME: &'static str = "SSSTemp";
+    const SSS_INTERNAL_TEMP_TEXTURE_NAME: &'static str = "SSS";
 
     #[allow(unused)]
     pub fn new(
@@ -36,23 +35,7 @@ impl SSSPass {
             Self::SSS_INTERNAL_TEMP_TEXTURE_NAME,
             &TextureInfo {
                 dimension: TextureDimension::Dim2D,
-                format: Format::RGBA8UNorm,
-                width: resolution.x,
-                height: resolution.y,
-                depth: 1,
-                mip_levels: 1,
-                array_length: 1,
-                samples: SampleCount::Samples1,
-                usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
-                supports_srgb: false,
-            },
-            false,
-        );
-        resources.create_texture(
-            Self::SSS_INTERNAL_TEXTURE_NAME,
-            &TextureInfo {
-                dimension: TextureDimension::Dim2D,
-                format: Format::RGBA8UNorm,
+                format: Format::RGBA16Unorm,
                 width: resolution.x,
                 height: resolution.y,
                 depth: 1,
@@ -190,7 +173,7 @@ impl SSSPass {
 
         let sss_uav = pass_params.resources.access_view(
             cmd_buffer,
-            Self::SSS_INTERNAL_TEXTURE_NAME,
+            color_name,
             BarrierSync::COMPUTE_SHADER,
             BarrierAccess::STORAGE_WRITE,
             TextureLayout::Storage,

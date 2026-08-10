@@ -403,7 +403,7 @@ impl RenderPath for VolumeRenderer {
             &backbuffer_view,
             backbuffer_handle,
             &params,
-            SSSPass::SSS_INTERNAL_TEXTURE_NAME,
+            GeometryPass::COLOR_TEXTURE_NAME,
             //GeometryPass::COLOR_TEXTURE_NAME,
             SsaoPass::SSAO_TEXTURE_NAME,
         );
