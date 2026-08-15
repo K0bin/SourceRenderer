@@ -6,6 +6,7 @@ use std::path::{
 };
 
 use bevy_ecs::entity::Entity;
+use bevy_input::keyboard::KeyCode::KeyC;
 use bevy_input::keyboard::{
     Key,
     KeyCode,
@@ -114,6 +115,10 @@ impl SDLPlatform {
                 } => {
                     let key = SCANCODE_TO_KEY.get(&keycode).copied();
                     if let Some(key) = key {
+                        if key == KeyCode::Escape {
+                            return false;
+                        }
+
                         engine.dispatch_keyboard_input(KeyboardInput {
                             key_code: key,
                             logical_key: Key::Dead(None),
@@ -177,7 +182,7 @@ impl SDLPlatform {
     pub(crate) fn update_mouse_lock(&self, is_locked: bool) {
         let mouse_util = self.sdl_context.mouse();
         mouse_util.set_relative_mouse_mode(self.window.sdl_window_handle(), is_locked);
-        if is_locked {
+        if is_locked && false {
             let (width, height) = self.window.window.size_in_pixels();
             mouse_util.warp_mouse_in_window(
                 self.window.sdl_window_handle(),
