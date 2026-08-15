@@ -95,5 +95,5 @@ void main(void) {
 
   mat4 mvp = camera.viewProj * model;
   gl_Position = mvp * vec4(pos, 1.0);
-  out_worldPosition = gl_Position.xyz;
+  out_worldPosition = (model * vec4(pos, 1.0)).xyz;
 }
