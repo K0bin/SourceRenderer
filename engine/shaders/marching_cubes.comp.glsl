@@ -2,6 +2,13 @@
 #extension GL_GOOGLE_include_directive : enable
 // #extension GL_EXT_debug_printf : enable
 
+#extension GL_KHR_shader_subgroup_basic : enable
+#extension GL_KHR_shader_subgroup_arithmetic : enable
+#extension GL_KHR_shader_subgroup_vote : enable
+#extension GL_KHR_shader_subgroup_ballot : enable
+#extension GL_KHR_shader_subgroup_shuffle : enable
+#extension GL_EXT_maximal_reconvergence : enable
+
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
 #include "descriptor_sets.inc.glsl"
@@ -58,10 +65,16 @@ uint vertexKey(uvec3 pos1, uvec3 pos2) {
     return key;
 }
 
+const bool disableSubgroups = false;
+const uvec3 WorkGroupSizeWithoutHelper = uvec3(3u, 3u, 3u);
 
 uint vertexKeyFromIndexOffsets(uint idx1, uint idx2) {
-    uvec3 vertexPos1 = gl_GlobalInvocationID + minBox + indexOffset(idx1);
-    uvec3 vertexPos2 = gl_GlobalInvocationID + minBox + indexOffset(idx2);
+    const bool useSubgroups = !disableSubgroups && gl_NumSubgroups <= 2;
+
+    uvec3 workgroupBase = useSubgroups ? gl_WorkGroupID * WorkGroupSizeWithoutHelper : gl_WorkGroupID * gl_WorkGroupSize;
+    uvec3 base = workgroupBase + gl_LocalInvocationID;
+    uvec3 vertexPos1 = base + indexOffset(idx1);
+    uvec3 vertexPos2 = base + indexOffset(idx2);
     uint vtxKey = vertexKey(vertexPos1, vertexPos2);
     return vtxKey;
 }
@@ -81,25 +94,67 @@ uvec3 localInvocationID(uint invocationIndex) {
 }
 
 
-void main() {
-    if (any(greaterThanEqual(gl_GlobalInvocationID + uvec3(1u), extent)))
+void main() [[maximally_reconverges]] {
+    const bool useSubgroups = !disableSubgroups && gl_NumSubgroups <= 2;
+
+    uvec3 workgroupBase = useSubgroups ? gl_WorkGroupID * WorkGroupSizeWithoutHelper : gl_WorkGroupID * gl_WorkGroupSize;
+    uvec3 base = workgroupBase + gl_LocalInvocationID;
+
+    if (subgroupAll(any(greaterThanEqual(base + uvec3(1u), extent))))
         return;
 
-    uvec3 base = gl_GlobalInvocationID + minBox;
+    float densityInvocation1 = 0.0;
+    float densityInvocation2 = 0.0;
+
+    if (useSubgroups) {
+        densityInvocation1 = texelFetch(sampler3D(densityImage, nearestSampler),
+            min(ivec3(workgroupBase + localInvocationID(gl_SubgroupInvocationID)),
+            ivec3(extent)), int(lod)).x;
+
+        if (gl_NumSubgroups == 2u) {
+            densityInvocation2 = texelFetch(sampler3D(densityImage, nearestSampler),
+                min(ivec3(workgroupBase + localInvocationID((gl_SubgroupInvocationID + gl_SubgroupSize))),
+                ivec3(extent)), int(lod)).x;
+        }
+    }
 
     uint voxelKey = 0u;
     for (uint z = 0u; z < 2u; z++) {
         for (uint y = 0u; y < 2u; y++) {
             for (uint x = 0u; x < 2u; x++) {
                 uvec3 offset = uvec3(x, y, z);
-                uvec3 pos = base + offset;
-                float value = texelFetch(sampler3D(densityImage, nearestSampler), ivec3(pos), int(lod)).x;
+
+                float value;
+                bool targetIsActive = true;
+                if (useSubgroups) {
+                    uint densityInvocationIndex = localInvocationIndex(gl_LocalInvocationID + offset);
+                    uint densitySubgroupInvocationIndex = densityInvocationIndex % gl_SubgroupSize;
+                    uint densitySubgroupIndex = densityInvocationIndex / gl_SubgroupSize;
+
+                    float densities[2u];
+                    densities[0u] = subgroupShuffle(densityInvocation1, densitySubgroupInvocationIndex);
+                    if (gl_NumSubgroups == 2u) {
+                        densities[1u] = subgroupShuffle(densityInvocation2, densitySubgroupInvocationIndex);
+                    } else {
+                        densities[1u] = 0.0;
+                    }
+                    value = densities[densitySubgroupIndex % 2u];
+                } else {
+                    uvec3 pos = base + offset;
+                    value = texelFetch(sampler3D(densityImage, nearestSampler), ivec3(pos), int(lod)).x;
+                }
 
                 uint index = ((x + z) & 1u) + z * 2u + y * 4u;
                 voxelKey |= uint(value >= threshold) << index;
             }
         }
     }
+
+    if (any(greaterThanEqual(base + uvec3(1u), extent)))
+        return;
+
+    if (useSubgroups && any(greaterThanEqual(gl_LocalInvocationID, uvec3(3u, 3u, 3u))))
+        return; // Helper lanes, don't write vertices.
 
     if (voxelKey == 0u || voxelKey == 255u)
         return;
