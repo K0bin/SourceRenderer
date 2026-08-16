@@ -110,7 +110,7 @@ impl RendererAssets {
             RendererAssetWithHandle::Shader(handle, asset) => {
                 let already_existed = assets.shaders.insert(handle.into(), asset).is_some();
                 if already_existed {
-                    return true;
+                    log::info!("Replacing shader and queuing pipelines for compilation");
                 }
                 std::mem::drop(assets);
                 let assets_read = self.read();
