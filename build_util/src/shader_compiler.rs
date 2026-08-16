@@ -339,7 +339,7 @@ fn read_metadata(
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRg16 => gpu::Format::RG16UNorm,
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRg8 => gpu::Format::RG8UNorm,
             spirv_cross_sys::SpvImageFormat__SpvImageFormatR16 => gpu::Format::R16UNorm,
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatR8 => gpu::Format::R8Unorm,
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatR8 => gpu::Format::R8UNorm,
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRgba16Snorm => {
                 panic!("Unimplemented format")
             }
@@ -379,7 +379,7 @@ fn read_metadata(
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRgb10a2ui => {
                 panic!("Unimplemented format")
             }
-            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg32ui => panic!("Unimplemented format"),
+            spirv_cross_sys::SpvImageFormat__SpvImageFormatRg32ui => gpu::Format::RG32UInt,
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRg16ui => gpu::Format::RG16UInt,
             spirv_cross_sys::SpvImageFormat__SpvImageFormatRg8ui => panic!("Unimplemented format"),
             spirv_cross_sys::SpvImageFormat__SpvImageFormatR16ui => gpu::Format::R16UInt,
@@ -1296,7 +1296,10 @@ pub fn compile_shader(
                 CompiledShaderType::Source(&source),
             );
         } else {
-            panic!("Failed to compile shader with spirv-cross {:?}", source.err().unwrap());
+            panic!(
+                "Failed to compile shader with spirv-cross {:?}",
+                source.err().unwrap()
+            );
         }
     }
     if output_shading_languages.contains(ShadingLanguage::Hlsl) {

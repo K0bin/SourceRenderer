@@ -35,7 +35,7 @@ impl SSSPass {
             Self::SSS_INTERNAL_TEMP_TEXTURE_NAME,
             &TextureInfo {
                 dimension: TextureDimension::Dim2D,
-                format: Format::RGBA16Unorm,
+                format: Format::RGBA16UNorm,
                 width: resolution.x,
                 height: resolution.y,
                 depth: 1,

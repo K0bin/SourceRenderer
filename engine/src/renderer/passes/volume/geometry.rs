@@ -69,7 +69,7 @@ impl GeometryPass {
             Self::COLOR_TEXTURE_NAME,
             &TextureInfo {
                 dimension: TextureDimension::Dim2D,
-                format: Format::RGBA16Unorm,
+                format: Format::RGBA16UNorm,
                 width: swapchain.width(),
                 height: swapchain.height(),
                 depth: 1,
@@ -142,7 +142,7 @@ impl GeometryPass {
                     write_mask: ColorComponents::all(),
                 }],
             },
-            render_target_formats: &[Format::RGBA16Unorm],
+            render_target_formats: &[Format::RGBA16UNorm],
             depth_stencil_format: Format::D32,
         };
         let pipeline = assets.request_graphics_pipeline(&pipeline_info);

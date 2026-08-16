@@ -7,7 +7,7 @@ pub enum Format {
     Unknown,
     R32UNorm,
     R16UNorm,
-    R8Unorm,
+    R8UNorm,
     RGBA8UNorm,
     RGBA8Srgb,
     BGR8UNorm,
@@ -27,13 +27,14 @@ pub enum Format {
     RG8UNorm,
     R32UInt,
     RGBA16Float,
-    RGBA16Unorm,
+    RGBA16UNorm,
     R11G11B10Float,
     RG16UInt,
     RG16SInt,
     R16UInt,
     R16SNorm,
     R16SInt,
+    RG32UInt,
 
     D16,
     D16S8,
@@ -71,7 +72,7 @@ impl Format {
             Format::RGBA32Float => 16,
             Format::RGBA8UNorm => 4,
             Format::RGBA16Float => 2,
-            Format::RGBA16Unorm => 2,
+            Format::RGBA16UNorm => 2,
 
             Format::BC1 => 8,
             Format::BC1Alpha => 8,
@@ -113,7 +114,7 @@ impl Format {
 
     pub fn is_unorm(&self) -> bool {
         match self {
-            Format::R8Unorm
+            Format::R8UNorm
             | Format::R16UNorm
             | Format::R32UNorm
             | Format::RG8UNorm
@@ -121,7 +122,7 @@ impl Format {
             | Format::RG16UNorm
             | Format::RGBA8UNorm
             | Format::BGRA8UNorm
-            | Format::RGBA16Unorm => true,
+            | Format::RGBA16UNorm => true,
             _ => false,
         }
     }
@@ -142,7 +143,7 @@ impl Format {
 
     pub fn is_uint(&self) -> bool {
         match self {
-            Format::R16UInt | Format::R32UInt | Format::RG16UInt => true,
+            Format::R16UInt | Format::R32UInt | Format::RG16UInt | Format::RG32UInt => true,
             _ => false,
         }
     }
