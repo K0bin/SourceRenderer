@@ -103,18 +103,29 @@ void main() [[maximally_reconverges]] {
     if (subgroupAll(any(greaterThanEqual(base + uvec3(1u), extent))))
         return;
 
-    float densityInvocation1 = 0.0;
-    float densityInvocation2 = 0.0;
+    bool density1AboveThreshold = false;
+    bool density2AboveThreshold = false;
+    uvec4 densitiesAboveThreshold = uvec4(0u);
+    uint[2] densitiesAboveThresholdArr;
 
     if (useSubgroups) {
-        densityInvocation1 = texelFetch(sampler3D(densityImage, nearestSampler),
+        float density = texelFetch(sampler3D(densityImage, nearestSampler),
             min(ivec3(workgroupBase + localInvocationID(gl_SubgroupInvocationID)),
             ivec3(extent)), int(lod)).x;
 
+        bool densityAboveThreshold = density >= threshold;
+        densitiesAboveThreshold = subgroupBallot(densityAboveThreshold);
+        densitiesAboveThresholdArr[0] = densitiesAboveThreshold.x;
+        densitiesAboveThresholdArr[1] = densitiesAboveThreshold.y;
+
         if (gl_NumSubgroups == 2u) {
-            densityInvocation2 = texelFetch(sampler3D(densityImage, nearestSampler),
+            density = texelFetch(sampler3D(densityImage, nearestSampler),
                 min(ivec3(workgroupBase + localInvocationID((gl_SubgroupInvocationID + gl_SubgroupSize))),
                 ivec3(extent)), int(lod)).x;
+
+            densityAboveThreshold = density >= threshold;
+            uvec4 densitiesAboveThreshold2 = subgroupBallot(densityAboveThreshold);
+            densitiesAboveThresholdArr[1] = densitiesAboveThreshold2.x;
         }
     }
 
@@ -124,28 +135,18 @@ void main() [[maximally_reconverges]] {
             for (uint x = 0u; x < 2u; x++) {
                 uvec3 offset = uvec3(x, y, z);
 
-                float value;
-                bool targetIsActive = true;
+                bool densityAboveThreshold = false;
                 if (useSubgroups) {
                     uint densityInvocationIndex = localInvocationIndex(gl_LocalInvocationID + offset);
-                    uint densitySubgroupInvocationIndex = densityInvocationIndex % gl_SubgroupSize;
-                    uint densitySubgroupIndex = densityInvocationIndex / gl_SubgroupSize;
-
-                    float densities[2u];
-                    densities[0u] = subgroupShuffle(densityInvocation1, densitySubgroupInvocationIndex);
-                    if (gl_NumSubgroups == 2u) {
-                        densities[1u] = subgroupShuffle(densityInvocation2, densitySubgroupInvocationIndex);
-                    } else {
-                        densities[1u] = 0.0;
-                    }
-                    value = densities[densitySubgroupIndex % 2u];
+                    densityAboveThreshold = (densitiesAboveThresholdArr[densityInvocationIndex / 32u] & (1u << (densityInvocationIndex % 32u))) != 0u;
                 } else {
                     uvec3 pos = base + offset;
-                    value = texelFetch(sampler3D(densityImage, nearestSampler), ivec3(pos), int(lod)).x;
+                    float density = texelFetch(sampler3D(densityImage, nearestSampler), ivec3(pos), int(lod)).x;
+                    densityAboveThreshold = density >= threshold;
                 }
 
                 uint index = ((x + z) & 1u) + z * 2u + y * 4u;
-                voxelKey |= uint(value >= threshold) << index;
+                voxelKey |= uint(densityAboveThreshold) << index;
             }
         }
     }
