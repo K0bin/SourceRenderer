@@ -65,12 +65,12 @@ uint vertexKey(uvec3 pos1, uvec3 pos2) {
     return key;
 }
 
-const bool disableSubgroups = false;
+const bool enableSubgroups = true;
 const bool helperInvocations = false;
 const uvec3 WorkGroupSizeWithoutHelper = uvec3(3u, 3u, 3u);
 
 uint vertexKeyFromIndexOffsets(uint idx1, uint idx2) {
-    const bool useSubgroups = !disableSubgroups && gl_NumSubgroups <= 2;
+    const bool useSubgroups = enableSubgroups && gl_NumSubgroups <= 2;
 
     uvec3 workgroupBase = helperInvocations && useSubgroups
         ? gl_WorkGroupID * WorkGroupSizeWithoutHelper
@@ -98,7 +98,7 @@ uvec3 localInvocationID(uint invocationIndex) {
 
 
 void main() [[maximally_reconverges]] {
-    const bool useSubgroups = !disableSubgroups && gl_NumSubgroups <= 2;
+    const bool useSubgroups = enableSubgroups && gl_NumSubgroups <= 2;
 
     uvec3 workgroupBase = helperInvocations && useSubgroups
         ? gl_WorkGroupID * WorkGroupSizeWithoutHelper
