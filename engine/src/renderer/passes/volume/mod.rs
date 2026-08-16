@@ -241,6 +241,7 @@ impl RenderPath for VolumeRenderer {
         let inv_model = model_matrix.inverse();
         let mut start = Vec3::new(f32::MAX, f32::MAX, f32::MAX);
         let mut end = Vec3::new(f32::MIN, f32::MIN, f32::MIN);
+        let lod_factor = 2.0f32.powi(geometry_lod as i32);
         for x in 0..=1 {
             for y in 0..=1 {
                 for z in 0..=1 {
@@ -250,6 +251,7 @@ impl RenderPath for VolumeRenderer {
                     world_space_pos.x /= world_space_pos.w;
                     world_space_pos.y /= world_space_pos.w;
                     world_space_pos.z /= world_space_pos.w;
+                    world_space_pos /= lod_factor;
                     let model_space_pos = inv_model * world_space_pos;
                     start = Vec3::new(
                         start.x.min(model_space_pos.x),
