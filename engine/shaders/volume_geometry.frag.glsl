@@ -5,6 +5,7 @@
 #include "descriptor_sets.inc.glsl"
 #include "pbr.inc.glsl"
 #include "camera.inc.glsl"
+#include "util.inc.glsl"
 
 layout (location = 0) in vec3 in_normal;
 layout (location = 1) in float in_density;
@@ -61,23 +62,18 @@ vec3 calculateNormal(vec3 densityMapUV, uint normalLod) {
 
 // targetLod must be smaller (=> higher res) than the current lod in the push constants
 vec3 rayMarchPositionInMip(vec3 startPosNormalized, uint targetLod) {
-    vec4 ndcPos = vec4((gl_FragCoord.x / width) * 2.0 - 1.0, (gl_FragCoord.y / height) * -2.0 + 1.0, gl_FragCoord.z, 1.0);
+    uint meshLod = lod;
 
-    vec4 worldPos = camera.invViewProj * ndcPos;
-    worldPos /= worldPos.w;
-    vec4 modelPos = invModel * worldPos;
-    modelPos.xyz *= exp2(lod);
-    vec4 viewPos = camera.invProj * ndcPos;
-    viewPos.xyz /= viewPos.w;
+    vec3 worldPos = worldSpacePosition(vec2(gl_FragCoord.x / width, gl_FragCoord.y / height), 0.0, camera.invViewProj);
+    vec3 modelPos = (invModel * vec4(worldPos, 1.0)).xyz;
+    modelPos /= exp2(meshLod);
 
     vec4 viewRay = vec4(0,0,1,0);
-    //vec4 viewRay = vec4(normalize(viewPos.xyz), 0.0); //
     vec4 worldRay = camera.invView * viewRay;
     vec4 modelRay = invModel * worldRay;
     modelRay = normalize(modelRay);
     vec3 invRay = vec3(1.0 / modelRay.x, 1.0 / modelRay.y, 1.0 / modelRay.z);
 
-    uint meshLod = lod;
     // factor to go from lower res to higher res
     uint lodFactor = 1u << (meshLod - targetLod);
     // resolution of the higher res mip
@@ -87,10 +83,13 @@ vec3 rayMarchPositionInMip(vec3 startPosNormalized, uint targetLod) {
         targetTexSize.y >> (meshLod - targetLod),
         targetTexSize.z >> (meshLod - targetLod));
 
+    //return modelPos.xyz / vec3(currentTexSize);
+
     // min and max corner of the lower res voxel in the higher res mip
     vec3 pos1 = floor(startPosNormalized * currentTexSize) * float(lodFactor);
     vec3 pos2 = pos1 + vec3(lodFactor);
-    vec3 origin = startPosNormalized * currentTexSize * float(lodFactor);
+    //vec3 origin = startPosNormalized * currentTexSize * float(lodFactor);
+    vec3 origin = modelPos.xyz * float(lodFactor);
 
     vec3 bbMin = min(pos1, pos2);
     vec3 bbMax = max(pos1, pos2);
@@ -127,13 +126,13 @@ vec3 rayMarchPositionInMip(vec3 startPosNormalized, uint targetLod) {
     while (t <= tExit) {
         vec3 pos = origin + t * modelRay.xyz;
         //float density = texelFetch(densityMap, ivec3(round(pos)), int(targetLod)).x;
-        /*float density = textureLod(densityMap, pos / vec3(targetTexSize), int(targetLod)).x;
+        float density = textureLod(densityMap, pos / vec3(targetTexSize), int(targetLod)).x;
         if (density >= threshold)
-            return pos / vec3(targetTexSize);*/
-
-        vec3 grad = calculateGradient(pos / vec3(targetTexSize), targetLod);
-        if (dot(grad, grad) > 0.001)
             return pos / vec3(targetTexSize);
+
+        /*vec3 grad = calculateGradient(pos / vec3(targetTexSize), targetLod);
+        if (dot(grad, grad) > 0.001)
+            return pos / vec3(targetTexSize);*/
 
         t += stepLen;
         debugSteps++;
@@ -144,48 +143,23 @@ vec3 rayMarchPositionInMip(vec3 startPosNormalized, uint targetLod) {
     return vec3(0.0);
 }
 
-
-
-vec3 findNormalPoint(vec3 densityMapUV, uint normalLod) {
-    float highResDensity = threshold - textureLod(densityMap, densityMapUV, normalLod).x;
-    float dir = sign(highResDensity);
-
-    vec3 lowResNormal = calculateNormal(densityMapUV, lod);
-    //vec3 lowResNormal = normalize(modelRay.xyz);
-
-    uint lodFactor = 1u << (lod - normalLod);
-    float lodDividend = 1.0 / float(lodFactor);
-    uvec3 res = textureSize(densityMap, int(normalLod));
-
-    const float eps = 1.0 / float(lodFactor);
-    const float minGrad = sqrt(0.001);
-    const uint maxSteps = 999u;
-    vec3 highResUV = densityMapUV + lowResNormal * eps * dir * floor(float(maxSteps) * 0.5);
-    vec3 grad;
-    float gradLenSq;
-    uint steps = 0u;
-    do {
-        highResUV -= lowResNormal * eps * dir;
-        grad = calculateGradient(highResUV, normalLod);
-        gradLenSq = dot(grad, grad);
-        steps++;
-    } while (gradLenSq < minGrad && steps < maxSteps);
-
-    return highResUV;
-}
-
-
 #include "volume_shading.inc.glsl"
 
 void main(void) {
-    uint normalLod = 3u;
+    uint normalLod = 0;
     vec3 normalLookUpNormalized = rayMarchPositionInMip(in_densityMapUV, normalLod);
     vec3 normal;
     if (dot(normalLookUpNormalized, normalLookUpNormalized) > 0.001)
         normal = calculateNormal(normalLookUpNormalized, normalLod);
     else
-        normal = vec3(0.0);
-        //normal = calculateNormal(in_densityMapUV, lod);
+        //normal = vec3(0.0);
+        normal = calculateNormal(in_densityMapUV, lod);
+
+    normal = normalLookUpNormalized * 2.0 - vec3(1.0);
+    //normal = vec3(1.0);
+
+    //normal = normalLookUpNormalized - in_densityMapUV;
+    ///
 
     /*normal = calculateGradient(in_densityMapUV, normalLod);
     float len = length(normal);
