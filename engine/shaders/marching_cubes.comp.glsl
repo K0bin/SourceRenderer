@@ -109,9 +109,6 @@ void main() [[maximally_reconverges]] {
     if (subgroupAll(any(greaterThanEqual(base + uvec3(1u), extent))))
         return;
 
-    bool density1AboveThreshold = false;
-    bool density2AboveThreshold = false;
-    uvec4 densitiesAboveThreshold = uvec4(0u);
     uint[2] densitiesAboveThresholdArr;
 
     if (useSubgroups) {
@@ -120,7 +117,7 @@ void main() [[maximally_reconverges]] {
             ivec3(extent)), int(lod)).x;
 
         bool densityAboveThreshold = density >= threshold;
-        densitiesAboveThreshold = subgroupBallot(densityAboveThreshold);
+        uvec4 densitiesAboveThreshold = subgroupBallot(densityAboveThreshold);
         densitiesAboveThresholdArr[0] = densitiesAboveThreshold.x;
         densitiesAboveThresholdArr[1] = densitiesAboveThreshold.y;
 
