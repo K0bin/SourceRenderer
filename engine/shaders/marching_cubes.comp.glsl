@@ -65,7 +65,7 @@ uint vertexKey(uvec3 pos1, uvec3 pos2) {
     return key;
 }
 
-const bool enableSubgroups = true;
+const bool enableSubgroups = false;
 const bool helperInvocations = false;
 const uvec3 WorkGroupSizeWithoutHelper = uvec3(3u, 3u, 3u);
 
