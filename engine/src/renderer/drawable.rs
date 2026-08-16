@@ -1,15 +1,8 @@
-use std::{
-    f32,
-    usize,
-};
+use std::{f32, usize};
 
 use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;
-use sourcerenderer_core::{
-    Matrix4,
-    Quaternion,
-    Vec3,
-};
+use sourcerenderer_core::{Matrix4, Quaternion, Vec3};
 
 use crate::asset::ModelHandle;
 
@@ -69,11 +62,7 @@ pub struct DrawablePart {
 pub(crate) fn make_camera_view(position: Vec3, rotation: Quaternion) -> Matrix4 {
     let position = Vec3::new(position.x, position.y, position.z);
     let forward = rotation.mul_vec3(Vec3::new(0.0f32, 0.0f32, 1.0f32));
-    Matrix4::look_at_lh(
-        position,
-        position + forward,
-        Vec3::new(0.0f32, 1.0f32, 0.0f32),
-    )
+    Matrix4::look_to_lh(position, forward, Vec3::new(0.0f32, 1.0f32, 0.0f32))
 }
 
 pub(crate) fn make_camera_proj(fov: f32, aspect_ratio: f32, z_near: f32, z_far: f32) -> Matrix4 {
