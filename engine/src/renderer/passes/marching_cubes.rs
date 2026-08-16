@@ -38,6 +38,8 @@ impl MarchingCubesPass {
     pub const ATOMICS_BUFFER_NAME: &'static str = "marchingcubes_atomics";
     pub const INDICES_BUFFER_NAME: &'static str = "marchingcubes_indices";
 
+    const HELPER_INVOCATIONS: bool = false;
+
     #[allow(unused)]
     pub fn new(
         device: &Device,
@@ -532,17 +534,19 @@ impl MarchingCubesPass {
         command_buffer.finish_binding();
 
         if extent.x > 0 && extent.y > 0 && extent.z > 0 {
-            /*command_buffer.dispatch(
-                (extent.x + 2u32) / 3u32,
-                (extent.y + 2u32) / 3u32,
-                (extent.z + 2u32) / 3u32,
-            );*/
-
-            command_buffer.dispatch(
-                (extent.x + 3u32) / 4u32,
-                (extent.y + 3u32) / 4u32,
-                (extent.z + 3u32) / 4u32,
-            );
+            if Self::HELPER_INVOCATIONS {
+                command_buffer.dispatch(
+                    (extent.x + 2u32) / 3u32,
+                    (extent.y + 2u32) / 3u32,
+                    (extent.z + 2u32) / 3u32,
+                );
+            } else {
+                command_buffer.dispatch(
+                    (extent.x + 3u32) / 4u32,
+                    (extent.y + 3u32) / 4u32,
+                    (extent.z + 3u32) / 4u32,
+                );
+            }
         }
 
         command_buffer.end_label();

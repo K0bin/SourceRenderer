@@ -66,12 +66,15 @@ uint vertexKey(uvec3 pos1, uvec3 pos2) {
 }
 
 const bool disableSubgroups = false;
+const bool helperInvocations = false;
 const uvec3 WorkGroupSizeWithoutHelper = uvec3(3u, 3u, 3u);
 
 uint vertexKeyFromIndexOffsets(uint idx1, uint idx2) {
     const bool useSubgroups = !disableSubgroups && gl_NumSubgroups <= 2;
 
-    uvec3 workgroupBase = useSubgroups ? gl_WorkGroupID * WorkGroupSizeWithoutHelper : gl_WorkGroupID * gl_WorkGroupSize;
+    uvec3 workgroupBase = helperInvocations && useSubgroups
+        ? gl_WorkGroupID * WorkGroupSizeWithoutHelper
+        : gl_WorkGroupID * gl_WorkGroupSize;
     uvec3 base = workgroupBase + gl_LocalInvocationID;
     uvec3 vertexPos1 = base + indexOffset(idx1);
     uvec3 vertexPos2 = base + indexOffset(idx2);
@@ -97,7 +100,10 @@ uvec3 localInvocationID(uint invocationIndex) {
 void main() [[maximally_reconverges]] {
     const bool useSubgroups = !disableSubgroups && gl_NumSubgroups <= 2;
 
-    uvec3 workgroupBase = useSubgroups ? gl_WorkGroupID * WorkGroupSizeWithoutHelper : gl_WorkGroupID * gl_WorkGroupSize;
+    uvec3 workgroupBase = helperInvocations && useSubgroups
+        ? gl_WorkGroupID * WorkGroupSizeWithoutHelper
+        : gl_WorkGroupID * gl_WorkGroupSize;
+
     uvec3 base = workgroupBase + gl_LocalInvocationID;
 
     if (subgroupAll(any(greaterThanEqual(base + uvec3(1u), extent))))
@@ -136,13 +142,24 @@ void main() [[maximally_reconverges]] {
                 uvec3 offset = uvec3(x, y, z);
 
                 bool densityAboveThreshold = false;
-                if (useSubgroups) {
+                if (useSubgroups && helperInvocations) {
                     uint densityInvocationIndex = localInvocationIndex(gl_LocalInvocationID + offset);
                     densityAboveThreshold = (densitiesAboveThresholdArr[densityInvocationIndex / 32u] & (1u << (densityInvocationIndex % 32u))) != 0u;
-                } else {
+                } else if (!useSubgroups) {
                     uvec3 pos = base + offset;
                     float density = texelFetch(sampler3D(densityImage, nearestSampler), ivec3(pos), int(lod)).x;
                     densityAboveThreshold = density >= threshold;
+                } else if (useSubgroups && !helperInvocations) {
+                    // Non-uniform dynamic branching instead of helper invocations
+                    if (!any(greaterThanEqual(gl_LocalInvocationID, uvec3(3u, 3u, 3u)))) {
+                        uint densityInvocationIndex = localInvocationIndex(gl_LocalInvocationID + offset);
+                        densityAboveThreshold = (densitiesAboveThresholdArr[densityInvocationIndex / 32u] & (1u << (densityInvocationIndex % 32u))) != 0u;
+                    } else {
+                        uvec3 pos = base + offset;
+                        float density = texelFetch(sampler3D(densityImage, nearestSampler), ivec3(pos), int(lod)).x;
+                        densityAboveThreshold = density >= threshold;
+                    }
+
                 }
 
                 uint index = ((x + z) & 1u) + z * 2u + y * 4u;
@@ -151,11 +168,11 @@ void main() [[maximally_reconverges]] {
         }
     }
 
+    if (useSubgroups && helperInvocations && any(greaterThanEqual(gl_LocalInvocationID, uvec3(3u, 3u, 3u))))
+        return; // Helper lanes, don't write vertices.
+
     if (any(greaterThanEqual(base + uvec3(1u), extent)))
         return;
-
-    if (useSubgroups && any(greaterThanEqual(gl_LocalInvocationID, uvec3(3u, 3u, 3u))))
-        return; // Helper lanes, don't write vertices.
 
     if (voxelKey == 0u || voxelKey == 255u)
         return;
