@@ -1,10 +1,7 @@
-use std::sync::Arc;
-
 use crate::asset::{AssetLoadPriority, AssetType, TextureHandle};
 use crate::graphics::*;
 use crate::renderer::asset::{
     GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssets, RendererAssetsReadOnly,
-    RendererMaterial, RendererMaterialValue,
 };
 use crate::renderer::drawable::View;
 use crate::renderer::passes::marching_cubes::{MarchingCubesIndirectCall, MarchingCubesPass};
@@ -12,8 +9,9 @@ use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use crate::renderer::renderer_scene::RendererScene;
-use smallvec::SmallVec;
-use sourcerenderer_core::{HalfVec3, Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
+use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
+use std::default::Default;
+use std::sync::Arc;
 
 #[repr(C)]
 #[derive(Clone)]
@@ -172,15 +170,11 @@ impl GeometryPass {
         let pipeline_transparent = assets.request_graphics_pipeline(&pipeline_transparency_info);
 
         let mut pipeline_transparency_prepass_info: GraphicsPipelineInfo = pipeline_info.clone();
+        pipeline_transparency_prepass_info.fs = None;
         let blend_attachments_prepass = [AttachmentBlendInfo {
             blend_enabled: false,
-            src_color_blend_factor: BlendFactor::SrcAlpha,
-            dst_color_blend_factor: BlendFactor::OneMinusSrcAlpha,
-            color_blend_op: BlendOp::Add,
-            src_alpha_blend_factor: BlendFactor::Zero,
-            dst_alpha_blend_factor: BlendFactor::One,
-            alpha_blend_op: BlendOp::Add,
             write_mask: ColorComponents::empty(),
+            ..Default::default()
         }];
         pipeline_transparency_prepass_info.blend = BlendInfo {
             alpha_to_coverage_enabled: false,
@@ -475,18 +469,6 @@ impl GeometryPass {
                 lod,
             }],
             ShaderType::VertexShader,
-        );
-        cmd_buffer.set_push_constant_data(
-            &[MaterialData {
-                roughness: 0.6f32,
-                metalness: 0.3f32,
-                _padding: 0u64,
-                //roughness: 0.1f32,
-                //metalness: 0.9f32,
-                f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
-                lod,
-            }],
-            ShaderType::FragmentShader,
         );
         cmd_buffer.set_index_buffer(
             BufferRef::Regular(&*marchingcubes_transparent_ibo),
