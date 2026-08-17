@@ -36,6 +36,8 @@ struct MaterialData {
 
 pub struct GeometryPass {
     pipeline: GraphicsPipelineHandle,
+    pipeline_transparent: GraphicsPipelineHandle,
+    pipeline_transparent_prepass: GraphicsPipelineHandle,
     sampler: Arc<crate::graphics::Sampler>,
     transfer_function_handle: TextureHandle,
 }
@@ -147,6 +149,52 @@ impl GeometryPass {
         };
         let pipeline = assets.request_graphics_pipeline(&pipeline_info);
 
+        let mut pipeline_transparency_info: GraphicsPipelineInfo = pipeline_info.clone();
+        pipeline_transparency_info.depth_stencil.depth_func = CompareFunc::Equal;
+        pipeline_transparency_info.depth_stencil.depth_write_enabled = false;
+        let blend_attachments = [AttachmentBlendInfo {
+            blend_enabled: true,
+            src_color_blend_factor: BlendFactor::SrcAlpha,
+            dst_color_blend_factor: BlendFactor::OneMinusSrcAlpha,
+            color_blend_op: BlendOp::Add,
+            src_alpha_blend_factor: BlendFactor::One,
+            dst_alpha_blend_factor: BlendFactor::Zero,
+            alpha_blend_op: BlendOp::Add,
+            write_mask: ColorComponents::all(),
+        }];
+        pipeline_transparency_info.blend = BlendInfo {
+            alpha_to_coverage_enabled: false,
+            logic_op_enabled: false,
+            logic_op: LogicOp::And,
+            constants: [0f32, 0f32, 0f32, 0f32],
+            attachments: &blend_attachments,
+        };
+        let pipeline_transparent = assets.request_graphics_pipeline(&pipeline_transparency_info);
+
+        let mut pipeline_transparency_prepass_info: GraphicsPipelineInfo = pipeline_info.clone();
+        let blend_attachments_prepass = [AttachmentBlendInfo {
+            blend_enabled: false,
+            src_color_blend_factor: BlendFactor::SrcAlpha,
+            dst_color_blend_factor: BlendFactor::OneMinusSrcAlpha,
+            color_blend_op: BlendOp::Add,
+            src_alpha_blend_factor: BlendFactor::Zero,
+            dst_alpha_blend_factor: BlendFactor::One,
+            alpha_blend_op: BlendOp::Add,
+            write_mask: ColorComponents::empty(),
+        }];
+        pipeline_transparency_prepass_info.blend = BlendInfo {
+            alpha_to_coverage_enabled: false,
+            logic_op_enabled: false,
+            logic_op: LogicOp::And,
+            constants: [0f32, 0f32, 0f32, 0f32],
+            attachments: &blend_attachments_prepass,
+        };
+        /*let mut pipeline_transparency_prepass_info: GraphicsPipelineInfo =
+            pipeline_transparency_info.clone();
+        pipeline_transparency_prepass_info.rasterizer.cull_mode = CullMode::Front;*/
+        let pipeline_transparent_prepass =
+            assets.request_graphics_pipeline(&pipeline_transparency_prepass_info);
+
         let (transfer_function_handle, _) = assets.asset_manager().request_asset(
             //"assets/transferfunction_colorful.png",
             "assets/transferfunction.png",
@@ -156,14 +204,22 @@ impl GeometryPass {
 
         Self {
             pipeline,
+            pipeline_transparent,
             sampler: Arc::new(sampler),
             transfer_function_handle: TextureHandle::from(transfer_function_handle),
+            pipeline_transparent_prepass,
         }
     }
 
     #[inline(always)]
     pub(crate) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         assets.get_graphics_pipeline(self.pipeline).is_some()
+            && assets
+                .get_graphics_pipeline(self.pipeline_transparent)
+                .is_some()
+            && assets
+                .get_graphics_pipeline(self.pipeline_transparent_prepass)
+                .is_some()
     }
 
     pub(crate) fn transfer_function_handle(&self) -> TextureHandle {
@@ -181,6 +237,7 @@ impl GeometryPass {
         volume_texture: TextureHandle,
         model_matrix: Matrix4,
         threshold: f32,
+        threshold_transparency: f32,
         lod: u32,
     ) {
         let resources = &params.resources;
@@ -222,6 +279,14 @@ impl GeometryPass {
         let marchingcubes_ibo = resources.access_buffer(
             cmd_buffer,
             MarchingCubesPass::INDICES_BUFFER_NAME,
+            BarrierSync::INDEX_INPUT,
+            BarrierAccess::INDEX_READ,
+            HistoryResourceEntry::Current,
+        );
+
+        let marchingcubes_transparent_ibo = resources.access_buffer(
+            cmd_buffer,
+            MarchingCubesPass::TRANSPARENT_INDICES_BUFFER_NAME,
             BarrierSync::INDEX_INPUT,
             BarrierAccess::INDEX_READ,
             HistoryResourceEntry::Current,
@@ -296,6 +361,12 @@ impl GeometryPass {
 
         let pipeline: &Arc<GraphicsPipeline> = assets
             .get_graphics_pipeline(self.pipeline)
+            .expect("Pipeline is not compiled yet");
+        let pipeline_transparent: &Arc<GraphicsPipeline> = assets
+            .get_graphics_pipeline(self.pipeline_transparent)
+            .expect("Pipeline is not compiled yet");
+        let pipeline_transparent_prepass: &Arc<GraphicsPipeline> = assets
+            .get_graphics_pipeline(self.pipeline_transparent_prepass)
             .expect("Pipeline is not compiled yet");
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         cmd_buffer.set_viewports(&[Viewport {
@@ -391,6 +462,76 @@ impl GeometryPass {
         cmd_buffer.draw_indexed_indirect(
             BufferRef::Regular(&*marchingcubes_indirect),
             0u64,
+            1u32,
+            std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
+        );
+
+        cmd_buffer.set_pipeline(PipelineBinding::Graphics(pipeline_transparent_prepass));
+        cmd_buffer.set_push_constant_data(
+            &[PushConstantData {
+                model_matrix,
+                inv_model_matrix: Matrix4::inverse(&model_matrix),
+                threshold: threshold_transparency,
+                lod,
+            }],
+            ShaderType::VertexShader,
+        );
+        cmd_buffer.set_push_constant_data(
+            &[MaterialData {
+                roughness: 0.6f32,
+                metalness: 0.3f32,
+                _padding: 0u64,
+                //roughness: 0.1f32,
+                //metalness: 0.9f32,
+                f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
+                lod,
+            }],
+            ShaderType::FragmentShader,
+        );
+        cmd_buffer.set_index_buffer(
+            BufferRef::Regular(&*marchingcubes_transparent_ibo),
+            0u64,
+            IndexFormat::U32,
+        );
+        cmd_buffer.finish_binding();
+        cmd_buffer.draw_indexed_indirect(
+            BufferRef::Regular(&*marchingcubes_indirect),
+            std::mem::size_of::<MarchingCubesIndirectCall>() as u64,
+            1u32,
+            std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
+        );
+
+        cmd_buffer.set_pipeline(PipelineBinding::Graphics(pipeline_transparent));
+        cmd_buffer.set_push_constant_data(
+            &[PushConstantData {
+                model_matrix,
+                inv_model_matrix: Matrix4::inverse(&model_matrix),
+                threshold: threshold_transparency,
+                lod,
+            }],
+            ShaderType::VertexShader,
+        );
+        cmd_buffer.set_push_constant_data(
+            &[MaterialData {
+                roughness: 0.6f32,
+                metalness: 0.3f32,
+                _padding: 0u64,
+                //roughness: 0.1f32,
+                //metalness: 0.9f32,
+                f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
+                lod,
+            }],
+            ShaderType::FragmentShader,
+        );
+        cmd_buffer.set_index_buffer(
+            BufferRef::Regular(&*marchingcubes_transparent_ibo),
+            0u64,
+            IndexFormat::U32,
+        );
+        cmd_buffer.finish_binding();
+        cmd_buffer.draw_indexed_indirect(
+            BufferRef::Regular(&*marchingcubes_indirect),
+            std::mem::size_of::<MarchingCubesIndirectCall>() as u64,
             1u32,
             std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
         );

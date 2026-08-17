@@ -2,6 +2,8 @@
 #extension GL_GOOGLE_include_directive : enable
 // #extension GL_EXT_debug_printf : enable
 
+#extension GL_EXT_scalar_block_layout : enable
+
 #extension GL_KHR_shader_subgroup_basic : enable
 #extension GL_KHR_shader_subgroup_arithmetic : enable
 #extension GL_KHR_shader_subgroup_vote : enable
@@ -25,13 +27,22 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform texture3D densityImag
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 4, std430) buffer indicesBuffer {
     uint[] indices;
 };
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 5, std430) buffer bufferatomics {
+
+struct IndirectCommand {
     uint indexCount;
     uint instanceCount;
     uint firstIndex;
     int vertexOffset;
     uint firstInstance;
     uint vertexCount;
+};
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 5, scalar) buffer bufferatomics {
+    IndirectCommand opaque;
+    IndirectCommand transparent;
+};
+
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 6, std430) buffer indicesTransparentBuffer {
+    uint[] indicesTransparent;
 };
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 7) uniform sampler linearSampler;
@@ -42,6 +53,7 @@ layout(push_constant) uniform Config {
     float threshold;
     uvec3 minBox;
     uint lod;
+    float thresholdTransparency;
 };
 
 uvec3 indexOffset(uint idx) {
@@ -65,16 +77,8 @@ uint vertexKey(uvec3 pos1, uvec3 pos2) {
     return key;
 }
 
-const bool enableSubgroups = false;
-const bool helperInvocations = false;
-const uvec3 WorkGroupSizeWithoutHelper = uvec3(3u, 3u, 3u);
-
 uint vertexKeyFromIndexOffsets(uint idx1, uint idx2) {
-    const bool useSubgroups = enableSubgroups && gl_NumSubgroups <= 2;
-
-    uvec3 workgroupBase = helperInvocations && useSubgroups
-        ? gl_WorkGroupID * WorkGroupSizeWithoutHelper
-        : gl_WorkGroupID * gl_WorkGroupSize;
+    uvec3 workgroupBase = gl_WorkGroupID * gl_WorkGroupSize;
     uvec3 base = workgroupBase + gl_LocalInvocationID;
     uvec3 vertexPos1 = base + indexOffset(idx1);
     uvec3 vertexPos2 = base + indexOffset(idx2);
@@ -96,88 +100,8 @@ uvec3 localInvocationID(uint invocationIndex) {
         invocationIndex / (gl_WorkGroupSize.x * gl_WorkGroupSize.y));
 }
 
-
-void main() [[maximally_reconverges]] {
-    const bool useSubgroups = enableSubgroups && gl_NumSubgroups <= 2;
-
-    uvec3 workgroupBase = helperInvocations && useSubgroups
-        ? gl_WorkGroupID * WorkGroupSizeWithoutHelper
-        : gl_WorkGroupID * gl_WorkGroupSize;
-
-    uvec3 base = workgroupBase + gl_LocalInvocationID;
-
-    if (subgroupAll(any(greaterThanEqual(base + uvec3(1u), extent))))
-        return;
-
-    uint[2] densitiesAboveThresholdArr;
-
-    if (useSubgroups) {
-        float density = texelFetch(sampler3D(densityImage, nearestSampler),
-            min(ivec3(workgroupBase + localInvocationID(gl_SubgroupInvocationID)),
-            ivec3(extent)), int(lod)).x;
-
-        bool densityAboveThreshold = density >= threshold;
-        uvec4 densitiesAboveThreshold = subgroupBallot(densityAboveThreshold);
-        densitiesAboveThresholdArr[0] = densitiesAboveThreshold.x;
-        densitiesAboveThresholdArr[1] = densitiesAboveThreshold.y;
-
-        if (gl_NumSubgroups == 2u) {
-            density = texelFetch(sampler3D(densityImage, nearestSampler),
-                min(ivec3(workgroupBase + localInvocationID((gl_SubgroupInvocationID + gl_SubgroupSize))),
-                ivec3(extent)), int(lod)).x;
-
-            densityAboveThreshold = density >= threshold;
-            uvec4 densitiesAboveThreshold2 = subgroupBallot(densityAboveThreshold);
-            densitiesAboveThresholdArr[1] = densitiesAboveThreshold2.x;
-        }
-    }
-
-    uint voxelKey = 0u;
-    for (uint z = 0u; z < 2u; z++) {
-        for (uint y = 0u; y < 2u; y++) {
-            for (uint x = 0u; x < 2u; x++) {
-                uvec3 offset = uvec3(x, y, z);
-
-                bool densityAboveThreshold = false;
-                if (useSubgroups && helperInvocations) {
-                    uint densityInvocationIndex = localInvocationIndex(gl_LocalInvocationID + offset);
-                    densityAboveThreshold = (densitiesAboveThresholdArr[densityInvocationIndex / 32u] & (1u << (densityInvocationIndex % 32u))) != 0u;
-                } else if (!useSubgroups) {
-                    uvec3 pos = base + offset;
-                    float density = texelFetch(sampler3D(densityImage, nearestSampler), ivec3(pos), int(lod)).x;
-                    densityAboveThreshold = density >= threshold;
-                } else if (useSubgroups && !helperInvocations) {
-                    // Non-uniform dynamic branching instead of helper invocations
-                    if (!any(greaterThanEqual(gl_LocalInvocationID, uvec3(3u, 3u, 3u)))) {
-                        uint densityInvocationIndex = localInvocationIndex(gl_LocalInvocationID + offset);
-                        densityAboveThreshold = (densitiesAboveThresholdArr[densityInvocationIndex / 32u] & (1u << (densityInvocationIndex % 32u))) != 0u;
-                    } else {
-                        uvec3 pos = base + offset;
-                        float density = texelFetch(sampler3D(densityImage, nearestSampler), ivec3(pos), int(lod)).x;
-                        densityAboveThreshold = density >= threshold;
-                    }
-
-                }
-
-                uint index = ((x + z) & 1u) + z * 2u + y * 4u;
-                voxelKey |= uint(densityAboveThreshold) << index;
-            }
-        }
-    }
-
-    if (useSubgroups && helperInvocations && any(greaterThanEqual(gl_LocalInvocationID, uvec3(3u, 3u, 3u))))
-        return; // Helper lanes, don't write vertices.
-
-    if (any(greaterThanEqual(base + uvec3(1u), extent)))
-        return;
-
-    if (voxelKey == 0u || voxelKey == 255u)
-        return;
-
-    instanceCount = 1u;
-
+uint[12u] buildVertexKeys(uint voxelKey) {
     uint[12u] vertexKeys;
-
     for (uint i = 0u; i < 4u; i++) {
         if ((edges[voxelKey] & (1u << i)) != 0u) {
             uint idx1 = i;
@@ -207,13 +131,64 @@ void main() [[maximally_reconverges]] {
             vertexKeys[i + 8u] = ~0u;
         }
     }
+    return vertexKeys;
+}
 
 
-    for (uint i = 0u; i < 16u && tris[voxelKey][i] != -1; i += 3u) {
-        uint firstIndex = atomicAdd(indexCount, 3u);
+void main() {
+    uvec3 workgroupBase = gl_WorkGroupID * gl_WorkGroupSize;
+    uvec3 base = workgroupBase + gl_LocalInvocationID;
 
-        indices[firstIndex + 0u] = vertexKeys[tris[voxelKey][i + 0u]];
-        indices[firstIndex + 1u] = vertexKeys[tris[voxelKey][i + 1u]];
-        indices[firstIndex + 2u] = vertexKeys[tris[voxelKey][i + 2u]];
+    if (subgroupAll(any(greaterThanEqual(base + uvec3(1u), extent))))
+        return;
+
+    uint voxelKey = 0u;
+    uint voxelKeyTransparent = 0u;
+    for (uint z = 0u; z < 2u; z++) {
+        for (uint y = 0u; y < 2u; y++) {
+            for (uint x = 0u; x < 2u; x++) {
+                uvec3 offset = uvec3(x, y, z);
+
+                uvec3 pos = base + offset;
+                float density = texelFetch(sampler3D(densityImage, nearestSampler), ivec3(pos), int(lod)).x;
+
+                uint index = ((x + z) & 1u) + z * 2u + y * 4u;
+                voxelKey |= uint(density >= threshold) << index;
+                voxelKeyTransparent |= uint(density >= thresholdTransparency) << index;
+            }
+        }
+    }
+
+    if (any(greaterThanEqual(base + uvec3(1u), extent)))
+        return;
+
+    if ((voxelKey == 0u || voxelKey == 255u) && (voxelKeyTransparent == 0u || voxelKeyTransparent == 255u))
+        return;
+
+    transparent.instanceCount = 1u;
+    opaque.instanceCount = 1u;
+
+    if (voxelKey != 0u || voxelKey != 255u) {
+        uint[12u] vertexKeys = buildVertexKeys(voxelKey);
+
+        for (uint i = 0u; i < 16u && tris[voxelKey][i] != -1; i += 3u) {
+            uint firstIndex = atomicAdd(opaque.indexCount, 3u);
+
+            indices[firstIndex + 0u] = vertexKeys[tris[voxelKey][i + 0u]];
+            indices[firstIndex + 1u] = vertexKeys[tris[voxelKey][i + 1u]];
+            indices[firstIndex + 2u] = vertexKeys[tris[voxelKey][i + 2u]];
+        }
+    }
+
+    if (voxelKeyTransparent != 0u || voxelKeyTransparent != 255u) {
+        uint[12u] vertexKeysTransparent = buildVertexKeys(voxelKeyTransparent);
+
+        for (uint i = 0u; i < 16u && tris[voxelKeyTransparent][i] != -1; i += 3u) {
+            uint firstIndex = atomicAdd(transparent.indexCount, 3u);
+
+            indicesTransparent[firstIndex + 0u] = vertexKeysTransparent[tris[voxelKeyTransparent][i + 0u]];
+            indicesTransparent[firstIndex + 1u] = vertexKeysTransparent[tris[voxelKeyTransparent][i + 1u]];
+            indicesTransparent[firstIndex + 2u] = vertexKeysTransparent[tris[voxelKeyTransparent][i + 2u]];
+        }
     }
 }

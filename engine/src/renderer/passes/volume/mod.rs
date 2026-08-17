@@ -282,6 +282,7 @@ impl RenderPath for VolumeRenderer {
             &params,
             self.texture_handle,
             self.threshold,
+            self.threshold * 0.2f32,
             geometry_lod,
             Vec3UI::new(
                 (start.x.max(0.0f32) as u32).min(volume_texture_info.width >> geometry_lod),
@@ -345,6 +346,7 @@ impl RenderPath for VolumeRenderer {
                 self.texture_handle,
                 model_matrix,
                 self.threshold,
+                self.threshold * 0.2f32,
                 geometry_lod,
             );
         } else {

@@ -14,6 +14,7 @@ struct MarchingCubesConfig {
     pub threshold: f32,
     pub min: Vec3UI,
     pub lod: u32,
+    pub transparent_threshold: f32,
 }
 
 #[repr(C)]
@@ -37,8 +38,7 @@ pub struct MarchingCubesPass {
 impl MarchingCubesPass {
     pub const ATOMICS_BUFFER_NAME: &'static str = "marchingcubes_atomics";
     pub const INDICES_BUFFER_NAME: &'static str = "marchingcubes_indices";
-
-    const HELPER_INVOCATIONS: bool = false;
+    pub const TRANSPARENT_INDICES_BUFFER_NAME: &'static str = "marchingcubes_transparent_indices";
 
     #[allow(unused)]
     pub fn new(
@@ -51,7 +51,7 @@ impl MarchingCubesPass {
         resources.create_buffer(
             Self::ATOMICS_BUFFER_NAME,
             &BufferInfo {
-                size: std::mem::size_of::<MarchingCubesIndirectCall>() as u64,
+                size: std::mem::size_of::<MarchingCubesIndirectCall>() as u64 * 2u64,
                 usage: BufferUsage::STORAGE | BufferUsage::CONSTANT | BufferUsage::INDIRECT,
                 sharing_mode: QueueSharingMode::Exclusive,
             },
@@ -69,6 +69,17 @@ impl MarchingCubesPass {
         // The theoretical maximum is that every voxel adds 5 triangles, so 15 indices.
         resources.create_buffer(
             Self::INDICES_BUFFER_NAME,
+            &BufferInfo {
+                size: (std::mem::size_of::<u32>() * 15 * resolution_multiplied) as u64,
+                usage: BufferUsage::STORAGE | BufferUsage::INDEX,
+                sharing_mode: QueueSharingMode::Exclusive,
+            },
+            MemoryUsage::GPUMemory,
+            false,
+        );
+
+        resources.create_buffer(
+            Self::TRANSPARENT_INDICES_BUFFER_NAME,
             &BufferInfo {
                 size: (std::mem::size_of::<u32>() * 15 * resolution_multiplied) as u64,
                 usage: BufferUsage::STORAGE | BufferUsage::INDEX,
@@ -415,6 +426,7 @@ impl MarchingCubesPass {
         pass_params: &RenderPassParameters<'_>,
         volume_texture: TextureHandle,
         threshold: f32,
+        threshold_transparency: f32,
         lod: u32,
         min: Vec3UI,
         max: Vec3UI,
@@ -443,6 +455,13 @@ impl MarchingCubesPass {
             BarrierAccess::STORAGE_WRITE,
             HistoryResourceEntry::Current,
         );
+        let transparent_indices_slice = pass_params.resources.access_buffer(
+            command_buffer,
+            Self::TRANSPARENT_INDICES_BUFFER_NAME,
+            BarrierSync::COMPUTE_SHADER,
+            BarrierAccess::STORAGE_WRITE,
+            HistoryResourceEntry::Current,
+        );
         command_buffer.flush_barriers();
         command_buffer.clear_storage_buffer(
             BufferRef::Regular(&atomics_slice),
@@ -464,6 +483,16 @@ impl MarchingCubesPass {
                 / 4,
             0u32,
         );
+        command_buffer.clear_storage_buffer(
+            BufferRef::Regular(&transparent_indices_slice),
+            0u64,
+            pass_params
+                .resources
+                .buffer_range(Self::TRANSPARENT_INDICES_BUFFER_NAME)
+                .length
+                / 4,
+            0u32,
+        );
         let atomics_slice = pass_params.resources.access_buffer(
             command_buffer,
             Self::ATOMICS_BUFFER_NAME,
@@ -474,6 +503,13 @@ impl MarchingCubesPass {
         let indices_slice = pass_params.resources.access_buffer(
             command_buffer,
             Self::INDICES_BUFFER_NAME,
+            BarrierSync::COMPUTE_SHADER,
+            BarrierAccess::STORAGE_WRITE,
+            HistoryResourceEntry::Current,
+        );
+        let transparent_indices_slice = pass_params.resources.access_buffer(
+            command_buffer,
+            Self::TRANSPARENT_INDICES_BUFFER_NAME,
             BarrierSync::COMPUTE_SHADER,
             BarrierAccess::STORAGE_WRITE,
             HistoryResourceEntry::Current,
@@ -515,6 +551,13 @@ impl MarchingCubesPass {
             0,
             WHOLE_BUFFER,
         );
+        command_buffer.bind_storage_buffer(
+            BindingFrequency::Frequent,
+            6,
+            BufferRef::Regular(&transparent_indices_slice),
+            0,
+            WHOLE_BUFFER,
+        );
 
         command_buffer.bind_sampler(BindingFrequency::Frequent, 7, resources.linear_sampler());
         command_buffer.bind_sampler(BindingFrequency::Frequent, 8, resources.nearest_sampler());
@@ -527,6 +570,7 @@ impl MarchingCubesPass {
                 lod,
                 min,
                 extent,
+                transparent_threshold: threshold_transparency,
             }],
             ShaderType::ComputeShader,
         );
@@ -534,19 +578,11 @@ impl MarchingCubesPass {
         command_buffer.finish_binding();
 
         if extent.x > 0 && extent.y > 0 && extent.z > 0 {
-            if Self::HELPER_INVOCATIONS {
-                command_buffer.dispatch(
-                    (extent.x + 2u32) / 3u32,
-                    (extent.y + 2u32) / 3u32,
-                    (extent.z + 2u32) / 3u32,
-                );
-            } else {
-                command_buffer.dispatch(
-                    (extent.x + 3u32) / 4u32,
-                    (extent.y + 3u32) / 4u32,
-                    (extent.z + 3u32) / 4u32,
-                );
-            }
+            command_buffer.dispatch(
+                (extent.x + 3u32) / 4u32,
+                (extent.y + 3u32) / 4u32,
+                (extent.z + 3u32) / 4u32,
+            );
         }
 
         command_buffer.end_label();
