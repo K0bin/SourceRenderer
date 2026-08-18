@@ -701,6 +701,14 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         }
     }
 
+    unsafe fn set_stencil_reference(&mut self, reference: u32) {
+        self.device.cmd_set_stencil_reference(
+            self.cmd_buffer,
+            vk::StencilFaceFlags::FRONT_AND_BACK,
+            reference,
+        );
+    }
+
     unsafe fn begin_label(&mut self, label: &str) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         let label_cstring = CString::new(label).unwrap();

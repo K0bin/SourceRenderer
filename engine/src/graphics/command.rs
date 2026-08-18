@@ -5,16 +5,8 @@ use atomic_refcell::AtomicRefMut;
 use crossbeam_channel::Sender;
 use smallvec::SmallVec;
 
-use super::gpu::{
-    self,
-    Buffer as _,
-    CommandBuffer as _,
-};
-use super::{
-    AccelerationStructure,
-    BottomLevelAccelerationStructureInfo,
-    *,
-};
+use super::gpu::{self, Buffer as _, CommandBuffer as _};
+use super::{AccelerationStructure, BottomLevelAccelerationStructureInfo, *};
 
 const DEBUG_FORCE_FAT_BARRIER: bool = false;
 
@@ -517,6 +509,12 @@ impl<'a> CommandBuffer<'a> {
 
         if DEBUG_FORCE_FAT_BARRIER {
             self.fat_barrier();
+        }
+    }
+
+    pub fn set_stencil_reference(&mut self, reference: u32) {
+        unsafe {
+            self.cmd_buffer_handle.set_stencil_reference(reference);
         }
     }
 

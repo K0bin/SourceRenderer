@@ -266,6 +266,7 @@ pub trait CommandBuffer<B: GPUBackend> {
         dst_array_layer: u32,
         dst_mip_level: u32,
     );
+    unsafe fn set_stencil_reference(&mut self, reference: u32);
 
     unsafe fn begin(&mut self, frame: u64, inheritance: Option<&Self::CommandBufferInheritance>);
     unsafe fn finish(&mut self);

@@ -951,6 +951,13 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         compute_pass_encoder.dispatch_workgroups_indirect_with_u32(&buffer.handle(), offset as u32);
     }
 
+    unsafe fn set_stencil_reference(&mut self, reference: u32) {
+        let cmd_buffer = self.get_recording_mut();
+        cmd_buffer
+            .get_render_encoder()
+            .set_stencil_reference(reference);
+    }
+
     unsafe fn blit(
         &mut self,
         src_texture: &WebGPUTexture,
