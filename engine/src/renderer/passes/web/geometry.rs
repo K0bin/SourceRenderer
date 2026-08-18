@@ -1,27 +1,15 @@
 use std::sync::Arc;
 
 use smallvec::SmallVec;
-use sourcerenderer_core::{
-    Matrix4,
-    Vec2,
-    Vec2I,
-    Vec2UI,
-};
+use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI};
 
 use crate::graphics::*;
 use crate::renderer::asset::{
-    GraphicsPipelineHandle,
-    GraphicsPipelineInfo,
-    RendererAssets,
-    RendererAssetsReadOnly,
-    RendererMaterial,
-    RendererMaterialValue,
+    GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssets, RendererAssetsReadOnly,
+    RendererMaterial, RendererMaterialValue,
 };
 use crate::renderer::drawable::View;
-use crate::renderer::renderer_resources::{
-    HistoryResourceEntry,
-    RendererResources,
-};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use crate::renderer::renderer_scene::RendererScene;
 
 pub struct GeometryPass {
@@ -57,7 +45,7 @@ impl GeometryPass {
             Self::DEPTH_TEXTURE_NAME,
             &TextureInfo {
                 dimension: TextureDimension::Dim2D,
-                format: Format::D32,
+                format: Format::D32S8,
                 width: swapchain.width(),
                 height: swapchain.height(),
                 depth: 1,

@@ -1,19 +1,13 @@
 use std::sync::Arc;
 
 use smallvec::SmallVec;
+use sourcerenderer_core::gpu::TexturePlane;
 use sourcerenderer_core::Vec2;
 
 use crate::graphics::*;
-use crate::renderer::asset::{
-    ComputePipelineHandle,
-    RendererAssets,
-    RendererAssetsReadOnly,
-};
+use crate::renderer::asset::{ComputePipelineHandle, RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_resources::{
-    HistoryResourceEntry,
-    RendererResources,
-};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 
 pub struct HierarchicalZPass {
     ffx_pipeline: ComputePipelineHandle,
@@ -177,6 +171,7 @@ impl HierarchicalZPass {
                             base_array_layer: 0,
                             array_layer_length: 1,
                             format: None,
+                            plane: TexturePlane::Primary,
                         },
                         HistoryResourceEntry::Current,
                     )

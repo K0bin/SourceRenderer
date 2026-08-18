@@ -16,8 +16,8 @@ use sourcerenderer_core::gpu::{
     BlendFactor, BlendInfo, BlendOp, BufferInfo, BufferUsage, ColorComponents, CompareFunc,
     CullMode, DepthStencilInfo, FillMode, Format, FrontFace, LoadOpColor, LogicOp, PrimitiveType,
     QueueSharingMode, RasterizerInfo, SampleCount, Scissor, ShaderInputElement, ShaderType,
-    Texture, TextureDimension, TextureInfo, TextureLayout, TextureUsage, TextureViewInfo,
-    VertexLayoutInfo, Viewport, WHOLE_BUFFER,
+    Texture, TextureDimension, TextureInfo, TextureLayout, TexturePlane, TextureUsage,
+    TextureViewInfo, VertexLayoutInfo, Viewport, WHOLE_BUFFER,
 };
 use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
 use std::sync::Arc;
@@ -118,6 +118,7 @@ impl VisibilityBufferResolvePass {
                 base_array_layer: 0u32,
                 array_layer_length: 1u32,
                 format: None,
+                plane: TexturePlane::Primary,
             },
             HistoryResourceEntry::Current,
         );
@@ -135,6 +136,7 @@ impl VisibilityBufferResolvePass {
                 base_array_layer: 0u32,
                 array_layer_length: 1u32,
                 format: None,
+                plane: TexturePlane::Primary,
             },
             HistoryResourceEntry::Current,
         );
@@ -152,6 +154,7 @@ impl VisibilityBufferResolvePass {
                 base_array_layer: 0u32,
                 array_layer_length: 1u32,
                 format: None,
+                plane: TexturePlane::Primary,
             },
             HistoryResourceEntry::Current,
         );
@@ -202,6 +205,7 @@ impl VisibilityBufferResolvePass {
                 array_layer_length: 1u32,
                 mip_level_length: env_specular_mips,
                 format: None,
+                plane: TexturePlane::Primary,
             },
             HistoryResourceEntry::Current,
         );

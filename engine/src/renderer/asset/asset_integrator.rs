@@ -1,28 +1,17 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use log::trace;
-use smallvec::SmallVec;
-
 use super::*;
 use crate::asset::{
-    AssetData,
-    AssetHandle,
-    AssetLoadPriority,
-    AssetManager,
-    AssetType,
-    MaterialData,
-    MaterialHandle,
-    MaterialValue,
-    MeshData,
-    ModelData,
-    ShaderData,
-    ShaderHandle,
-    TextureData,
+    AssetData, AssetHandle, AssetLoadPriority, AssetManager, AssetType, MaterialData,
+    MaterialHandle, MaterialValue, MeshData, ModelData, ShaderData, ShaderHandle, TextureData,
     TextureHandle,
 };
 use crate::graphics::*;
 use crate::Mutex;
+use log::trace;
+use smallvec::SmallVec;
+use sourcerenderer_core::gpu::TexturePlane;
 
 struct DelayedAsset {
     fence: SharedFenceValuePair,
@@ -267,6 +256,7 @@ impl AssetIntegrator {
                 base_array_layer: 0,
                 array_layer_length: 1,
                 format: None,
+                plane: TexturePlane::Primary,
             },
             Some(&name),
         );

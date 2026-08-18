@@ -1,22 +1,13 @@
+use sourcerenderer_core::gpu::TexturePlane;
 use sourcerenderer_core::Vec4;
 
 use crate::graphics::*;
 use crate::math::Frustum;
-use crate::renderer::asset::{
-    ComputePipelineHandle,
-    RendererAssets,
-    RendererAssetsReadOnly,
-};
-use crate::renderer::passes::modern::gpu_scene::{
-    DRAWABLE_CAPACITY,
-    PART_CAPACITY,
-};
+use crate::renderer::asset::{ComputePipelineHandle, RendererAssets, RendererAssetsReadOnly};
+use crate::renderer::passes::modern::gpu_scene::{DRAWABLE_CAPACITY, PART_CAPACITY};
 use crate::renderer::passes::modern::hi_z::HierarchicalZPass;
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_resources::{
-    HistoryResourceEntry,
-    RendererResources,
-};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 
 pub struct DrawPrepPass {
     culling_pipeline: ComputePipelineHandle,
@@ -96,6 +87,7 @@ impl DrawPrepPass {
                     base_array_layer: 0,
                     array_layer_length: 1,
                     format: None,
+                    plane: TexturePlane::Primary,
                 },
                 HistoryResourceEntry::Current,
             );

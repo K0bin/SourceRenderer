@@ -1,23 +1,16 @@
+use sourcerenderer_core::gpu::TexturePlane;
+use sourcerenderer_core::Vec2UI;
 use std::cell::Ref;
 use std::sync::Arc;
-
-use sourcerenderer_core::Vec2UI;
 
 use super::rt_shadows::RTShadowPass;
 use super::shadow_map::ShadowMapPass;
 use super::visibility_buffer::VisibilityBufferPass;
 use crate::graphics::*;
-use crate::renderer::asset::{
-    ComputePipelineHandle,
-    RendererAssets,
-    RendererAssetsReadOnly,
-};
+use crate::renderer::asset::{ComputePipelineHandle, RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::passes::ssao::SsaoPass;
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_resources::{
-    HistoryResourceEntry,
-    RendererResources,
-};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 
 pub struct ShadingPass {
     sampler: Arc<crate::graphics::Sampler>,
@@ -198,6 +191,7 @@ impl ShadingPass {
                 mip_level_length: 1,
                 base_mip_level: 0,
                 format: None,
+                plane: TexturePlane::Primary,
             },
             HistoryResourceEntry::Current,
         );

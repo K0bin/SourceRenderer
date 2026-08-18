@@ -1,40 +1,20 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use bevy_math::Vec4Swizzles as _;
-use smallvec::SmallVec;
-use sourcerenderer_core::{
-    Matrix4,
-    Vec2,
-    Vec2I,
-    Vec2UI,
-    Vec3,
-    Vec4,
-};
-
 use crate::graphics::*;
 use crate::renderer::asset::{
-    ComputePipelineHandle,
-    GraphicsPipelineHandle,
-    GraphicsPipelineInfo,
-    RendererAssets,
+    ComputePipelineHandle, GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssets,
     RendererAssetsReadOnly,
 };
 use crate::renderer::light::RendererDirectionalLight;
-use crate::renderer::passes::modern::gpu_scene::{
-    DRAWABLE_CAPACITY,
-    DRAW_CAPACITY,
-    PART_CAPACITY,
-};
-use crate::renderer::render_path::{
-    RenderPassParameters,
-    SceneInfo,
-};
-use crate::renderer::renderer_resources::{
-    HistoryResourceEntry,
-    RendererResources,
-};
+use crate::renderer::passes::modern::gpu_scene::{DRAWABLE_CAPACITY, DRAW_CAPACITY, PART_CAPACITY};
+use crate::renderer::render_path::{RenderPassParameters, SceneInfo};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use crate::renderer::Vertex;
+use bevy_math::Vec4Swizzles as _;
+use smallvec::SmallVec;
+use sourcerenderer_core::gpu::TexturePlane;
+use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
 
 /*
 TODO:
@@ -326,6 +306,7 @@ impl ShadowMapPass {
                     base_array_layer: cascade_index,
                     array_layer_length: 1,
                     format: None,
+                    plane: TexturePlane::Primary,
                 },
                 HistoryResourceEntry::Current,
             );

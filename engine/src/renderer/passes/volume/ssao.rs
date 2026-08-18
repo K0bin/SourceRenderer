@@ -1,13 +1,13 @@
 use std::cell::Ref;
 use std::sync::Arc;
 
-use rand::random;
-use sourcerenderer_core::{Vec2UI, Vec4};
-
 use crate::graphics::*;
 use crate::renderer::asset::*;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
+use rand::random;
+use sourcerenderer_core::gpu::TexturePlane;
+use sourcerenderer_core::{Vec2UI, Vec4};
 
 pub struct SsaoPass {
     pipeline: ComputePipelineHandle,
@@ -186,6 +186,7 @@ impl SsaoPass {
                 array_layer_length: 1u32,
                 mip_level_length: 1u32,
                 format: None,
+                plane: TexturePlane::Primary,
             },
             Some("SSAONoiseView"),
         );

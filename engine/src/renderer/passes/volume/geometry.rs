@@ -9,6 +9,7 @@ use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use crate::renderer::renderer_scene::RendererScene;
+use sourcerenderer_core::gpu::{StencilOp, TexturePlane};
 use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
 use std::default::Default;
 use std::sync::Arc;
@@ -34,6 +35,7 @@ struct MaterialData {
 
 pub struct GeometryPass {
     pipeline: GraphicsPipelineHandle,
+    pipeline_non_overlapping: GraphicsPipelineHandle,
     pipeline_transparent: GraphicsPipelineHandle,
     pipeline_transparent_prepass: GraphicsPipelineHandle,
     sampler: Arc<crate::graphics::Sampler>,
@@ -86,7 +88,7 @@ impl GeometryPass {
             Self::DEPTH_TEXTURE_NAME,
             &TextureInfo {
                 dimension: TextureDimension::Dim2D,
-                format: Format::D32,
+                format: Format::D32S8,
                 width: swapchain.width(),
                 height: swapchain.height(),
                 depth: 1,
@@ -120,10 +122,15 @@ impl GeometryPass {
                 depth_test_enabled: true,
                 depth_write_enabled: true,
                 depth_func: CompareFunc::Less,
-                stencil_enable: false,
-                stencil_read_mask: 0u8,
-                stencil_write_mask: 0u8,
-                stencil_front: StencilInfo::default(),
+                stencil_enable: true,
+                stencil_read_mask: !0u8,
+                stencil_write_mask: !0u8,
+                stencil_front: StencilInfo {
+                    pass_op: StencilOp::Replace,
+                    fail_op: StencilOp::Keep,
+                    func: CompareFunc::Always,
+                    depth_fail_op: StencilOp::Keep,
+                },
                 stencil_back: StencilInfo::default(),
             },
             blend: BlendInfo {
@@ -143,13 +150,57 @@ impl GeometryPass {
                 }],
             },
             render_target_formats: &[Format::RGBA16UNorm],
-            depth_stencil_format: Format::D32,
+            depth_stencil_format: Format::D32S8, // I'd prefer D24S8 but AMD & Apple don't support that.
         };
         let pipeline = assets.request_graphics_pipeline(&pipeline_info);
+
+        let mut pipeline_transparency_non_overlapping_info: GraphicsPipelineInfo =
+            pipeline_info.clone();
+        pipeline_transparency_non_overlapping_info
+            .depth_stencil
+            .stencil_front = StencilInfo {
+            pass_op: StencilOp::Keep,
+            fail_op: StencilOp::Keep,
+            func: CompareFunc::NotEqual,
+            depth_fail_op: StencilOp::Keep,
+        };
+        let pipeline_non_overlapping =
+            assets.request_graphics_pipeline(&pipeline_transparency_non_overlapping_info);
+
+        let mut pipeline_transparency_prepass_info: GraphicsPipelineInfo = pipeline_info.clone();
+        pipeline_transparency_prepass_info.fs = None;
+        let blend_attachments_prepass = [AttachmentBlendInfo {
+            blend_enabled: false,
+            write_mask: ColorComponents::empty(),
+            ..Default::default()
+        }];
+        pipeline_transparency_prepass_info.blend = BlendInfo {
+            alpha_to_coverage_enabled: false,
+            logic_op_enabled: false,
+            logic_op: LogicOp::And,
+            constants: [0f32, 0f32, 0f32, 0f32],
+            attachments: &blend_attachments_prepass,
+        };
+        pipeline_transparency_prepass_info
+            .depth_stencil
+            .stencil_front = StencilInfo {
+            pass_op: StencilOp::Keep,
+            fail_op: StencilOp::Keep,
+            func: CompareFunc::Equal,
+            depth_fail_op: StencilOp::Keep,
+        };
+        let pipeline_transparent_prepass =
+            assets.request_graphics_pipeline(&pipeline_transparency_prepass_info);
 
         let mut pipeline_transparency_info: GraphicsPipelineInfo = pipeline_info.clone();
         pipeline_transparency_info.depth_stencil.depth_func = CompareFunc::Equal;
         pipeline_transparency_info.depth_stencil.depth_write_enabled = false;
+        pipeline_transparency_info.depth_stencil.stencil_front = StencilInfo {
+            pass_op: StencilOp::Keep,
+            fail_op: StencilOp::Keep,
+            func: CompareFunc::Equal,
+            depth_fail_op: StencilOp::Keep,
+        };
         let blend_attachments = [AttachmentBlendInfo {
             blend_enabled: true,
             src_color_blend_factor: BlendFactor::SrcAlpha,
@@ -169,26 +220,6 @@ impl GeometryPass {
         };
         let pipeline_transparent = assets.request_graphics_pipeline(&pipeline_transparency_info);
 
-        let mut pipeline_transparency_prepass_info: GraphicsPipelineInfo = pipeline_info.clone();
-        pipeline_transparency_prepass_info.fs = None;
-        let blend_attachments_prepass = [AttachmentBlendInfo {
-            blend_enabled: false,
-            write_mask: ColorComponents::empty(),
-            ..Default::default()
-        }];
-        pipeline_transparency_prepass_info.blend = BlendInfo {
-            alpha_to_coverage_enabled: false,
-            logic_op_enabled: false,
-            logic_op: LogicOp::And,
-            constants: [0f32, 0f32, 0f32, 0f32],
-            attachments: &blend_attachments_prepass,
-        };
-        /*let mut pipeline_transparency_prepass_info: GraphicsPipelineInfo =
-            pipeline_transparency_info.clone();
-        pipeline_transparency_prepass_info.rasterizer.cull_mode = CullMode::Front;*/
-        let pipeline_transparent_prepass =
-            assets.request_graphics_pipeline(&pipeline_transparency_prepass_info);
-
         let (transfer_function_handle, _) = assets.asset_manager().request_asset(
             //"assets/transferfunction_colorful.png",
             "assets/transferfunction.png",
@@ -199,6 +230,7 @@ impl GeometryPass {
         Self {
             pipeline,
             pipeline_transparent,
+            pipeline_non_overlapping,
             sampler: Arc::new(sampler),
             transfer_function_handle: TextureHandle::from(transfer_function_handle),
             pipeline_transparent_prepass,
@@ -331,6 +363,7 @@ impl GeometryPass {
                 array_layer_length: 1u32,
                 mip_level_length: env_specular_mips,
                 format: None,
+                plane: TexturePlane::Primary,
             },
             HistoryResourceEntry::Current,
         );
@@ -347,7 +380,10 @@ impl GeometryPass {
             }],
             depth_stencil: Some(&DepthStencilAttachment {
                 view: &dsv,
-                load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
+                load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue {
+                    depth: 1.0f32,
+                    stencil: 0u32,
+                }),
                 store_op: StoreOp::Store,
             }),
             query_range: None,
@@ -358,6 +394,9 @@ impl GeometryPass {
             .expect("Pipeline is not compiled yet");
         let pipeline_transparent: &Arc<GraphicsPipeline> = assets
             .get_graphics_pipeline(self.pipeline_transparent)
+            .expect("Pipeline is not compiled yet");
+        let pipeline_non_overlapping: &Arc<GraphicsPipeline> = assets
+            .get_graphics_pipeline(self.pipeline_non_overlapping)
             .expect("Pipeline is not compiled yet");
         let pipeline_transparent_prepass: &Arc<GraphicsPipeline> = assets
             .get_graphics_pipeline(self.pipeline_transparent_prepass)
@@ -373,6 +412,7 @@ impl GeometryPass {
             position: Vec2I::new(0, 0),
             extent: color_tex_extent,
         }]);
+        cmd_buffer.set_stencil_reference(1u32);
 
         //let camera_buffer = cmd_buffer.upload_dynamic_data(&[view.proj_matrix * view.view_matrix], BufferUsage::CONSTANT);
         cmd_buffer.bind_uniform_buffer(
@@ -460,6 +500,45 @@ impl GeometryPass {
             std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
         );
 
+        // Geometry 2 - Non overlapping
+
+        cmd_buffer.set_pipeline(PipelineBinding::Graphics(pipeline_non_overlapping));
+        cmd_buffer.set_push_constant_data(
+            &[PushConstantData {
+                model_matrix,
+                inv_model_matrix: Matrix4::inverse(&model_matrix),
+                threshold: threshold_transparency,
+                lod,
+            }],
+            ShaderType::VertexShader,
+        );
+        cmd_buffer.set_push_constant_data(
+            &[MaterialData {
+                roughness: 0.6f32,
+                metalness: 0.3f32,
+                _padding: 0u64,
+                //roughness: 0.1f32,
+                //metalness: 0.9f32,
+                f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
+                lod,
+            }],
+            ShaderType::FragmentShader,
+        );
+        cmd_buffer.set_index_buffer(
+            BufferRef::Regular(&*marchingcubes_transparent_ibo),
+            0u64,
+            IndexFormat::U32,
+        );
+        cmd_buffer.finish_binding();
+        cmd_buffer.draw_indexed_indirect(
+            BufferRef::Regular(&*marchingcubes_indirect),
+            std::mem::size_of::<MarchingCubesIndirectCall>() as u64,
+            1u32,
+            std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
+        );
+
+        // Geometry 2 - Depth prepass
+
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(pipeline_transparent_prepass));
         cmd_buffer.set_push_constant_data(
             &[PushConstantData {
@@ -482,6 +561,8 @@ impl GeometryPass {
             1u32,
             std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
         );
+
+        // Geometry 2 - Transparent
 
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(pipeline_transparent));
         cmd_buffer.set_push_constant_data(

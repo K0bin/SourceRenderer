@@ -1,19 +1,12 @@
 use std::sync::Arc;
 
-use smallvec::SmallVec;
-use sourcerenderer_core::{
-    Matrix4,
-    Vec2,
-    Vec2UI,
-    Vec3,
-    Vec3UI,
-    Vec4,
-};
-
 use super::acceleration_structure_update::AccelerationStructureUpdatePass;
 use super::clustering::ClusteringPass;
 use super::geometry::GeometryPass;
 use super::light_binning::LightBinningPass;
+use smallvec::SmallVec;
+use sourcerenderer_core::gpu::TexturePlane;
+use sourcerenderer_core::{Matrix4, Vec2, Vec2UI, Vec3, Vec3UI, Vec4};
 //use super::occlusion::OcclusionPass;
 use super::prepass::Prepass;
 use super::rt_shadows::RTShadowPass;
@@ -21,27 +14,14 @@ use super::sharpen::SharpenPass;
 use super::ssao::SsaoPass;
 use super::taa::TAAPass;
 use crate::graphics::*;
-use crate::renderer::asset::{
-    RendererAssets,
-    RendererAssetsReadOnly,
-};
+use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::passes::blit::BlitPass;
 use crate::renderer::passes::blue_noise::BlueNoise;
-use crate::renderer::passes::modern::gpu_scene::{
-    BufferBinding,
-    SceneBuffers,
-};
+use crate::renderer::passes::modern::gpu_scene::{BufferBinding, SceneBuffers};
 use crate::renderer::render_path::{
-    FrameInfo,
-    RenderPassParameters,
-    RenderPath,
-    RenderPathResult,
-    SceneInfo,
+    FrameInfo, RenderPassParameters, RenderPath, RenderPathResult, SceneInfo,
 };
-use crate::renderer::renderer_resources::{
-    HistoryResourceEntry,
-    RendererResources,
-};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 
 pub struct ConservativeRenderer {
     device: Arc<crate::graphics::Device>,
@@ -507,6 +487,7 @@ impl RenderPath for ConservativeRenderer {
                 base_array_layer: 0,
                 array_layer_length: 1,
                 format: None,
+                plane: TexturePlane::Primary,
             },
             HistoryResourceEntry::Current,
         );

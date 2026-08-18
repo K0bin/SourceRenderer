@@ -138,7 +138,7 @@ impl GeometryVisibilityBufferPass {
                 }],
             },
             render_target_formats: &[Format::R32UInt],
-            depth_stencil_format: Format::D32,
+            depth_stencil_format: Format::D32S8,
         };
         let pipeline = assets.request_graphics_pipeline(&pipeline_info);
 

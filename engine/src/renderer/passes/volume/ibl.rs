@@ -6,7 +6,7 @@ use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResource
 use sourcerenderer_core::gpu::{
     BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, ClearColor, Format,
     LoadOpColor, SampleCount, ShaderType, TextureDimension, TextureInfo, TextureLayout,
-    TextureUsage, TextureViewInfo,
+    TexturePlane, TextureUsage, TextureViewInfo,
 };
 use std::sync::Arc;
 
@@ -95,6 +95,7 @@ impl ImageBasedLightingPreparation {
                 base_array_layer: 0u32,
                 array_layer_length: 1u32,
                 format: None,
+                plane: TexturePlane::Primary,
             },
             HistoryResourceEntry::Current,
         );
@@ -112,10 +113,18 @@ impl ImageBasedLightingPreparation {
     }
 
     pub fn is_ready(&self, assets: &RendererAssetsReadOnly) -> bool {
-        assets.get_compute_pipeline(self.preintegrate_pipeline).is_some()
-        && assets.get_compute_pipeline(self.prefilter_diffuse_pipeline).is_some()
-        && assets.get_compute_pipeline(self.prefilter_specular_pipeline).is_some()
-        && assets.get_compute_pipeline(self.project_to_cube_pipeline).is_some()
+        assets
+            .get_compute_pipeline(self.preintegrate_pipeline)
+            .is_some()
+            && assets
+                .get_compute_pipeline(self.prefilter_diffuse_pipeline)
+                .is_some()
+            && assets
+                .get_compute_pipeline(self.prefilter_specular_pipeline)
+                .is_some()
+            && assets
+                .get_compute_pipeline(self.project_to_cube_pipeline)
+                .is_some()
     }
 
     fn deproject_env_map(
@@ -165,6 +174,7 @@ impl ImageBasedLightingPreparation {
                 base_array_layer: 0u32,
                 array_layer_length: 1u32,
                 format: None,
+                plane: TexturePlane::Primary,
             },
             HistoryResourceEntry::Current,
         );
@@ -223,6 +233,7 @@ impl ImageBasedLightingPreparation {
                 base_array_layer: 0u32,
                 array_layer_length: 1u32,
                 format: None,
+                plane: TexturePlane::Primary,
             },
             HistoryResourceEntry::Current,
         );
@@ -239,6 +250,7 @@ impl ImageBasedLightingPreparation {
                 base_array_layer: 0u32,
                 array_layer_length: 1u32,
                 format: None,
+                plane: TexturePlane::Primary,
             },
             HistoryResourceEntry::Current,
         );
@@ -288,6 +300,7 @@ impl ImageBasedLightingPreparation {
                     base_array_layer: 0,
                     base_mip_level: i,
                     format: None,
+                    plane: TexturePlane::Primary,
                 },
                 HistoryResourceEntry::Current,
             );

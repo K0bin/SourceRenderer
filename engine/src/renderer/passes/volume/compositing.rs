@@ -7,13 +7,7 @@ use crate::renderer::asset::{
 };
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::HistoryResourceEntry;
-use sourcerenderer_core::gpu::{
-    AttachmentBlendInfo, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency,
-    BlendFactor, BlendInfo, BlendOp, BufferInfo, BufferUsage, ColorComponents, CompareFunc,
-    CullMode, DepthStencilInfo, FillMode, Format, FrontFace, LoadOpColor, LogicOp, PrimitiveType,
-    QueueSharingMode, RasterizerInfo, SampleCount, Scissor, ShaderInputElement, Texture,
-    TextureLayout, TextureViewInfo, VertexLayoutInfo, Viewport,
-};
+use sourcerenderer_core::gpu::{AttachmentBlendInfo, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BlendFactor, BlendInfo, BlendOp, BufferInfo, BufferUsage, ColorComponents, CompareFunc, CullMode, DepthStencilInfo, FillMode, Format, FrontFace, LoadOpColor, LogicOp, PrimitiveType, QueueSharingMode, RasterizerInfo, SampleCount, Scissor, ShaderInputElement, Texture, TextureLayout, TexturePlane, TextureViewInfo, VertexLayoutInfo, Viewport};
 use sourcerenderer_core::{Vec2, Vec2I, Vec2UI, Vec4};
 use std::sync::Arc;
 
@@ -120,6 +114,7 @@ impl CompositingPass {
                 base_array_layer: 0u32,
                 array_layer_length: 1u32,
                 format: None,
+                plane: TexturePlane::Primary,
             },
             HistoryResourceEntry::Current,
         );
@@ -137,6 +132,7 @@ impl CompositingPass {
                 base_array_layer: 0u32,
                 array_layer_length: 1u32,
                 format: None,
+                plane: TexturePlane::Primary,
             },
             HistoryResourceEntry::Current,
         );

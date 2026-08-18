@@ -513,7 +513,7 @@ impl VkTextureView {
                 a: vk::ComponentSwizzle::IDENTITY,
             },
             subresource_range: vk::ImageSubresourceRange {
-                aspect_mask: aspect_mask_from_format(format),
+                aspect_mask: aspect_mask_from_format_with_plane(format, info.plane),
                 base_mip_level: info.base_mip_level,
                 level_count: info.mip_level_length,
                 base_array_layer,

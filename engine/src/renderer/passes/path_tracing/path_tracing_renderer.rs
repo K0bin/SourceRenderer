@@ -8,7 +8,7 @@ use sourcerenderer_core::{
     Vec3,
     Vec3UI,
 };
-
+use sourcerenderer_core::gpu::TexturePlane;
 use super::PathTracerPass;
 use crate::graphics::gpu::TextureViewInfo;
 use crate::graphics::{
@@ -428,6 +428,7 @@ impl RenderPath for PathTracingRenderer {
                 base_array_layer: 0,
                 array_layer_length: 1,
                 format: None,
+                plane: TexturePlane::Primary,
             },
             HistoryResourceEntry::Current,
         );

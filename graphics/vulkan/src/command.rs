@@ -7,7 +7,7 @@ use ash::vk;
 use crossbeam_utils::atomic::AtomicCell;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{
-    self, Barrier, BarrierSync, Buffer as _, QueueOwnershipTransfer, SplitBarrierWait,
+    self, Barrier, BarrierSync, Buffer as _, QueueOwnershipTransfer, SplitBarrierWait, TexturePlane,
 };
 
 use super::*;
@@ -1835,17 +1835,7 @@ fn barriers_to_vk<'a>(
                     base_array_layer *= 6u32;
                 };
 
-                let mut aspect_mask = vk::ImageAspectFlags::empty();
-                if info.format.is_depth() {
-                    aspect_mask |= vk::ImageAspectFlags::DEPTH;
-                }
-                if info.format.is_stencil() {
-                    aspect_mask |= vk::ImageAspectFlags::STENCIL;
-                }
-                if aspect_mask.is_empty() {
-                    aspect_mask |= vk::ImageAspectFlags::COLOR;
-                }
-
+                let aspect_mask = aspect_mask_from_format(info.format);
                 let (src_queue_family_index, dst_queue_family_index) =
                     queue_ownership_to_vk(&device, queue_ownership);
 
@@ -2205,6 +2195,22 @@ pub(crate) fn aspect_mask_from_format(format: gpu::Format) -> vk::ImageAspectFla
     }
     if aspects.is_empty() {
         aspects = vk::ImageAspectFlags::COLOR;
+    }
+    aspects
+}
+
+pub(crate) fn aspect_mask_from_format_with_plane(
+    format: gpu::Format,
+    plane: TexturePlane,
+) -> vk::ImageAspectFlags {
+    let mut aspects = aspect_mask_from_format(format);
+    if aspects.as_raw().count_ones() > 1 {
+        assert!(format.is_depth() && format.is_stencil());
+        if format.is_stencil() && plane == TexturePlane::Secondary {
+            aspects = vk::ImageAspectFlags::STENCIL;
+        } else {
+            aspects = vk::ImageAspectFlags::DEPTH;
+        }
     }
     aspects
 }

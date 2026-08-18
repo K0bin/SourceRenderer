@@ -13,6 +13,7 @@ use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use crate::renderer::renderer_scene::RendererScene;
 use smallvec::SmallVec;
+use sourcerenderer_core::gpu::TexturePlane;
 use sourcerenderer_core::{HalfVec3, Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
 
 pub struct BackgroundPass {
@@ -70,7 +71,7 @@ impl BackgroundPass {
                 }],
             },
             render_target_formats: &[Format::RGBA16UNorm],
-            depth_stencil_format: Format::D32,
+            depth_stencil_format: Format::Unknown,
         };
         let pipeline = assets.request_graphics_pipeline(&pipeline_info);
 
@@ -125,6 +126,7 @@ impl BackgroundPass {
                 array_layer_length: 1u32,
                 mip_level_length: 1u32,
                 format: None,
+                plane: TexturePlane::Primary,
             },
             HistoryResourceEntry::Current,
         );

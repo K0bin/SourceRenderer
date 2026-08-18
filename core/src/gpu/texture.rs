@@ -156,11 +156,18 @@ pub enum AddressMode {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum TexturePlane {
+    Primary,
+    Secondary, // Only used for stencil in depth stencil formats for now
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct TextureViewInfo {
     pub base_mip_level: u32,
     pub mip_level_length: u32,
     pub base_array_layer: u32,
     pub array_layer_length: u32,
+    pub plane: TexturePlane,
     pub format: Option<Format>,
 }
 
@@ -171,6 +178,7 @@ impl Default for TextureViewInfo {
             mip_level_length: 1,
             base_array_layer: 0,
             array_layer_length: 1,
+            plane: TexturePlane::Primary,
             format: None,
         }
     }
