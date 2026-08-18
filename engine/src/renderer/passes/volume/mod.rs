@@ -190,10 +190,12 @@ impl RenderPath for VolumeRenderer {
         let geometry_lod = self.lod as u32;
 
         let marching_cube_scale = Vec3::new(0.488281f32, 0.488281f32, 0.700012f32) * 8f32 * 0.01f32;
+        let lod_scale = (1u32 << geometry_lod) as f32;
 
         let model_matrix = Matrix4::from_rotation_x(-1.57f32)
             * Matrix4::from_rotation_z(3.14)
-            * Matrix4::from_scale(marching_cube_scale);
+            * Matrix4::from_scale(marching_cube_scale)
+            * Matrix4::from_scale(Vec3::new(lod_scale, lod_scale, lod_scale));
 
         let backbuffer = swapchain.next_backbuffer()?;
 
@@ -212,7 +214,6 @@ impl RenderPath for VolumeRenderer {
         let inv_model = model_matrix.inverse();
         let mut start = Vec3::new(f32::MAX, f32::MAX, f32::MAX);
         let mut end = Vec3::new(f32::MIN, f32::MIN, f32::MIN);
-        let lod_factor = 2.0f32.powi(geometry_lod as i32);
         for x in 0..=1 {
             for y in 0..=1 {
                 for z in 0..=1 {
@@ -222,7 +223,6 @@ impl RenderPath for VolumeRenderer {
                     world_space_pos.x /= world_space_pos.w;
                     world_space_pos.y /= world_space_pos.w;
                     world_space_pos.z /= world_space_pos.w;
-                    world_space_pos /= lod_factor;
                     let model_space_pos = inv_model * world_space_pos;
                     start = Vec3::new(
                         start.x.min(model_space_pos.x),

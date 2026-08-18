@@ -90,9 +90,6 @@ void main(void) {
 
   out_density = max(out_density, textureLod(densityMap, (pos + 0.5 + rayDir.xyz) / densityMapSize, lod).x);
 
-  float lodScale = exp2(lod);
-  pos *= vec3(lodScale);
-
   mat4 mvp = camera.viewProj * model;
   gl_Position = mvp * vec4(pos, 1.0);
   out_worldPosition = (model * vec4(pos, 1.0)).xyz;
