@@ -20,7 +20,7 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0, std430) buffer readonly EdgeT
 };
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 1, std430) buffer readonly TriTable {
-  int[256u][16u] tris;
+  int[256u][17u] tris;
 };
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform texture3D densityImage;
@@ -168,27 +168,33 @@ void main() {
     transparent.instanceCount = 1u;
     opaque.instanceCount = 1u;
 
-    if (voxelKey != 0u || voxelKey != 255u) {
+    uint indexCount = voxelKey != 0u || voxelKey != 255u
+        ? tris[voxelKey][0u] : 0u;
+    uint transparentIndexCount = voxelKeyTransparent != 0u || voxelKeyTransparent != 255u
+        ? tris[voxelKeyTransparent][0u] : 0u;
+
+    indexCount = min(indexCount, 16u);
+    transparentIndexCount = min(transparentIndexCount, 16u);
+
+    if (indexCount != 0u) {
         uint[12u] vertexKeys = buildVertexKeys(voxelKey);
+        uint firstIndex = atomicAdd(opaque.indexCount, indexCount);
 
-        for (uint i = 0u; i < 16u && tris[voxelKey][i] != -1; i += 3u) {
-            uint firstIndex = atomicAdd(opaque.indexCount, 3u);
-
-            indices[firstIndex + 0u] = vertexKeys[tris[voxelKey][i + 0u]];
-            indices[firstIndex + 1u] = vertexKeys[tris[voxelKey][i + 1u]];
-            indices[firstIndex + 2u] = vertexKeys[tris[voxelKey][i + 2u]];
+        for (uint i = 0u; i < indexCount; i += 3u) {
+            indices[firstIndex + i + 0u] = vertexKeys[tris[voxelKey][1u + i + 0u]];
+            indices[firstIndex + i + 1u] = vertexKeys[tris[voxelKey][1u + i + 1u]];
+            indices[firstIndex + i + 2u] = vertexKeys[tris[voxelKey][1u + i + 2u]];
         }
     }
 
-    if (voxelKeyTransparent != 0u || voxelKeyTransparent != 255u) {
+    if (transparentIndexCount != 0u) {
         uint[12u] vertexKeysTransparent = buildVertexKeys(voxelKeyTransparent);
+        uint firstIndex = atomicAdd(transparent.indexCount, transparentIndexCount);
 
-        for (uint i = 0u; i < 16u && tris[voxelKeyTransparent][i] != -1; i += 3u) {
-            uint firstIndex = atomicAdd(transparent.indexCount, 3u);
-
-            indicesTransparent[firstIndex + 0u] = vertexKeysTransparent[tris[voxelKeyTransparent][i + 0u]];
-            indicesTransparent[firstIndex + 1u] = vertexKeysTransparent[tris[voxelKeyTransparent][i + 1u]];
-            indicesTransparent[firstIndex + 2u] = vertexKeysTransparent[tris[voxelKeyTransparent][i + 2u]];
+        for (uint i = 0u; i < transparentIndexCount; i += 3u) {
+            indicesTransparent[firstIndex + i + 0u] = vertexKeysTransparent[tris[voxelKeyTransparent][1u + i + 0u]];
+            indicesTransparent[firstIndex + i + 1u] = vertexKeysTransparent[tris[voxelKeyTransparent][1u + i + 1u]];
+            indicesTransparent[firstIndex + i + 2u] = vertexKeysTransparent[tris[voxelKeyTransparent][1u + i + 2u]];
         }
     }
 }
