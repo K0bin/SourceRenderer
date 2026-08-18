@@ -10,7 +10,7 @@ use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use crate::renderer::renderer_scene::RendererScene;
 use sourcerenderer_core::gpu::{StencilOp, TexturePlane};
-use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
+use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec3UI, Vec4};
 use std::default::Default;
 use std::sync::Arc;
 
@@ -19,6 +19,7 @@ use std::sync::Arc;
 struct PushConstantData {
     model_matrix: Matrix4,
     inv_model_matrix: Matrix4,
+    lod_extents: Vec3UI,
     threshold: f32,
     lod: u32,
 }
@@ -443,6 +444,13 @@ impl GeometryPass {
         );
 
         let volume_texture = assets.get_texture(volume_texture);
+        let volume_texture_base = volume_texture.view.texture().unwrap();
+        let volume_texture_info = volume_texture_base.info();
+        let volume_texture_lod_extents = Vec3UI::new(
+            volume_texture_info.width >> lod,
+            volume_texture_info.height >> lod,
+            volume_texture_info.depth >> lod,
+        );
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::Frequent,
             0u32,
@@ -470,6 +478,7 @@ impl GeometryPass {
             &[PushConstantData {
                 model_matrix,
                 inv_model_matrix: Matrix4::inverse(&model_matrix),
+                lod_extents: volume_texture_lod_extents,
                 threshold,
                 lod,
             }],
@@ -507,6 +516,7 @@ impl GeometryPass {
             &[PushConstantData {
                 model_matrix,
                 inv_model_matrix: Matrix4::inverse(&model_matrix),
+                lod_extents: volume_texture_lod_extents,
                 threshold: threshold_transparency,
                 lod,
             }],
@@ -544,6 +554,7 @@ impl GeometryPass {
             &[PushConstantData {
                 model_matrix,
                 inv_model_matrix: Matrix4::inverse(&model_matrix),
+                lod_extents: volume_texture_lod_extents,
                 threshold: threshold_transparency,
                 lod,
             }],
@@ -570,6 +581,7 @@ impl GeometryPass {
                 model_matrix,
                 inv_model_matrix: Matrix4::inverse(&model_matrix),
                 threshold: threshold_transparency,
+                lod_extents: volume_texture_lod_extents,
                 lod,
             }],
             ShaderType::VertexShader,

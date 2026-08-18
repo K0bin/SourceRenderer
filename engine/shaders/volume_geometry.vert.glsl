@@ -16,6 +16,7 @@ layout(set = DESCRIPTOR_SET_FRAME, binding = 0) uniform CameraUBO {
 layout(push_constant) uniform VeryHighFrequencyUbo {
   mat4 model;
   mat4 invModel;
+  uvec3 lodExtents;
   float threshold;
   uint lod;
 };
@@ -24,8 +25,7 @@ layout (set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform sampler3D densityMap
 
 
 vec4 interpolateVertices(uvec3 pos1, uvec3 pos2) {
-    vec3 imgSize = vec3(textureSize(densityMap, int(lod)));
-
+    vec3 imgSize = vec3(lodExtents);
     float value1 = textureLod(densityMap, (vec3(pos1) + vec3(0.5)) / imgSize, lod).x;
     float value2 = textureLod(densityMap, (vec3(pos2) + vec3(0.5)) / imgSize, lod).x;
     if (abs(value1 - threshold) < 0.00001 || abs(value1 - value2) < 0.00001) {
@@ -55,7 +55,7 @@ vec4 vertexPosFromKey(uint vertexKey) {
 vec3 calculateNormal(vec3 densityMapUV, uint normalLod) {
     vec3 normal = vec3(0.0);
 
-    vec3 imgSize = vec3(textureSize(densityMap, int(normalLod)));
+    vec3 imgSize = vec3(lodExtents);
     vec3 singlePixel = vec3(1.0) / imgSize;
 
     normal.x = textureLod(densityMap, densityMapUV - vec3(singlePixel.x, 0, 0), normalLod).x
@@ -69,7 +69,7 @@ vec3 calculateNormal(vec3 densityMapUV, uint normalLod) {
 
 
 void main(void) {
-  vec3 densityMapSize = textureSize(densityMap, int(lod));
+  vec3 densityMapSize = vec3(lodExtents);
   uint vtxkey = gl_VertexIndex;
 
   vec4 posAndDensity = vertexPosFromKey(vtxkey);
