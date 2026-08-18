@@ -248,6 +248,14 @@ impl RenderPath for VolumeRenderer {
                 .clone()
         };
 
+        // TODO: Temporarily disabled, fix this!
+        start = Vec3::new(0.0f32, 0.0f32, 0.0f32);
+        end = Vec3::new(
+            (volume_texture_info.width >> geometry_lod) as f32,
+            (volume_texture_info.height >> geometry_lod) as f32,
+            (volume_texture_info.depth >> geometry_lod) as f32,
+        );
+
         self.marching_cubes_pass.execute(
             &mut cmd_buffer,
             &params,
