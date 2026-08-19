@@ -23,7 +23,7 @@ regex = "1.11"
 bitvec = "1.0"
 smallvec = { version = "1.15", features = ["union", "const_generics", "const_new"] }
 gltf = { version = "1.4", features = ["KHR_lights_punctual"] }
-rand = "0.9"
+rand = "0.10"
 bitset-core = "0.1"
 web-time = "1.1"
 log = "0.4"
@@ -33,8 +33,8 @@ profiling = "1.0"
 field-offset = "0.3"
 widestring = "1.2"
 bitflags = "2.13"
-strum = "0.27"
-strum_macros = "0.27"
+strum = "0.28"
+strum_macros = "0.28"
 # imgui = "0.12"
 thread_local = "1.1"
 serde_json = "1.0"
@@ -59,9 +59,7 @@ bevy_input = { version = "0.19", features = ["mouse", "keyboard", "gamepad"] }
 bevy_diagnostic = "0.19"
 bevy_platform = "0.19"
 
-# bevy_ecs has a dependency on async-executor which itself has a dependency on an ancient version of slab that no longer builds on modern rust versions.
-# This forces Cargo to use a more recent version of Slab.
-slab = "=0.4.9"
+slab = "0.4"
 
 [target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "android", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd", target_os = "macos"))'.dependencies]
 sourcerenderer_vulkan = { path = "../graphics/vulkan" }
@@ -72,7 +70,7 @@ objc2 = { version = "0.6", features = ["std", "disable-encoding-assertions"] } #
 # Force rand crate to use getrandom with wasm-js feature
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 sourcerenderer_webgpu = { path = "../graphics/webgpu" }
-getrandom = { version = "0.3", features = ["wasm_js"] }
+getrandom = { version = "0.4", features = ["wasm_js"] }
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 web-sys = { version = "0.3", features = ["OffscreenCanvas", "Navigator", "DedicatedWorkerGlobalScope", "WorkerNavigator"] }
 js-sys = "0.3"
