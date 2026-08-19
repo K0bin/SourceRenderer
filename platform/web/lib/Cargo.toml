@@ -2,7 +2,7 @@
 name = "sourcerenderer_web"
 version = "0.1.0"
 authors = ["Robin Kertels <robin.kertels@gmail.com>"]
-edition = "2021"
+edition = "2024"
 build = "build.rs"
 
 [lib]
@@ -14,8 +14,8 @@ default = ["console_error_panic_hook"]
 [dependencies]
 js-sys = "0.3"
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
-sourcerenderer_core = { path = "../../../core", features = [ "non_send_io" ] }
-sourcerenderer_engine = { path = "../../../engine", default-features = false, features = [ "web", "render_thread" ] }
+sourcerenderer_core = { path = "../../../core", features = ["non_send_io"] }
+sourcerenderer_engine = { path = "../../../engine", default-features = false, features = ["web", "render_thread"] }
 sourcerenderer_webgpu = { path = "../../../graphics/webgpu" }
 sourcerenderer_game = { path = "../../../game" }
 serde = "1.0"
@@ -40,15 +40,15 @@ console_error_panic_hook = { version = "0.1.7", optional = true }
 [dependencies.web-sys]
 version = "0.3"
 features = [
-  'Document',
-  'Element',
-  'HtmlCanvasElement',
-  'Window',
-  'Worker',
-  'DedicatedWorkerGlobalScope',
-  'Navigator',
-  'ErrorEvent',
-  'Response',
+    'Document',
+    'Element',
+    'HtmlCanvasElement',
+    'Window',
+    'Worker',
+    'DedicatedWorkerGlobalScope',
+    'Navigator',
+    'ErrorEvent',
+    'Response',
 ]
 
 [dev-dependencies]

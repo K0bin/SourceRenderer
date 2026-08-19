@@ -1,11 +1,11 @@
 [package]
 name = "io_util"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [features]
-default = [ "async" ]
-async = [ "futures-lite" ]
+default = ["async"]
+async = ["futures-lite"]
 
 [dependencies]
 futures-lite = { version = "2.6", optional = true }
