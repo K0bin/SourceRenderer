@@ -161,7 +161,10 @@ impl RendererAssets {
     }
 
     #[inline(always)]
-    pub(crate) fn request_compute_pipeline(&self, shader_path: &str) -> ComputePipelineHandle {
+    pub(crate) fn request_compute_pipeline(
+        &self,
+        shader_path: &PathPipelineShaderStage,
+    ) -> ComputePipelineHandle {
         self.shader_manager
             .request_compute_pipeline(&self.read(), shader_path)
     }

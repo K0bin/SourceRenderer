@@ -1,37 +1,18 @@
 use std::collections::HashMap;
-use std::sync::atomic::{
-    AtomicU32,
-    Ordering,
-};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use bitset_core::BitSet;
 use smallvec::SmallVec;
 use sourcerenderer_core::atomic_refcell::AtomicRefCell;
-use sourcerenderer_core::{
-    Matrix4,
-    Platform,
-    Vec2,
-    Vec2I,
-    Vec2UI,
-    Vec3,
-    Vec4,
-};
+use sourcerenderer_core::{Matrix4, Platform, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
 
 use crate::graphics::*;
-use crate::renderer::render_path::{
-    RenderPassParameters,
-    SceneInfo,
-};
+use crate::renderer::render_path::{RenderPassParameters, SceneInfo};
 use crate::renderer::renderer_assets::RendererAssets;
-use crate::renderer::renderer_resources::{
-    HistoryResourceEntry,
-    RendererResources,
-};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use crate::renderer::shader_manager::{
-    GraphicsPipelineHandle,
-    GraphicsPipelineInfo,
-    ShaderManager,
+    GraphicsPipelineHandle, GraphicsPipelineInfo, ShaderManager,
 };
 use crate::Mutex;
 
@@ -127,7 +108,7 @@ impl OcclusionPass {
 
         let pipeline = shader_manager.request_graphics_pipeline(
             &GraphicsPipelineInfo {
-                vs: "shaders/occlusion.vert.json",
+                vs: PipelineShaderPathStage::empty_spec_consts("shaders/occlusion.vert.json"),
                 fs: None,
                 primitive_type: PrimitiveType::Triangles,
                 vertex_layout: VertexLayoutInfo {

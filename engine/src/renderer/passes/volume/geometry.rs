@@ -1,7 +1,8 @@
 use crate::asset::{AssetLoadPriority, AssetType, TextureHandle};
 use crate::graphics::*;
 use crate::renderer::asset::{
-    GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssets, RendererAssetsReadOnly,
+    GraphicsPipelineHandle, GraphicsPipelineInfo, PathPipelineShaderStage, RendererAssets,
+    RendererAssetsReadOnly,
 };
 use crate::renderer::drawable::View;
 use crate::renderer::passes::marching_cubes::{MarchingCubesIndirectCall, MarchingCubesPass};
@@ -104,10 +105,11 @@ impl GeometryPass {
 
         let shader_file_extension = "json";
 
-        let fs_name = format!("shaders/volume_geometry.frag.{}", shader_file_extension);
+        let vs_path = format!("shaders/volume_geometry.vert.{}", shader_file_extension);
+        let fs_path = format!("shaders/volume_geometry.frag.{}", shader_file_extension);
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
-            vs: &format!("shaders/volume_geometry.vert.{}", shader_file_extension),
-            fs: Some(&fs_name),
+            vs: PathPipelineShaderStage::empty_spec_consts(&vs_path),
+            fs: Some(PathPipelineShaderStage::empty_spec_consts(&fs_path)),
             primitive_type: PrimitiveType::Triangles,
             vertex_layout: VertexLayoutInfo {
                 input_assembler: &[],

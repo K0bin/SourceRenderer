@@ -1,20 +1,11 @@
-use sourcerenderer_core::{
-    Vec2UI,
-    Vec3UI,
-    Vec4,
-};
+use sourcerenderer_core::{Vec2UI, Vec3UI, Vec4};
 
 use crate::graphics::*;
 use crate::renderer::asset::{
-    ComputePipelineHandle,
-    RendererAssets,
-    RendererAssetsReadOnly,
+    ComputePipelineHandle, PathPipelineShaderStage, RendererAssets, RendererAssetsReadOnly,
 };
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_resources::{
-    HistoryResourceEntry,
-    RendererResources,
-};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -34,7 +25,9 @@ impl ClusteringPass {
 
     #[allow(unused)]
     pub fn new(barriers: &mut RendererResources, assets: &RendererAssets) -> Self {
-        let pipeline = assets.request_compute_pipeline("shaders/clustering.comp.json");
+        let pipeline = assets.request_compute_pipeline(
+            &PathPipelineShaderStage::empty_spec_consts("shaders/clustering.comp.json"),
+        );
 
         barriers.create_buffer(
             Self::CLUSTERS_BUFFER_NAME,

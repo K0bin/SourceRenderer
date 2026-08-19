@@ -1,22 +1,14 @@
 use std::cell::Ref;
 use std::sync::Arc;
 
-use sourcerenderer_core::{
-    Vec2,
-    Vec2UI,
-};
+use sourcerenderer_core::{Vec2, Vec2UI};
 
 use crate::graphics::*;
 use crate::renderer::asset::{
-    ComputePipelineHandle,
-    RendererAssets,
-    RendererAssetsReadOnly,
+    ComputePipelineHandle, PathPipelineShaderStage, RendererAssets, RendererAssetsReadOnly,
 };
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_resources::{
-    HistoryResourceEntry,
-    RendererResources,
-};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 
 pub(crate) fn scaled_halton_point(width: u32, height: u32, index: u32) -> Vec2 {
     let width_frac = 1.0f32 / (width as f32 * 0.5f32);
@@ -61,11 +53,13 @@ impl TAAPass {
         assets: &RendererAssets,
         visibility_buffer: bool,
     ) -> Self {
-        let pipeline = assets.request_compute_pipeline(if !visibility_buffer {
-            "shaders/taa.comp.json"
-        } else {
-            "shaders/taa_vis_buf.comp.json"
-        });
+        let pipeline = assets.request_compute_pipeline(
+            &PathPipelineShaderStage::empty_spec_consts(if !visibility_buffer {
+                "shaders/taa.comp.json"
+            } else {
+                "shaders/taa_vis_buf.comp.json"
+            }),
+        );
 
         let texture_info = TextureInfo {
             dimension: TextureDimension::Dim2D,

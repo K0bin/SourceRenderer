@@ -4,7 +4,8 @@ use sourcerenderer_core::Vec2UI;
 
 use crate::graphics::*;
 use crate::renderer::asset::{
-    RayTracingPipelineHandle, RayTracingPipelineInfo, RendererAssets, RendererAssetsReadOnly,
+    PathPipelineShaderStage, RayTracingPipelineHandle, RayTracingPipelineInfo, RendererAssets,
+    RendererAssetsReadOnly,
 };
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
@@ -39,10 +40,16 @@ impl RTShadowPass {
         );
 
         let pipeline = assets.request_ray_tracing_pipeline(&RayTracingPipelineInfo {
-            ray_gen_shader: "shaders/shadows.rgen.json",
-            closest_hit_shaders: &["shaders/shadows.rchit.json"],
+            ray_gen_shader: &PathPipelineShaderStage::empty_spec_consts(
+                "shaders/shadows.rgen.json",
+            ),
+            closest_hit_shaders: &[&PathPipelineShaderStage::empty_spec_consts(
+                "shaders/shadows.rchit.json",
+            )],
             any_hit_shaders: &[],
-            miss_shaders: &["shaders/shadows.rmiss.json"],
+            miss_shaders: &[&PathPipelineShaderStage::empty_spec_consts(
+                "shaders/shadows.rmiss.json",
+            )],
         });
 
         Self { pipeline }

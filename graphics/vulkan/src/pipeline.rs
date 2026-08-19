@@ -5,10 +5,12 @@ use std::sync::Arc;
 
 use ash::vk::{self, Handle as _};
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, Buffer as _, Shader as _};
+use sourcerenderer_core::gpu::{self, Buffer as _, PipelineShaderStage, Shader as _};
 use sourcerenderer_core::{align_up_32, align_up_64};
 
 use super::*;
+
+// TODO: Implement spec consts!
 
 #[inline]
 pub(super) fn input_rate_to_vk(input_rate: gpu::InputRate) -> vk::VertexInputRate {
@@ -447,7 +449,7 @@ impl VkPipeline {
         let mut context = DescriptorSetLayoutSetupContext::default();
 
         {
-            let shader = info.vs;
+            let shader = info.vs.shader;
             let shader_stage = vk::PipelineShaderStageCreateInfo {
                 module: shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
@@ -458,15 +460,15 @@ impl VkPipeline {
             add_shader_to_descriptor_set_layout_setup(device, shader, &mut context);
         }
 
-        if let Some(shader) = info.fs.clone() {
+        if let Some(pipeline_shader) = info.fs.as_ref() {
             let shader_stage = vk::PipelineShaderStageCreateInfo {
-                module: shader.shader_module(),
+                module: pipeline_shader.shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
-                stage: shader_type_to_vk(shader.shader_type()),
+                stage: shader_type_to_vk(pipeline_shader.shader.shader_type()),
                 ..Default::default()
             };
             shader_stages.push(shader_stage);
-            add_shader_to_descriptor_set_layout_setup(device, shader, &mut context);
+            add_shader_to_descriptor_set_layout_setup(device, pipeline_shader.shader, &mut context);
         }
 
         let mut attribute_descriptions: Vec<vk::VertexInputAttributeDescription> = Vec::new();
@@ -723,36 +725,36 @@ impl VkPipeline {
 
         if let Some(shader) = info.ts.clone() {
             let shader_stage = vk::PipelineShaderStageCreateInfo {
-                module: shader.shader_module(),
+                module: shader.shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
-                stage: shader_type_to_vk(shader.shader_type()),
+                stage: shader_type_to_vk(shader.shader.shader_type()),
                 ..Default::default()
             };
             shader_stages.push(shader_stage);
-            add_shader_to_descriptor_set_layout_setup(device, shader, &mut context);
+            add_shader_to_descriptor_set_layout_setup(device, shader.shader, &mut context);
         }
 
         {
-            let shader = info.ms;
+            let shader = &info.ms;
             let shader_stage = vk::PipelineShaderStageCreateInfo {
-                module: shader.shader_module(),
+                module: shader.shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
-                stage: shader_type_to_vk(shader.shader_type()),
+                stage: shader_type_to_vk(shader.shader.shader_type()),
                 ..Default::default()
             };
             shader_stages.push(shader_stage);
-            add_shader_to_descriptor_set_layout_setup(device, shader, &mut context);
+            add_shader_to_descriptor_set_layout_setup(device, shader.shader, &mut context);
         }
 
         if let Some(shader) = info.fs.clone() {
             let shader_stage = vk::PipelineShaderStageCreateInfo {
-                module: shader.shader_module(),
+                module: shader.shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
-                stage: shader_type_to_vk(shader.shader_type()),
+                stage: shader_type_to_vk(shader.shader.shader_type()),
                 ..Default::default()
             };
             shader_stages.push(shader_stage);
-            add_shader_to_descriptor_set_layout_setup(device, shader, &mut context);
+            add_shader_to_descriptor_set_layout_setup(device, shader.shader, &mut context);
         }
 
         let rasterizer_create_info = vk::PipelineRasterizationStateCreateInfo {
@@ -958,7 +960,7 @@ impl VkPipeline {
 
     pub fn new_compute(
         device: &Arc<RawVkDevice>,
-        shader: &VkShader,
+        shader: &PipelineShaderStage<VkBackend>,
         shared: &VkShared,
         name: Option<&str>,
     ) -> Self {
@@ -966,13 +968,13 @@ impl VkPipeline {
         let mut context = DescriptorSetLayoutSetupContext::default();
 
         let shader_stage = vk::PipelineShaderStageCreateInfo {
-            module: shader.shader_module(),
+            module: shader.shader.shader_module(),
             p_name: entry_point.as_ptr() as *const c_char,
-            stage: shader_type_to_vk(shader.shader_type()),
+            stage: shader_type_to_vk(shader.shader.shader_type()),
             ..Default::default()
         };
 
-        add_shader_to_descriptor_set_layout_setup(device, shader, &mut context);
+        add_shader_to_descriptor_set_layout_setup(device, shader.shader, &mut context);
         add_bindless_set_if_used(device, &mut context, name);
         remap_push_constant_ranges(&mut context);
 
@@ -1016,7 +1018,7 @@ impl VkPipeline {
             device: device.clone(),
             layout,
             pipeline_type: VkPipelineType::Compute,
-            uses_bindless_texture_set: shader.uses_bindless_texture_set,
+            uses_bindless_texture_set: shader.shader.uses_bindless_texture_set,
             sbt: None,
         }
     }
@@ -1132,7 +1134,7 @@ impl VkPipeline {
             let stage_info = vk::PipelineShaderStageCreateInfo {
                 flags: vk::PipelineShaderStageCreateFlags::empty(),
                 stage: vk::ShaderStageFlags::RAYGEN_KHR,
-                module: shader.shader_module(),
+                module: shader.shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
                 ..Default::default()
             };
@@ -1147,14 +1149,14 @@ impl VkPipeline {
             };
             stages.push(stage_info);
             groups.push(group_info);
-            add_shader_to_descriptor_set_layout_setup(device, shader, &mut context);
+            add_shader_to_descriptor_set_layout_setup(device, shader.shader, &mut context);
         }
 
         for shader in info.closest_hit_shaders.iter() {
             let stage_info = vk::PipelineShaderStageCreateInfo {
                 flags: vk::PipelineShaderStageCreateFlags::empty(),
                 stage: vk::ShaderStageFlags::CLOSEST_HIT_KHR,
-                module: shader.shader_module(),
+                module: shader.shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
                 ..Default::default()
             };
@@ -1169,14 +1171,14 @@ impl VkPipeline {
             };
             stages.push(stage_info);
             groups.push(group_info);
-            add_shader_to_descriptor_set_layout_setup(device, shader, &mut context);
+            add_shader_to_descriptor_set_layout_setup(device, shader.shader, &mut context);
         }
 
         for shader in info.any_hit_shaders.iter() {
             let stage_info = vk::PipelineShaderStageCreateInfo {
                 flags: vk::PipelineShaderStageCreateFlags::empty(),
                 stage: vk::ShaderStageFlags::ANY_HIT_KHR,
-                module: shader.shader_module(),
+                module: shader.shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
                 ..Default::default()
             };
@@ -1191,14 +1193,14 @@ impl VkPipeline {
             };
             stages.push(stage_info);
             groups.push(group_info);
-            add_shader_to_descriptor_set_layout_setup(device, shader, &mut context);
+            add_shader_to_descriptor_set_layout_setup(device, shader.shader, &mut context);
         }
 
         for shader in info.miss_shaders.iter() {
             let stage_info = vk::PipelineShaderStageCreateInfo {
                 flags: vk::PipelineShaderStageCreateFlags::empty(),
                 stage: vk::ShaderStageFlags::MISS_KHR,
-                module: shader.shader_module(),
+                module: shader.shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
                 ..Default::default()
             };
@@ -1213,7 +1215,7 @@ impl VkPipeline {
             };
             stages.push(stage_info);
             groups.push(group_info);
-            add_shader_to_descriptor_set_layout_setup(device, shader, &mut context);
+            add_shader_to_descriptor_set_layout_setup(device, shader.shader, &mut context);
         }
         add_bindless_set_if_used(device, &mut context, name);
 

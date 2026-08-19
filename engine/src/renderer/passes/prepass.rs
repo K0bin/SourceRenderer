@@ -1,27 +1,14 @@
 use bevy_math::Affine3A;
-use sourcerenderer_core::{
-    Matrix4,
-    Vec2,
-    Vec2I,
-    Vec2UI,
-};
+use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI};
 
-use crate::graphics::{
-    CommandBuffer,
-    *,
-};
+use crate::graphics::{CommandBuffer, *};
 use crate::renderer::asset::{
-    GraphicsPipelineHandle,
-    GraphicsPipelineInfo,
-    RendererAssets,
+    GraphicsPipelineHandle, GraphicsPipelineInfo, PathPipelineShaderStage, RendererAssets,
     RendererAssetsReadOnly,
 };
 use crate::renderer::passes::taa::scaled_halton_point;
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_resources::{
-    HistoryResourceEntry,
-    RendererResources,
-};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 
 #[allow(unused)]
 #[derive(Clone, Copy)]
@@ -73,8 +60,10 @@ impl Prepass {
         resources.create_texture(Self::DEPTH_TEXTURE_NAME, &depth_info, true);
 
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
-            vs: &("shaders/prepass.vert.json"),
-            fs: Some("shaders/prepass.frag.json"),
+            vs: PathPipelineShaderStage::empty_spec_consts(&("shaders/prepass.vert.json")),
+            fs: Some(PathPipelineShaderStage::empty_spec_consts(
+                "shaders/prepass.frag.json",
+            )),
             primitive_type: PrimitiveType::Triangles,
             vertex_layout: VertexLayoutInfo {
                 input_assembler: &[InputAssemblerElement {

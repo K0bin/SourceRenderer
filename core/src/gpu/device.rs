@@ -64,7 +64,7 @@ pub trait Device<B: GPUBackend> {
     ) -> B::TextureView;
     unsafe fn create_compute_pipeline(
         &self,
-        shader: &B::Shader,
+        shader: &PipelineShaderStage<B>,
         name: Option<&str>,
     ) -> B::ComputePipeline;
     unsafe fn create_sampler(&self, info: &SamplerInfo) -> B::Sampler;

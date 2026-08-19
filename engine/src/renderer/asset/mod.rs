@@ -12,10 +12,7 @@ pub use asset_types::*;
 pub use renderer_assets::*;
 use shader_manager::*;
 pub use shader_manager::{
-    ComputePipelineHandle,
-    GraphicsPipelineHandle,
-    GraphicsPipelineInfo,
-    MeshGraphicsPipelineHandle,
-    RayTracingPipelineHandle,
+    ComputePipelineHandle, GraphicsPipelineHandle, GraphicsPipelineInfo,
+    MeshGraphicsPipelineHandle, PathPipelineShaderStage, RayTracingPipelineHandle,
     RayTracingPipelineInfo,
 };

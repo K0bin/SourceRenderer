@@ -1,14 +1,8 @@
-use sourcerenderer_core::{
-    Vec2,
-    Vec2I,
-    Vec2UI,
-};
+use sourcerenderer_core::{Vec2, Vec2I, Vec2UI};
 
 use crate::graphics::*;
 use crate::renderer::asset::{
-    GraphicsPipelineHandle,
-    GraphicsPipelineInfo,
-    RendererAssets,
+    GraphicsPipelineHandle, GraphicsPipelineInfo, PathPipelineShaderStage, RendererAssets,
     RendererAssetsReadOnly,
 };
 use crate::renderer::renderer_resources::RendererResources;
@@ -25,8 +19,10 @@ impl BlitPass {
         dst_format: Format,
     ) -> Self {
         let pipeline = assets.request_graphics_pipeline(&GraphicsPipelineInfo {
-            vs: "shaders/fullscreen_quad.vert.json",
-            fs: Some("shaders/blit.frag.json"),
+            vs: PathPipelineShaderStage::empty_spec_consts("shaders/fullscreen_quad.vert.json"),
+            fs: Some(PathPipelineShaderStage::empty_spec_consts(
+                "shaders/blit.frag.json",
+            )),
             vertex_layout: VertexLayoutInfo {
                 shader_inputs: &[],
                 input_assembler: &[],

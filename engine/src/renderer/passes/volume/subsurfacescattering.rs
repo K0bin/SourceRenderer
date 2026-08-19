@@ -48,7 +48,9 @@ impl SSSPass {
             false,
         );
 
-        let pipeline = assets.request_compute_pipeline("shaders/subsurface_scattering.comp.json");
+        let pipeline = assets.request_compute_pipeline(
+            &PathPipelineShaderStage::empty_spec_consts("shaders/subsurface_scattering.comp.json"),
+        );
 
         let sampler = device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Linear,

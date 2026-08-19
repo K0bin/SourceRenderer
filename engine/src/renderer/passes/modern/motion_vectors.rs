@@ -2,16 +2,11 @@ use sourcerenderer_core::Vec2UI;
 
 use crate::graphics::*;
 use crate::renderer::asset::{
-    ComputePipelineHandle,
-    RendererAssets,
-    RendererAssetsReadOnly,
+    ComputePipelineHandle, PathPipelineShaderStage, RendererAssets, RendererAssetsReadOnly,
 };
 use crate::renderer::passes::modern::VisibilityBufferPass;
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_resources::{
-    HistoryResourceEntry,
-    RendererResources,
-};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 
 pub struct MotionVectorPass {
     pipeline: ComputePipelineHandle,
@@ -25,7 +20,9 @@ impl MotionVectorPass {
         renderer_resolution: Vec2UI,
         assets: &RendererAssets,
     ) -> Self {
-        let pipeline = assets.request_compute_pipeline("shaders/motion_vectors_vis_buf.comp.json");
+        let pipeline = assets.request_compute_pipeline(
+            &PathPipelineShaderStage::empty_spec_consts("shaders/motion_vectors_vis_buf.comp.json"),
+        );
 
         resources.create_texture(
             Self::MOTION_TEXTURE_NAME,

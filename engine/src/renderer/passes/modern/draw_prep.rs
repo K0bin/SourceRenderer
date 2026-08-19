@@ -3,7 +3,9 @@ use sourcerenderer_core::Vec4;
 
 use crate::graphics::*;
 use crate::math::Frustum;
-use crate::renderer::asset::{ComputePipelineHandle, RendererAssets, RendererAssetsReadOnly};
+use crate::renderer::asset::{
+    ComputePipelineHandle, PathPipelineShaderStage, RendererAssets, RendererAssetsReadOnly,
+};
 use crate::renderer::passes::modern::gpu_scene::{DRAWABLE_CAPACITY, PART_CAPACITY};
 use crate::renderer::passes::modern::hi_z::HierarchicalZPass;
 use crate::renderer::render_path::RenderPassParameters;
@@ -20,8 +22,12 @@ impl DrawPrepPass {
 
     #[allow(unused)]
     pub fn new(resources: &mut RendererResources, assets: &RendererAssets) -> Self {
-        let culling_pipeline = assets.request_compute_pipeline("shaders/culling.comp.json");
-        let prep_pipeline = assets.request_compute_pipeline("shaders/draw_prep.comp.json");
+        let culling_pipeline = assets.request_compute_pipeline(
+            &PathPipelineShaderStage::empty_spec_consts("shaders/culling.comp.json"),
+        );
+        let prep_pipeline = assets.request_compute_pipeline(
+            &PathPipelineShaderStage::empty_spec_consts("shaders/draw_prep.comp.json"),
+        );
         resources.create_buffer(
             Self::VISIBLE_DRAWABLES_BITFIELD_BUFFER,
             &BufferInfo {

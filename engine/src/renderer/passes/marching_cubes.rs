@@ -1,6 +1,8 @@
 use crate::asset::TextureHandle;
 use crate::graphics::*;
-use crate::renderer::asset::{ComputePipelineHandle, RendererAssets, RendererAssetsReadOnly};
+use crate::renderer::asset::{
+    ComputePipelineHandle, PathPipelineShaderStage, RendererAssets, RendererAssetsReadOnly,
+};
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use sourcerenderer_core::gpu::Buffer;
@@ -46,7 +48,9 @@ impl MarchingCubesPass {
         resources: &mut RendererResources,
         assets: &RendererAssets,
     ) -> Self {
-        let pipeline = assets.request_compute_pipeline("shaders/marching_cubes.comp.json");
+        let pipeline = assets.request_compute_pipeline(
+            &PathPipelineShaderStage::empty_spec_consts("shaders/marching_cubes.comp.json"),
+        );
 
         resources.create_buffer(
             Self::ATOMICS_BUFFER_NAME,

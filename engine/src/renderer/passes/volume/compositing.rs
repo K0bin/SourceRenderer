@@ -3,11 +3,18 @@ use crate::graphics::{
     PipelineBinding, RenderPassBeginInfo, RenderTarget, StoreOp, TextureView,
 };
 use crate::renderer::asset::{
-    GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssets, RendererAssetsReadOnly,
+    GraphicsPipelineHandle, GraphicsPipelineInfo, PathPipelineShaderStage, RendererAssets,
+    RendererAssetsReadOnly,
 };
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::HistoryResourceEntry;
-use sourcerenderer_core::gpu::{AttachmentBlendInfo, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BlendFactor, BlendInfo, BlendOp, BufferInfo, BufferUsage, ColorComponents, CompareFunc, CullMode, DepthStencilInfo, FillMode, Format, FrontFace, LoadOpColor, LogicOp, PrimitiveType, QueueSharingMode, RasterizerInfo, SampleCount, Scissor, ShaderInputElement, Texture, TextureLayout, TexturePlane, TextureViewInfo, VertexLayoutInfo, Viewport};
+use sourcerenderer_core::gpu::{
+    AttachmentBlendInfo, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency,
+    BlendFactor, BlendInfo, BlendOp, BufferInfo, BufferUsage, ColorComponents, CompareFunc,
+    CullMode, DepthStencilInfo, FillMode, Format, FrontFace, LoadOpColor, LogicOp, PrimitiveType,
+    QueueSharingMode, RasterizerInfo, SampleCount, Scissor, ShaderInputElement, Texture,
+    TextureLayout, TexturePlane, TextureViewInfo, VertexLayoutInfo, Viewport,
+};
 use sourcerenderer_core::{Vec2, Vec2I, Vec2UI, Vec4};
 use std::sync::Arc;
 
@@ -23,12 +30,11 @@ impl CompositingPass {
     ) -> Self {
         let shader_file_extension = "json";
 
+        let vs_path = format!("shaders/fullscreen_quad.vert.{}", shader_file_extension);
+        let fs_path = format!("shaders/compositing.frag.{}", shader_file_extension);
         let pipeline = assets.request_graphics_pipeline(&GraphicsPipelineInfo {
-            vs: &format!("shaders/fullscreen_quad.vert.{}", shader_file_extension),
-            fs: Some(&format!(
-                "shaders/compositing.frag.{}",
-                shader_file_extension
-            )),
+            vs: PathPipelineShaderStage::empty_spec_consts(&vs_path),
+            fs: Some(PathPipelineShaderStage::empty_spec_consts(&fs_path)),
             vertex_layout: VertexLayoutInfo {
                 shader_inputs: &[],
                 input_assembler: &[],

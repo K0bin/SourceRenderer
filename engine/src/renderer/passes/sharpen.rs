@@ -4,10 +4,7 @@ use super::taa::TAAPass;
 use crate::graphics::*;
 use crate::renderer::asset::*;
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_resources::{
-    HistoryResourceEntry,
-    RendererResources,
-};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 
 const USE_CAS: bool = true;
 
@@ -24,11 +21,13 @@ impl SharpenPass {
         resources: &mut RendererResources,
         assets: &RendererAssets,
     ) -> Self {
-        let pipeline = assets.request_compute_pipeline(if !USE_CAS {
-            "shaders/sharpen.comp.json"
-        } else {
-            "shaders/cas.comp.json"
-        });
+        let pipeline = assets.request_compute_pipeline(
+            &PathPipelineShaderStage::empty_spec_consts(if !USE_CAS {
+                "shaders/sharpen.comp.json"
+            } else {
+                "shaders/cas.comp.json"
+            }),
+        );
 
         resources.create_texture(
             Self::SHAPENED_TEXTURE_NAME,

@@ -4,9 +4,7 @@ use sourcerenderer_core::Vec2;
 
 use crate::graphics::*;
 use crate::renderer::asset::{
-    GraphicsPipelineHandle,
-    GraphicsPipelineInfo,
-    RendererAssets,
+    GraphicsPipelineHandle, GraphicsPipelineInfo, PathPipelineShaderStage, RendererAssets,
     RendererAssetsReadOnly,
 };
 use crate::renderer::render_path::RenderPassParameters;
@@ -21,8 +19,10 @@ impl UIPass {
     #[allow(unused)]
     pub fn new(device: &Arc<Device>, assets: &RendererAssets) -> Self {
         let pipeline = assets.request_graphics_pipeline(&GraphicsPipelineInfo {
-            vs: "shaders/dear_imgui.vert.json",
-            fs: Some("shaders/dear_imgui.frag.json"),
+            vs: PathPipelineShaderStage::empty_spec_consts("shaders/dear_imgui.vert.json"),
+            fs: Some(PathPipelineShaderStage::empty_spec_consts(
+                "shaders/dear_imgui.frag.json",
+            )),
             vertex_layout: VertexLayoutInfo {
                 shader_inputs: &[
                     ShaderInputElement {

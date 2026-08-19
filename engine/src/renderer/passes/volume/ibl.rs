@@ -1,6 +1,8 @@
 use crate::asset::{AssetHandle, AssetLoadPriority, AssetType, TextureHandle};
 use crate::graphics::{CommandBuffer, PipelineBinding, RenderPassBeginInfo, RenderTarget, StoreOp};
-use crate::renderer::asset::{ComputePipelineHandle, RendererAssets, RendererAssetsReadOnly};
+use crate::renderer::asset::{
+    ComputePipelineHandle, PathPipelineShaderStage, RendererAssets, RendererAssetsReadOnly,
+};
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use sourcerenderer_core::gpu::{
@@ -57,13 +59,20 @@ impl ImageBasedLightingPreparation {
         );
 
         let project_to_cube_pipeline =
-            assets.request_compute_pipeline("shaders/project_equirectangular.comp.json");
+            assets.request_compute_pipeline(&PathPipelineShaderStage::empty_spec_consts(
+                "shaders/project_equirectangular.comp.json",
+            ));
         let prefilter_diffuse_pipeline =
-            assets.request_compute_pipeline("shaders/prefilter_env_map_diffuse.comp.json");
+            assets.request_compute_pipeline(&PathPipelineShaderStage::empty_spec_consts(
+                "shaders/prefilter_env_map_diffuse.comp.json",
+            ));
         let prefilter_specular_pipeline =
-            assets.request_compute_pipeline("shaders/prefilter_env_map_specular.comp.json");
-        let preintegrate_pipeline =
-            assets.request_compute_pipeline("shaders/preintegrate_brdf.comp.json");
+            assets.request_compute_pipeline(&PathPipelineShaderStage::empty_spec_consts(
+                "shaders/prefilter_env_map_specular.comp.json",
+            ));
+        let preintegrate_pipeline = assets.request_compute_pipeline(
+            &PathPipelineShaderStage::empty_spec_consts("shaders/preintegrate_brdf.comp.json"),
+        );
 
         Self {
             handle: TextureHandle::from(ibl_map_handle),

@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use crate::graphics::*;
 use crate::renderer::asset::{
-    ComputePipelineHandle, GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssets,
-    RendererAssetsReadOnly,
+    ComputePipelineHandle, GraphicsPipelineHandle, GraphicsPipelineInfo, PathPipelineShaderStage,
+    RendererAssets, RendererAssetsReadOnly,
 };
 use crate::renderer::light::RendererDirectionalLight;
 use crate::renderer::passes::modern::gpu_scene::{DRAWABLE_CAPACITY, DRAW_CAPACITY, PART_CAPACITY};
@@ -95,7 +95,7 @@ impl ShadowMapPass {
 
         let vs_path = Path::new("shaders").join(Path::new("shadow_map_bindless.vert.json"));
         let pipeline = assets.request_graphics_pipeline(&GraphicsPipelineInfo {
-            vs: vs_path.to_str().unwrap(),
+            vs: PathPipelineShaderStage::empty_spec_consts(vs_path.to_str().unwrap()),
             fs: None,
             vertex_layout: VertexLayoutInfo {
                 shader_inputs: &[ShaderInputElement {
@@ -140,7 +140,9 @@ impl ShadowMapPass {
             depth_stencil_format: Format::D24S8,
         });
 
-        let prep_pipeline = assets.request_compute_pipeline("shaders/draw_prep.comp.json");
+        let prep_pipeline = assets.request_compute_pipeline(
+            &PathPipelineShaderStage::empty_spec_consts("shaders/draw_prep.comp.json"),
+        );
 
         let mut cascades =
             SmallVec::<[ShadowMapCascade; 5]>::with_capacity(cascades_count as usize);

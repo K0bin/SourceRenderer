@@ -4,10 +4,7 @@ use std::sync::Arc;
 
 use ash::vk;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{
-    self,
-    Device as _,
-};
+use sourcerenderer_core::gpu::{self, Device as _, PipelineShaderStage};
 
 use super::*;
 
@@ -149,7 +146,11 @@ impl gpu::Device<VkBackend> for VkDevice {
         VkSampler::new(&self.device, info)
     }
 
-    unsafe fn create_compute_pipeline(&self, shader: &VkShader, name: Option<&str>) -> VkPipeline {
+    unsafe fn create_compute_pipeline(
+        &self,
+        shader: &PipelineShaderStage<VkBackend>,
+        name: Option<&str>,
+    ) -> VkPipeline {
         VkPipeline::new_compute(&self.device, shader, self.shared.as_ref(), name)
     }
 

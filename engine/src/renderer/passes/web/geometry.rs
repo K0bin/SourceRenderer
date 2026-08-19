@@ -5,8 +5,8 @@ use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI};
 
 use crate::graphics::*;
 use crate::renderer::asset::{
-    GraphicsPipelineHandle, GraphicsPipelineInfo, RendererAssets, RendererAssetsReadOnly,
-    RendererMaterial, RendererMaterialValue,
+    GraphicsPipelineHandle, GraphicsPipelineInfo, PathPipelineShaderStage, RendererAssets,
+    RendererAssetsReadOnly, RendererMaterial, RendererMaterialValue,
 };
 use crate::renderer::drawable::View;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
@@ -60,10 +60,11 @@ impl GeometryPass {
 
         let shader_file_extension = "json";
 
-        let fs_name = format!("shaders/web_geometry.web.frag.{}", shader_file_extension);
+        let vs_path = format!("shaders/web_geometry.web.vert.{}", shader_file_extension);
+        let fs_path = format!("shaders/web_geometry.web.frag.{}", shader_file_extension);
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
-            vs: &format!("shaders/web_geometry.web.vert.{}", shader_file_extension),
-            fs: Some(&fs_name),
+            vs: PathPipelineShaderStage::empty_spec_consts(&vs_path),
+            fs: Some(PathPipelineShaderStage::empty_spec_consts(&fs_path)),
             primitive_type: PrimitiveType::Triangles,
             vertex_layout: VertexLayoutInfo {
                 input_assembler: &[InputAssemblerElement {

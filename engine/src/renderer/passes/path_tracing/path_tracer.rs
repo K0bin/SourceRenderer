@@ -3,15 +3,9 @@ use std::sync::Arc;
 use sourcerenderer_core::Vec2UI;
 
 use crate::graphics::*;
-use crate::renderer::asset::{
-    ComputePipelineHandle,
-    *,
-};
+use crate::renderer::asset::{ComputePipelineHandle, *};
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_resources::{
-    HistoryResourceEntry,
-    RendererResources,
-};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 
 pub struct PathTracerPass {
     pipeline: ComputePipelineHandle,
@@ -45,7 +39,9 @@ impl PathTracerPass {
             true,
         );
 
-        let pipeline = assets.request_compute_pipeline("shaders/path_tracer.comp.json");
+        let pipeline = assets.request_compute_pipeline(
+            &PathPipelineShaderStage::empty_spec_consts("shaders/path_tracer.comp.json"),
+        );
 
         let sampler = device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Linear,

@@ -1,20 +1,12 @@
-use sourcerenderer_core::{
-    Vec3,
-    Vec3UI,
-};
+use sourcerenderer_core::{Vec3, Vec3UI};
 
 use super::clustering::ClusteringPass;
 use crate::graphics::*;
 use crate::renderer::asset::{
-    ComputePipelineHandle,
-    RendererAssets,
-    RendererAssetsReadOnly,
+    ComputePipelineHandle, PathPipelineShaderStage, RendererAssets, RendererAssetsReadOnly,
 };
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_resources::{
-    HistoryResourceEntry,
-    RendererResources,
-};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -41,7 +33,9 @@ impl LightBinningPass {
 
     #[allow(unused)]
     pub fn new(barriers: &mut RendererResources, assets: &RendererAssets) -> Self {
-        let pipeline = assets.request_compute_pipeline("shaders/light_binning.comp.json");
+        let pipeline = assets.request_compute_pipeline(
+            &PathPipelineShaderStage::empty_spec_consts("shaders/light_binning.comp.json"),
+        );
 
         barriers.create_buffer(
             Self::LIGHT_BINNING_BUFFER_NAME,

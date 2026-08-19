@@ -1,23 +1,14 @@
-use sourcerenderer_core::{
-    Vec2,
-    Vec2I,
-    Vec2UI,
-};
+use sourcerenderer_core::{Vec2, Vec2I, Vec2UI};
 
 use super::draw_prep::DrawPrepPass;
 use super::gpu_scene::DRAW_CAPACITY;
 use crate::graphics::*;
 use crate::renderer::asset::{
-    GraphicsPipelineHandle,
-    GraphicsPipelineInfo,
-    RendererAssets,
+    GraphicsPipelineHandle, GraphicsPipelineInfo, PathPipelineShaderStage, RendererAssets,
     RendererAssetsReadOnly,
 };
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_resources::{
-    HistoryResourceEntry,
-    RendererResources,
-};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 
 pub struct VisibilityBufferPass {
     pipeline: GraphicsPipelineHandle,
@@ -90,8 +81,10 @@ impl VisibilityBufferPass {
         resources.create_texture(Self::DEPTH_TEXTURE_NAME, &depth_texture_info, true);
 
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
-            vs: "shaders/visibility_buffer.vert.json",
-            fs: Some("shaders/visibility_buffer.frag.json"),
+            vs: PathPipelineShaderStage::empty_spec_consts("shaders/visibility_buffer.vert.json"),
+            fs: Some(PathPipelineShaderStage::empty_spec_consts(
+                "shaders/visibility_buffer.frag.json",
+            )),
             primitive_type: PrimitiveType::Triangles,
             vertex_layout: VertexLayoutInfo {
                 input_assembler: &[InputAssemblerElement {

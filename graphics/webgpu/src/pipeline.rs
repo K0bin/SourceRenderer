@@ -20,6 +20,8 @@ use crate::{
     WebGPUBackend, WebGPULimits, WebGPUPipelineLayout,
 };
 
+// TODO: Fix with spec const changes!
+
 pub struct WebGPUShader {
     module: GpuShaderModule,
     shader_type: gpu::ShaderType,
@@ -280,7 +282,7 @@ impl WebGPUGraphicsPipeline {
             vertex_buffers.set(vb_info.binding as u32, JsValue::from(&vb_layout));
         }
 
-        let vertex_state = GpuVertexState::new(info.vs.module());
+        let vertex_state = GpuVertexState::new(info.vs.shader.module());
         vertex_state.set_buffers(&JsValue::from(vertex_buffers));
 
         let mut bind_group_layout_keys: [WebGPUBindGroupLayoutKey;
@@ -296,7 +298,7 @@ impl WebGPUGraphicsPipeline {
             texture_dimension: gpu::TextureDimension::Dim1D,
             is_multisampled: false,
             storage_format: gpu::Format::Unknown,
-            struct_size: info.vs.push_constant_size,
+            struct_size: info.vs.shader.push_constant_size,
         };
         bind_group_layout_keys[gpu::BindingFrequency::VeryFrequent as usize].push(entry);
         let entry = WebGPUBindGroupEntryInfo {
@@ -310,14 +312,18 @@ impl WebGPUGraphicsPipeline {
             texture_dimension: gpu::TextureDimension::Dim1D,
             is_multisampled: false,
             storage_format: gpu::Format::Unknown,
-            struct_size: info.fs.map(|fs| fs.push_constant_size).unwrap_or(8),
+            struct_size: info
+                .fs
+                .as_ref()
+                .map(|fs| fs.shader.push_constant_size)
+                .unwrap_or(8),
         };
         bind_group_layout_keys[gpu::BindingFrequency::VeryFrequent as usize].push(entry);
 
         let mut uniform_dynamic_offsets_count = 2u32;
         let mut storage_dynamic_offsets_count = 0u32;
 
-        for (set_index, shader_set) in info.vs.bindings.iter().enumerate() {
+        for (set_index, shader_set) in info.vs.shader.bindings.iter().enumerate() {
             let set = &mut bind_group_layout_keys[set_index];
             let push_const_binding_offset =
                 if set_index == gpu::BindingFrequency::VeryFrequent as usize {
@@ -364,7 +370,7 @@ impl WebGPUGraphicsPipeline {
             }
         }
         if let Some(fs) = info.fs.as_ref() {
-            for (set_index, shader_set) in fs.bindings.iter().enumerate() {
+            for (set_index, shader_set) in fs.shader.bindings.iter().enumerate() {
                 let set = &mut bind_group_layout_keys[set_index];
                 let push_const_binding_offset =
                     if set_index == gpu::BindingFrequency::VeryFrequent as usize {
@@ -500,7 +506,7 @@ impl WebGPUGraphicsPipeline {
                 }
                 targets.set(i as u32, JsValue::from(&target_state));
             }
-            let fragment_state = GpuFragmentState::new(fs.module(), &targets);
+            let fragment_state = GpuFragmentState::new(fs.shader.module(), &targets);
             descriptor.set_fragment(&fragment_state);
         }
 

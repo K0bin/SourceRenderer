@@ -77,9 +77,10 @@ impl ComputePipeline {
     pub(super) fn new(
         device: &Arc<active_gpu_backend::Device>,
         destroyer: &Arc<DeferredDestroyer>,
-        shader: &active_gpu_backend::Shader,
+        shader: &PipelineShaderStage,
         name: Option<&str>,
     ) -> Self {
+        // TODO: Spec constants
         let pipeline = unsafe { device.create_compute_pipeline(shader, name) };
         Self {
             pipeline: ManuallyDrop::new(pipeline),

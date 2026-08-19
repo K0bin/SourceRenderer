@@ -2,18 +2,12 @@ use std::cell::Ref;
 use std::sync::Arc;
 
 use rand::random;
-use sourcerenderer_core::{
-    Vec2UI,
-    Vec4,
-};
+use sourcerenderer_core::{Vec2UI, Vec4};
 
 use crate::graphics::*;
 use crate::renderer::asset::*;
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_resources::{
-    HistoryResourceEntry,
-    RendererResources,
-};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 
 pub struct SsaoPass {
     pipeline: ComputePipelineHandle,
@@ -71,17 +65,21 @@ impl SsaoPass {
             true,
         );
 
-        let pipeline = assets.request_compute_pipeline("shaders/ssao.comp.json");
+        let pipeline = assets.request_compute_pipeline(
+            &PathPipelineShaderStage::empty_spec_consts("shaders/ssao.comp.json"),
+        );
 
         // TODO: Clear history texture
 
         let kernel = Self::create_hemisphere(device, 64);
 
-        let blur_pipeline = assets.request_compute_pipeline(if !visibility_buffer {
-            "shaders/ssao_blur.comp.json"
-        } else {
-            "shaders/ssao_blur_vis_buf.comp.json"
-        });
+        let blur_pipeline = assets.request_compute_pipeline(
+            &PathPipelineShaderStage::empty_spec_consts(if !visibility_buffer {
+                "shaders/ssao_blur.comp.json"
+            } else {
+                "shaders/ssao_blur_vis_buf.comp.json"
+            }),
+        );
 
         Self {
             pipeline,

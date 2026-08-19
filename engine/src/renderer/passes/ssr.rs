@@ -4,16 +4,10 @@ use std::sync::Arc;
 use sourcerenderer_core::Vec2UI;
 
 use crate::graphics::*;
-use crate::renderer::asset::{
-    ComputePipelineHandle,
-    *,
-};
+use crate::renderer::asset::{ComputePipelineHandle, *};
 use crate::renderer::passes::modern::VisibilityBufferPass;
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_resources::{
-    HistoryResourceEntry,
-    RendererResources,
-};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 
 pub struct SsrPass {
     pipeline: ComputePipelineHandle,
@@ -46,7 +40,9 @@ impl SsrPass {
             false,
         );
 
-        let pipeline = assets.request_compute_pipeline("shaders/ssr.comp.json");
+        let pipeline = assets.request_compute_pipeline(
+            &PathPipelineShaderStage::empty_spec_consts("shaders/ssr.comp.json"),
+        );
 
         Self { pipeline }
     }

@@ -1,8 +1,10 @@
+use std::collections::HashMap;
 use std::hash::Hash;
 use std::hash::Hasher;
 
 use super::*;
 
+use crate::{Vec2, Vec2I, Vec2UI, Vec3, Vec3I, Vec3UI, Vec4, Vec4I, Vec4UI};
 use bitflags::bitflags;
 use serde::Deserialize;
 use serde::Serialize;
@@ -344,11 +346,10 @@ pub trait Shader {
     fn shader_type(&self) -> ShaderType;
 }
 
-#[derive(Hash, Eq, PartialEq)]
 pub struct MeshGraphicsPipelineInfo<'a, B: GPUBackend> {
-    pub ts: Option<&'a B::Shader>,
-    pub ms: &'a B::Shader,
-    pub fs: Option<&'a B::Shader>,
+    pub ts: Option<PipelineShaderStage<'a, B>>,
+    pub ms: PipelineShaderStage<'a, B>,
+    pub fs: Option<PipelineShaderStage<'a, B>>,
     pub rasterizer: RasterizerInfo,
     pub depth_stencil: DepthStencilInfo,
     pub blend: BlendInfo<'a>,
@@ -356,10 +357,9 @@ pub struct MeshGraphicsPipelineInfo<'a, B: GPUBackend> {
     pub depth_stencil_format: Format,
 }
 
-#[derive(Hash, Eq, PartialEq)]
 pub struct GraphicsPipelineInfo<'a, B: GPUBackend> {
-    pub vs: &'a B::Shader,
-    pub fs: Option<&'a B::Shader>,
+    pub vs: PipelineShaderStage<'a, B>,
+    pub fs: Option<PipelineShaderStage<'a, B>>,
     pub vertex_layout: VertexLayoutInfo<'a>,
     pub rasterizer: RasterizerInfo,
     pub depth_stencil: DepthStencilInfo,
@@ -369,11 +369,61 @@ pub struct GraphicsPipelineInfo<'a, B: GPUBackend> {
     pub depth_stencil_format: Format,
 }
 
+#[derive(PartialEq, Clone, Copy, Debug)]
+pub enum SpecConstValue {
+    Float(f32),
+    UInt(u32),
+    Int(i32),
+    Bool(bool),
+}
+
+impl SpecConstValue {
+    pub fn as_raw_u32(self) -> u32 {
+        match self {
+            SpecConstValue::Bool(b) => b as u32,
+            SpecConstValue::Float(f) => f.to_bits(),
+            SpecConstValue::Int(i) => i as u32,
+            SpecConstValue::UInt(u) => u,
+        }
+    }
+
+    fn kind(self) -> u32 {
+        match self {
+            SpecConstValue::UInt(_) => 0,
+            SpecConstValue::Int(_) => 1,
+            SpecConstValue::Float(_) => 2,
+            SpecConstValue::Bool(_) => 3,
+        }
+    }
+}
+
+impl Eq for SpecConstValue {}
+impl Hash for SpecConstValue {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.kind().hash(state);
+        self.as_raw_u32().hash(state);
+    }
+}
+
+pub struct PipelineShaderStage<'a, B: GPUBackend> {
+    pub shader: &'a B::Shader,
+    pub spec_consts: &'a HashMap<u32, SpecConstValue>,
+}
+
+impl<B: GPUBackend> Clone for PipelineShaderStage<'_, B> {
+    fn clone(&self) -> Self {
+        Self {
+            shader: self.shader,
+            spec_consts: self.spec_consts,
+        }
+    }
+}
+
 impl<B: GPUBackend> Clone for GraphicsPipelineInfo<'_, B> {
     fn clone(&self) -> Self {
         Self {
-            vs: self.vs,
-            fs: self.fs,
+            vs: self.vs.clone(),
+            fs: self.fs.clone(),
             vertex_layout: self.vertex_layout.clone(),
             rasterizer: self.rasterizer.clone(),
             depth_stencil: self.depth_stencil.clone(),

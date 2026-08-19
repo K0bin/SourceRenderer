@@ -44,8 +44,8 @@ pub struct AccelerationStructureInstance<'a, B: GPUBackend> {
 pub trait AccelerationStructure {}
 
 pub struct RayTracingPipelineInfo<'a, B: GPUBackend> {
-    pub ray_gen_shader: &'a B::Shader,
-    pub closest_hit_shaders: &'a [&'a B::Shader],
-    pub any_hit_shaders: &'a [&'a B::Shader],
-    pub miss_shaders: &'a [&'a B::Shader],
+    pub ray_gen_shader: PipelineShaderStage<'a, B>,
+    pub closest_hit_shaders: &'a [PipelineShaderStage<'a, B>],
+    pub any_hit_shaders: &'a [PipelineShaderStage<'a, B>],
+    pub miss_shaders: &'a [PipelineShaderStage<'a, B>],
 }

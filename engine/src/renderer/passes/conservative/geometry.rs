@@ -2,31 +2,18 @@ use std::cell::Ref;
 use std::sync::Arc;
 
 use smallvec::SmallVec;
-use sourcerenderer_core::{
-    Matrix4,
-    Vec2,
-    Vec2I,
-    Vec2UI,
-    Vec3UI,
-    Vec4,
-};
+use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3UI, Vec4};
 
 use super::desktop_renderer::FrameBindings;
 use crate::graphics::*;
-use crate::renderer::asset::{
-    GraphicsPipelineInfo,
-    *,
-};
+use crate::renderer::asset::{GraphicsPipelineInfo, *};
 use crate::renderer::passes::clustering::ClusteringPass;
 use crate::renderer::passes::conservative::desktop_renderer::setup_frame;
 use crate::renderer::passes::light_binning;
 use crate::renderer::passes::rt_shadows::RTShadowPass;
 use crate::renderer::passes::ssao::SsaoPass;
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_resources::{
-    HistoryResourceEntry,
-    RendererResources,
-};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 
 #[allow(unused)]
 #[repr(C)]
@@ -92,8 +79,10 @@ impl GeometryPass {
         });
 
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
-            vs: "shaders/textured.vert.json",
-            fs: Some("shaders/textured.frag.json"),
+            vs: PathPipelineShaderStage::empty_spec_consts("shaders/textured.vert.json"),
+            fs: Some(PathPipelineShaderStage::empty_spec_consts(
+                "shaders/textured.frag.json",
+            )),
             primitive_type: PrimitiveType::Triangles,
             vertex_layout: VertexLayoutInfo {
                 input_assembler: &[InputAssemblerElement {

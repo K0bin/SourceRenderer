@@ -2,32 +2,19 @@ use std::cell::Ref;
 use std::sync::Arc;
 
 use smallvec::SmallVec;
-use sourcerenderer_core::{
-    Matrix4,
-    Vec2,
-    Vec2I,
-    Vec2UI,
-    Vec3UI,
-};
+use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3UI};
 
 use super::draw_prep::DrawPrepPass;
 use super::gpu_scene::DRAW_CAPACITY;
 use super::rt_shadows::RTShadowPass;
 use crate::graphics::*;
-use crate::renderer::asset::{
-    GraphicsPipelineHandle,
-    GraphicsPipelineInfo,
-    *,
-};
+use crate::renderer::asset::{GraphicsPipelineHandle, GraphicsPipelineInfo, *};
 use crate::renderer::drawable::View;
 use crate::renderer::light::DirectionalLight;
 use crate::renderer::passes::light_binning;
 use crate::renderer::passes::ssao::SsaoPass;
 use crate::renderer::passes::taa::scaled_halton_point;
-use crate::renderer::renderer_resources::{
-    HistoryResourceEntry,
-    RendererResources,
-};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use crate::renderer::renderer_scene::RendererScene;
 use crate::renderer::PointLight;
 
@@ -132,8 +119,10 @@ impl GeometryPass {
         }));
 
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
-            vs: "shaders/geometry_bindless.vert.json",
-            fs: Some("shaders/geometry_bindless.frag.json"),
+            vs: PathPipelineShaderStage::empty_spec_consts("shaders/geometry_bindless.vert.json"),
+            fs: Some(PathPipelineShaderStage::empty_spec_consts(
+                "shaders/geometry_bindless.frag.json",
+            )),
             primitive_type: PrimitiveType::Triangles,
             vertex_layout: VertexLayoutInfo {
                 input_assembler: &[InputAssemblerElement {
