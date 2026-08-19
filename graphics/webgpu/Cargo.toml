@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-sourcerenderer_core = { path = "../../core", features = [ "non_send_gpu" ] }
+sourcerenderer_core = { path = "../../core", features = ["non_send_gpu"] }
 web-sys = { version = "0.3", features = [
     "Navigator",
     "WorkerNavigator",
@@ -153,4 +153,4 @@ wasm-bindgen-futures = { version = "0.4", features = ["futures-core-03-stream"] 
 js-sys = "0.3"
 log = "0.4"
 smallvec = "1.15"
-bitflags = "2.9"
+bitflags = "2.13"

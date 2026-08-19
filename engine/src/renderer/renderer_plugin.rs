@@ -4,36 +4,19 @@ use std::sync::Arc;
 #[cfg(all(feature = "render_thread", not(target_arch = "wasm32")))]
 use std::thread::JoinHandle;
 
-use bevy_app::{
-    App,
-    AppExit,
-    Last,
-    Plugin,
-};
+use bevy_app::{App, AppExit, Last, Plugin};
 use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::event::{
-    Event,
-    EventWriter,
-};
-use bevy_ecs::prelude::{
-    IntoScheduleConfigs,
-    Resource,
-};
-use bevy_ecs::removal_detection::RemovedComponents;
+use bevy_ecs::lifecycle::RemovedComponents;
+use bevy_ecs::message::{Message, MessageWriter};
+use bevy_ecs::prelude::{IntoScheduleConfigs, Resource};
 use bevy_ecs::schedule::SystemSet;
 #[allow(unused_imports)]
-use bevy_ecs::system::{
-    NonSend,
-    NonSendMut,
-    Query,
-    Res,
-    ResMut,
-};
+use bevy_ecs::system::{NonSend, NonSendMut, Query, Res, ResMut};
 use bevy_ecs::world::Ref;
-use bevy_transform::components::GlobalTransform;
 #[allow(unused_imports)]
-use bevy_utils::synccell::SyncCell;
+use bevy_platform::cell::SyncCell;
+use bevy_transform::components::GlobalTransform;
 use sourcerenderer_core::console::Console;
 use sourcerenderer_core::gpu::Surface as _;
 use sourcerenderer_core::platform::GraphicsPlatform;
@@ -41,53 +24,27 @@ use sourcerenderer_core::Vec2UI;
 #[cfg(feature = "render_thread")]
 use web_time::Duration;
 
-use super::renderer::{
-    RendererReceiver,
-    RendererSender,
-};
-use super::{
-    DirectionalLightComponent,
-    PointLightComponent,
-    Renderer,
-    StaticRenderableComponent,
-};
-use crate::asset::{
-    AssetManager,
-    AssetManagerECSResource,
-};
-use crate::engine::{
-    ConsoleResource,
-    WindowState,
-    TICK_RATE,
-};
+use super::renderer::{RendererReceiver, RendererSender};
+use super::{DirectionalLightComponent, PointLightComponent, Renderer, StaticRenderableComponent};
+use crate::asset::{AssetManager, AssetManagerECSResource};
+use crate::engine::{ConsoleResource, WindowState, TICK_RATE};
 use crate::graphics::{
-    APIInstance,
-    ActiveBackend,
-    Adapter,
-    AdapterType,
-    GPUInstanceResource,
-    GPUSurfaceResource,
-    Instance,
-    Surface,
-    Swapchain,
+    APIInstance, ActiveBackend, Adapter, AdapterType, GPUInstanceResource, GPUSurfaceResource,
+    Instance, Surface, Swapchain,
 };
 use crate::transform::InterpolatedTransform;
 #[cfg(all(feature = "render_thread", target_arch = "wasm32"))]
 use crate::wasm::thread::JoinHandle;
-use crate::{
-    ActiveCamera,
-    Camera,
-    EngineLoopFuncResult,
-};
+use crate::{ActiveCamera, Camera, EngineLoopFuncResult};
 
 #[allow(unused)]
-#[derive(Event)]
+#[derive(Message)]
 struct WindowSizeChangedEvent {
     size: Vec2UI,
 }
 
 #[allow(unused)]
-#[derive(Event)]
+#[derive(Message)]
 struct WindowMinimized {}
 
 pub struct RendererPlugin<P: GraphicsPlatform<ActiveBackend>>(PhantomData<P>);
@@ -297,7 +254,7 @@ fn start_render_thread<P: GraphicsPlatform<ActiveBackend>>(
 }
 
 fn extract_camera(
-    mut events: EventWriter<AppExit>,
+    mut events: MessageWriter<AppExit>,
     renderer: RendererResourceAccessor,
     active_camera: Res<ActiveCamera>,
     camera_entities: Query<(&InterpolatedTransform, &Camera, &GlobalTransform)>,
@@ -330,7 +287,7 @@ fn extract_camera(
 }
 
 fn extract_static_renderables(
-    mut events: EventWriter<AppExit>,
+    mut events: MessageWriter<AppExit>,
     renderer: RendererResourceAccessor,
     static_renderables: Query<(
         Entity,
@@ -375,7 +332,7 @@ fn extract_static_renderables(
 }
 
 fn extract_point_lights(
-    mut events: EventWriter<AppExit>,
+    mut events: MessageWriter<AppExit>,
     renderer: RendererResourceAccessor,
     point_lights: Query<(Entity, Ref<PointLightComponent>, Ref<InterpolatedTransform>)>,
     mut removed_point_lights: RemovedComponents<PointLightComponent>,
@@ -409,7 +366,7 @@ fn extract_point_lights(
 }
 
 fn extract_directional_lights(
-    mut events: EventWriter<AppExit>,
+    mut events: MessageWriter<AppExit>,
     renderer: RendererResourceAccessor,
     directional_lights: Query<(
         Entity,
@@ -448,7 +405,7 @@ fn extract_directional_lights(
 }
 
 #[allow(unused_mut)]
-fn end_frame(mut events: EventWriter<AppExit>, mut renderer: RendererResourceAccessorMut) {
+fn end_frame(mut events: MessageWriter<AppExit>, mut renderer: RendererResourceAccessorMut) {
     #[cfg(feature = "render_thread")]
     if renderer.is_saturated {
         return;
@@ -523,25 +480,14 @@ fn pick_adapter(adapters: &[Adapter]) -> &Adapter {
 
 #[cfg(all(target_arch = "wasm32", feature = "render_thread"))]
 mod wasm {
-    use std::cell::{
-        Cell,
-        RefCell,
-    };
+    use std::cell::{Cell, RefCell};
     use std::rc::Rc;
 
-    use sourcerenderer_webgpu::{
-        NavigatorKind,
-        WebGPUInstance,
-        WebGPUSurface,
-    };
+    use sourcerenderer_webgpu::{NavigatorKind, WebGPUInstance, WebGPUSurface};
     use wasm_bindgen::closure::Closure;
     use wasm_bindgen::prelude::wasm_bindgen;
     use wasm_bindgen::JsCast;
-    use web_sys::{
-        DedicatedWorkerGlobalScope,
-        Navigator,
-        OffscreenCanvas,
-    };
+    use web_sys::{DedicatedWorkerGlobalScope, Navigator, OffscreenCanvas};
 
     use super::*;
     use crate::AsyncCounter;

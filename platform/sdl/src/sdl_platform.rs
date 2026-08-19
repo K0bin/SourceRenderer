@@ -1,55 +1,22 @@
 use std::collections::HashMap;
 use std::io::Result as IOResult;
-use std::path::{
-    Path,
-    PathBuf,
-};
+use std::path::{Path, PathBuf};
 
 use bevy_ecs::entity::Entity;
 use bevy_input::keyboard::KeyCode::KeyC;
-use bevy_input::keyboard::{
-    Key,
-    KeyCode,
-    KeyboardInput,
-};
+use bevy_input::keyboard::{Key, KeyCode, KeyboardInput};
 use bevy_input::mouse::MouseMotion;
 use bevy_input::ButtonState;
 use crossbeam_channel::Sender;
-use notify::{
-    recommended_watcher,
-    RecommendedWatcher,
-    Watcher,
-};
-use sdl3::event::{
-    Event as SDLEvent,
-    WindowEvent,
-};
+use notify::{recommended_watcher, RecommendedWatcher, Watcher};
+use sdl3::event::{Event as SDLEvent, WindowEvent};
 use sdl3::keyboard::Scancode;
-use sdl3::{
-    EventPump,
-    Sdl,
-    VideoSubsystem,
-};
-use sourcerenderer_core::platform::{
-    FileWatcher,
-    PlatformIO,
-    Window,
-};
-use sourcerenderer_core::{
-    gpu,
-    Vec2,
-    Vec2I,
-    Vec2UI,
-};
-use sourcerenderer_engine::{
-    Engine,
-    WindowState,
-};
+use sdl3::{EventPump, Sdl, VideoSubsystem};
+use sourcerenderer_core::platform::{FileWatcher, PlatformIO, Window};
+use sourcerenderer_core::{gpu, Vec2, Vec2I, Vec2UI};
+use sourcerenderer_engine::{Engine, WindowState};
 
-use crate::sdl_gpu::{
-    self,
-    SDLGPUBackend,
-};
+use crate::sdl_gpu::{self, SDLGPUBackend};
 
 lazy_static! {
     pub static ref SCANCODE_TO_KEY: HashMap<Scancode, KeyCode> = {
@@ -123,7 +90,7 @@ impl SDLPlatform {
                             key_code: key,
                             logical_key: Key::Dead(None),
                             state: ButtonState::Released,
-                            window: Entity::from_raw(0u32),
+                            window: engine.get_window_dummy_entity(),
                             repeat: false,
                             text: None,
                         });
@@ -139,7 +106,7 @@ impl SDLPlatform {
                             key_code: key,
                             logical_key: Key::Dead(None),
                             state: ButtonState::Pressed,
-                            window: Entity::from_raw(0u32),
+                            window: engine.get_window_dummy_entity(),
                             repeat: false,
                             text: None,
                         });

@@ -1,6 +1,6 @@
 use bevy_app::{App, FixedUpdate, Update};
 use bevy_ecs::component::Component;
-use bevy_ecs::event::EventReader;
+use bevy_ecs::message::MessageReader;
 use bevy_ecs::query::With;
 use bevy_ecs::system::{Query, Res};
 use bevy_input::keyboard::KeyCode;
@@ -73,7 +73,7 @@ fn fps_camera_rotation(mouse: &MouseMotion, fps_camera: &mut FPSCamera) -> Quate
 }
 
 pub(crate) fn retrieve_fps_camera_rotation(
-    mut mouse_motion: EventReader<MouseMotion>,
+    mut mouse_motion: MessageReader<MouseMotion>,
     mut query: Query<(&mut Transform, &mut FPSCameraComponent), With<Camera>>,
 ) {
     for (mut transform, mut fps_camera) in query.iter_mut() {

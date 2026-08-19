@@ -27,12 +27,12 @@ rand = "0.9"
 bitset-core = "0.1"
 web-time = "1.1"
 log = "0.4"
-rapier3d = { version = "0.24", features = ["enhanced-determinism", "f32"] }
+rapier3d = { version = "0.35", features = ["enhanced-determinism", "f32"] }
 half = "2.6"
 profiling = "1.0"
 field-offset = "0.3"
 widestring = "1.2"
-bitflags = "2.9"
+bitflags = "2.13"
 strum = "0.27"
 strum_macros = "0.27"
 # imgui = "0.12"
@@ -47,16 +47,17 @@ atomic-waker = "1.1"
 futures-lite = "2.6"
 parking_lot = "0.12"
 
-bevy_app = "0.16"
-bevy_math = "0.16"
-bevy_ecs = "0.16"
-bevy_transform = "0.16"
-bevy_log = "0.16"
-bevy_tasks = { version = "0.16" }
-bevy_utils = "0.16"
-bevy_time = "0.16"
-bevy_input = "0.16"
-bevy_diagnostic = "0.16.0"
+bevy_app = "0.19"
+bevy_math = "0.19"
+bevy_ecs = "0.19"
+bevy_transform = "0.19"
+bevy_log = "0.19"
+bevy_tasks = { version = "0.19" }
+bevy_utils = "0.19"
+bevy_time = "0.19"
+bevy_input = { version = "0.19", features = ["mouse", "keyboard", "gamepad"] }
+bevy_diagnostic = "0.19"
+bevy_platform = "0.19"
 
 # bevy_ecs has a dependency on async-executor which itself has a dependency on an ancient version of slab that no longer builds on modern rust versions.
 # This forces Cargo to use a more recent version of Slab.

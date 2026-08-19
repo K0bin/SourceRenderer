@@ -6,23 +6,23 @@ edition = "2021"
 build = "build.rs"
 
 [dependencies]
-sdl3 = { version = "0.17.3", features = ["raw-window-handle"] }
-sdl3-sys = "0.6.1+SDL-3.4.2"
+sdl3 = { version = "0.18", features = ["raw-window-handle"] }
+sdl3-sys = "0.6.8+SDL-3.4.14"
 raw-window-handle = "0.6"
 bitset-core = "0.1"
 sourcerenderer_bsp = { path = "../../valve_formats/bsp" }
 sourcerenderer_core = { path = "../../core" }
 sourcerenderer_engine = { path = "../../engine" }
-lazy_static = "1.4"
-simple_logger = "5.0"
+lazy_static = "1.5"
+simple_logger = "5.2"
 notify = "8.0"
 crossbeam-channel = "0.5"
 log = "0.4"
-bevy_input = "0.16"
-bevy_ecs = "0.16"
-bevy_tasks = "0.16"
+bevy_input = "0.19"
+bevy_ecs = "0.19"
+bevy_tasks = "0.19"
 sourcerenderer_game = { path = "../../game" }
-async-fs = "2.1"
+async-fs = "2.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-metal = "0.3"

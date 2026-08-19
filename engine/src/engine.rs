@@ -4,6 +4,8 @@ use std::time::Duration;
 
 use bevy_app::*;
 use bevy_diagnostic::FrameCountPlugin;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::message::Messages;
 use bevy_ecs::resource::Resource;
 use bevy_input::keyboard::KeyboardInput;
 use bevy_input::mouse::MouseMotion;
@@ -12,7 +14,7 @@ use bevy_log::LogPlugin;
 use bevy_time::{Fixed, Time, TimePlugin};
 use bevy_transform::TransformPlugin;
 use sourcerenderer_core::console::Console;
-use sourcerenderer_core::platform::{GraphicsPlatform, PlatformIO, Window};
+use sourcerenderer_core::platform::{Event, GraphicsPlatform, PlatformIO, Window};
 use sourcerenderer_core::Vec2UI;
 
 use crate::asset::{AssetManager, AssetManagerECSResource, AssetManagerPlugin};
@@ -42,6 +44,7 @@ compile_error!("Threads are not supported on WebAssembly.");
 
 pub struct Engine {
     app: App,
+    window_dummy_entity: Entity,
 }
 
 impl Drop for Engine {
@@ -59,6 +62,8 @@ impl Engine {
         let console_resource = ConsoleResource(console);
 
         let mut app = App::new();
+        app.init_resource::<Messages<MouseMotion>>();
+        app.init_resource::<Messages<KeyboardInput>>();
         initialize_graphics::<G>(&mut app, window);
 
         app.add_plugins(PanicHandlerPlugin::default());
@@ -86,7 +91,12 @@ impl Engine {
             app.cleanup();
         }
 
-        Self { app }
+        let window_dummy = app.world_mut().spawn_empty().id();
+
+        Self {
+            app,
+            window_dummy_entity: window_dummy,
+        }
     }
 
     pub fn frame(&mut self) -> EngineLoopFuncResult {
@@ -137,12 +147,24 @@ impl Engine {
         //self.app..poll().mouse_locked()
     }
 
+    pub fn get_window_dummy_entity(&self) -> Entity {
+        self.window_dummy_entity
+    }
+
     pub fn dispatch_keyboard_input(&mut self, input: KeyboardInput) {
-        self.app.world_mut().send_event(input);
+        let world = self.app.world_mut();
+        world
+            .get_resource_mut::<Messages<KeyboardInput>>()
+            .unwrap()
+            .write(input);
     }
 
     pub fn dispatch_mouse_motion(&mut self, motion: MouseMotion) {
-        self.app.world_mut().send_event(motion);
+        let world = self.app.world_mut();
+        world
+            .get_resource_mut::<Messages<MouseMotion>>()
+            .unwrap()
+            .write(motion);
     }
 
     pub fn window_changed<P: GraphicsPlatform<ActiveBackend>>(
@@ -158,7 +180,7 @@ impl Engine {
         for entity in entities {
             let components = entity.archetype().components();
             for component in components {
-                let component_name = self.app.world().components().get_name(component);
+                let component_name = self.app.world().components().get_name(*component);
                 println!("ENTITY: {:?}, COMPONENT: {:?}", entity.id(), component_name);
             }
         }
