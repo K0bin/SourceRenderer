@@ -19,7 +19,6 @@ use std::sync::Arc;
 #[derive(Clone)]
 struct PushConstantData {
     model_matrix: Matrix4,
-    inv_model_matrix: Matrix4,
     lod_extents: Vec3UI,
     threshold: f32,
     lod: u32,
@@ -30,8 +29,12 @@ struct PushConstantData {
 struct MaterialData {
     f0: Vec3,
     roughness: f32,
+    inv_model_matrix: Matrix4,
     metalness: f32,
     lod: u32,
+    threshold: f32,
+    width: f32,
+    height: f32,
 }
 
 pub struct GeometryPass {
@@ -545,7 +548,6 @@ impl GeometryPass {
         cmd_buffer.set_push_constant_data(
             &[PushConstantData {
                 model_matrix,
-                inv_model_matrix: Matrix4::inverse(&model_matrix),
                 lod_extents: volume_texture_lod_extents,
                 threshold,
                 lod,
@@ -559,7 +561,11 @@ impl GeometryPass {
                 //roughness: 0.1f32,
                 //metalness: 0.9f32,
                 f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
+                inv_model_matrix: Matrix4::inverse(&model_matrix),
                 lod,
+                width: color_tex_extent.x as f32,
+                height: color_tex_extent.y as f32,
+                threshold,
             }],
             ShaderType::FragmentShader,
         );
@@ -582,7 +588,6 @@ impl GeometryPass {
         cmd_buffer.set_push_constant_data(
             &[PushConstantData {
                 model_matrix,
-                inv_model_matrix: Matrix4::inverse(&model_matrix),
                 lod_extents: volume_texture_lod_extents,
                 threshold: threshold_transparency,
                 lod,
@@ -595,8 +600,12 @@ impl GeometryPass {
                 metalness: 0.3f32,
                 //roughness: 0.1f32,
                 //metalness: 0.9f32,
-                f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
+                inv_model_matrix: Matrix4::inverse(&model_matrix),
                 lod,
+                width: color_tex_extent.x as f32,
+                height: color_tex_extent.y as f32,
+                f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
+                threshold: threshold_transparency,
             }],
             ShaderType::FragmentShader,
         );
@@ -619,7 +628,6 @@ impl GeometryPass {
         cmd_buffer.set_push_constant_data(
             &[PushConstantData {
                 model_matrix,
-                inv_model_matrix: Matrix4::inverse(&model_matrix),
                 lod_extents: volume_texture_lod_extents,
                 threshold: threshold_transparency,
                 lod,
@@ -645,7 +653,6 @@ impl GeometryPass {
         cmd_buffer.set_push_constant_data(
             &[PushConstantData {
                 model_matrix,
-                inv_model_matrix: Matrix4::inverse(&model_matrix),
                 threshold: threshold_transparency,
                 lod_extents: volume_texture_lod_extents,
                 lod,
@@ -659,7 +666,11 @@ impl GeometryPass {
                 //roughness: 0.1f32,
                 //metalness: 0.9f32,
                 f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
+                inv_model_matrix: Matrix4::inverse(&model_matrix),
                 lod,
+                width: color_tex_extent.x as f32,
+                height: color_tex_extent.y as f32,
+                threshold: threshold_transparency,
             }],
             ShaderType::FragmentShader,
         );
