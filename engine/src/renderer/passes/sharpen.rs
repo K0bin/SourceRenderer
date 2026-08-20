@@ -21,13 +21,13 @@ impl SharpenPass {
         resources: &mut RendererResources,
         assets: &RendererAssets,
     ) -> Self {
-        let pipeline = assets.request_compute_pipeline(
-            &PathPipelineShaderStage::empty_spec_consts(if !USE_CAS {
+        let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(
+            if !USE_CAS {
                 "shaders/sharpen.comp.json"
             } else {
                 "shaders/cas.comp.json"
-            }),
-        );
+            },
+        ));
 
         resources.create_texture(
             Self::SHAPENED_TEXTURE_NAME,

@@ -21,9 +21,9 @@ impl CompositingPass {
         resources: &mut RendererResources,
         assets: &RendererAssets,
     ) -> Self {
-        let pipeline = assets.request_compute_pipeline(
-            &PathPipelineShaderStage::empty_spec_consts("shaders/compositing.comp.json"),
-        );
+        let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(
+            "shaders/compositing.comp.json",
+        ));
 
         resources.create_texture(
             Self::COMPOSITION_TEXTURE_NAME,

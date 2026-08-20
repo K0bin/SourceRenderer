@@ -40,14 +40,12 @@ impl RTShadowPass {
         );
 
         let pipeline = assets.request_ray_tracing_pipeline(&RayTracingPipelineInfo {
-            ray_gen_shader: &PathPipelineShaderStage::empty_spec_consts(
-                "shaders/shadows.rgen.json",
-            ),
-            closest_hit_shaders: &[&PathPipelineShaderStage::empty_spec_consts(
+            ray_gen_shader: PathPipelineShaderStage::empty_spec_consts("shaders/shadows.rgen.json"),
+            closest_hit_shaders: &[PathPipelineShaderStage::empty_spec_consts(
                 "shaders/shadows.rchit.json",
             )],
             any_hit_shaders: &[],
-            miss_shaders: &[&PathPipelineShaderStage::empty_spec_consts(
+            miss_shaders: &[PathPipelineShaderStage::empty_spec_consts(
                 "shaders/shadows.rmiss.json",
             )],
         });

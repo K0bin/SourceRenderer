@@ -5,8 +5,7 @@ use crate::renderer::asset::{
 };
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
-use sourcerenderer_core::gpu::Buffer;
-use sourcerenderer_core::{HalfVec3, HalfVec4, Vec2UI, Vec3, Vec3UI, Vec4};
+use sourcerenderer_core::Vec3UI;
 use std::sync::Arc;
 
 #[repr(C)]
@@ -48,9 +47,9 @@ impl MarchingCubesPass {
         resources: &mut RendererResources,
         assets: &RendererAssets,
     ) -> Self {
-        let pipeline = assets.request_compute_pipeline(
-            &PathPipelineShaderStage::empty_spec_consts("shaders/marching_cubes.comp.json"),
-        );
+        let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(
+            "shaders/marching_cubes.comp.json",
+        ));
 
         resources.create_buffer(
             Self::ATOMICS_BUFFER_NAME,

@@ -143,15 +143,15 @@ impl<'a> PartialEq<BlendInfo<'a>> for StoredBlendInfo {
 
 #[derive(Debug, Clone)]
 pub struct PathPipelineShaderStage<'a> {
-    shader_path: &'a str,
-    spec_consts: HashMap<u32, SpecConstValue>,
+    pub shader_path: &'a str,
+    pub spec_consts: Option<&'a HashMap<u32, SpecConstValue>>,
 }
 
 impl<'a> PathPipelineShaderStage<'a> {
     pub fn empty_spec_consts(path: &'a str) -> Self {
         Self {
             shader_path: path,
-            spec_consts: HashMap::new(),
+            spec_consts: None,
         }
     }
 }
@@ -613,10 +613,10 @@ impl PipelineCompileTask for ComputeCompileTask {
 
 #[derive(Debug, Clone)]
 pub struct RayTracingPipelineInfo<'a> {
-    pub ray_gen_shader: &'a PathPipelineShaderStage<'a>,
-    pub closest_hit_shaders: &'a [&'a PathPipelineShaderStage<'a>],
-    pub any_hit_shaders: &'a [&'a PathPipelineShaderStage<'a>],
-    pub miss_shaders: &'a [&'a PathPipelineShaderStage<'a>],
+    pub ray_gen_shader: PathPipelineShaderStage<'a>,
+    pub closest_hit_shaders: &'a [PathPipelineShaderStage<'a>],
+    pub any_hit_shaders: &'a [PathPipelineShaderStage<'a>],
+    pub miss_shaders: &'a [PathPipelineShaderStage<'a>],
 }
 
 #[derive(Debug, Clone)]
@@ -907,7 +907,7 @@ impl ShaderManager {
                 .request_asset(fs.shader_path, AssetType::Shader, AssetLoadPriority::Normal)
                 .0
                 .into(),
-            spec_consts: fs.spec_consts.clone(),
+            spec_consts: fs.spec_consts.map(|s| (*s).clone()).unwrap_or_default(),
         });
 
         let handle: GraphicsPipelineHandle = asset_manager
@@ -920,7 +920,11 @@ impl ShaderManager {
                 GraphicsCompileTask {
                     vs: HandlePipelineShaderStage {
                         shader_handle: vs_handle.into(),
-                        spec_consts: info.vs.spec_consts.clone(),
+                        spec_consts: info
+                            .vs
+                            .spec_consts
+                            .map(|s| (*s).clone())
+                            .unwrap_or_default(),
                     },
                     fs: fs_stage,
                     vertex_layout: stored_input_layout,
@@ -958,7 +962,7 @@ impl ShaderManager {
                 .request_asset(ts.shader_path, AssetType::Shader, AssetLoadPriority::Normal)
                 .0
                 .into(),
-            spec_consts: ts.spec_consts.clone(),
+            spec_consts: ts.spec_consts.map(|s| (*s).clone()).unwrap_or_default(),
         });
         let ms_handle = HandlePipelineShaderStage {
             shader_handle: asset_manager
@@ -969,14 +973,18 @@ impl ShaderManager {
                 )
                 .0
                 .into(),
-            spec_consts: info.ms.spec_consts.clone(),
+            spec_consts: info
+                .ms
+                .spec_consts
+                .map(|s| (*s).clone())
+                .unwrap_or_default(),
         };
         let fs_handle = info.fs.as_ref().map(|fs| HandlePipelineShaderStage {
             shader_handle: asset_manager
                 .request_asset(fs.shader_path, AssetType::Shader, AssetLoadPriority::Normal)
                 .0
                 .into(),
-            spec_consts: fs.spec_consts.clone(),
+            spec_consts: fs.spec_consts.map(|s| (*s).clone()).unwrap_or_default(),
         });
 
         let handle: MeshGraphicsPipelineHandle = asset_manager
@@ -1007,7 +1015,7 @@ impl ShaderManager {
     pub fn request_compute_pipeline(
         &self,
         assets: &RendererAssetsReadOnly,
-        shader: &PathPipelineShaderStage,
+        shader: PathPipelineShaderStage,
     ) -> ComputePipelineHandle {
         let asset_manager = assets.asset_manager();
         let (shader_handle, _) = asset_manager.request_asset(
@@ -1026,7 +1034,7 @@ impl ShaderManager {
                 ComputeCompileTask {
                     shader: HandlePipelineShaderStage {
                         shader_handle: shader_handle.into(),
-                        spec_consts: shader.spec_consts.clone(),
+                        spec_consts: shader.spec_consts.map(|s| (*s).clone()).unwrap_or_default(),
                     },
                     is_async: false,
                     handle,
@@ -1063,7 +1071,10 @@ impl ShaderManager {
                                 )
                                 .0
                                 .into(),
-                            spec_consts: shader.spec_consts.clone(),
+                            spec_consts: shader
+                                .spec_consts
+                                .map(|s| (*s).clone())
+                                .unwrap_or_default(),
                         })
                         .collect(),
                     any_hit_shaders: info
@@ -1078,7 +1089,10 @@ impl ShaderManager {
                                 )
                                 .0
                                 .into(),
-                            spec_consts: shader.spec_consts.clone(),
+                            spec_consts: shader
+                                .spec_consts
+                                .map(|s| (*s).clone())
+                                .unwrap_or_default(),
                         })
                         .collect(),
                     miss_shaders: info
@@ -1093,7 +1107,10 @@ impl ShaderManager {
                                 )
                                 .0
                                 .into(),
-                            spec_consts: shader.spec_consts.clone(),
+                            spec_consts: shader
+                                .spec_consts
+                                .map(|s| (*s).clone())
+                                .unwrap_or_default(),
                         })
                         .collect(),
                     ray_gen_shader: HandlePipelineShaderStage {
@@ -1105,7 +1122,11 @@ impl ShaderManager {
                             )
                             .0
                             .into(),
-                        spec_consts: info.ray_gen_shader.spec_consts.clone(),
+                        spec_consts: info
+                            .ray_gen_shader
+                            .spec_consts
+                            .map(|s| (*s).clone())
+                            .unwrap_or_default(),
                     },
                     is_async: false,
                     handle,

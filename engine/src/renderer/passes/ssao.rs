@@ -65,16 +65,16 @@ impl SsaoPass {
             true,
         );
 
-        let pipeline = assets.request_compute_pipeline(
-            &PathPipelineShaderStage::empty_spec_consts("shaders/ssao.comp.json"),
-        );
+        let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(
+            "shaders/ssao.comp.json",
+        ));
 
         // TODO: Clear history texture
 
         let kernel = Self::create_hemisphere(device, 64);
 
         let blur_pipeline = assets.request_compute_pipeline(
-            &PathPipelineShaderStage::empty_spec_consts(if !visibility_buffer {
+            PathPipelineShaderStage::empty_spec_consts(if !visibility_buffer {
                 "shaders/ssao_blur.comp.json"
             } else {
                 "shaders/ssao_blur_vis_buf.comp.json"

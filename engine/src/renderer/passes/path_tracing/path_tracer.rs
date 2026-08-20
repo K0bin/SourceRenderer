@@ -39,9 +39,9 @@ impl PathTracerPass {
             true,
         );
 
-        let pipeline = assets.request_compute_pipeline(
-            &PathPipelineShaderStage::empty_spec_consts("shaders/path_tracer.comp.json"),
-        );
+        let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(
+            "shaders/path_tracer.comp.json",
+        ));
 
         let sampler = device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Linear,

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::TexturePlane;
 use sourcerenderer_core::Vec2;
+use sourcerenderer_core::gpu::TexturePlane;
 
 use crate::graphics::*;
 use crate::renderer::asset::{
@@ -38,10 +38,10 @@ impl HierarchicalZPass {
         resources.create_texture(Self::HI_Z_BUFFER_NAME, &texture_info, false);
 
         let ffx_pipeline = assets.request_compute_pipeline(
-            &PathPipelineShaderStage::empty_spec_consts("shaders/ffx_downsampler.comp.json"),
+            PathPipelineShaderStage::empty_spec_consts("shaders/ffx_downsampler.comp.json"),
         );
         let copy_pipeline = assets.request_compute_pipeline(
-            &PathPipelineShaderStage::empty_spec_consts("shaders/hi_z_copy.comp.json"),
+            PathPipelineShaderStage::empty_spec_consts("shaders/hi_z_copy.comp.json"),
         );
 
         let sampler = if device.supports_min_max_filter() {

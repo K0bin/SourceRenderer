@@ -1,5 +1,5 @@
-use sourcerenderer_core::gpu::TexturePlane;
 use sourcerenderer_core::Vec4;
+use sourcerenderer_core::gpu::TexturePlane;
 
 use crate::graphics::*;
 use crate::math::Frustum;
@@ -23,10 +23,10 @@ impl DrawPrepPass {
     #[allow(unused)]
     pub fn new(resources: &mut RendererResources, assets: &RendererAssets) -> Self {
         let culling_pipeline = assets.request_compute_pipeline(
-            &PathPipelineShaderStage::empty_spec_consts("shaders/culling.comp.json"),
+            PathPipelineShaderStage::empty_spec_consts("shaders/culling.comp.json"),
         );
         let prep_pipeline = assets.request_compute_pipeline(
-            &PathPipelineShaderStage::empty_spec_consts("shaders/draw_prep.comp.json"),
+            PathPipelineShaderStage::empty_spec_consts("shaders/draw_prep.comp.json"),
         );
         resources.create_buffer(
             Self::VISIBLE_DRAWABLES_BITFIELD_BUFFER,

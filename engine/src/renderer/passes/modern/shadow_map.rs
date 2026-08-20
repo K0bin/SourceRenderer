@@ -2,15 +2,15 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::graphics::*;
+use crate::renderer::Vertex;
 use crate::renderer::asset::{
     ComputePipelineHandle, GraphicsPipelineHandle, GraphicsPipelineInfo, PathPipelineShaderStage,
     RendererAssets, RendererAssetsReadOnly,
 };
 use crate::renderer::light::RendererDirectionalLight;
-use crate::renderer::passes::modern::gpu_scene::{DRAWABLE_CAPACITY, DRAW_CAPACITY, PART_CAPACITY};
+use crate::renderer::passes::modern::gpu_scene::{DRAW_CAPACITY, DRAWABLE_CAPACITY, PART_CAPACITY};
 use crate::renderer::render_path::{RenderPassParameters, SceneInfo};
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
-use crate::renderer::Vertex;
 use bevy_math::Vec4Swizzles as _;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::TexturePlane;
@@ -141,7 +141,7 @@ impl ShadowMapPass {
         });
 
         let prep_pipeline = assets.request_compute_pipeline(
-            &PathPipelineShaderStage::empty_spec_consts("shaders/draw_prep.comp.json"),
+            PathPipelineShaderStage::empty_spec_consts("shaders/draw_prep.comp.json"),
         );
 
         let mut cascades =

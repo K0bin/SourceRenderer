@@ -1,5 +1,5 @@
-use sourcerenderer_core::gpu::TexturePlane;
 use sourcerenderer_core::Vec2UI;
+use sourcerenderer_core::gpu::TexturePlane;
 use std::cell::Ref;
 use std::sync::Arc;
 
@@ -30,9 +30,9 @@ impl ShadingPass {
         assets: &RendererAssets,
         _init_cmd_buffer: &mut CommandBuffer,
     ) -> Self {
-        let pipeline = assets.request_compute_pipeline(
-            &PathPipelineShaderStage::empty_spec_consts("shaders/shading.comp.json"),
-        );
+        let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(
+            "shaders/shading.comp.json",
+        ));
 
         let sampler = Arc::new(device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Linear,

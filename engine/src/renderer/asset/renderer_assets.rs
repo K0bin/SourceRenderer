@@ -1,5 +1,5 @@
-use std::collections::hash_map::Iter;
 use std::collections::HashMap;
+use std::collections::hash_map::Iter;
 use std::sync::Arc;
 
 use smallvec::SmallVec;
@@ -163,10 +163,10 @@ impl RendererAssets {
     #[inline(always)]
     pub(crate) fn request_compute_pipeline(
         &self,
-        shader_path: &PathPipelineShaderStage,
+        shader: PathPipelineShaderStage,
     ) -> ComputePipelineHandle {
         self.shader_manager
-            .request_compute_pipeline(&self.read(), shader_path)
+            .request_compute_pipeline(&self.read(), shader)
     }
 
     #[inline(always)]

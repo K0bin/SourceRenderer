@@ -58,20 +58,19 @@ impl ImageBasedLightingPreparation {
             false,
         );
 
-        let project_to_cube_pipeline =
-            assets.request_compute_pipeline(&PathPipelineShaderStage::empty_spec_consts(
-                "shaders/project_equirectangular.comp.json",
-            ));
+        let project_to_cube_pipeline = assets.request_compute_pipeline(
+            PathPipelineShaderStage::empty_spec_consts("shaders/project_equirectangular.comp.json"),
+        );
         let prefilter_diffuse_pipeline =
-            assets.request_compute_pipeline(&PathPipelineShaderStage::empty_spec_consts(
+            assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(
                 "shaders/prefilter_env_map_diffuse.comp.json",
             ));
         let prefilter_specular_pipeline =
-            assets.request_compute_pipeline(&PathPipelineShaderStage::empty_spec_consts(
+            assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(
                 "shaders/prefilter_env_map_specular.comp.json",
             ));
         let preintegrate_pipeline = assets.request_compute_pipeline(
-            &PathPipelineShaderStage::empty_spec_consts("shaders/preintegrate_brdf.comp.json"),
+            PathPipelineShaderStage::empty_spec_consts("shaders/preintegrate_brdf.comp.json"),
         );
 
         Self {

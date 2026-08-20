@@ -40,9 +40,9 @@ impl SsrPass {
             false,
         );
 
-        let pipeline = assets.request_compute_pipeline(
-            &PathPipelineShaderStage::empty_spec_consts("shaders/ssr.comp.json"),
-        );
+        let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(
+            "shaders/ssr.comp.json",
+        ));
 
         Self { pipeline }
     }
