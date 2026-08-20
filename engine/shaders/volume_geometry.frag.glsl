@@ -111,9 +111,22 @@ vec3 rayMarchPositionInMip(vec3 startPosNormalized, vec3 lowResNormal, uint targ
 
     float tEnter = max(tMin.x, max(tMin.y, tMin.z));
     float tExit = min(tMax.x, min(tMax.y, tMax.z));
+
+    // Calculate intersections with texture box
+	vec3 tTex1 = (vec3(0) - origin) * invRay;
+    vec3 tTex2 = (targetTexSize - origin) * invRay;
+
+    vec3 tTexMin = min(tTex1, tTex2);
+    vec3 tTexMax = max(tTex1, tTex2);
+
+    float tTexEnter = max(tTexMin.x, max(tTexMin.y, tTexMin.z));
+    float tTexExit = min(tTexMax.x, min(tTexMax.y, tTexMax.z));
+
+	tEnter = max(tEnter, tTexEnter);
+	tExit = min(tExit, tTexExit);
+
     // tEnter must be <= tExit
     // tExit must be >= 0
-
     if (tExit < 0.0 || tEnter > tExit)
     return vec3(0);
 
