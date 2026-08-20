@@ -82,6 +82,7 @@ impl SSSPass {
         cmd_buffer: &mut CommandBuffer,
         pass_params: &RenderPassParameters<'_>,
         color_name: &str,
+        sss_intensity_name: &str,
         depth_name: &str,
         camera: &TransientBufferSlice,
         sss_width: f32,
@@ -102,6 +103,17 @@ impl SSSPass {
         let color_view = pass_params.resources.access_view(
             cmd_buffer,
             color_name,
+            BarrierSync::COMPUTE_SHADER,
+            BarrierAccess::SAMPLING_READ,
+            TextureLayout::Sampled,
+            false,
+            &TextureViewInfo::default(),
+            HistoryResourceEntry::Current,
+        );
+
+        let sss_intensity_view = pass_params.resources.access_view(
+            cmd_buffer,
+            sss_intensity_name,
             BarrierSync::COMPUTE_SHADER,
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,
@@ -131,6 +143,12 @@ impl SSSPass {
             BindingFrequency::VeryFrequent,
             0,
             &*color_view,
+            &self.linear_sampler,
+        );
+        cmd_buffer.bind_sampling_view_and_sampler(
+            BindingFrequency::VeryFrequent,
+            4,
+            &*sss_intensity_view,
             &self.linear_sampler,
         );
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &*sss_temp_uav);
@@ -207,7 +225,7 @@ impl SSSPass {
 
         let params = SSSParams {
             dir: Vec2::new(0.0f32, 1.0f32),
-            sss_width: sss_width,
+            sss_width,
         };
         cmd_buffer.set_push_constant_data(&[params], ShaderType::ComputeShader);
 

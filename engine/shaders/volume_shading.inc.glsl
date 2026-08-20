@@ -33,7 +33,7 @@ vec3 approximateSpecularIBL(vec3 specularColor, float roughness, vec3 normal, ve
     return prefilteredSpecular * (specularColor * preintegrated.x + preintegrated.y);
 }
 
-vec4 shadeFragment(float densityNormalized, vec3 worldPosition, vec3 normal) {
+vec4 shadeFragment(float densityNormalized, vec3 worldPosition, vec3 normal, out float sssIntensity) {
     vec3 albedo = texture(TRANSFER_FUNCTION_IMG_NAME, vec2(densityNormalized, 0.8 + 0.5 * 0.25)).rgb;
     albedo.r = mix(albedo.r, albedo.g, 0.3);
 
@@ -59,7 +59,7 @@ vec4 shadeFragment(float densityNormalized, vec3 worldPosition, vec3 normal) {
     vec4 color = vec4(0.0);
     color.rgb = radiance;
     // TODO use transferFunction texture to get SSS intensity
-    color.a = clamp((1.0 - densityNormalized) * 0.33, 0.0, 1.0);
+    //color.a = clamp((1.0 - densityNormalized) * 0.33, 0.0, 1.0);
 
     //color = vec4(min(albedo, vec3(0.1) * albedo + pbr(lightDir, viewDir, normal, vec3(0.025), albedo, vec3(15.0), 0.1, 0.8) * 0.6), 1.0);
     //color.a = in_density;
@@ -67,8 +67,11 @@ vec4 shadeFragment(float densityNormalized, vec3 worldPosition, vec3 normal) {
 
     //color.rgb = vec3(in_density) * 5.0;
 
-    color.rgb = normal.rgb * 0.5 + vec3(0.5);
+    //color.rgb = normal.rgb * 0.5 + vec3(0.5);
     //color.rgb = normal.rgb;
+
+    color.a = densityNormalized * 0.15 + 0.85;
+    sssIntensity = clamp((1.0 - densityNormalized) * 0.33, 0.0, 1.0);
 
     return color;
 }

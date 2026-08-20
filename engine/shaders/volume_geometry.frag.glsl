@@ -11,6 +11,7 @@ layout (location = 1) in float in_density;
 layout (location = 2) in vec3 in_worldPosition;
 
 layout (location = 0) out vec4 out_color;
+layout (location = 1) out float out_sss_intensity;
 
 layout(push_constant, std430) uniform Params {
     layout(offset = 160) vec3 f0;
@@ -31,5 +32,5 @@ layout (set = DESCRIPTOR_SET_FREQUENT, binding = 4) uniform sampler2D integratio
 #include "volume_shading.inc.glsl"
 
 void main(void) {
-    out_color = shadeFragment(in_density, in_worldPosition, in_normal);
+    out_color = shadeFragment(in_density, in_worldPosition, in_normal, out_sss_intensity);
 }

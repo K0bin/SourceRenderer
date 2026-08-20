@@ -46,6 +46,7 @@ pub struct GeometryPass {
 impl GeometryPass {
     pub const COLOR_TEXTURE_NAME: &'static str = "GeometryColor";
     pub const DEPTH_TEXTURE_NAME: &'static str = "Depth";
+    pub const SSS_INTENSITY_TEXTURE_NAME: &'static str = "SSSIntensity";
 
     pub(crate) fn new(
         device: &Arc<crate::graphics::Device>,
@@ -102,6 +103,23 @@ impl GeometryPass {
             false,
         );
 
+        resources.create_texture(
+            Self::SSS_INTENSITY_TEXTURE_NAME,
+            &TextureInfo {
+                dimension: TextureDimension::Dim2D,
+                format: Format::R8UNorm,
+                width: swapchain.width(),
+                height: swapchain.height(),
+                depth: 1,
+                mip_levels: 1,
+                array_length: 1,
+                samples: SampleCount::Samples1,
+                usage: TextureUsage::SAMPLED | TextureUsage::RENDER_TARGET | TextureUsage::STORAGE,
+                supports_srgb: false,
+            },
+            false,
+        );
+
         let shader_file_extension = "json";
 
         let vs_path = format!("shaders/volume_geometry.vert.{}", shader_file_extension);
@@ -140,18 +158,30 @@ impl GeometryPass {
                 logic_op_enabled: false,
                 logic_op: LogicOp::And,
                 constants: [0f32, 0f32, 0f32, 0f32],
-                attachments: &[AttachmentBlendInfo {
-                    blend_enabled: false,
-                    src_color_blend_factor: BlendFactor::SrcAlpha,
-                    dst_color_blend_factor: BlendFactor::OneMinusSrcAlpha,
-                    color_blend_op: BlendOp::Add,
-                    src_alpha_blend_factor: BlendFactor::Zero,
-                    dst_alpha_blend_factor: BlendFactor::One,
-                    alpha_blend_op: BlendOp::Add,
-                    write_mask: ColorComponents::all(),
-                }],
+                attachments: &[
+                    AttachmentBlendInfo {
+                        blend_enabled: false,
+                        src_color_blend_factor: BlendFactor::SrcAlpha,
+                        dst_color_blend_factor: BlendFactor::OneMinusSrcAlpha,
+                        color_blend_op: BlendOp::Add,
+                        src_alpha_blend_factor: BlendFactor::Zero,
+                        dst_alpha_blend_factor: BlendFactor::One,
+                        alpha_blend_op: BlendOp::Add,
+                        write_mask: ColorComponents::all(),
+                    },
+                    AttachmentBlendInfo {
+                        blend_enabled: false,
+                        src_color_blend_factor: BlendFactor::One,
+                        dst_color_blend_factor: BlendFactor::Zero,
+                        color_blend_op: BlendOp::Add,
+                        src_alpha_blend_factor: BlendFactor::One,
+                        dst_alpha_blend_factor: BlendFactor::Zero,
+                        alpha_blend_op: BlendOp::Add,
+                        write_mask: ColorComponents::all(),
+                    },
+                ],
             },
-            render_target_formats: &[Format::RGBA16UNorm],
+            render_target_formats: &[Format::RGBA16UNorm, Format::R8UNorm],
             depth_stencil_format: Format::D32S8, // I'd prefer D24S8 but AMD & Apple don't support that.
         };
         let pipeline = assets.request_graphics_pipeline(&pipeline_info);
@@ -171,11 +201,18 @@ impl GeometryPass {
 
         let mut pipeline_transparency_prepass_info: GraphicsPipelineInfo = pipeline_info.clone();
         pipeline_transparency_prepass_info.fs = None;
-        let blend_attachments_prepass = [AttachmentBlendInfo {
-            blend_enabled: false,
-            write_mask: ColorComponents::empty(),
-            ..Default::default()
-        }];
+        let blend_attachments_prepass = [
+            AttachmentBlendInfo {
+                blend_enabled: false,
+                write_mask: ColorComponents::empty(),
+                ..Default::default()
+            },
+            AttachmentBlendInfo {
+                blend_enabled: false,
+                write_mask: ColorComponents::empty(),
+                ..Default::default()
+            },
+        ];
         pipeline_transparency_prepass_info.blend = BlendInfo {
             alpha_to_coverage_enabled: false,
             logic_op_enabled: false,
@@ -203,16 +240,28 @@ impl GeometryPass {
             func: CompareFunc::Equal,
             depth_fail_op: StencilOp::Keep,
         };
-        let blend_attachments = [AttachmentBlendInfo {
-            blend_enabled: true,
-            src_color_blend_factor: BlendFactor::SrcAlpha,
-            dst_color_blend_factor: BlendFactor::OneMinusSrcAlpha,
-            color_blend_op: BlendOp::Add,
-            src_alpha_blend_factor: BlendFactor::One,
-            dst_alpha_blend_factor: BlendFactor::Zero,
-            alpha_blend_op: BlendOp::Add,
-            write_mask: ColorComponents::all(),
-        }];
+        let blend_attachments = [
+            AttachmentBlendInfo {
+                blend_enabled: true,
+                src_color_blend_factor: BlendFactor::SrcAlpha,
+                dst_color_blend_factor: BlendFactor::OneMinusSrcAlpha,
+                color_blend_op: BlendOp::Add,
+                src_alpha_blend_factor: BlendFactor::One,
+                dst_alpha_blend_factor: BlendFactor::Zero,
+                alpha_blend_op: BlendOp::Add,
+                write_mask: ColorComponents::all(),
+            },
+            AttachmentBlendInfo {
+                blend_enabled: true,
+                src_color_blend_factor: BlendFactor::One,
+                dst_color_blend_factor: BlendFactor::Zero,
+                color_blend_op: BlendOp::Add,
+                src_alpha_blend_factor: BlendFactor::One,
+                dst_alpha_blend_factor: BlendFactor::Zero,
+                alpha_blend_op: BlendOp::Add,
+                write_mask: ColorComponents::all(),
+            },
+        ];
         pipeline_transparency_info.blend = BlendInfo {
             alpha_to_coverage_enabled: false,
             logic_op_enabled: false,
@@ -289,6 +338,17 @@ impl GeometryPass {
             BarrierAccess::RENDER_TARGET_READ | BarrierAccess::RENDER_TARGET_WRITE,
             TextureLayout::RenderTarget,
             false,
+            &TextureViewInfo::default(),
+            HistoryResourceEntry::Current,
+        );
+
+        let sss_view = resources.access_view(
+            cmd_buffer,
+            Self::SSS_INTENSITY_TEXTURE_NAME,
+            BarrierSync::RENDER_TARGET,
+            BarrierAccess::RENDER_TARGET_READ | BarrierAccess::RENDER_TARGET_WRITE,
+            TextureLayout::RenderTarget,
+            true,
             &TextureViewInfo::default(),
             HistoryResourceEntry::Current,
         );
@@ -375,11 +435,18 @@ impl GeometryPass {
         cmd_buffer.begin_label("Geometry");
 
         cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
-            render_targets: &[RenderTarget {
-                view: &color_view,
-                load_op: LoadOpColor::Load,
-                store_op: StoreOp::Store,
-            }],
+            render_targets: &[
+                RenderTarget {
+                    view: &color_view,
+                    load_op: LoadOpColor::Load,
+                    store_op: StoreOp::Store,
+                },
+                RenderTarget {
+                    view: &sss_view,
+                    load_op: LoadOpColor::Clear(ClearColor::BLACK),
+                    store_op: StoreOp::Store,
+                },
+            ],
             depth_stencil: Some(&DepthStencilAttachment {
                 view: &dsv,
                 load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue {

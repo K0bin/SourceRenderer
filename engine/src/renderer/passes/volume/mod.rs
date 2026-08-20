@@ -343,6 +343,7 @@ impl RenderPath for VolumeRenderer {
             &mut cmd_buffer,
             &params,
             GeometryPass::COLOR_TEXTURE_NAME,
+            GeometryPass::SSS_INTENSITY_TEXTURE_NAME,
             GeometryPass::DEPTH_TEXTURE_NAME,
             &camera_buffer,
             0.015,

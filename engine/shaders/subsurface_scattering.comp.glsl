@@ -132,6 +132,8 @@ layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3) uniform CameraUBO {
   Camera camera;
 };
 
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 4) uniform sampler2D sssIntensityImage;
+
 void main() {
 	ivec2 outputPx = ivec2(gl_GlobalInvocationID.xy);
 
@@ -143,8 +145,9 @@ void main() {
 	vec2 texcoord = (vec2(outputPx) + 0.5) / vec2(outputSize);
 
 	vec4 colorM = textureLod(sourceImage, texcoord, 0.0);
+	float sssIntensity = textureLod(sssIntensityImage, texcoord, 0.0).r;
 
-	if (colorM.a == 0.0) {
+	if (sssIntensity == 0.0) {
 	    imageStore(destImage, outputPx, colorM);
 	    return;
     }
@@ -160,8 +163,8 @@ void main() {
 
     // Calculate the final step to fetch the surrounding pixels
     vec2 finalStep = params.sssWidth * scale * params.dir;
-    finalStep *= colorM.a; // Modulate it using the alpha channel.
-    finalStep *= 1.0 / 3.0; // Divide by 3 as the kernels range from -3 to 3.
+    finalStep *= sssIntensity; // Modulate it using the alpha channel.
+    finalStep *= 0.333; // Divide by 3 as the kernels range from -3 to 3.
 
     // Accumulate the center sample
     vec4 colorBlurred = colorM;
