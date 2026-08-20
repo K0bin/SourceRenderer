@@ -216,15 +216,16 @@ impl RenderPath for VolumeRenderer {
         let inv_model = model_matrix.inverse();
         let mut start = Vec3::new(f32::MAX, f32::MAX, f32::MAX);
         let mut end = Vec3::new(f32::MIN, f32::MIN, f32::MIN);
-        for x in 0..=1 {
-            for y in 0..=1 {
-                for z in 0..=1 {
+        for x in 0..2 {
+            for y in 0..2 {
+                for z in 0..2 {
                     let ndc_pos =
                         Vec4::new((x * 2 - 1) as f32, (y * 2 - 1) as f32, z as f32, 1.0f32);
                     let mut world_space_pos = inv_view_proj * ndc_pos;
                     world_space_pos.x /= world_space_pos.w;
                     world_space_pos.y /= world_space_pos.w;
                     world_space_pos.z /= world_space_pos.w;
+                    world_space_pos.w = 1.0;
                     let model_space_pos = inv_model * world_space_pos;
                     start = Vec3::new(
                         start.x.min(model_space_pos.x),
@@ -249,14 +250,6 @@ impl RenderPath for VolumeRenderer {
                 .info()
                 .clone()
         };
-
-        // TODO: Temporarily disabled, fix this!
-        start = Vec3::new(0.0f32, 0.0f32, 0.0f32);
-        end = Vec3::new(
-            (volume_texture_info.width >> geometry_lod) as f32,
-            (volume_texture_info.height >> geometry_lod) as f32,
-            (volume_texture_info.depth >> geometry_lod) as f32,
-        );
 
         self.marching_cubes_pass.execute(
             &mut cmd_buffer,

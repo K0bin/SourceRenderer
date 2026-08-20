@@ -78,26 +78,12 @@ uint vertexKey(uvec3 pos1, uvec3 pos2) {
 }
 
 uint vertexKeyFromIndexOffsets(uint idx1, uint idx2) {
-    uvec3 workgroupBase = gl_WorkGroupID * gl_WorkGroupSize;
+    uvec3 workgroupBase = gl_WorkGroupID * gl_WorkGroupSize + minBox;
     uvec3 base = workgroupBase + gl_LocalInvocationID;
     uvec3 vertexPos1 = base + indexOffset(idx1);
     uvec3 vertexPos2 = base + indexOffset(idx2);
     uint vtxKey = vertexKey(vertexPos1, vertexPos2);
     return vtxKey;
-}
-
-
-uint localInvocationIndex(uvec3 invocationId) {
-    return invocationId.z * gl_WorkGroupSize.x * gl_WorkGroupSize.y +
-        invocationId.y * gl_WorkGroupSize.x +
-        invocationId.x;
-}
-
-
-uvec3 localInvocationID(uint invocationIndex) {
-    return uvec3(invocationIndex % gl_WorkGroupSize.x,
-        (invocationIndex / gl_WorkGroupSize.x) % gl_WorkGroupSize.y,
-        invocationIndex / (gl_WorkGroupSize.x * gl_WorkGroupSize.y));
 }
 
 uint[12u] buildVertexKeys(uint voxelKey) {
@@ -136,10 +122,11 @@ uint[12u] buildVertexKeys(uint voxelKey) {
 
 
 void main() {
-    uvec3 workgroupBase = gl_WorkGroupID * gl_WorkGroupSize;
+    uvec3 workgroupBase = gl_WorkGroupID * gl_WorkGroupSize + minBox;
     uvec3 base = workgroupBase + gl_LocalInvocationID;
+    uvec3 unshiftedBase = base - minBox;
 
-    if (subgroupAll(any(greaterThanEqual(base + uvec3(1u), extent))))
+    if (subgroupAll(any(greaterThanEqual(unshiftedBase + uvec3(1u), extent))))
         return;
 
     uint voxelKey = 0u;
@@ -159,7 +146,7 @@ void main() {
         }
     }
 
-    if (any(greaterThanEqual(base + uvec3(1u), extent)))
+    if (any(greaterThanEqual(unshiftedBase + uvec3(1u), extent)))
         return;
 
     if ((voxelKey == 0u || voxelKey == 255u) && (voxelKeyTransparent == 0u || voxelKeyTransparent == 255u))
