@@ -608,7 +608,7 @@ impl GeometryPass {
                 width: color_tex_extent.x as f32,
                 height: color_tex_extent.y as f32,
                 f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
-                threshold,
+                threshold: threshold_transparency,
             }],
             ShaderType::FragmentShader,
         );
