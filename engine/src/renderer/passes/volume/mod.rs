@@ -175,7 +175,8 @@ impl RenderPath for VolumeRenderer {
         //self.threshold += 0.0000005f32;
         //self.threshold += 0.00005f32;
         //self.threshold += 0.00005f32;
-        self.threshold = 0.00005f32 * 144f32 * 4f32;
+        //self.threshold = 0.0288;
+        self.threshold = 0.55f32;
         //self.threshold = self.threshold % 0.10f32;
         self.threshold = self.threshold % 1.0f32;
         //self.lod += 0.0001f32 / self.lod.max(1.0f32);
@@ -186,8 +187,9 @@ impl RenderPath for VolumeRenderer {
 
         //self.threshold = 0.00005f32 * 150.0f32;
 
-        //let geometry_lod = 3u32;
-        let geometry_lod = self.lod as u32;
+        let geometry_lod = 0u32;
+        let transparency_threshold = 0.0288;
+        //let geometry_lod = self.lod as u32;
 
         let marching_cube_scale = Vec3::new(0.488281f32, 0.488281f32, 0.700012f32) * 8f32 * 0.01f32;
         let lod_scale = (1u32 << geometry_lod) as f32;
@@ -261,7 +263,7 @@ impl RenderPath for VolumeRenderer {
             &params,
             self.texture_handle,
             self.threshold,
-            self.threshold * 0.2f32,
+            transparency_threshold,
             geometry_lod,
             Vec3UI::new(
                 (start.x.max(0.0f32) as u32).min(volume_texture_info.width >> geometry_lod),
@@ -323,7 +325,7 @@ impl RenderPath for VolumeRenderer {
             self.texture_handle,
             model_matrix,
             self.threshold,
-            self.threshold * 0.2f32,
+            transparency_threshold,
             geometry_lod,
         );
 
