@@ -79,7 +79,7 @@ vec3 rayMarchPositionInMip(vec3 startPosNormalized, vec3 lowResNormal, uint targ
     modelRay = normalize(modelRay);
 
     // Use normal instead of view ray. More consistent.
-    modelRay = -lowResNormal;
+    //modelRay = -lowResNormal;
 
     vec3 invRay = vec3(1.0 / modelRay.x, 1.0 / modelRay.y, 1.0 / modelRay.z);
 
@@ -93,13 +93,15 @@ vec3 rayMarchPositionInMip(vec3 startPosNormalized, vec3 lowResNormal, uint targ
     // factor to go from lower res to higher res
     uint lodFactor = 1u << (meshLod - targetLod);
     // min and max corner of the lower res voxel in the higher res mip
-    vec3 pos1 = floor(startPosNormalized * geometryTexSize) * float(lodFactor);
+    vec3 pos1 = floor((startPosNormalized * targetTexSize) / vec3(float(lodFactor))) * float(lodFactor);
     vec3 pos2 = pos1 + vec3(lodFactor);
-    //vec3 origin = modelPos.xyz * float(lodFactor);
-    vec3 origin = startPosNormalized * targetTexSize;
+    vec3 origin = modelPos.xyz * float(lodFactor);
+    //vec3 origin = startPosNormalized * targetTexSize;
 
     vec3 bbMin = min(pos1, pos2);
     vec3 bbMax = max(pos1, pos2);
+	bbMin *= -sign(bbMin) * 1.5;
+	bbMax *= 1.5;
 
     vec3 t1 = (bbMin - origin) * invRay;
     vec3 t2 = (bbMax - origin) * invRay;
@@ -115,14 +117,8 @@ vec3 rayMarchPositionInMip(vec3 startPosNormalized, vec3 lowResNormal, uint targ
     if (tExit < 0.0 || tEnter > tExit)
     return vec3(0);
 
-    //float stepLen = min(abs(tEnter), 1.0);// this can cause hangs
-
     float stepLen = 1.0;
     float t = tEnter;
-
-    // Extend search area and look inside neighboring low res voxels too
-    tExit += lodFactor;
-    tEnter -= lodFactor;
 
     while (t <= tExit) {
         vec3 pos = origin + t * modelRay.xyz;
@@ -145,13 +141,17 @@ vec3 rayMarchPositionInMip(vec3 startPosNormalized, vec3 lowResNormal, uint targ
 
 void main(void) {
     uint normalLod = 0;
-    vec3 normalLookUpNormalized = rayMarchPositionInMip(in_densityMapUV, normalLod);
+    vec3 simpleNormal = calculateNormal(in_densityMapUV, lod);
+    vec3 normalLookUpNormalized = rayMarchPositionInMip(in_densityMapUV, simpleNormal, normalLod);
     vec3 normal;
     if (dot(normalLookUpNormalized, normalLookUpNormalized) > 0.001)
     normal = calculateNormal(normalLookUpNormalized, normalLod);
     else
     //normal = vec3(1.0, 0, 0);
-    normal = calculateNormal(in_densityMapUV, lod);
+    normal = simpleNormal;
+
+	if (dot(normal, simpleNormal) < 0)
+		normal *= -1;
 
     //normal = normalLookUpNormalized * 2.0 - vec3(1.0);
     //normal = vec3(1.0);
