@@ -5,10 +5,10 @@
 #include "descriptor_sets.inc.glsl"
 #include "camera.inc.glsl"
 
-layout(location = 0) out vec3 out_normal;
-layout(location = 1) out float out_density;
-layout(location = 2) out vec3 out_worldPosition;
-layout(location = 3) out vec3 out_densityMapUV;
+//layout(location = 0) out vec3 out_normal;
+layout(location = 0) out float out_density;
+layout(location = 1) out vec3 out_worldPosition;
+layout(location = 2) out vec3 out_densityMapUV;
 
 layout(set = DESCRIPTOR_SET_FRAME, binding = 0) uniform CameraUBO {
   Camera camera;
@@ -16,7 +16,7 @@ layout(set = DESCRIPTOR_SET_FRAME, binding = 0) uniform CameraUBO {
 
 layout(push_constant) uniform VeryHighFrequencyUbo {
   mat4 model;
-  mat4 invModel;
+  //mat4 invModel;
   uvec3 lodExtents;
   float threshold;
   uint lod;
@@ -81,16 +81,16 @@ void main(void) {
   out_densityMapUV = densityMapPosition;
   vec3 normal = calculateNormal(densityMapPosition, lod);
 
-  mat4 normalModelMat = transpose(invModel);
-  out_normal = normalize(normalModelMat * vec4(normal, 0)).xyz;
+  //mat4 normalModelMat = transpose(invModel);
+  //out_normal = normalize(normalModelMat * vec4(normal, 0)).xyz;
 
   out_density = density;
 
-  vec4 rayDir = vec4(0.0, 0.0, 1.0, 0.0);
+  /*vec4 rayDir = vec4(0.0, 0.0, 1.0, 0.0);
   rayDir = (invModel * camera.invView) * rayDir;
-  rayDir = normalize(rayDir);
+  rayDir = normalize(rayDir);*/
 
-  out_density = max(out_density, textureLod(densityMap, (pos + 0.5 + rayDir.xyz) / densityMapSize, lod).x);
+  //out_density = max(out_density, textureLod(densityMap, (pos + 0.5 + rayDir.xyz) / densityMapSize, lod).x);
 
   mat4 mvp = camera.viewProj * model;
   gl_Position = mvp * vec4(pos, 1.0);

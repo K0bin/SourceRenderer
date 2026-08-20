@@ -7,16 +7,16 @@
 #include "camera.inc.glsl"
 #include "util.inc.glsl"
 
-layout (location = 0) in vec3 in_normal;
-layout (location = 1) in float in_density;
-layout (location = 2) in vec3 in_worldPosition;
-layout (location = 3) in vec3 in_densityMapUV;
+//layout (location = 0) in vec3 in_normal;
+layout (location = 0) in float in_density;
+layout (location = 1) in vec3 in_worldPosition;
+layout (location = 2) in vec3 in_densityMapUV;
 
 layout (location = 0) out vec4 out_color;
 layout (location = 1) out float out_sss_intensity;
 
 layout(push_constant, std430) uniform Params {
-    layout(offset = 160) vec3 f0;
+    layout(offset = 96) vec3 f0;
     float roughness;
     mat4 invModel;
     float metalness;
@@ -66,7 +66,6 @@ vec3 rayMarchPositionInMip(vec3 startPosNormalized, uint targetLod) {
 
     vec3 worldPos = worldSpacePosition(vec2(gl_FragCoord.x / width, gl_FragCoord.y / height), 0.0, camera.invViewProj);
     vec3 modelPos = (invModel * vec4(worldPos, 1.0)).xyz;
-    modelPos /= exp2(meshLod);
 
     vec4 viewRay = vec4(0,0,1,0);
     vec4 worldRay = camera.invView * viewRay;
@@ -74,17 +73,16 @@ vec3 rayMarchPositionInMip(vec3 startPosNormalized, uint targetLod) {
     modelRay = normalize(modelRay);
     vec3 invRay = vec3(1.0 / modelRay.x, 1.0 / modelRay.y, 1.0 / modelRay.z);
 
+
+    // resolution of mip 0
+    uvec3 texSize = textureSize(densityMap, 0);
+    // resolution of the higher res mip
+    uvec3 targetTexSize = uvec3(texSize.x << targetLod, texSize.y << targetLod, texSize.z << targetLod);
+    // resolution of the lower res mip
+    uvec3 currentTexSize = uvec3(texSize.x << meshLod, texSize.y << meshLod, texSize.z << meshLod);
+
     // factor to go from lower res to higher res
     uint lodFactor = 1u << (meshLod - targetLod);
-    // resolution of the higher res mip
-    uvec3 targetTexSize = textureSize(densityMap, int(targetLod));
-    // resolution of the lower res mip
-    uvec3 currentTexSize = uvec3(targetTexSize.x >> (meshLod - targetLod),
-        targetTexSize.y >> (meshLod - targetLod),
-        targetTexSize.z >> (meshLod - targetLod));
-
-    //return modelPos.xyz / vec3(currentTexSize);
-
     // min and max corner of the lower res voxel in the higher res mip
     vec3 pos1 = floor(startPosNormalized * currentTexSize) * float(lodFactor);
     vec3 pos2 = pos1 + vec3(lodFactor);
@@ -106,7 +104,7 @@ vec3 rayMarchPositionInMip(vec3 startPosNormalized, uint targetLod) {
     // tExit must be >= 0
 
     if (tExit < 0.0 || tEnter > tExit)
-        return vec3(0.0);
+        return vec3(0, 1, 1.0);
 
     // even when we find hits, the position doesnt always work with the normal calc algorithm
     // maybe i can do something with subgroup quads?
@@ -137,10 +135,10 @@ vec3 rayMarchPositionInMip(vec3 startPosNormalized, uint targetLod) {
         t += stepLen;
         debugSteps++;
         if (debugSteps > debugMaxSteps)
-            return vec3(0.0);
+            return vec3(1.0, 0, 0);
     }
 
-    return vec3(0.0);
+    return vec3(0, 1, 0.0);
 }
 
 #include "volume_shading.inc.glsl"
@@ -152,10 +150,10 @@ void main(void) {
     if (dot(normalLookUpNormalized, normalLookUpNormalized) > 0.001)
         normal = calculateNormal(normalLookUpNormalized, normalLod);
     else
-        //normal = vec3(0.0);
-        normal = calculateNormal(in_densityMapUV, lod);
+        normal = vec3(1.0, 1, 0);
+        //normal = calculateNormal(in_densityMapUV, lod);
 
-    normal = normalLookUpNormalized * 2.0 - vec3(1.0);
+    //normal = normalLookUpNormalized * 2.0 - vec3(1.0);
     //normal = vec3(1.0);
 
     //normal = normalLookUpNormalized - in_densityMapUV;
@@ -183,5 +181,13 @@ void main(void) {
 
     //vec3 normal = in_normal;
 
+    mat4 normalModelMat = transpose(invModel);
+    normal = (normalModelMat * vec4(normal, 0.0)).xyz;
+    normal = normalize(normal);
+    //normal = in_normal;
+
     out_color = shadeFragment(in_density, in_worldPosition, normal, out_sss_intensity);
+
+    out_color.xyz = normal * 0.5 + vec3(0.5);
+    out_color.a = 1.0;
 }

@@ -19,7 +19,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 struct PushConstantData {
     model_matrix: Matrix4,
-    inv_model_matrix: Matrix4,
+    //inv_model_matrix: Matrix4,
     lod_extents: Vec3UI,
     threshold: f32,
     lod: u32,
@@ -549,7 +549,7 @@ impl GeometryPass {
         cmd_buffer.set_push_constant_data(
             &[PushConstantData {
                 model_matrix,
-                inv_model_matrix: Matrix4::inverse(&model_matrix),
+                //inv_model_matrix: Matrix4::inverse(&model_matrix),
                 lod_extents: volume_texture_lod_extents,
                 threshold,
                 lod,
@@ -590,7 +590,7 @@ impl GeometryPass {
         cmd_buffer.set_push_constant_data(
             &[PushConstantData {
                 model_matrix,
-                inv_model_matrix: Matrix4::inverse(&model_matrix),
+                //inv_model_matrix: Matrix4::inverse(&model_matrix),
                 lod_extents: volume_texture_lod_extents,
                 threshold: threshold_transparency,
                 lod,
@@ -631,7 +631,7 @@ impl GeometryPass {
         cmd_buffer.set_push_constant_data(
             &[PushConstantData {
                 model_matrix,
-                inv_model_matrix: Matrix4::inverse(&model_matrix),
+                //inv_model_matrix: Matrix4::inverse(&model_matrix),
                 lod_extents: volume_texture_lod_extents,
                 threshold: threshold_transparency,
                 lod,
@@ -657,7 +657,7 @@ impl GeometryPass {
         cmd_buffer.set_push_constant_data(
             &[PushConstantData {
                 model_matrix,
-                inv_model_matrix: Matrix4::inverse(&model_matrix),
+                //inv_model_matrix: Matrix4::inverse(&model_matrix),
                 threshold: threshold_transparency,
                 lod_extents: volume_texture_lod_extents,
                 lod,
