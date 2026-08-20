@@ -343,6 +343,11 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             );
         }
 
+        self.instance
+            .get_physical_device_features2(self.physical_device, &mut supported_features);
+        self.instance
+            .get_physical_device_properties2(self.physical_device, &mut properties);
+
         if supported_features
             .features
             .shader_storage_image_write_without_format
@@ -406,11 +411,6 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                     as *mut c_void,
             );
         }
-
-        self.instance
-            .get_physical_device_features2(self.physical_device, &mut supported_features);
-        self.instance
-            .get_physical_device_properties2(self.physical_device, &mut properties);
 
         let mut enabled_features: vk::PhysicalDeviceFeatures2 = Default::default();
         let mut enabled_features_11: vk::PhysicalDeviceVulkan11Features = Default::default();
