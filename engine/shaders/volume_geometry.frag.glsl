@@ -13,11 +13,10 @@ layout (location = 2) in vec3 in_worldPosition;
 layout (location = 0) out vec4 out_color;
 
 layout(push_constant, std430) uniform Params {
-    layout(offset = 144) float roughness;
+    layout(offset = 160) vec3 f0;
+    float roughness;
     float metalness;
-    float _padding;
-    float _padding1;
-    vec3 f0;
+    uint lod;
 };
 
 layout(set = DESCRIPTOR_SET_FRAME, binding = 0) uniform CameraUBO {
