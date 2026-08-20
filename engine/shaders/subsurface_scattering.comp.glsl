@@ -157,7 +157,7 @@ void main() {
 
     // Calculate the sssWidth scale (1.0 for a unit plane sitting on the
     // projection window)
-    float fovY = calculateVerticalFov(camera.fov, float(outputPx.x) / float(outputPx.y));
+    float fovY = calculateVerticalFov(camera.fov, float(outputSize.x) / float(outputSize.y));
     float distanceToProjectionWindow = 1.0 / tan(0.5 * radians(fovY));
     float scale = distanceToProjectionWindow / depthM;
 
