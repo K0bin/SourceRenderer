@@ -1,8 +1,8 @@
 use std::f32;
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_void};
 use std::os::raw::c_char;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 use ash::khr::surface::Instance as KhrSurface;
 use ash::vk;
@@ -343,20 +343,32 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             );
         }
 
-        if !supported_features
+        if supported_features
             .features
             .shader_storage_image_write_without_format
-            == vk::TRUE
+            == vk::FALSE
         {
-            panic!("Your Vulkan driver is not capable of running this application. ShaderStorageImageWriteWithoutFormat is a required feature!");
+            panic!(
+                "Your Vulkan driver is not capable of running this application. ShaderStorageImageWriteWithoutFormat is a required feature!"
+            );
         }
 
-        if !supported_features_13.dynamic_rendering == vk::TRUE {
-            panic!("Your Vulkan driver is not capable of running this application. Dynamic rendering is a required feature!");
+        if supported_features_13.dynamic_rendering == vk::FALSE {
+            panic!(
+                "Your Vulkan driver is not capable of running this application. Dynamic rendering is a required feature!"
+            );
         }
 
-        if !supported_features_12.host_query_reset == vk::TRUE {
-            panic!("Your Vulkan driver is not capable of running this application. Host query reset is a required feature!");
+        if supported_features_12.host_query_reset == vk::FALSE {
+            panic!(
+                "Your Vulkan driver is not capable of running this application. Host query reset is a required feature!"
+            );
+        }
+
+        if supported_features.features.independent_blend == vk::FALSE {
+            panic!(
+                "Your Vulkan driver is not capable of running this application. Independent blend is a required feature!"
+            );
         }
 
         if extensions.intersects(VkAdapterExtensionSupport::BARYCENTRICS) {
@@ -425,6 +437,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         enabled_features_12.scalar_block_layout = supported_features_12.scalar_block_layout;
         enabled_features_12.shader_float16 = supported_features_12.shader_float16;
         enabled_features_13.dynamic_rendering = vk::TRUE;
+        enabled_features.features.independent_blend = vk::TRUE;
         features_shader_atomic_float = supported_features_shader_atomic_float;
 
         enabled_features_11.p_next = std::mem::replace(
