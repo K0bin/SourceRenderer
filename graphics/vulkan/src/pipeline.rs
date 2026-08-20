@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::ffi::CString;
 use std::hash::{Hash, Hasher};
 use std::os::raw::{c_char, c_void};
@@ -5,7 +6,9 @@ use std::sync::Arc;
 
 use ash::vk::{self, Handle as _};
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, Buffer as _, PipelineShaderStage, Shader as _};
+use sourcerenderer_core::gpu::{
+    self, Buffer as _, PipelineShaderStage, Shader as _, SpecConstValue,
+};
 use sourcerenderer_core::{align_up_32, align_up_64};
 
 use super::*;
@@ -395,7 +398,10 @@ fn add_bindless_set_if_used(
     }
 
     if device.features_12.descriptor_indexing == vk::FALSE {
-        panic!("Pipeline {:?} is trying to use the bindless texture descriptor set but the Vulkan device does not support descriptor indexing.", pipeline_name);
+        panic!(
+            "Pipeline {:?} is trying to use the bindless texture descriptor set but the Vulkan device does not support descriptor indexing.",
+            pipeline_name
+        );
     }
 
     let mut bindless_bindings =
@@ -436,6 +442,34 @@ fn remap_push_constant_ranges(context: &mut DescriptorSetLayoutSetupContext) {
 }
 
 impl VkPipeline {
+    unsafe fn get_spec_map(
+        spec_consts: &HashMap<u32, SpecConstValue>,
+    ) -> (
+        vk::SpecializationInfo,
+        Vec<u32>,
+        Vec<vk::SpecializationMapEntry>,
+    ) {
+        let mut spec_data = Vec::<u32>::with_capacity(spec_consts.len());
+        let mut spec_map = Vec::<vk::SpecializationMapEntry>::with_capacity(spec_consts.len());
+        for (idx, value) in spec_consts.iter() {
+            let map_entry = vk::SpecializationMapEntry {
+                constant_id: *idx,
+                offset: (spec_data.len() * std::mem::size_of::<u32>()) as u32,
+                size: std::mem::size_of::<u32>(),
+            };
+            spec_data.push(value.as_raw_u32());
+            spec_map.push(map_entry);
+        }
+        let spec_info = vk::SpecializationInfo {
+            data_size: spec_data.len() * std::mem::size_of::<u32>(),
+            map_entry_count: spec_map.len() as u32,
+            p_map_entries: spec_map.as_ptr(),
+            p_data: spec_data.as_ptr() as *const c_void,
+            ..Default::default()
+        };
+        (spec_info, spec_data, spec_map)
+    }
+
     pub fn new_graphics(
         device: &Arc<RawVkDevice>,
         info: &gpu::GraphicsPipelineInfo<VkBackend>,
@@ -448,23 +482,38 @@ impl VkPipeline {
         let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
         let mut context = DescriptorSetLayoutSetupContext::default();
 
+        let (vs_spec_info, _vs_spec_data, _vs_spec_map) =
+            unsafe { Self::get_spec_map(info.vs.spec_consts) };
         {
             let shader = info.vs.shader;
             let shader_stage = vk::PipelineShaderStageCreateInfo {
                 module: shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
                 stage: shader_type_to_vk(shader.shader_type()),
+                p_specialization_info: &vs_spec_info as *const vk::SpecializationInfo,
                 ..Default::default()
             };
             shader_stages.push(shader_stage);
             add_shader_to_descriptor_set_layout_setup(device, shader, &mut context);
         }
 
+        let mut fs_spec_info = vk::SpecializationInfo::default();
+        let mut _fs_spec_data = Vec::<u32>::new();
+        let mut _fs_spec_map = Vec::<vk::SpecializationMapEntry>::new();
+
         if let Some(pipeline_shader) = info.fs.as_ref() {
+            let (spec_info, spec_data, spec_map) =
+                unsafe { Self::get_spec_map(info.vs.spec_consts) };
+
+            fs_spec_info = spec_info;
+            _fs_spec_data = spec_data;
+            _fs_spec_map = spec_map;
+
             let shader_stage = vk::PipelineShaderStageCreateInfo {
                 module: pipeline_shader.shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
                 stage: shader_type_to_vk(pipeline_shader.shader.shader_type()),
+                p_specialization_info: &fs_spec_info as *const vk::SpecializationInfo,
                 ..Default::default()
             };
             shader_stages.push(shader_stage);
@@ -723,16 +772,31 @@ impl VkPipeline {
         let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
         let mut context = DescriptorSetLayoutSetupContext::default();
 
+        let mut fs_spec_info = vk::SpecializationInfo::default();
+        let mut _fs_spec_data = Vec::<u32>::new();
+        let mut _fs_spec_map = Vec::<vk::SpecializationMapEntry>::new();
+
         if let Some(shader) = info.ts.clone() {
+            let (spec_info, spec_data, spec_map) =
+                unsafe { Self::get_spec_map(info.ms.spec_consts) };
+
+            fs_spec_info = spec_info;
+            _fs_spec_data = spec_data;
+            _fs_spec_map = spec_map;
+
             let shader_stage = vk::PipelineShaderStageCreateInfo {
                 module: shader.shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
                 stage: shader_type_to_vk(shader.shader.shader_type()),
+                p_specialization_info: &fs_spec_info as *const vk::SpecializationInfo,
                 ..Default::default()
             };
             shader_stages.push(shader_stage);
             add_shader_to_descriptor_set_layout_setup(device, shader.shader, &mut context);
         }
+
+        let (ms_spec_info, _ms_spec_data, _ms_spec_map) =
+            unsafe { Self::get_spec_map(info.ms.spec_consts) };
 
         {
             let shader = &info.ms;
@@ -740,6 +804,7 @@ impl VkPipeline {
                 module: shader.shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
                 stage: shader_type_to_vk(shader.shader.shader_type()),
+                p_specialization_info: &ms_spec_info as *const vk::SpecializationInfo,
                 ..Default::default()
             };
             shader_stages.push(shader_stage);
@@ -967,10 +1032,12 @@ impl VkPipeline {
         let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
         let mut context = DescriptorSetLayoutSetupContext::default();
 
+        let (spec_info, _spec_data, _spec_map) = unsafe { Self::get_spec_map(&shader.spec_consts) };
         let shader_stage = vk::PipelineShaderStageCreateInfo {
             module: shader.shader.shader_module(),
             p_name: entry_point.as_ptr() as *const c_char,
             stage: shader_type_to_vk(shader.shader.shader_type()),
+            p_specialization_info: &spec_info as *const vk::SpecializationInfo,
             ..Default::default()
         };
 
@@ -1124,18 +1191,38 @@ impl VkPipeline {
         let rt_device = rt.rt_pipelines.as_ref().unwrap();
         let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
 
-        let mut stages = SmallVec::<[vk::PipelineShaderStageCreateInfo; 4]>::new();
-        let mut groups = SmallVec::<[vk::RayTracingShaderGroupCreateInfoKHR; 4]>::new();
+        let total_count = 1
+            + info.any_hit_shaders.len()
+            + info.closest_hit_shaders.len()
+            + info.miss_shaders.len();
+
+        let mut spec_maps =
+            SmallVec::<[Vec<vk::SpecializationMapEntry>; 4]>::with_capacity(total_count);
+        let mut spec_datas = SmallVec::<[Vec<u32>; 4]>::with_capacity(total_count);
+        // Spec infos must never move the contents! Hopefully creating it with proper capacity achieves that.
+        let mut spec_infos = SmallVec::<[vk::SpecializationInfo; 4]>::with_capacity(total_count);
+        let mut stages =
+            SmallVec::<[vk::PipelineShaderStageCreateInfo; 4]>::with_capacity(total_count);
+        let mut groups =
+            SmallVec::<[vk::RayTracingShaderGroupCreateInfoKHR; 4]>::with_capacity(total_count);
 
         let mut context = DescriptorSetLayoutSetupContext::default();
 
         {
-            let shader = info.ray_gen_shader;
+            let spec_info_ptr = unsafe { spec_infos.as_ptr().offset(spec_infos.len() as isize) };
+            let (spec_info, spec_data, spec_map) =
+                unsafe { Self::get_spec_map(&info.ray_gen_shader.spec_consts) };
+            spec_datas.push(spec_data);
+            spec_maps.push(spec_map);
+            spec_infos.push(spec_info);
+
+            let shader = &info.ray_gen_shader;
             let stage_info = vk::PipelineShaderStageCreateInfo {
                 flags: vk::PipelineShaderStageCreateFlags::empty(),
                 stage: vk::ShaderStageFlags::RAYGEN_KHR,
                 module: shader.shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
+                p_specialization_info: spec_info_ptr,
                 ..Default::default()
             };
             let group_info = vk::RayTracingShaderGroupCreateInfoKHR {
@@ -1153,11 +1240,19 @@ impl VkPipeline {
         }
 
         for shader in info.closest_hit_shaders.iter() {
+            let spec_info_ptr = unsafe { spec_infos.as_ptr().offset(spec_infos.len() as isize) };
+            let (spec_info, spec_data, spec_map) =
+                unsafe { Self::get_spec_map(&info.ray_gen_shader.spec_consts) };
+            spec_datas.push(spec_data);
+            spec_maps.push(spec_map);
+            spec_infos.push(spec_info);
+
             let stage_info = vk::PipelineShaderStageCreateInfo {
                 flags: vk::PipelineShaderStageCreateFlags::empty(),
                 stage: vk::ShaderStageFlags::CLOSEST_HIT_KHR,
                 module: shader.shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
+                p_specialization_info: spec_info_ptr,
                 ..Default::default()
             };
             let group_info = vk::RayTracingShaderGroupCreateInfoKHR {
@@ -1175,11 +1270,19 @@ impl VkPipeline {
         }
 
         for shader in info.any_hit_shaders.iter() {
+            let spec_info_ptr = unsafe { spec_infos.as_ptr().offset(spec_infos.len() as isize) };
+            let (spec_info, spec_data, spec_map) =
+                unsafe { Self::get_spec_map(&info.ray_gen_shader.spec_consts) };
+            spec_datas.push(spec_data);
+            spec_maps.push(spec_map);
+            spec_infos.push(spec_info);
+
             let stage_info = vk::PipelineShaderStageCreateInfo {
                 flags: vk::PipelineShaderStageCreateFlags::empty(),
                 stage: vk::ShaderStageFlags::ANY_HIT_KHR,
                 module: shader.shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
+                p_specialization_info: spec_info_ptr,
                 ..Default::default()
             };
             let group_info = vk::RayTracingShaderGroupCreateInfoKHR {
@@ -1197,11 +1300,19 @@ impl VkPipeline {
         }
 
         for shader in info.miss_shaders.iter() {
+            let spec_info_ptr = unsafe { spec_infos.as_ptr().offset(spec_infos.len() as isize) };
+            let (spec_info, spec_data, spec_map) =
+                unsafe { Self::get_spec_map(&info.ray_gen_shader.spec_consts) };
+            spec_datas.push(spec_data);
+            spec_maps.push(spec_map);
+            spec_infos.push(spec_info);
+
             let stage_info = vk::PipelineShaderStageCreateInfo {
                 flags: vk::PipelineShaderStageCreateFlags::empty(),
                 stage: vk::ShaderStageFlags::MISS_KHR,
                 module: shader.shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
+                p_specialization_info: spec_info_ptr,
                 ..Default::default()
             };
             let group_info = vk::RayTracingShaderGroupCreateInfoKHR {
