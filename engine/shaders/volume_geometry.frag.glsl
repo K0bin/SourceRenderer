@@ -148,10 +148,14 @@ void main(void) {
     uint normalLod = 0;
     vec3 normalLookUpNormalized = rayMarchPositionInMip(in_densityMapUV, normalLod);
     vec3 normal;
-    if (dot(normalLookUpNormalized, normalLookUpNormalized) > 0.001)
-    normal = calculateNormal(normalLookUpNormalized, normalLod);
-    else
-    normal = calculateNormal(in_densityMapUV, lod);
+    float density;
+    if (dot(normalLookUpNormalized, normalLookUpNormalized) > 0.001) {
+        normal = calculateNormal(normalLookUpNormalized, normalLod);
+        density = textureLod(densityMap, normalLookUpNormalized, int(normalLod)).x;
+    } else {
+        normal = calculateNormal(in_densityMapUV, lod);
+        density = in_density;
+    }
 
     mat4 normalModelMat = transpose(invModel);
     normal = (normalModelMat * vec4(normal, 0.0)).xyz;
