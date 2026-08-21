@@ -174,9 +174,9 @@ impl RenderPath for VolumeRenderer {
     ) -> Result<RenderPathResult, sourcerenderer_core::gpu::SwapchainError> {
         //self.threshold += 0.0000005f32;
         //self.threshold += 0.00005f32;
-        //self.threshold += 0.00005f32;
+        //self.threshold += 0.001f32;
         //self.threshold = 0.0288;
-        self.threshold = 0.55f32;
+        //self.threshold = 0.22f32;
         //self.threshold = self.threshold % 0.10f32;
         self.threshold = self.threshold % 1.0f32;
         //self.lod += 0.0001f32 / self.lod.max(1.0f32);
@@ -187,7 +187,11 @@ impl RenderPath for VolumeRenderer {
 
         //self.threshold = 0.00005f32 * 150.0f32;
 
-        let geometry_lod = 0u32;
+        let geometry_lod = 3u32;
+        //let transparency_threshold = 0.0288;
+        //let opaque_threshold = self.threshold % 0.8f32 + 0.4f32;
+        let opaque_threshold = 0.55f32;
+        //let transparency_threshold = (self.threshold - 0.5f32).max(0.01f32);
         let transparency_threshold = 0.0288;
         //let geometry_lod = self.lod as u32;
 
@@ -255,7 +259,7 @@ impl RenderPath for VolumeRenderer {
             &mut cmd_buffer,
             &params,
             self.texture_handle,
-            self.threshold,
+            opaque_threshold,
             transparency_threshold,
             geometry_lod,
             Vec3UI::new(
@@ -317,7 +321,7 @@ impl RenderPath for VolumeRenderer {
             assets,
             self.texture_handle,
             model_matrix,
-            self.threshold,
+            opaque_threshold,
             transparency_threshold,
             geometry_lod,
         );

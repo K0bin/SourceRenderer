@@ -34,10 +34,10 @@ vec3 approximateSpecularIBL(vec3 specularColor, float roughness, vec3 normal, ve
 }
 
 vec4 shadeFragment(float densityNormalized, vec3 worldPosition, vec3 normal, out float sssIntensity) {
-    vec3 albedo = texture(TRANSFER_FUNCTION_IMG_NAME, vec2(densityNormalized, 0.8 + 0.5 * 0.25)).rgb;
+    vec3 albedo = texture(TRANSFER_FUNCTION_IMG_NAME, vec2(densityNormalized * 0.6 + 0.4, 0.8 + 0.5 * 0.25)).rgb;
     albedo.r = mix(albedo.r, albedo.g, 0.3);
 
-    float roughness = texture(TRANSFER_FUNCTION_IMG_NAME, vec2(min(densityNormalized, 0.9), 0.1 + 0.5 * 0.25)).r + 0.5;
+    float roughness = texture(TRANSFER_FUNCTION_IMG_NAME, vec2(densityNormalized * 0.3, 0.1 + 0.5 * 0.25)).r + 0.35;
     //roughness = 9999.0;
 
     vec3 radiance = vec3(0.0);
@@ -45,7 +45,7 @@ vec4 shadeFragment(float densityNormalized, vec3 worldPosition, vec3 normal, out
     // Direct lighting
     vec3 lightDir = normalize(-vec3(0.1, 1.0, 0.3));
     vec3 viewDir = normalize(camera.position.xyz - worldPosition);
-    vec3 lightPower = vec3(5.0);
+    vec3 lightPower = vec3(0.5);
     radiance += pbr(lightDir, viewDir, normal.xyz, f0, albedo, lightPower, roughness, metalness);
 
     // Image based lighting (diffuse)
@@ -70,7 +70,7 @@ vec4 shadeFragment(float densityNormalized, vec3 worldPosition, vec3 normal, out
     //color.rgb = normal.rgb * 0.5 + vec3(0.5);
     //color.rgb = normal.rgb;
 
-    color.a = densityNormalized * 0.15 + 0.85;
+    color.a = densityNormalized * 0.1 + 0.9;
     sssIntensity = clamp((1.0 - densityNormalized) * 0.33, 0.0, 1.0);
 
     return color;

@@ -596,7 +596,7 @@ impl GeometryPass {
         );
         cmd_buffer.set_push_constant_data(
             &[MaterialData {
-                roughness: 0.6f32,
+                roughness: 0.4f32,
                 metalness: 0.3f32,
                 //roughness: 0.1f32,
                 //metalness: 0.9f32,
