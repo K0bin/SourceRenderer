@@ -1,7 +1,7 @@
 use std::{cell::RefCell, collections::HashMap, hash::Hash, ops::Deref, sync::Arc};
 
 use bitflags::bitflags;
-use js_sys::{wasm_bindgen::JsValue, Array, Uint8Array};
+use js_sys::{wasm_bindgen::JsValue, Array, Uint8Array, JsNullable};
 use smallvec::SmallVec;
 use sourcerenderer_core::{align_up_64, gpu};
 use web_sys::{
@@ -80,7 +80,7 @@ impl WebGPUBindGroupLayout {
         > = SmallVec::new();
         binding_infos.resize(WEBGPU_BIND_COUNT_PER_SET as usize, None);
 
-        let entries = Array::new();
+        let mut entries = SmallVec::<[GpuBindGroupLayoutEntry; 2]>::with_capacity(bindings.len());
 
         let mut max_used_binding = 0u32;
 
@@ -91,7 +91,7 @@ impl WebGPUBindGroupLayout {
                     let buffer_binding = GpuBufferBindingLayout::new();
                     buffer_binding.set_type(GpuBufferBindingType::Uniform);
                     buffer_binding.set_has_dynamic_offset(binding.has_dynamic_offset);
-                    buffer_binding.set_min_binding_size(binding.struct_size as f64);
+                    buffer_binding.set_min_binding_size(binding.struct_size);
                     entry.set_buffer(&buffer_binding);
                 }
                 gpu::ResourceType::StorageBuffer => {
@@ -102,7 +102,7 @@ impl WebGPUBindGroupLayout {
                         GpuBufferBindingType::ReadOnlyStorage
                     });
                     buffer_binding.set_has_dynamic_offset(binding.has_dynamic_offset);
-                    buffer_binding.set_min_binding_size(binding.struct_size as f64);
+                    buffer_binding.set_min_binding_size(binding.struct_size);
                     entry.set_buffer(&buffer_binding);
                 }
                 gpu::ResourceType::StorageTexture => {
@@ -136,7 +136,7 @@ impl WebGPUBindGroupLayout {
                 }
                 _ => panic!("Unsupported resource type"),
             }
-            entries.push(&entry);
+            entries.push(entry);
 
             if binding_infos.len() <= binding.index as usize {
                 binding_infos.resize((binding.index + 1) as usize, None);
@@ -216,13 +216,11 @@ impl WebGPUPipelineLayout {
     ) -> Self {
         let mut owned_bind_group_layouts: [Option<Arc<WebGPUBindGroupLayout>>;
             gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
-        let bind_group_layouts_js: Array = Array::new();
+        let mut bind_group_layouts_js: [JsNullable<GpuBindGroupLayout>; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
         for (index, bind_group_layout_opt) in bind_group_layouts.iter().enumerate() {
             if let Some(bind_group_layout) = bind_group_layout_opt {
-                bind_group_layouts_js.push(bind_group_layout.handle());
+                bind_group_layouts_js[index] = JsNullable::wrap(bind_group_layout.handle().clone());
                 owned_bind_group_layouts[index] = Some(bind_group_layout.clone());
-            } else {
-                bind_group_layouts_js.push(&JsValue::null());
             }
         }
         let descriptor = GpuPipelineLayoutDescriptor::new(&bind_group_layouts_js);
@@ -259,39 +257,30 @@ impl WebGPUBindGroup {
     where
         WebGPUBoundResource: From<&'a T>,
     {
-        let entries = Array::new();
+        let mut entries = SmallVec::<[GpuBindGroupEntry; 4]>::new();
         let mut stored_bindings =
             SmallVec::<[WebGPUBoundResource; DEFAULT_PER_SET_PREALLOCATED_SIZE]>::new();
 
         for (index, binding_ref) in bindings.iter().enumerate() {
             let binding: WebGPUBoundResource = binding_ref.into();
-            let resource_js_value: JsValue;
+            let entry: GpuBindGroupEntry;
             match &binding {
                 WebGPUBoundResource::None => continue,
-                WebGPUBoundResource::SampledTexture(texture) => {
-                    resource_js_value = JsValue::from(&*texture as &GpuTextureView);
+                WebGPUBoundResource::SampledTexture(texture)
+                | WebGPUBoundResource::StorageTexture(texture) => {
+                    entry = GpuBindGroupEntry::new_with_gpu_texture_view(index as u32, texture as &GpuTextureView);
                 }
                 WebGPUBoundResource::Sampler(sampler) => {
-                    resource_js_value = JsValue::from(&*sampler as &GpuSampler);
+                    entry = GpuBindGroupEntry::new(index as u32, sampler as &GpuSampler);
                 }
-                WebGPUBoundResource::UniformBuffer(binding_info) => {
+                WebGPUBoundResource::UniformBuffer(binding_info)
+                | WebGPUBoundResource::StorageBuffer(binding_info) => {
                     let buffer_info = GpuBufferBinding::new(&binding_info.buffer);
-                    buffer_info.set_size(binding_info.length as f64);
+                    buffer_info.set_size(binding_info.length as u32);
                     if !layout.is_dynamic_binding(index as u32) {
-                        buffer_info.set_offset(binding_info.offset as f64);
+                        buffer_info.set_offset(binding_info.offset as u32);
                     }
-                    resource_js_value = JsValue::from(&buffer_info);
-                }
-                WebGPUBoundResource::StorageBuffer(binding_info) => {
-                    let buffer_info = GpuBufferBinding::new(&binding_info.buffer);
-                    buffer_info.set_size(binding_info.length as f64);
-                    if !layout.is_dynamic_binding(index as u32) {
-                        buffer_info.set_offset(binding_info.offset as f64);
-                    }
-                    resource_js_value = JsValue::from(&buffer_info);
-                }
-                WebGPUBoundResource::StorageTexture(texture) => {
-                    resource_js_value = JsValue::from(&*texture as &GpuTextureView);
+                    entry = GpuBindGroupEntry::new_with_gpu_buffer_binding(index as u32, &buffer_info);
                 }
                 WebGPUBoundResource::UniformBufferArray(_buffers) => {
                     panic!("Descriptor arrays are not supported on WebGPU")
@@ -306,8 +295,7 @@ impl WebGPUBindGroup {
                     panic!("Descriptor arrays are not supported on WebGPU")
                 }
             }
-            let entry = GpuBindGroupEntry::new(index as u32, &resource_js_value);
-            entries.push(&entry);
+            entries.push(entry);
             stored_bindings.push(binding);
         }
 
@@ -961,7 +949,7 @@ impl WebGPUBindingManager {
         mapped: bool,
         usage: u32,
     ) -> GpuBuffer {
-        let descriptor = GpuBufferDescriptor::new(size as f64, usage);
+        let descriptor = GpuBufferDescriptor::new(size as u32, usage);
         descriptor.set_mapped_at_creation(mapped);
         device.create_buffer(&descriptor).unwrap()
     }

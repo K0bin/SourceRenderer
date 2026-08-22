@@ -14,7 +14,8 @@ use crate::{
     texture::{format_to_webgpu, WebGPUTexture, WebGPUTextureView},
     WebGPUBackend, WebGPUBindGroupBinding, WebGPULimits, WebGPUQueryPool,
 };
-use js_sys::{wasm_bindgen::JsValue, Array, Uint32Array};
+use js_sys::{wasm_bindgen::JsValue, Array, Uint32Array, JsNullable, JsString};
+use js_sys::wasm_bindgen::JsCast;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{Barrier, BarrierSync, SplitBarrierWait};
 use sourcerenderer_core::{
@@ -975,27 +976,21 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
 
         let src_info = GpuTexelCopyTextureInfo::new(src_texture.handle());
         src_info.set_mip_level(src_mip_level);
-        let src_origin = Array::new_with_length(3);
-        src_origin.set(0, JsValue::from(0f64));
-        src_origin.set(1, JsValue::from(0f64));
+        let mut src_origin = [js_sys::Number::from(0), js_sys::Number::from(0), js_sys::Number::from(0)];
         if src_texture.info().dimension == gpu::TextureDimension::Dim3D {
-            src_origin.set(2, JsValue::from(0f64));
             assert_eq!(src_array_layer, 0);
         } else {
-            src_origin.set(2, JsValue::from(src_array_layer as f64));
+            src_origin[2] = js_sys::Number::from(src_array_layer);
         }
         src_info.set_origin(&src_origin);
 
         let dst_info = GpuTexelCopyTextureInfo::new(dst_texture.handle());
         dst_info.set_mip_level(dst_mip_level);
-        let dst_origin = Array::new_with_length(3);
-        dst_origin.set(0, JsValue::from(0f64));
-        dst_origin.set(1, JsValue::from(0f64));
+        let mut dst_origin = [js_sys::Number::from(0), js_sys::Number::from(0), js_sys::Number::from(0)];
         if dst_texture.info().dimension == gpu::TextureDimension::Dim3D {
-            dst_origin.set(2, JsValue::from(0f64));
             assert_eq!(dst_array_layer, 0);
         } else {
-            dst_origin.set(2, JsValue::from(dst_array_layer as f64));
+            dst_origin[2] = js_sys::Number::from(dst_array_layer);
         }
         dst_info.set_origin(&dst_origin);
 
@@ -1142,7 +1137,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         recording.end_non_rendering_encoders();
 
         let src_info = GpuTexelCopyBufferInfo::new(&src.handle());
-        src_info.set_offset(region.buffer_offset as f64);
+        src_info.set_offset(region.buffer_offset as u32);
 
         let format = dst.info().format;
         let row_pitch = if region.buffer_row_pitch != 0 {
@@ -1164,9 +1159,11 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         src_info.set_rows_per_image((slice_pitch / row_pitch) as u32);
         let dst_info = GpuTexelCopyTextureInfo::new(dst.handle());
         dst_info.set_mip_level(region.texture_subresource.mip_level);
-        let origin = Array::new_with_length(3);
-        origin.set(0, JsValue::from(region.texture_offset.x as f64));
-        origin.set(1, JsValue::from(region.texture_offset.y as f64));
+        let mut origin = [
+            js_sys::Number::from(region.texture_offset.x),
+            js_sys::Number::from(region.texture_offset.y),
+            js_sys::Number::from(0)
+        ];
         let copy_size = GpuExtent3dDict::new(region.texture_extent.x);
         copy_size.set_height(region.texture_extent.y);
         assert!(
@@ -1175,15 +1172,12 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         if dst.info().dimension == gpu::TextureDimension::Dim3D {
             assert_eq!(region.texture_subresource.array_layer, 0);
             copy_size.set_depth_or_array_layers(region.texture_extent.z);
-            origin.set(2, JsValue::from(region.texture_offset.z as f64));
+            origin[2] = js_sys::Number::from(region.texture_offset.z);
         } else {
             assert_eq!(region.texture_extent.z, 1);
             assert_eq!(region.texture_offset.z, 0);
             copy_size.set_depth_or_array_layers(1);
-            origin.set(
-                2,
-                JsValue::from(region.texture_subresource.array_layer as f64),
-            );
+            origin[2] = js_sys::Number::from(region.texture_subresource.array_layer);
         }
         dst_info.set_origin(&origin);
         recording
@@ -1262,32 +1256,31 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         renderpass_info: &gpu::RenderPassBeginInfo<WebGPUBackend>,
         recording_mode: gpu::RenderpassRecordingMode,
     ) -> Option<Self::CommandBufferInheritance> {
-        let color_attachments = Array::new_with_length(renderpass_info.render_targets.len() as u32);
-        let color_formats = Array::new_with_length(renderpass_info.render_targets.len() as u32);
-        let color = Array::new_with_length(4);
-        for (index, color_rt) in renderpass_info.render_targets.iter().enumerate() {
+        let mut color_attachments = SmallVec::<[JsNullable<GpuRenderPassColorAttachment>; 4]>::with_capacity(renderpass_info.render_targets.len());
+        let mut color_formats = SmallVec::<[JsNullable<JsString>; 4]>::with_capacity(renderpass_info.render_targets.len());
+        let mut color = [js_sys::Number::from(0), js_sys::Number::from(0), js_sys::Number::from(0), js_sys::Number::from(0)];
+        for color_rt in renderpass_info.render_targets.iter() {
             let (load_op, clear_color) = load_op_color_to_webgpu(&color_rt.load_op);
             let (store_op, resolve_attachment) = store_op_to_webgpu(&color_rt.store_op);
             for i in 0..4 {
-                color.set(i, JsValue::from(clear_color.as_u32()[i as usize] as f64));
+                color[i] = js_sys::Number::from(clear_color.as_u32()[i]);
             }
             let descriptor =
-                GpuRenderPassColorAttachment::new(load_op, store_op, color_rt.view.handle());
+                GpuRenderPassColorAttachment::new_with_gpu_texture_view(load_op, store_op, color_rt.view.handle());
             descriptor.set_clear_value(&color);
             if let Some(resolve_attachment) = resolve_attachment {
-                descriptor.set_resolve_target(resolve_attachment.view.handle());
+                descriptor.set_resolve_target_gpu_texture_view(resolve_attachment.view.handle());
             }
-            color_attachments.set(index as u32, descriptor.into());
-            color_formats.set(
-                index as u32,
+            color_attachments.push(JsNullable::wrap(descriptor));
+            color_formats.push(JsNullable::wrap(
                 JsValue::from(format_to_webgpu(
                     color_rt
                         .view
                         .info()
                         .format
                         .unwrap_or(color_rt.view.texture_info().format),
-                )),
-            );
+                )).unchecked_into::<JsString>(),
+            ));
         }
         let descriptor = GpuRenderPassDescriptor::new(&color_attachments);
         let bundle_descriptor = GpuRenderBundleEncoderDescriptor::new(&color_formats);
@@ -1302,7 +1295,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                 .format
                 .unwrap_or_else(|| depth_stencil.view.texture_info().format);
 
-            let attachment = GpuRenderPassDepthStencilAttachment::new(depth_stencil.view.handle());
+            let attachment = GpuRenderPassDepthStencilAttachment::new_with_gpu_texture_view(depth_stencil.view.handle());
             let (load_op, clear_value) = load_op_ds_to_webgpu(&depth_stencil.load_op);
             let (store_op, resolve_attachment) = store_op_to_webgpu(&depth_stencil.store_op);
             assert!(resolve_attachment.is_none());
@@ -1384,9 +1377,9 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         }
         let cmd_buffer = self.get_recording_mut();
         let render_pass_encoder = cmd_buffer.get_render_encoder();
-        let array = Array::new_with_length(submission.len() as u32);
-        for i in 0..submission.len() {
-            let cmd_buffer_handle = &submission[i].handle;
+        let mut bundles = SmallVec::<[GpuRenderBundle; 1]>::with_capacity(submission.len());
+        for cmd_buffer in submission {
+            let cmd_buffer_handle = &cmd_buffer.handle;
             match cmd_buffer_handle {
                 WebGPUCommandBufferHandle::Recording(_) => {
                     panic!("execute_inner can only execute inner command buffers")
@@ -1398,7 +1391,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                     panic!("Inner command buffer is not finished yet.")
                 }
                 WebGPUCommandBufferHandle::SecondaryFinished(inner) => {
-                    array.set(i as u32, JsValue::from(&inner.bundle))
+                    bundles.push(inner.bundle.clone());
                 }
                 WebGPUCommandBufferHandle::SecondaryReset(_) => {
                     panic!("Inner command buffer is unused")
@@ -1407,7 +1400,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                 WebGPUCommandBufferHandle::Uninit => unreachable!(),
             }
         }
-        render_pass_encoder.execute_bundles(&array);
+        render_pass_encoder.execute_bundles(&bundles);
     }
 
     unsafe fn reset(&mut self, frame: u64) {

@@ -1,12 +1,11 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use js_sys::Array;
+use smallvec::SmallVec;
 use sourcerenderer_core::gpu;
-use web_sys::{GpuDevice, GpuQueue};
+use web_sys::{GpuCommandBuffer, GpuDevice, GpuQueue};
 
-use crate::{
-    swapchain::WebGPUSwapchain, WebGPUBackbuffer, WebGPUBackend, WebGPUCommandPool, WebGPULimits,
-};
+use crate::{swapchain::WebGPUSwapchain, WebGPUBackbuffer, WebGPUBackend, WebGPUCommandPool, WebGPULimits, WebGPUCommandBuffer};
 
 pub struct WebGPUQueue {
     device: GpuDevice,
@@ -46,8 +45,8 @@ impl gpu::Queue<WebGPUBackend> for WebGPUQueue {
                 .all(|pair| pair.fence.value.load(Ordering::Acquire) >= pair.value);
             assert!(is_ready);
 
-            let array = Array::new_with_length(submission.command_buffers.len() as u32);
-            for (index, cmd_buffer) in submission.command_buffers.iter().enumerate() {
+            let mut array = SmallVec::<[GpuCommandBuffer; 1]>::with_capacity(submission.command_buffers.len());
+            for cmd_buffer in submission.command_buffers.iter() {
                 // Unmap all readback buffers that get used in this command buffer to make them accessible on the GPU
                 for sync in cmd_buffer.readback_syncs() {
                     if let Some(dst) = sync.dst.as_ref() {
@@ -57,7 +56,7 @@ impl gpu::Queue<WebGPUBackend> for WebGPUQueue {
                     }
                 }
 
-                array.set(index as u32, cmd_buffer.handle().into());
+                array.push(cmd_buffer.handle().clone());
             }
             self.queue.submit(&array);
             for pair in submission.signal_fences {

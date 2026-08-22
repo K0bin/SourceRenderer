@@ -106,6 +106,8 @@ mod active_gpu_backend {
     pub type GraphicsPipelineInfo<'a> = super::gpu::GraphicsPipelineInfo<'a, self::Backend>;
     pub type MeshGraphicsPipelineInfo<'a> = super::gpu::MeshGraphicsPipelineInfo<'a, self::Backend>;
     pub type RayTracingPipelineInfo<'a> = super::gpu::RayTracingPipelineInfo<'a, self::Backend>;
+
+    pub type PipelineShaderStage<'a> = super::gpu::PipelineShaderStage<'a, self::Backend>;
 }
 
 pub use active_gpu_backend::{

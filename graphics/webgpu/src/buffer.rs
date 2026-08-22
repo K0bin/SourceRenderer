@@ -114,7 +114,7 @@ impl WebGPUBuffer {
             Option::<Box<[u8]>>::None
         };
 
-        let descriptor = GpuBufferDescriptor::new(info.size as f64, usage);
+        let descriptor = GpuBufferDescriptor::new(info.size as u32, usage);
         if let Some(name) = name {
             descriptor.set_label(name);
         }
@@ -137,7 +137,7 @@ impl WebGPUBuffer {
             // WebGPU does not allow USAGE_MAP_READ with anything except USAGE_COPY_DST.
             // So we have to keep a second buffer around and copy to that at the end of every command buffer.
             let readback_descriptor = GpuBufferDescriptor::new(
-                info.size as f64,
+                info.size as u32,
                 web_sys::gpu_buffer_usage::COPY_DST | web_sys::gpu_buffer_usage::MAP_READ,
             );
             if let Some(name) = name {
@@ -352,7 +352,7 @@ impl gpu::Buffer for WebGPUBuffer {
                 if PREFER_DISCARD_OVER_QUEUE_WRITE && offset == 0 && length == self.info.size {
                     let mut readback_buffer_mut = readback_buffer.borrow_mut();
                     let readback_descriptor = GpuBufferDescriptor::new(
-                        self.info.size as f64,
+                        self.info.size as u32,
                         web_sys::gpu_buffer_usage::COPY_DST | web_sys::gpu_buffer_usage::MAP_READ,
                     );
                     readback_descriptor.set_label(&readback_buffer_mut.label());

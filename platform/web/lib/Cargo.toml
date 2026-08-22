@@ -31,6 +31,11 @@ futures-lite = "2.6"
 async-lock = "3.4"
 async-task = "4.7"
 
+# Needs to be specified here with old versions to make sure dependencies that have it as a dependency get the version
+# with the feature enabled
+getrandom-old = { package = "getrandom", version = "0.2", features = ["js"] }
+getrandom-new = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
+
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
 # all the `std::fmt` and `std::panicking` infrastructure, so isn't great for

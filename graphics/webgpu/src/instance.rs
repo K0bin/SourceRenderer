@@ -2,7 +2,7 @@ use std::{
     error::Error,
     fmt::{Debug, Display},
 };
-
+use js_sys::JsNullable;
 use sourcerenderer_core::gpu;
 use wasm_bindgen_futures::*;
 use web_sys::{
@@ -82,19 +82,17 @@ impl WebGPUInstance {
         adapter_options.set_power_preference(GpuPowerPreference::HighPerformance);
         let discrete_adapter_future =
             JsFuture::from(gpu.request_adapter_with_options(&adapter_options));
-        let discrete_adapter: GpuAdapter = discrete_adapter_future
+        let nullable_discrete_adapter: JsNullable<GpuAdapter> = discrete_adapter_future
             .await
             .map_err(|_| WebGPUInstanceInitError::new("Failed to retrieve WebGPU adapter"))?
             .into();
 
-        if !discrete_adapter.is_object()
-            || discrete_adapter.is_null()
-            || discrete_adapter.is_undefined()
-        {
+        if nullable_discrete_adapter.is_empty() {
             return Err(WebGPUInstanceInitError::new(
                 "Failed to retrieve WebGPU adapter",
             ));
         }
+        let discrete_adapter: GpuAdapter = nullable_discrete_adapter.unwrap();
 
         let discrete_device_future = JsFuture::from(discrete_adapter.request_device());
         let discrete_device: GpuDevice = discrete_device_future
@@ -114,19 +112,19 @@ impl WebGPUInstance {
         adapter_options.set_power_preference(GpuPowerPreference::LowPower);
         let integrated_adapter_future =
             JsFuture::from(gpu.request_adapter_with_options(&adapter_options));
-        let integrated_adapter: GpuAdapter = integrated_adapter_future
+
+        let nullable_integrated_adapter: JsNullable<GpuAdapter> = integrated_adapter_future
             .await
             .map_err(|_| WebGPUInstanceInitError::new("Failed to retrieve WebGPU adapter"))?
             .into();
 
-        if !integrated_adapter.is_object()
-            || integrated_adapter.is_null()
-            || integrated_adapter.is_undefined()
-        {
+        if nullable_integrated_adapter.is_empty() {
             return Err(WebGPUInstanceInitError::new(
                 "Failed to retrieve WebGPU adapter",
             ));
         }
+
+        let integrated_adapter = nullable_integrated_adapter.unwrap();
 
         let integrated_device_future = JsFuture::from(integrated_adapter.request_device());
         let integrated_device: GpuDevice = integrated_device_future

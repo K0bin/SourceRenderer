@@ -1,5 +1,7 @@
 use sourcerenderer_core::gpu::{self, Texture as _};
 use std::hash::Hash;
+use js_sys::JsString;
+use js_sys::wasm_bindgen::JsCast;
 use web_sys::{
     js_sys, wasm_bindgen::JsValue, Gpu, GpuDevice, GpuExtent3dDict, GpuTexture,
     GpuTextureDescriptor, GpuTextureFormat, GpuTextureView, GpuTextureViewDescriptor,
@@ -104,13 +106,14 @@ impl WebGPUTexture {
         info: &gpu::TextureInfo,
         name: Option<&str>,
     ) -> Result<Self, ()> {
-        let size = GpuExtent3dDict::new(info.width);
+        let mut size = [js_sys::Number::from(0), js_sys::Number::from(0), js_sys::Number::from(0)];
+        size[0] = js_sys::Number::from(info.height);
         if info.dimension != gpu::TextureDimension::Dim1D
             && info.dimension != gpu::TextureDimension::Dim1DArray
         {
-            size.set_height(info.height);
+            size[1] = js_sys::Number::from(info.height);
         }
-        size.set_depth_or_array_layers(if info.dimension == gpu::TextureDimension::Dim3D {
+        size[2] = js_sys::Number::from(if info.dimension == gpu::TextureDimension::Dim3D {
             info.depth
         } else {
             info.array_length
@@ -148,7 +151,7 @@ impl WebGPUTexture {
             usage |= web_sys::gpu_texture_usage::COPY_DST;
         }
         let descriptor =
-            GpuTextureDescriptor::new(format_to_webgpu(info.format), &JsValue::from(&size), usage);
+            GpuTextureDescriptor::new(format_to_webgpu(info.format), &size, usage);
         descriptor.set_mip_level_count(info.mip_levels);
         descriptor.set_sample_count(match info.samples {
             gpu::SampleCount::Samples1 => 1,
@@ -175,14 +178,13 @@ impl WebGPUTexture {
             .then_some(true)
             .and_then(|_| info.format.srgb_format());
         if let Some(srgb_format) = srgb_format {
-            let formats_array = js_sys::Array::new_with_length(2);
-            formats_array.set(0, JsValue::from(format_to_webgpu(info.format)));
-            formats_array.set(1, JsValue::from(format_to_webgpu(srgb_format)));
-            descriptor.set_view_formats(&JsValue::from(formats_array));
+            let mut formats_array: [JsString; 2] = Default::default();
+            formats_array[0] = JsValue::from(format_to_webgpu(info.format)).unchecked_into::<JsString>();
+            formats_array[1] = JsValue::from(format_to_webgpu(srgb_format)).unchecked_into::<JsString>();
+            descriptor.set_view_formats(&formats_array);
         } else {
-            let formats_array = js_sys::Array::new_with_length(1);
-            formats_array.set(0, JsValue::from(format_to_webgpu(info.format)));
-            descriptor.set_view_formats(&JsValue::from(formats_array));
+            let format = JsValue::from(format_to_webgpu(info.format)).unchecked_into::<JsString>();
+            descriptor.set_view_formats(&[format]);
         }
         let texture = device.create_texture(&descriptor).map_err(|_| ())?;
 
@@ -268,6 +270,7 @@ impl gpu::Texture for WebGPUTexture {
 }
 
 pub struct WebGPUTextureView {
+    texture: GpuTexture,
     view: GpuTextureView,
     texture_info: gpu::TextureInfo,
     info: gpu::TextureViewInfo,
@@ -312,6 +315,7 @@ impl WebGPUTextureView {
             .create_view_with_descriptor(&descriptor)
             .map_err(|_| ())?;
         Ok(Self {
+            texture: texture.texture.clone(),
             view,
             texture_info: texture.info().clone(),
             info: info.clone(),
@@ -321,6 +325,11 @@ impl WebGPUTextureView {
     #[inline(always)]
     pub fn handle(&self) -> &GpuTextureView {
         &self.view
+    }
+
+    #[inline(always)]
+    pub fn texture_handle(&self) -> &GpuTexture {
+        &self.texture
     }
 }
 

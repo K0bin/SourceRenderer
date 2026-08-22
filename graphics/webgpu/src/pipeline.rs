@@ -1,4 +1,4 @@
-use js_sys::{wasm_bindgen::JsValue, Array};
+use js_sys::{wasm_bindgen::JsValue, Array, JsNullable};
 use log::warn;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu;
@@ -12,7 +12,7 @@ use web_sys::{
     GpuStencilOperation, GpuVertexAttribute, GpuVertexBufferLayout, GpuVertexFormat,
     GpuVertexState, GpuVertexStepMode,
 };
-
+use sourcerenderer_core::gpu::PipelineShaderStage;
 use crate::{
     binding::WebGPUBindGroupEntryInfo,
     shared::{WebGPUBindGroupLayoutKey, WebGPUShared},
@@ -256,34 +256,31 @@ impl WebGPUGraphicsPipeline {
         name: Option<&str>,
         limits: &WebGPULimits,
     ) -> Result<Self, ()> {
-        let vertex_buffers =
-            Array::new_with_length(info.vertex_layout.input_assembler.len() as u32);
+        let mut vertex_buffers: [JsNullable<GpuVertexBufferLayout>; 8] = Default::default();
         for vb_info in info.vertex_layout.input_assembler {
-            let mut attributes_count = 0;
-            let attributes = Array::new();
+            let mut attributes = SmallVec::<[GpuVertexAttribute; 4]>::with_capacity(info.vertex_layout.shader_inputs.len());
             for shader_input in info.vertex_layout.shader_inputs {
                 if shader_input.input_assembler_binding != vb_info.binding {
                     continue;
                 }
                 let shader_attr: GpuVertexAttribute = GpuVertexAttribute::new(
                     format_to_vertex_format(shader_input.format),
-                    shader_input.offset as f64,
+                    shader_input.offset as u32,
                     shader_input.location_vk_mtl,
                 );
-                attributes.set(attributes_count, JsValue::from(shader_attr));
-                attributes_count += 1;
+                attributes.push(shader_attr);
             }
 
-            let vb_layout = GpuVertexBufferLayout::new(vb_info.stride as f64, &attributes);
+            let vb_layout = GpuVertexBufferLayout::new(vb_info.stride as u32, &attributes);
             vb_layout.set_step_mode(match vb_info.input_rate {
                 gpu::InputRate::PerVertex => GpuVertexStepMode::Vertex,
                 gpu::InputRate::PerInstance => GpuVertexStepMode::Instance,
             });
-            vertex_buffers.set(vb_info.binding as u32, JsValue::from(&vb_layout));
+            vertex_buffers[vb_info.binding as usize] = JsNullable::wrap(vb_layout);
         }
 
         let vertex_state = GpuVertexState::new(info.vs.shader.module());
-        vertex_state.set_buffers(&JsValue::from(vertex_buffers));
+        vertex_state.set_buffers(&vertex_buffers);
 
         let mut bind_group_layout_keys: [WebGPUBindGroupLayoutKey;
             gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
@@ -491,7 +488,7 @@ impl WebGPUGraphicsPipeline {
         let any_blending_enabled = info.blend.attachments.iter().any(|a| a.blend_enabled);
 
         if let Some(fs) = info.fs.as_ref() {
-            let targets = Array::new_with_length(info.render_target_formats.len() as u32);
+            let mut targets = SmallVec::<[JsNullable<GpuColorTargetState>; 4]>::with_capacity(info.render_target_formats.len());
             for i in 0..info.render_target_formats.len() {
                 let format = info.render_target_formats[i];
                 let blend_attachment = &info.blend.attachments[i];
@@ -504,7 +501,7 @@ impl WebGPUGraphicsPipeline {
                     );
                     target_state.set_blend(&blend_state);
                 }
-                targets.set(i as u32, JsValue::from(&target_state));
+                targets.push(JsNullable::wrap(target_state));
             }
             let fragment_state = GpuFragmentState::new(fs.shader.module(), &targets);
             descriptor.set_fragment(&fragment_state);
@@ -544,12 +541,12 @@ pub struct WebGPUComputePipeline {
 impl WebGPUComputePipeline {
     pub(crate) fn new(
         device: &GpuDevice,
-        shader: &WebGPUShader,
+        shader: PipelineShaderStage<WebGPUBackend>,
         shared: &WebGPUShared,
         name: Option<&str>,
         limits: &WebGPULimits,
     ) -> Result<Self, ()> {
-        let stage = GpuProgrammableStage::new(shader.module());
+        let stage = GpuProgrammableStage::new(shader.shader.module());
 
         let mut bind_group_layout_keys: [WebGPUBindGroupLayoutKey;
             gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
@@ -587,7 +584,7 @@ impl WebGPUComputePipeline {
         let mut uniform_dynamic_offsets_count = 1u32;
         let mut storage_dynamic_offsets_count = 0u32;
 
-        for (set_index, shader_set) in shader.bindings.iter().enumerate() {
+        for (set_index, shader_set) in shader.shader.bindings.iter().enumerate() {
             let set = &mut bind_group_layout_keys[set_index];
             let push_const_binding_offset =
                 if set_index == gpu::BindingFrequency::VeryFrequent as usize {
@@ -651,7 +648,7 @@ impl WebGPUComputePipeline {
 
         Ok(Self {
             pipeline,
-            resources: shader.resources().clone(),
+            resources: shader.shader.resources().clone(),
             layout,
         })
     }

@@ -7,7 +7,7 @@ use sourcerenderer_core::{
     gpu::{self, Texture as _},
 };
 use web_sys::{GpuDevice, GpuExtent3dDict, GpuTexelCopyBufferLayout, GpuTexelCopyTextureInfo};
-
+use sourcerenderer_core::gpu::PipelineShaderStage;
 use crate::{
     WebGPUBackend, WebGPUBuffer, WebGPUComputePipeline, WebGPUFeatures, WebGPUFence,
     WebGPUGraphicsPipeline, WebGPUHeap, WebGPULimits, WebGPUQueryPool, WebGPUQueue, WebGPUSampler,
@@ -123,7 +123,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
 
     unsafe fn create_compute_pipeline(
         &self,
-        shader: &WebGPUShader,
+        shader: PipelineShaderStage<WebGPUBackend>,
         name: Option<&str>,
     ) -> WebGPUComputePipeline {
         WebGPUComputePipeline::new(&self.device, shader, &self.shared, name, &self.limits).unwrap()
@@ -337,9 +337,9 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         src_info.set_rows_per_image((slice_pitch / row_pitch) as u32);
         let dst_info = GpuTexelCopyTextureInfo::new(dst.handle());
         dst_info.set_mip_level(region.texture_subresource.mip_level);
-        let origin = Array::new_with_length(3);
-        origin.set(0, JsValue::from(region.texture_offset.x as f64));
-        origin.set(1, JsValue::from(region.texture_offset.y as f64));
+        let mut origin = [js_sys::Number::from(0), js_sys::Number::from(0), js_sys::Number::from(0)];
+        origin[0] = js_sys::Number::from(region.texture_offset.x as f64);
+        origin[1] = js_sys::Number::from(region.texture_offset.y as f64);
         let copy_size = GpuExtent3dDict::new(region.texture_extent.x);
         copy_size.set_height(region.texture_extent.y);
         assert!(
@@ -348,15 +348,12 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         if dst.info().dimension == gpu::TextureDimension::Dim3D {
             assert_eq!(region.texture_subresource.array_layer, 0);
             copy_size.set_depth_or_array_layers(region.texture_extent.z);
-            origin.set(2, JsValue::from(region.texture_offset.z as f64));
+            origin[2] = js_sys::Number::from(region.texture_offset.z as f64);
         } else {
             assert_eq!(region.texture_extent.z, 1);
             assert_eq!(region.texture_offset.z, 0);
             copy_size.set_depth_or_array_layers(1);
-            origin.set(
-                2,
-                JsValue::from(region.texture_subresource.array_layer as f64),
-            );
+            origin[2] = js_sys::Number::from(region.texture_subresource.array_layer as f64);
         }
         dst_info.set_origin(&origin);
 
