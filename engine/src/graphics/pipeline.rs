@@ -77,7 +77,7 @@ impl ComputePipeline {
     pub(super) fn new(
         device: &Arc<active_gpu_backend::Device>,
         destroyer: &Arc<DeferredDestroyer>,
-        shader: &PipelineShaderStage,
+        shader: PipelineShaderStage,
         name: Option<&str>,
     ) -> Self {
         // TODO: Spec constants

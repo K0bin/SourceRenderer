@@ -1025,7 +1025,7 @@ impl VkPipeline {
 
     pub fn new_compute(
         device: &Arc<RawVkDevice>,
-        shader: &PipelineShaderStage<VkBackend>,
+        shader: PipelineShaderStage<VkBackend>,
         shared: &VkShared,
         name: Option<&str>,
     ) -> Self {

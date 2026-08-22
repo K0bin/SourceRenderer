@@ -163,7 +163,7 @@ impl Device {
     #[inline(always)]
     pub fn create_compute_pipeline(
         &self,
-        shader: &PipelineShaderStage,
+        shader: PipelineShaderStage,
         name: Option<&str>,
     ) -> Arc<super::ComputePipeline> {
         Arc::new(super::ComputePipeline::new(

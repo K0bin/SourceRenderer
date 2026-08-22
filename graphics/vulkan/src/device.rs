@@ -148,7 +148,7 @@ impl gpu::Device<VkBackend> for VkDevice {
 
     unsafe fn create_compute_pipeline(
         &self,
-        shader: &PipelineShaderStage<VkBackend>,
+        shader: PipelineShaderStage<VkBackend>,
         name: Option<&str>,
     ) -> VkPipeline {
         VkPipeline::new_compute(&self.device, shader, self.shared.as_ref(), name)

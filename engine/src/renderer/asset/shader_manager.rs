@@ -598,7 +598,7 @@ impl PipelineCompileTask for ComputeCompileTask {
 
     fn compile(&self, shader: Self::TShaders, device: &Arc<Device>) -> Arc<Self::TPipeline> {
         device.create_compute_pipeline(
-            &ActualPipelineShaderStage {
+            ActualPipelineShaderStage {
                 shader: &shader.shader,
                 spec_consts: &shader.spec_consts,
             },
