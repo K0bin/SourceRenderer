@@ -13,8 +13,6 @@ use sourcerenderer_core::{align_up_32, align_up_64};
 
 use super::*;
 
-// TODO: Implement spec consts!
-
 #[inline]
 pub(super) fn input_rate_to_vk(input_rate: gpu::InputRate) -> vk::VertexInputRate {
     match input_rate {
@@ -446,8 +444,8 @@ impl VkPipeline {
         spec_consts: &HashMap<u32, SpecConstValue>,
     ) -> (
         vk::SpecializationInfo,
-        Vec<u32>,
-        Vec<vk::SpecializationMapEntry>,
+        Box<[u32]>,
+        Box<[vk::SpecializationMapEntry]>,
     ) {
         let mut spec_data = Vec::<u32>::with_capacity(spec_consts.len());
         let mut spec_map = Vec::<vk::SpecializationMapEntry>::with_capacity(spec_consts.len());
@@ -467,7 +465,7 @@ impl VkPipeline {
             p_data: spec_data.as_ptr() as *const c_void,
             ..Default::default()
         };
-        (spec_info, spec_data, spec_map)
+        (spec_info, spec_data.into_boxed_slice(), spec_map.into_boxed_slice())
     }
 
     pub fn new_graphics(
@@ -498,16 +496,16 @@ impl VkPipeline {
         }
 
         let mut fs_spec_info = vk::SpecializationInfo::default();
-        let mut _fs_spec_data = Vec::<u32>::new();
-        let mut _fs_spec_map = Vec::<vk::SpecializationMapEntry>::new();
+        let mut _fs_spec_data = Option::<Box<[u32]>>::None;
+        let mut _fs_spec_map = Option::<Box<[vk::SpecializationMapEntry]>>::None;
 
         if let Some(pipeline_shader) = info.fs.as_ref() {
             let (spec_info, spec_data, spec_map) =
                 unsafe { Self::get_spec_map(info.vs.spec_consts) };
 
             fs_spec_info = spec_info;
-            _fs_spec_data = spec_data;
-            _fs_spec_map = spec_map;
+            _fs_spec_data = Some(spec_data);
+            _fs_spec_map = Some(spec_map);
 
             let shader_stage = vk::PipelineShaderStageCreateInfo {
                 module: pipeline_shader.shader.shader_module(),
@@ -773,16 +771,16 @@ impl VkPipeline {
         let mut context = DescriptorSetLayoutSetupContext::default();
 
         let mut fs_spec_info = vk::SpecializationInfo::default();
-        let mut _fs_spec_data = Vec::<u32>::new();
-        let mut _fs_spec_map = Vec::<vk::SpecializationMapEntry>::new();
+        let mut _fs_spec_data = Option::<Box<[u32]>>::None;
+        let mut _fs_spec_map = Option::<Box<[vk::SpecializationMapEntry]>>::None;
 
         if let Some(shader) = info.ts.clone() {
             let (spec_info, spec_data, spec_map) =
                 unsafe { Self::get_spec_map(info.ms.spec_consts) };
 
             fs_spec_info = spec_info;
-            _fs_spec_data = spec_data;
-            _fs_spec_map = spec_map;
+            _fs_spec_data = Some(spec_data);
+            _fs_spec_map = Some(spec_map);
 
             let shader_stage = vk::PipelineShaderStageCreateInfo {
                 module: shader.shader.shader_module(),
@@ -1197,14 +1195,16 @@ impl VkPipeline {
             + info.miss_shaders.len();
 
         let mut spec_maps =
-            SmallVec::<[Vec<vk::SpecializationMapEntry>; 4]>::with_capacity(total_count);
-        let mut spec_datas = SmallVec::<[Vec<u32>; 4]>::with_capacity(total_count);
+            SmallVec::<[Box<[vk::SpecializationMapEntry]>; 4]>::with_capacity(total_count);
+        let mut spec_datas = SmallVec::<[Box<[u32]>; 4]>::with_capacity(total_count);
         // Spec infos must never move the contents! Hopefully creating it with proper capacity achieves that.
         let mut spec_infos = SmallVec::<[vk::SpecializationInfo; 4]>::with_capacity(total_count);
         let mut stages =
             SmallVec::<[vk::PipelineShaderStageCreateInfo; 4]>::with_capacity(total_count);
         let mut groups =
             SmallVec::<[vk::RayTracingShaderGroupCreateInfoKHR; 4]>::with_capacity(total_count);
+
+        let original_spec_infos_ptr = spec_infos.as_ptr();
 
         let mut context = DescriptorSetLayoutSetupContext::default();
 
@@ -1361,6 +1361,7 @@ impl VkPipeline {
         .unwrap()
         .pop()
         .unwrap();
+        assert_eq!(original_spec_infos_ptr, spec_infos.as_ptr());
 
         if let Some(name) = name {
             if let Some(debug_utils) = device.debug_utils.as_ref() {
@@ -1395,7 +1396,7 @@ impl VkPipeline {
                 handle_size as usize * groups.len(),
             )
         }
-        .unwrap();
+        .unwrap().into_boxed_slice();
 
         let sbt = buffer;
         let map = unsafe { sbt.map(buffer_offset, size, false).unwrap() as *mut u8 };
