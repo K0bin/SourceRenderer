@@ -5,11 +5,12 @@ use crate::renderer::asset::{
 };
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
+use bytemuck::{Pod, Zeroable};
 use sourcerenderer_core::Vec3UI;
 use std::sync::Arc;
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Zeroable, Pod)]
 struct MarchingCubesConfig {
     pub extent: Vec3UI,
     pub threshold: f32,
@@ -19,7 +20,7 @@ struct MarchingCubesConfig {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Zeroable, Pod)]
 pub struct MarchingCubesIndirectCall {
     index_count: u32,
     instance_count: u32,

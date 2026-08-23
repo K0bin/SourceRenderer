@@ -1,5 +1,6 @@
-use bevy_math::Affine3A;
-use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI};
+use bevy_math::{Affine3A, Mat3};
+use bytemuck::{Pod, Zeroable};
+use sourcerenderer_core::{Matrix3, Matrix4, Vec2, Vec2I, Vec2UI, Vec4UI};
 
 use crate::graphics::{CommandBuffer, *};
 use crate::renderer::asset::{
@@ -17,17 +18,18 @@ struct PrepassCameraCB {
     view_projection: Matrix4,
     old_view_projection: Matrix4,
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Zeroable, Pod)]
 #[repr(C)]
 struct PrepassModelCB {
-    model: Affine3A,
-    old_model: Affine3A,
+    model: Matrix4,
+    old_model: Matrix4,
 }
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Zeroable, Pod)]
 struct FrameData {
     swapchain_transform: Matrix4,
     halton_point: Vec2,
+    _padding0: Vec2UI,
 }
 
 pub struct Prepass {
@@ -160,6 +162,7 @@ impl Prepass {
         let per_frame = FrameData {
             swapchain_transform,
             halton_point: scaled_halton_point(info.width, info.height, (frame % 8) as u32 + 1),
+            ..Zeroable::zeroed()
         };
         let transform_constant_buffer = cmd_buffer
             .upload_dynamic_data(&[per_frame], BufferUsage::CONSTANT)
@@ -232,8 +235,18 @@ impl Prepass {
 
                     command_buffer.set_push_constant_data(
                         &[PrepassModelCB {
-                            model: drawable.transform,
-                            old_model: drawable.old_transform,
+                            model: Matrix4::from_mat3_translation(
+                                Matrix3::from_cols_array(
+                                    &drawable.transform.matrix3.to_cols_array(),
+                                ),
+                                drawable.transform.translation.to_vec3(),
+                            ),
+                            old_model: Matrix4::from_mat3_translation(
+                                Matrix3::from_cols_array(
+                                    &drawable.old_transform.matrix3.to_cols_array(),
+                                ),
+                                drawable.old_transform.translation.to_vec3(),
+                            ),
                         }],
                         ShaderType::VertexShader,
                     );

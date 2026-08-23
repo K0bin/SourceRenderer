@@ -1,14 +1,7 @@
-use std::sync::Arc;
-
+use bytemuck::{Pod, Zeroable};
 use smallvec::SmallVec;
-use sourcerenderer_core::{
-    Matrix4,
-    Vec2,
-    Vec2UI,
-    Vec3,
-    Vec3UI,
-    Vec4,
-};
+use sourcerenderer_core::{Matrix4, Vec2, Vec2UI, Vec3, Vec3UI, Vec4};
+use std::sync::Arc;
 
 use super::acceleration_structure_update::AccelerationStructureUpdatePass;
 use super::clustering::ClusteringPass;
@@ -23,28 +16,11 @@ use super::ssao::SsaoPass;
 use super::taa::TAAPass;
 use super::visibility_buffer::VisibilityBufferPass;
 use crate::graphics::{
-    Barrier,
-    BarrierAccess,
-    BarrierSync,
-    BarrierTextureRange,
-    BindingFrequency,
-    BufferRef,
-    BufferUsage,
-    CommandBuffer,
-    Device,
-    GraphicsContext,
-    QueueSubmission,
-    QueueType,
-    Swapchain,
-    SwapchainError,
-    TextureInfo,
-    TextureLayout,
-    WHOLE_BUFFER,
+    Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef,
+    BufferUsage, CommandBuffer, Device, GraphicsContext, QueueSubmission, QueueType, Swapchain,
+    SwapchainError, TextureInfo, TextureLayout, WHOLE_BUFFER,
 };
-use crate::renderer::asset::{
-    RendererAssets,
-    RendererAssetsReadOnly,
-};
+use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::passes::blue_noise::BlueNoise;
 use crate::renderer::passes::compositing::CompositingPass;
 use crate::renderer::passes::modern::gpu_scene::SceneBuffers;
@@ -52,16 +28,9 @@ use crate::renderer::passes::modern::motion_vectors::MotionVectorPass;
 use crate::renderer::passes::ssr::SsrPass;
 use crate::renderer::passes::ui::UIPass;
 use crate::renderer::render_path::{
-    FrameInfo,
-    RenderPassParameters,
-    RenderPath,
-    RenderPathResult,
-    SceneInfo,
+    FrameInfo, RenderPassParameters, RenderPath, RenderPathResult, SceneInfo,
 };
-use crate::renderer::renderer_resources::{
-    HistoryResourceEntry,
-    RendererResources,
-};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use crate::ui::UIDrawData;
 
 pub struct ModernRenderer {
@@ -85,7 +54,7 @@ pub struct RTPasses {
     shadows: RTShadowPass,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy, Zeroable, Pod)]
 #[repr(C)]
 struct CameraBuffer {
     view_proj: Matrix4,
@@ -275,7 +244,7 @@ impl ModernRenderer {
         }*/
 
         #[repr(C)]
-        #[derive(Debug, Clone, Default)]
+        #[derive(Debug, Clone, Default, Copy, Zeroable, Pod)]
         struct ShadowCascade {
             light_mat: Matrix4,
             z_min: f32,
@@ -284,20 +253,22 @@ impl ModernRenderer {
         }
 
         #[repr(C)]
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, Copy, Zeroable, Pod)]
         struct SetupBuffer {
             point_light_count: u32,
             directional_light_count: u32,
             cluster_z_bias: f32,
             cluster_z_scale: f32,
             cluster_count: Vec3UI,
-            _padding: u32,
+            _padding0: u32,
             swapchain_transform: Matrix4,
             halton_point: Vec2,
             rt_size: Vec2UI,
             cascades: [ShadowCascade; 5],
             cascade_count: u32,
             frame: u32,
+            _padding1: u32,
+            _padding2: u32,
         }
 
         let setup_buffer = cmd_buf
@@ -308,7 +279,6 @@ impl ModernRenderer {
                     cluster_z_bias,
                     cluster_z_scale,
                     cluster_count,
-                    _padding: 0,
                     swapchain_transform: swapchain.transform(),
                     halton_point: super::taa::scaled_halton_point(
                         rendering_resolution.x,
@@ -319,6 +289,7 @@ impl ModernRenderer {
                     cascade_count: 0,
                     cascades: gpu_cascade_data,
                     frame: frame as u32,
+                    ..Zeroable::zeroed()
                 }],
                 BufferUsage::CONSTANT,
             )
@@ -331,7 +302,7 @@ impl ModernRenderer {
             WHOLE_BUFFER,
         );
         #[repr(C)]
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, Copy, Zeroable, Pod)]
         struct PointLight {
             position: Vec3,
             intensity: f32,
@@ -356,7 +327,7 @@ impl ModernRenderer {
             WHOLE_BUFFER,
         );
         #[repr(C)]
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, Copy, Zeroable, Pod)]
         struct DirectionalLight {
             direction: Vec3,
             intensity: f32,

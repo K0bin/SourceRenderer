@@ -1,3 +1,4 @@
+use bytemuck::{Pod, Zeroable};
 use sourcerenderer_core::{Vec3, Vec3UI};
 
 use super::clustering::ClusteringPass;
@@ -9,14 +10,14 @@ use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Zeroable, Pod)]
 pub struct SetupInfo {
     cluster_count: u32,
     point_light_count: u32,
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Zeroable, Pod)]
 pub struct CullingPointLight {
     position: Vec3,
     radius: f32,

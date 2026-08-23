@@ -1,9 +1,10 @@
 use std::cmp::min;
-use std::ffi::{c_void, CString};
+use std::ffi::{CString, c_void};
 use std::hash::Hash;
 use std::sync::Arc;
 
 use ash::vk;
+use bytemuck::{AnyBitPattern, NoUninit, Pod, bytes_of, cast_slice};
 use crossbeam_utils::atomic::AtomicCell;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{
@@ -237,6 +238,27 @@ impl VkCommandBuffer {
     pub(crate) fn command_buffer_type(&self) -> gpu::CommandBufferType {
         self.command_buffer_type
     }
+
+    #[inline(always)]
+    fn get_pipeline_layout(&self) -> &Arc<VkPipelineLayout> {
+        match &self.pipeline {
+            VkBoundPipeline::Graphics {
+                pipeline_layout, ..
+            } => pipeline_layout,
+            VkBoundPipeline::MeshGraphics {
+                pipeline_layout, ..
+            } => pipeline_layout,
+            VkBoundPipeline::Compute {
+                pipeline_layout, ..
+            } => pipeline_layout,
+            VkBoundPipeline::RayTracing {
+                pipeline_layout, ..
+            } => pipeline_layout,
+            VkBoundPipeline::None => {
+                panic!("Must not call set_push_constant_data without any pipeline bound")
+            }
+        }
+    }
 }
 
 impl Drop for VkCommandBuffer {
@@ -272,7 +294,9 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                 if graphics_pipeline.uses_bindless_texture_set()
                     && !self.device.features_12.descriptor_indexing == vk::TRUE
                 {
-                    panic!("Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this.");
+                    panic!(
+                        "Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this."
+                    );
                 }
             }
             gpu::PipelineBinding::MeshGraphics(graphics_pipeline) => {
@@ -293,7 +317,9 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                 if graphics_pipeline.uses_bindless_texture_set()
                     && !self.device.features_12.descriptor_indexing == vk::TRUE
                 {
-                    panic!("Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this.");
+                    panic!(
+                        "Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this."
+                    );
                 }
             }
             gpu::PipelineBinding::Compute(compute_pipeline) => {
@@ -314,7 +340,9 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                 if compute_pipeline.uses_bindless_texture_set()
                     && !self.device.features_12.descriptor_indexing == vk::TRUE
                 {
-                    panic!("Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this.");
+                    panic!(
+                        "Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this."
+                    );
                 }
             }
             gpu::PipelineBinding::RayTracing(rt_pipeline) => {
@@ -338,7 +366,9 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                 if rt_pipeline.uses_bindless_texture_set()
                     && !self.device.features_12.descriptor_indexing == vk::TRUE
                 {
-                    panic!("Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this.");
+                    panic!(
+                        "Tried to use pipeline which uses bindless texture descriptor set. The current Vulkan device does not support this."
+                    );
                 }
             }
         };
@@ -1313,45 +1343,24 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         }
     }
 
-    unsafe fn set_push_constant_data<T>(
+    unsafe fn set_push_constant_data<T: Pod>(
         &mut self,
         data: &[T],
         visible_for_shader_type: gpu::ShaderType,
-    ) where
-        T: 'static + Send + Sync + Sized + Clone,
-    {
+    ) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        let pipeline_layout = match &self.pipeline {
-            VkBoundPipeline::Graphics {
-                pipeline_layout, ..
-            } => pipeline_layout,
-            VkBoundPipeline::MeshGraphics {
-                pipeline_layout, ..
-            } => pipeline_layout,
-            VkBoundPipeline::Compute {
-                pipeline_layout, ..
-            } => pipeline_layout,
-            VkBoundPipeline::RayTracing {
-                pipeline_layout, ..
-            } => pipeline_layout,
-            VkBoundPipeline::None => {
-                panic!("Must not call set_push_constant_data without any pipeline bound")
-            }
-        };
+        let pipeline_layout = self.get_pipeline_layout();
         let range = pipeline_layout
             .push_constant_range(visible_for_shader_type)
             .expect("No push constants set up for shader");
-        let size = std::mem::size_of_val(data);
+        let data_u8: &[u8] = cast_slice(data);
         unsafe {
             self.device.cmd_push_constants(
                 self.cmd_buffer,
                 pipeline_layout.handle(),
                 shader_type_to_vk(visible_for_shader_type),
                 range.offset,
-                std::slice::from_raw_parts(
-                    data.as_ptr() as *const u8,
-                    min(size, range.size as usize),
-                ),
+                data_u8,
             );
         }
     }

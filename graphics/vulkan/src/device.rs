@@ -543,7 +543,11 @@ impl gpu::Device<VkBackend> for VkDevice {
                     size: requirements.memory_requirements.size,
                 };
 
-                log::info!("Fitting memory types with HOST_TRANSFER are not acceptable. Falling back to regular GPU copies.\nWith HOST_TRANSFER: {:?}\nWithout HOST_TRANSFER: {:?}", &result, &result_without_host_image_copy);
+                log::info!(
+                    "Fitting memory types with HOST_TRANSFER are not acceptable. Falling back to regular GPU copies.\nWith HOST_TRANSFER: {:?}\nWithout HOST_TRANSFER: {:?}",
+                    &result,
+                    &result_without_host_image_copy
+                );
                 return result_without_host_image_copy;
             }
         }
@@ -601,22 +605,24 @@ impl gpu::Device<VkBackend> for VkDevice {
         transition: &gpu::CPUTextureTransition<'_, VkBackend>,
     ) {
         let host_img_copy = self.device.host_image_copy.as_ref().unwrap();
-        host_img_copy
-            .host_image_copy
-            .transition_image_layout(&[vk::HostImageLayoutTransitionInfoEXT {
-                image: dst.handle(),
-                old_layout: texture_layout_to_image_layout(transition.old_layout),
-                new_layout: texture_layout_to_image_layout(transition.new_layout),
-                subresource_range: vk::ImageSubresourceRange {
-                    aspect_mask: aspect_mask_from_format(dst.info().format),
-                    base_mip_level: 0,
-                    level_count: dst.info().mip_levels,
-                    base_array_layer: 0,
-                    layer_count: dst.info().array_length,
-                },
-                ..Default::default()
-            }])
-            .unwrap();
+        unsafe {
+            host_img_copy
+                .host_image_copy
+                .transition_image_layout(&[vk::HostImageLayoutTransitionInfoEXT {
+                    image: dst.handle(),
+                    old_layout: texture_layout_to_image_layout(transition.old_layout),
+                    new_layout: texture_layout_to_image_layout(transition.new_layout),
+                    subresource_range: vk::ImageSubresourceRange {
+                        aspect_mask: aspect_mask_from_format(dst.info().format),
+                        base_mip_level: 0,
+                        level_count: dst.info().mip_levels,
+                        base_array_layer: 0,
+                        layer_count: dst.info().array_length,
+                    },
+                    ..Default::default()
+                }])
+                .unwrap();
+        }
     }
 
     unsafe fn copy_to_texture(

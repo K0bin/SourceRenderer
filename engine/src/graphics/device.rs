@@ -1,8 +1,8 @@
-use std::mem::ManuallyDrop;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-
+use bytemuck::{Pod, cast_box, cast_slice, cast_slice_box};
 use log::trace;
+use std::mem::ManuallyDrop;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::*;
 use crate::Mutex;
@@ -190,7 +190,7 @@ impl Device {
         Ok(Arc::new(pipeline))
     }
 
-    pub fn upload_data<T>(
+    pub fn upload_data<T: Pod>(
         &self,
         data: &[T],
         memory_usage: MemoryUsage,
@@ -214,12 +214,13 @@ impl Device {
 
             if required_size < size {
                 let ptr_u8 = (ptr_void as *mut u8).offset(required_size as isize);
-                std::ptr::write_bytes(ptr_u8, 0u8, (size - required_size) as usize);
+                std::ptr::write_bytes(ptr_u8, 0u8, size - required_size);
             }
 
             if required_size != 0 {
                 let ptr = ptr_void as *mut u8;
-                ptr.copy_from(data.as_ptr() as *const u8, std::mem::size_of_val(data));
+                let data_u8: &[u8] = cast_slice(data);
+                ptr.copy_from(data_u8.as_ptr(), std::mem::size_of_val(data));
             }
 
             slice.unmap(true);
@@ -227,50 +228,50 @@ impl Device {
         Ok(slice)
     }
 
-    pub fn init_buffer<T>(
+    pub fn init_buffer<T: Pod>(
         &self,
         data: &[T],
         dst: &Arc<BufferSlice>,
         dst_offset: u64,
     ) -> Result<(), OutOfMemoryError> {
-        let data_u8 = into_bytes(data);
+        let data_u8: &[u8] = cast_slice(data);
         self.transfer.init_buffer(data_u8, dst, dst_offset)?;
         Ok(())
     }
 
-    pub fn init_buffer_box<T>(
+    pub fn init_buffer_box<T: Pod>(
         &self,
         data: Box<[T]>,
         dst: &Arc<BufferSlice>,
         dst_offset: u64,
     ) -> Result<(), OutOfMemoryError> {
-        let data_u8 = into_bytes_box(data);
+        let data_u8: Box<[u8]> = cast_slice_box(data);
         self.transfer.init_buffer_box(data_u8, dst, dst_offset)?;
         Ok(())
     }
 
-    pub fn init_texture_box<T>(
+    pub fn init_texture_box<T: Pod>(
         &self,
         data: Box<[T]>,
         dst: &Arc<super::Texture>,
         mip_level: u32,
         array_layer: u32,
     ) -> Result<(), OutOfMemoryError> {
-        let data_u8 = into_bytes_box(data);
+        let data_u8: Box<[u8]> = cast_slice_box(data);
         let _ = self
             .transfer
             .init_texture_box(data_u8, dst, mip_level, array_layer, false)?;
         Ok(())
     }
 
-    pub fn init_texture<T>(
+    pub fn init_texture<T: Pod>(
         &self,
         data: &[T],
         dst: &Arc<super::Texture>,
         mip_level: u32,
         array_layer: u32,
     ) -> Result<(), OutOfMemoryError> {
-        let data_u8 = into_bytes(data);
+        let data_u8: &[u8] = cast_slice(data);
         let _ = self
             .transfer
             .init_texture(data_u8, dst, mip_level, array_layer, false)?;
@@ -289,31 +290,31 @@ impl Device {
             .init_texture_from_buffer(dst, src, mip_level, array_layer, buffer_offset);
     }
 
-    pub fn init_texture_async<T>(
+    pub fn init_texture_async<T: Pod>(
         &self,
         data: &[T],
         dst: &Arc<super::Texture>,
         mip_level: u32,
         array_layer: u32,
     ) -> Result<Option<SharedFenceValuePair>, OutOfMemoryError> {
-        let data_u8 = into_bytes(data);
+        let data_u8: &[u8] = cast_slice(data);
         self.transfer
             .init_texture(&data_u8, dst, mip_level, array_layer, true)
     }
 
-    pub fn init_texture_box_async<T>(
+    pub fn init_texture_box_async<T: Pod>(
         &self,
         data: Box<[T]>,
         dst: &Arc<super::Texture>,
         mip_level: u32,
         array_layer: u32,
     ) -> Result<Option<SharedFenceValuePair>, OutOfMemoryError> {
-        let data_u8 = into_bytes_box(data);
+        let data_u8: Box<[u8]> = cast_slice_box(data);
         self.transfer
             .init_texture_box(data_u8, dst, mip_level, array_layer, true)
     }
 
-    pub fn init_texture_from_buffer_async<T>(
+    pub fn init_texture_from_buffer_async(
         &self,
         dst: &Arc<super::Texture>,
         src: &Arc<BufferSlice>,
@@ -485,31 +486,4 @@ impl Drop for Device {
             ManuallyDrop::drop(&mut self.destroyer);
         }
     }
-}
-
-#[inline(always)]
-fn into_bytes<'a, T>(data: &'a [T]) -> &'a [u8] {
-    unsafe {
-        std::slice::from_raw_parts(
-            data.as_ptr() as *const u8,
-            data.len() * std::mem::size_of::<T>(),
-        )
-    }
-}
-
-#[inline]
-fn into_bytes_box<T>(data: Box<[T]>) -> Box<[u8]> {
-    let data_vec = data.into_vec();
-    let len = data_vec.len();
-    let capacity = data_vec.capacity();
-    let ptr = data_vec.as_ptr();
-    std::mem::forget(data_vec);
-    let data_vec_u8 = unsafe {
-        Vec::from_raw_parts(
-            ptr as *mut u8,
-            len * std::mem::size_of::<T>(),
-            capacity * std::mem::size_of::<T>(),
-        )
-    };
-    data_vec_u8.into_boxed_slice()
 }

@@ -1,12 +1,12 @@
-use std::sync::Arc;
-
 use super::acceleration_structure_update::AccelerationStructureUpdatePass;
 use super::clustering::ClusteringPass;
 use super::geometry::GeometryPass;
 use super::light_binning::LightBinningPass;
+use bytemuck::{Pod, Zeroable};
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::TexturePlane;
 use sourcerenderer_core::{Matrix4, Vec2, Vec2UI, Vec3, Vec3UI, Vec4};
+use std::sync::Arc;
 //use super::occlusion::OcclusionPass;
 use super::prepass::Prepass;
 use super::rt_shadows::RTShadowPass;
@@ -54,7 +54,7 @@ pub struct FrameBindings<'a> {
     setup_buffer: TransientBufferSlice,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy, Zeroable, Pod)]
 #[repr(C)]
 struct CameraBuffer {
     view_proj: Matrix4,
@@ -161,18 +161,21 @@ impl ConservativeRenderer {
         let cluster_z_bias = -(cluster_count.z as f32) * (view.near_plane).log2()
             / (view.far_plane / view.near_plane).log2();
         #[repr(C)]
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, Copy, Zeroable, Pod)]
         struct SetupBuffer {
             point_light_count: u32,
             directional_light_count: u32,
             cluster_z_bias: f32,
             cluster_z_scale: f32,
             cluster_count: Vec3UI,
-            _padding: u32,
+            _padding0: u32,
             swapchain_transform: Matrix4,
             halton_point: Vec2,
             rt_size: Vec2UI,
             frame: u32,
+            _padding1: u32,
+            _padding2: u32,
+            _padding3: u32,
         }
         let setup_buffer = cmd_buf
             .upload_dynamic_data(
@@ -182,7 +185,6 @@ impl ConservativeRenderer {
                     cluster_z_bias,
                     cluster_z_scale,
                     cluster_count,
-                    _padding: 0,
                     swapchain_transform: swapchain.transform(),
                     halton_point: super::taa::scaled_halton_point(
                         rendering_resolution.x,
@@ -191,12 +193,13 @@ impl ConservativeRenderer {
                     ),
                     rt_size: *rendering_resolution,
                     frame: frame as u32,
+                    ..Zeroable::zeroed()
                 }],
                 BufferUsage::CONSTANT,
             )
             .unwrap();
         #[repr(C)]
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, Copy, Zeroable, Pod)]
         struct PointLight {
             position: Vec3,
             intensity: f32,
@@ -214,7 +217,7 @@ impl ConservativeRenderer {
             .upload_dynamic_data(&point_lights, BufferUsage::CONSTANT)
             .unwrap();
         #[repr(C)]
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, Copy, Zeroable, Pod)]
         struct DirectionalLight {
             direction: Vec3,
             intensity: f32,

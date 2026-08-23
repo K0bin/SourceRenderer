@@ -15,9 +15,9 @@ layout (location = 0) out vec4 out_color;
 layout (location = 1) out float out_sss_intensity;
 
 layout (push_constant, std430) uniform Params {
-    layout (offset = 96) vec3 f0;
+    layout (offset = 96) mat4 invModel;
+    vec3 f0;
     float roughness;
-    mat4 invModel;
     float metalness;
     uint lod;
     float threshold;

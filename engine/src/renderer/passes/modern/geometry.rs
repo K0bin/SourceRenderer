@@ -1,13 +1,14 @@
-use std::cell::Ref;
-use std::sync::Arc;
-
+use bytemuck::{Pod, Zeroable};
 use smallvec::SmallVec;
 use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3UI};
+use std::cell::Ref;
+use std::sync::Arc;
 
 use super::draw_prep::DrawPrepPass;
 use super::gpu_scene::DRAW_CAPACITY;
 use super::rt_shadows::RTShadowPass;
 use crate::graphics::*;
+use crate::renderer::PointLight;
 use crate::renderer::asset::{GraphicsPipelineHandle, GraphicsPipelineInfo, *};
 use crate::renderer::drawable::View;
 use crate::renderer::light::DirectionalLight;
@@ -16,11 +17,10 @@ use crate::renderer::passes::ssao::SsaoPass;
 use crate::renderer::passes::taa::scaled_halton_point;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use crate::renderer::renderer_scene::RendererScene;
-use crate::renderer::PointLight;
 
 #[allow(unused)]
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Zeroable, Pod)]
 struct FrameData {
     swapchain_transform: Matrix4,
     jitter: Vec2,
@@ -32,6 +32,9 @@ struct FrameData {
     cluster_count: Vec3UI,
     point_light_count: u32,
     directional_light_count: u32,
+    _padding0: u32,
+    _padding1: u32,
+    _padding2: u32,
 }
 
 #[allow(unused)]
@@ -366,6 +369,7 @@ impl GeometryPass {
             cluster_count,
             point_light_count: scene.point_lights().len() as u32,
             directional_light_count: scene.directional_lights().len() as u32,
+            ..Zeroable::zeroed()
         };
         let mut point_lights = SmallVec::<[PointLight; 16]>::new();
         for point_light in scene.point_lights() {

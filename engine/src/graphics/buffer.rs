@@ -5,6 +5,7 @@ use std::hash::Hash;
 use std::mem::ManuallyDrop;
 use std::sync::{Arc, Mutex};
 
+use bytemuck::Pod;
 use log::trace;
 
 use super::gpu::{Buffer as _, Heap as _};
@@ -95,7 +96,7 @@ impl BufferSlice {
         );
     }
 
-    pub fn write<T: Clone>(&self, src: &T) -> Option<()> {
+    pub fn write<T: Pod>(&self, src: &T) -> Option<()> {
         unsafe {
             let ptr_opt = self.map(false);
             if ptr_opt.is_none() {

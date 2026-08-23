@@ -1,8 +1,8 @@
-use std::cell::Ref;
-use std::sync::Arc;
-
+use bytemuck::{Pod, Zeroable};
 use rand::random;
 use sourcerenderer_core::{Vec2, Vec2I, Vec2UI, Vec4};
+use std::cell::Ref;
+use std::sync::Arc;
 
 use crate::graphics::*;
 use crate::renderer::asset::*;
@@ -15,7 +15,7 @@ pub struct SSSPass {
 }
 
 #[repr(C)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug, Zeroable, Pod)]
 struct SSSParams {
     dir: Vec2,
     sss_width: f32,

@@ -46,6 +46,7 @@ async-lock = "3.4"
 atomic-waker = "1.1"
 futures-lite = "2.6"
 parking_lot = "0.12"
+bytemuck = { version = "1.25", features = ["extern_crate_std"] }
 
 bevy_app = "0.19"
 bevy_math = "0.19"

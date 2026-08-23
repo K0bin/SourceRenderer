@@ -1,55 +1,25 @@
-use std::sync::Arc;
-
-use smallvec::SmallVec;
-use sourcerenderer_core::{
-    Matrix4,
-    Vec2,
-    Vec2UI,
-    Vec3,
-    Vec3UI,
-};
-use sourcerenderer_core::gpu::TexturePlane;
 use super::PathTracerPass;
 use crate::graphics::gpu::TextureViewInfo;
 use crate::graphics::{
-    Barrier,
-    BarrierAccess,
-    BarrierSync,
-    BarrierTextureRange,
-    BindingFrequency,
-    BufferRef,
-    BufferUsage,
-    CommandBuffer,
-    Device,
-    GraphicsContext,
-    MemoryUsage,
-    QueueSubmission,
-    QueueType,
-    Swapchain,
-    SwapchainError,
-    TextureLayout,
-    WHOLE_BUFFER,
+    Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef,
+    BufferUsage, CommandBuffer, Device, GraphicsContext, MemoryUsage, QueueSubmission, QueueType,
+    Swapchain, SwapchainError, TextureLayout, WHOLE_BUFFER,
 };
-use crate::renderer::asset::{
-    RendererAssets,
-    RendererAssetsReadOnly,
-};
+use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::passes::blit::BlitPass;
 use crate::renderer::passes::blue_noise::BlueNoise;
 use crate::renderer::passes::modern::acceleration_structure_update::AccelerationStructureUpdatePass;
 use crate::renderer::passes::modern::gpu_scene::SceneBuffers;
 use crate::renderer::render_path::{
-    FrameInfo,
-    RenderPassParameters,
-    RenderPath,
-    RenderPathResult,
-    SceneInfo,
+    FrameInfo, RenderPassParameters, RenderPath, RenderPathResult, SceneInfo,
 };
-use crate::renderer::renderer_resources::{
-    HistoryResourceEntry,
-    RendererResources,
-};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use crate::ui::UIDrawData;
+use bytemuck::{Pod, Zeroable};
+use smallvec::SmallVec;
+use sourcerenderer_core::gpu::TexturePlane;
+use sourcerenderer_core::{Matrix4, Vec2, Vec2UI, Vec3, Vec3UI};
+use std::sync::Arc;
 
 pub struct PathTracingRenderer {
     device: Arc<Device>,
@@ -208,7 +178,7 @@ impl PathTracingRenderer {
         let gpu_cascade_data: [ShadowCascade; 5] = Default::default();
 
         #[repr(C)]
-        #[derive(Debug, Clone, Default)]
+        #[derive(Debug, Clone, Default, Copy, Zeroable, Pod)]
         struct ShadowCascade {
             light_mat: Matrix4,
             z_min: f32,
@@ -217,20 +187,22 @@ impl PathTracingRenderer {
         }
 
         #[repr(C)]
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, Copy, Zeroable, Pod)]
         struct SetupBuffer {
             point_light_count: u32,
             directional_light_count: u32,
             cluster_z_bias: f32,
             cluster_z_scale: f32,
             cluster_count: Vec3UI,
-            _padding: u32,
+            _padding0: u32,
             swapchain_transform: Matrix4,
             halton_point: Vec2,
             rt_size: Vec2UI,
             cascades: [ShadowCascade; 5],
             cascade_count: u32,
             frame: u32,
+            _padding1: u32,
+            _padding2: u32,
         }
 
         let setup_buffer = cmd_buf
@@ -241,7 +213,6 @@ impl PathTracingRenderer {
                     cluster_z_bias,
                     cluster_z_scale,
                     cluster_count,
-                    _padding: 0,
                     swapchain_transform: swapchain.transform(),
                     halton_point: crate::renderer::passes::taa::scaled_halton_point(
                         rendering_resolution.x,
@@ -252,6 +223,7 @@ impl PathTracingRenderer {
                     cascade_count: 0u32,
                     cascades: gpu_cascade_data,
                     frame: frame as u32,
+                    ..Zeroable::zeroed()
                 }],
                 BufferUsage::CONSTANT,
             )
@@ -264,7 +236,7 @@ impl PathTracingRenderer {
             WHOLE_BUFFER,
         );
         #[repr(C)]
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, Copy, Zeroable, Pod)]
         struct PointLight {
             position: Vec3,
             intensity: f32,
@@ -289,7 +261,7 @@ impl PathTracingRenderer {
             WHOLE_BUFFER,
         );
         #[repr(C)]
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, Copy, Zeroable, Pod)]
         struct DirectionalLight {
             direction: Vec3,
             intensity: f32,

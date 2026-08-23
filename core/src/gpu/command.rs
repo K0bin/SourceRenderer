@@ -5,6 +5,8 @@ use crate::Vec3UI;
 
 use super::*;
 
+use bytemuck::Pod;
+
 use bitflags::bitflags;
 
 #[derive(Clone)]
@@ -118,12 +120,11 @@ pub trait CommandBuffer<B: GPUBackend> {
     );
     unsafe fn set_viewports(&mut self, viewports: &[Viewport]);
     unsafe fn set_scissors(&mut self, scissors: &[Scissor]);
-    unsafe fn set_push_constant_data<T>(
+    unsafe fn set_push_constant_data<T: Pod>(
         &mut self,
         data: &[T],
         visible_for_shader_stage: ShaderType,
-    ) where
-        T: 'static + Send + Sync + Sized + Clone;
+    );
     unsafe fn draw(
         &mut self,
         vertex_count: u32,

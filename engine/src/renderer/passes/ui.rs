@@ -1,6 +1,6 @@
-use std::sync::Arc;
-
+use bytemuck::{Pod, Zeroable};
 use sourcerenderer_core::Vec2;
+use std::sync::Arc;
 
 use crate::graphics::*;
 use crate::renderer::asset::{
@@ -120,7 +120,7 @@ impl UIPass {
         }
 
         #[repr(C)]
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, Copy, Zeroable, Pod)]
         struct ImguiPushConstants {
             scale: Vec2,
             translate: Vec2,

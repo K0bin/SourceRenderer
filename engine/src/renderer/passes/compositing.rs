@@ -1,4 +1,6 @@
+use bytemuck::{Pod, Zeroable};
 use sourcerenderer_core::Vec2UI;
+use sourcerenderer_core::gpu::StencilOp::Zero;
 
 use super::ssr::SsrPass;
 use crate::graphics::*;
@@ -95,16 +97,19 @@ impl CompositingPass {
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
 
         #[repr(C)]
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, Copy, Zeroable, Pod)]
         struct Setup {
             gamma: f32,
             exposure: f32,
+            _padding0: u32,
+            _padding1: u32,
         }
         let setup_ubo = cmd_buffer
             .upload_dynamic_data(
                 &[Setup {
                     gamma: 2.2f32,
                     exposure: 0.01f32,
+                    ..Zeroable::zeroed()
                 }],
                 BufferUsage::CONSTANT,
             )

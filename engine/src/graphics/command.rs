@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use atomic_refcell::AtomicRefMut;
+use bytemuck::{AnyBitPattern, NoUninit, Pod, cast_slice};
 use crossbeam_channel::Sender;
 use smallvec::SmallVec;
 
@@ -178,10 +179,11 @@ impl<'a> CommandBuffer<'a> {
         }
     }
 
-    pub fn set_push_constant_data<T>(&mut self, data: &[T], visible_for_shader_stage: ShaderType)
-    where
-        T: 'static + Send + Sync + Sized + Clone,
-    {
+    pub fn set_push_constant_data<T: Pod>(
+        &mut self,
+        data: &[T],
+        visible_for_shader_stage: ShaderType,
+    ) {
         unsafe {
             self.cmd_buffer_handle
                 .set_push_constant_data(data, visible_for_shader_stage);
@@ -628,14 +630,11 @@ impl<'a> CommandBuffer<'a> {
         }
     }
 
-    pub fn upload_dynamic_data<T>(
+    pub fn upload_dynamic_data<T: Pod>(
         &mut self,
         data: &[T],
         usage: BufferUsage,
-    ) -> Result<TransientBufferSlice, OutOfMemoryError>
-    where
-        T: 'static + Send + Sync + Sized + Clone,
-    {
+    ) -> Result<TransientBufferSlice, OutOfMemoryError> {
         let required_size = std::mem::size_of_val(data);
         let size = align_up(required_size.max(64), 64);
 
@@ -659,8 +658,9 @@ impl<'a> CommandBuffer<'a> {
             }
 
             if required_size != 0 {
+                let data_raw: &[u8] = cast_slice(data);
                 let ptr = ptr_void as *mut u8;
-                ptr.copy_from(data.as_ptr() as *const u8, required_size);
+                ptr.copy_from(data_raw.as_ptr(), required_size);
             }
 
             buffer.unmap(self.frame(), true);

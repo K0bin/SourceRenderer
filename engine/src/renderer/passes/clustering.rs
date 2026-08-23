@@ -1,3 +1,4 @@
+use bytemuck::{Pod, Zeroable};
 use sourcerenderer_core::{Vec2UI, Vec3UI, Vec4};
 
 use crate::graphics::*;
@@ -8,7 +9,7 @@ use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Zeroable, Pod)]
 struct ShaderScreenToView {
     tile_size: Vec2UI,
     rt_dimensions: Vec2UI,

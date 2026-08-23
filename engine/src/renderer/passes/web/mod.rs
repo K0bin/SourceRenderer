@@ -1,24 +1,10 @@
+use bytemuck::{Pod, Zeroable};
+use sourcerenderer_core::{Matrix4, Vec4};
 use std::sync::Arc;
 
-use sourcerenderer_core::{
-    Matrix4,
-    Vec4,
-};
-
-use crate::graphics::{
-    GraphicsContext,
-    *,
-};
-use crate::renderer::asset::{
-    RendererAssets,
-    RendererAssetsReadOnly,
-};
-use crate::renderer::render_path::{
-    FrameInfo,
-    RenderPath,
-    RenderPathResult,
-    SceneInfo,
-};
+use crate::graphics::{GraphicsContext, *};
+use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
+use crate::renderer::render_path::{FrameInfo, RenderPath, RenderPathResult, SceneInfo};
 use crate::renderer::renderer_resources::RendererResources;
 
 mod geometry;
@@ -26,7 +12,7 @@ mod geometry;
 pub use self::geometry::GeometryPass;
 
 #[allow(unused)]
-#[derive(Clone)]
+#[derive(Clone, Copy, Zeroable, Pod)]
 #[repr(C)]
 struct CameraBuffer {
     view_proj: Matrix4,

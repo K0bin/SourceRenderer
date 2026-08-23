@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::asset::{AssetLoadPriority, AssetLoaderProgress, AssetType, TextureHandle};
 use crate::graphics::{GraphicsContext, *};
 use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
@@ -13,7 +11,9 @@ use crate::renderer::render_path::{
     FrameInfo, RenderPassParameters, RenderPath, RenderPathResult, SceneInfo,
 };
 use crate::renderer::renderer_resources::RendererResources;
+use bytemuck::{Pod, Zeroable};
 use sourcerenderer_core::{Matrix4, Vec2UI, Vec3, Vec3UI, Vec4};
+use std::sync::Arc;
 
 mod background;
 mod compositing;
@@ -24,8 +24,7 @@ mod subsurfacescattering;
 
 pub use self::geometry::GeometryPass;
 
-#[allow(unused)]
-#[derive(Clone)]
+#[derive(Clone, Copy, Zeroable, Pod)]
 #[repr(C)]
 struct CameraBuffer {
     view_proj: Matrix4,

@@ -10,31 +10,38 @@ use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use crate::renderer::renderer_scene::RendererScene;
+use bytemuck::{Pod, Zeroable};
 use sourcerenderer_core::gpu::{StencilOp, TexturePlane};
-use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec3UI, Vec4};
+use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec3UI, Vec4, Vec4UI};
 use std::default::Default;
 use std::sync::Arc;
 
 #[repr(C)]
-#[derive(Clone)]
+#[derive(Clone, Copy, Zeroable, Pod)]
 struct PushConstantData {
     model_matrix: Matrix4,
     lod_extents: Vec3UI,
     threshold: f32,
     lod: u32,
+    _padding0: u32,
+    _padding1: u32,
+    _padding2: u32,
 }
 
 #[repr(C)]
-#[derive(Clone)]
+#[derive(Clone, Copy, Zeroable, Pod)]
 struct MaterialData {
+    inv_model_matrix: Matrix4,
     f0: Vec3,
     roughness: f32,
-    inv_model_matrix: Matrix4,
     metalness: f32,
     lod: u32,
     threshold: f32,
     width: f32,
     height: f32,
+    _padding0: u32,
+    _padding1: u32,
+    _padding2: u32,
 }
 
 pub struct GeometryPass {
@@ -551,6 +558,7 @@ impl GeometryPass {
                 lod_extents: volume_texture_lod_extents,
                 threshold,
                 lod,
+                ..Zeroable::zeroed()
             }],
             ShaderType::VertexShader,
         );
@@ -566,6 +574,7 @@ impl GeometryPass {
                 width: color_tex_extent.x as f32,
                 height: color_tex_extent.y as f32,
                 threshold,
+                ..Zeroable::zeroed()
             }],
             ShaderType::FragmentShader,
         );
@@ -591,6 +600,7 @@ impl GeometryPass {
                 lod_extents: volume_texture_lod_extents,
                 threshold: threshold_transparency,
                 lod,
+                ..Zeroable::zeroed()
             }],
             ShaderType::VertexShader,
         );
@@ -606,6 +616,7 @@ impl GeometryPass {
                 height: color_tex_extent.y as f32,
                 f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
                 threshold: threshold_transparency,
+                ..Zeroable::zeroed()
             }],
             ShaderType::FragmentShader,
         );
@@ -631,6 +642,7 @@ impl GeometryPass {
                 lod_extents: volume_texture_lod_extents,
                 threshold: threshold_transparency,
                 lod,
+                ..Zeroable::zeroed()
             }],
             ShaderType::VertexShader,
         );
@@ -656,6 +668,7 @@ impl GeometryPass {
                 threshold: threshold_transparency,
                 lod_extents: volume_texture_lod_extents,
                 lod,
+                ..Zeroable::zeroed()
             }],
             ShaderType::VertexShader,
         );
@@ -671,6 +684,7 @@ impl GeometryPass {
                 width: color_tex_extent.x as f32,
                 height: color_tex_extent.y as f32,
                 threshold: threshold_transparency,
+                ..Zeroable::zeroed()
             }],
             ShaderType::FragmentShader,
         );

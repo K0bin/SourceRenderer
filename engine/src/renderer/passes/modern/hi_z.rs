@@ -1,8 +1,8 @@
-use std::sync::Arc;
-
+use bytemuck::{Pod, Zeroable};
 use smallvec::SmallVec;
 use sourcerenderer_core::Vec2;
 use sourcerenderer_core::gpu::TexturePlane;
+use std::sync::Arc;
 
 use crate::graphics::*;
 use crate::renderer::asset::{
@@ -213,7 +213,7 @@ impl HierarchicalZPass {
         );
 
         #[repr(C)]
-        #[derive(Clone, Debug)]
+        #[derive(Clone, Copy, Debug, Zeroable, Pod)]
         struct SpdConstants {
             mips: u32,
             num_work_groups: u32,

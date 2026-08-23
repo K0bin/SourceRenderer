@@ -1,8 +1,8 @@
+use bytemuck::{Pod, Zeroable};
+use smallvec::SmallVec;
+use sourcerenderer_core::{Matrix3, Matrix4, Vec2, Vec2I, Vec2UI, Vec3UI, Vec4};
 use std::cell::Ref;
 use std::sync::Arc;
-
-use smallvec::SmallVec;
-use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3UI, Vec4};
 
 use super::desktop_renderer::FrameBindings;
 use crate::graphics::*;
@@ -356,7 +356,12 @@ impl GeometryPass {
                         setup_frame(command_buffer, bindings);
 
                         command_buffer.set_push_constant_data(
-                            &[drawable.transform],
+                            &[Matrix4::from_mat3_translation(
+                                Matrix3::from_cols_array(
+                                    &drawable.transform.matrix3.to_cols_array(),
+                                ),
+                                drawable.transform.translation.to_vec3(),
+                            )],
                             ShaderType::VertexShader,
                         );
 
@@ -396,18 +401,20 @@ impl GeometryPass {
 
                         if last_material.as_ref() != Some(material) {
                             #[repr(C)]
-                            #[derive(Clone, Copy)]
+                            #[derive(Clone, Copy, Zeroable, Pod)]
                             struct MaterialInfo {
                                 albedo: Vec4,
                                 roughness_factor: f32,
                                 metalness_factor: f32,
                                 albedo_texture_index: u32,
+                                _padding0: u32,
                             }
                             let mut material_info = MaterialInfo {
                                 albedo: Vec4::new(1f32, 1f32, 1f32, 1f32),
                                 roughness_factor: 0f32,
                                 metalness_factor: 0f32,
                                 albedo_texture_index: 0u32,
+                                ..Zeroable::zeroed()
                             };
 
                             command_buffer.bind_sampling_view_and_sampler(

@@ -1,19 +1,19 @@
-use std::sync::Arc;
-
-use sourcerenderer_core::atomic_refcell::AtomicRefCell;
+use bytemuck::{Pod, Zeroable};
 use sourcerenderer_core::Vec3;
+use sourcerenderer_core::atomic_refcell::AtomicRefCell;
+use std::sync::Arc;
 
 use crate::graphics::*;
 
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, Zeroable, Pod)]
 pub struct PointLight {
     pub position: Vec3,
     pub intensity: f32,
 }
 
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, Zeroable, Pod)]
 pub struct DirectionalLight {
     pub direction: Vec3,
     pub intensity: f32,

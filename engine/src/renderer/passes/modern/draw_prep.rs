@@ -1,3 +1,4 @@
+use bytemuck::{Pod, Zeroable};
 use sourcerenderer_core::Vec4;
 use sourcerenderer_core::gpu::TexturePlane;
 
@@ -99,7 +100,7 @@ impl DrawPrepPass {
             );
 
             #[repr(C)]
-            #[derive(Clone, Debug)]
+            #[derive(Clone, Debug, Copy, Zeroable, Pod)]
             struct GPUFrustum {
                 pub near_half_width: f32,
                 pub near_half_height: f32,

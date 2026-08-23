@@ -465,7 +465,11 @@ impl VkPipeline {
             p_data: spec_data.as_ptr() as *const c_void,
             ..Default::default()
         };
-        (spec_info, spec_data.into_boxed_slice(), spec_map.into_boxed_slice())
+        (
+            spec_info,
+            spec_data.into_boxed_slice(),
+            spec_map.into_boxed_slice(),
+        )
     }
 
     pub fn new_graphics(
@@ -770,7 +774,7 @@ impl VkPipeline {
         let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
         let mut context = DescriptorSetLayoutSetupContext::default();
 
-        let mut fs_spec_info = vk::SpecializationInfo::default();
+        let mut _fs_spec_info = vk::SpecializationInfo::default();
         let mut _fs_spec_data = Option::<Box<[u32]>>::None;
         let mut _fs_spec_map = Option::<Box<[vk::SpecializationMapEntry]>>::None;
 
@@ -778,7 +782,7 @@ impl VkPipeline {
             let (spec_info, spec_data, spec_map) =
                 unsafe { Self::get_spec_map(info.ms.spec_consts) };
 
-            fs_spec_info = spec_info;
+            _fs_spec_info = spec_info;
             _fs_spec_data = Some(spec_data);
             _fs_spec_map = Some(spec_map);
 
@@ -786,7 +790,7 @@ impl VkPipeline {
                 module: shader.shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
                 stage: shader_type_to_vk(shader.shader.shader_type()),
-                p_specialization_info: &fs_spec_info as *const vk::SpecializationInfo,
+                p_specialization_info: &_fs_spec_info as *const vk::SpecializationInfo,
                 ..Default::default()
             };
             shader_stages.push(shader_stage);
@@ -1396,7 +1400,8 @@ impl VkPipeline {
                 handle_size as usize * groups.len(),
             )
         }
-        .unwrap().into_boxed_slice();
+        .unwrap()
+        .into_boxed_slice();
 
         let sbt = buffer;
         let map = unsafe { sbt.map(buffer_offset, size, false).unwrap() as *mut u8 };
