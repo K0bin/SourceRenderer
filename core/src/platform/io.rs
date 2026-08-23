@@ -34,8 +34,8 @@ mod send_sync_bounds {
 
 pub use send_sync_bounds::*;
 
-pub trait PlatformFile: AsyncRead + AsyncSeek + Send + Sync + Unpin {}
-impl<T: AsyncRead + AsyncSeek + Sized + Send + Sync + Unpin> PlatformFile for T {}
+pub trait PlatformFile: AsyncRead + AsyncSeek + IOMaybeSend + IOMaybeSync + Unpin {}
+impl<T: AsyncRead + AsyncSeek + Sized + IOMaybeSend + IOMaybeSync + Unpin> PlatformFile for T {}
 
 pub trait PlatformIO: 'static + Send + Sync {
     type File: PlatformFile;

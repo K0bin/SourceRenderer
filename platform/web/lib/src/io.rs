@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io::{Error as IOError, ErrorKind, Result as IOResult};
+use std::marker::PhantomData;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::LazyLock;
@@ -16,6 +17,7 @@ pub struct WebFetchFile {
     path: Box<Path>,
     data: Option<Box<[u8]>>,
     task: Option<Task<IOResult<Box<[u8]>>>>,
+    _p: PhantomData<*const std::ffi::c_void>
 }
 
 const MAX_NON_RANGED_FETCH: usize = 2_000_000;
@@ -42,6 +44,7 @@ impl WebFetchFile {
             current_position: 0,
             data,
             task: None,
+            _p: PhantomData
         })
     }
 
