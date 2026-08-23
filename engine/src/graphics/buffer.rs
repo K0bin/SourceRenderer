@@ -64,36 +64,44 @@ impl BufferSlice {
         invalidate: bool,
     ) -> Option<*mut c_void> {
         debug_assert!(self.buffer_allocation.range.length >= offset + length);
-        self.handle().map(
-            self.buffer_allocation.range.offset + offset,
-            length,
-            invalidate,
-        )
+        unsafe {
+            self.handle().map(
+                self.buffer_allocation.range.offset + offset,
+                length,
+                invalidate,
+            )
+        }
     }
 
     #[inline(always)]
     pub unsafe fn unmap_part(&self, offset: u64, length: u64, flush: bool) {
         debug_assert!(self.buffer_allocation.range.length >= offset + length);
-        self.handle()
-            .unmap(self.buffer_allocation.range.offset + offset, length, flush)
+        unsafe {
+            self.handle()
+                .unmap(self.buffer_allocation.range.offset + offset, length, flush)
+        }
     }
 
     #[inline(always)]
     pub unsafe fn map(&self, invalidate: bool) -> Option<*mut c_void> {
-        self.handle().map(
-            self.buffer_allocation.range.offset,
-            self.buffer_allocation.range.length,
-            invalidate,
-        )
+        unsafe {
+            self.handle().map(
+                self.buffer_allocation.range.offset,
+                self.buffer_allocation.range.length,
+                invalidate,
+            )
+        }
     }
 
     #[inline(always)]
     pub unsafe fn unmap(&self, flush: bool) {
-        self.handle().unmap(
-            self.buffer_allocation.range.offset,
-            self.buffer_allocation.range.length,
-            flush,
-        );
+        unsafe {
+            self.handle().unmap(
+                self.buffer_allocation.range.offset,
+                self.buffer_allocation.range.length,
+                flush,
+            );
+        }
     }
 
     pub fn write<T: Pod>(&self, src: &T) -> Option<()> {
@@ -157,7 +165,7 @@ impl BufferAllocator {
         memory_usage: MemoryUsage,
         name: Option<&str>,
     ) -> Result<Arc<BufferSlice>, OutOfMemoryError> {
-        let heap_info = unsafe { self.device.get_buffer_heap_info(info) };
+        let heap_info = self.device.get_buffer_heap_info(info);
         let alignment: u64 = heap_info.alignment;
 
         if info.size > UNIQUE_ALLOCATION_THRESHOLD {
@@ -222,13 +230,13 @@ impl BufferAllocator {
         memory_usage: MemoryUsage,
         name: Option<&str>,
     ) -> Result<BufferAndAllocation, OutOfMemoryError> {
-        let heap_info = unsafe { device.get_buffer_heap_info(info) };
+        let heap_info = device.get_buffer_heap_info(info);
         if heap_info.dedicated_allocation_preference
             == DedicatedAllocationPreference::RequireDedicated
             || heap_info.dedicated_allocation_preference
                 == DedicatedAllocationPreference::PreferDedicated
         {
-            let memory_types = unsafe { device.memory_type_infos() };
+            let memory_types = device.memory_type_infos();
             let mut buffer: Result<active_gpu_backend::Buffer, OutOfMemoryError> =
                 Err(OutOfMemoryError {});
 
@@ -239,7 +247,7 @@ impl BufferAllocator {
                 if (mask & (1 << i)) == 0 {
                     continue;
                 }
-                buffer = unsafe { device.create_buffer(info, i, name) };
+                buffer = device.create_buffer(info, i, name);
                 if buffer.is_ok() {
                     break;
                 }
@@ -253,7 +261,7 @@ impl BufferAllocator {
                     if (mask & (1 << i)) == 0 {
                         continue;
                     }
-                    buffer = unsafe { device.create_buffer(info, i, name) };
+                    buffer = device.create_buffer(info, i, name);
                     if buffer.is_ok() {
                         break;
                     }
@@ -268,7 +276,7 @@ impl BufferAllocator {
                     if (mask & (1 << i)) == 0 {
                         continue;
                     }
-                    buffer = unsafe { device.create_buffer(info, i, name) };
+                    buffer = device.create_buffer(info, i, name);
                     if buffer.is_ok() {
                         break;
                     }

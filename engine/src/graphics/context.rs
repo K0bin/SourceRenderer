@@ -147,7 +147,7 @@ impl GraphicsContext {
         new_frame
     }
 
-    pub fn end_frame(&mut self) -> SharedFenceValuePairRef {
+    pub fn end_frame(&mut self) -> SharedFenceValuePairRef<'_> {
         assert_eq!(self.current_frame, self.completed_frame + 1);
         self.completed_frame += 1;
         SharedFenceValuePairRef {
@@ -157,7 +157,7 @@ impl GraphicsContext {
         }
     }
 
-    pub fn get_command_buffer<'a>(&'a self, _queue_type: QueueType) -> CommandBuffer<'a> {
+    pub fn get_command_buffer(&self, _queue_type: QueueType) -> CommandBuffer<'_> {
         let thread_context = self.get_thread_context();
         let mut frame_context = thread_context.get_frame(self.current_frame);
 
@@ -187,7 +187,7 @@ impl GraphicsContext {
         inheritance: &<active_gpu_backend::CommandBuffer as gpu::CommandBuffer<
             active_gpu_backend::Backend,
         >>::CommandBufferInheritance,
-    ) -> CommandBuffer {
+    ) -> CommandBuffer<'_> {
         let thread_context = self.get_thread_context();
         let mut frame_context = thread_context.get_frame(self.current_frame);
 
@@ -212,7 +212,7 @@ impl GraphicsContext {
         recorder
     }
 
-    pub(super) fn get_thread_frame_context(&self, frame: u64) -> AtomicRefMut<FrameContext> {
+    pub(super) fn get_thread_frame_context(&self, frame: u64) -> AtomicRefMut<'_, FrameContext> {
         let thread_context = self.get_thread_context();
         thread_context.get_frame(frame)
     }
@@ -278,7 +278,7 @@ impl ThreadContext {
         }
     }
 
-    pub fn get_frame(&self, frame_counter: u64) -> AtomicRefMut<FrameContext> {
+    pub fn get_frame(&self, frame_counter: u64) -> AtomicRefMut<'_, FrameContext> {
         let frames = self.frames.borrow_mut();
         AtomicRefMut::map(frames, |f| {
             let len = f.len();

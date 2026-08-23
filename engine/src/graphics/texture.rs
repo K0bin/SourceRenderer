@@ -1,11 +1,7 @@
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
 
-use super::gpu::{
-    self,
-    Heap as _,
-    Texture as _,
-};
+use super::gpu::{self, Heap as _, Texture as _};
 use super::*;
 
 pub struct Texture {
@@ -32,13 +28,13 @@ impl Texture {
         info: &TextureInfo,
         name: Option<&str>,
     ) -> Result<Arc<Self>, OutOfMemoryError> {
-        let heap_info = unsafe { device.get_texture_heap_info(info) };
+        let heap_info = device.get_texture_heap_info(info);
         let (texture, allocation) = if heap_info.dedicated_allocation_preference
             == gpu::DedicatedAllocationPreference::RequireDedicated
             || heap_info.dedicated_allocation_preference
                 == gpu::DedicatedAllocationPreference::PreferDedicated
         {
-            let memory_types = unsafe { device.memory_type_infos() };
+            let memory_types = device.memory_type_infos();
             let mut texture: Result<active_gpu_backend::Texture, OutOfMemoryError> =
                 Err(OutOfMemoryError {});
 
@@ -50,7 +46,7 @@ impl Texture {
                 if (mask & (1 << i)) == 0 {
                     continue;
                 }
-                texture = unsafe { device.create_texture(info, i, name) };
+                texture = device.create_texture(info, i, name);
                 if texture.is_ok() {
                     break;
                 }
@@ -65,7 +61,7 @@ impl Texture {
                     if (mask & (1 << i)) == 0 {
                         continue;
                     }
-                    texture = unsafe { device.create_texture(info, i, name) };
+                    texture = device.create_texture(info, i, name);
                     if texture.is_ok() {
                         break;
                     }
@@ -81,7 +77,7 @@ impl Texture {
                     if (mask & (1 << i)) == 0 {
                         continue;
                     }
-                    texture = unsafe { device.create_texture(info, i, name) };
+                    texture = device.create_texture(info, i, name);
                     if texture.is_ok() {
                         break;
                     }
@@ -157,7 +153,7 @@ impl TextureView {
         info: &TextureViewInfo,
         name: Option<&str>,
     ) -> Arc<Self> {
-        let texture_view = unsafe { device.create_texture_view(texture.handle(), info, name) };
+        let texture_view = device.create_texture_view(texture.handle(), info, name);
         Arc::new(Self {
             texture: Some(texture.clone()),
             texture_view: ManuallyDrop::new(texture_view),
@@ -172,7 +168,7 @@ impl TextureView {
         info: &TextureViewInfo,
         name: Option<&str>,
     ) -> Self {
-        let texture_view = unsafe { device.create_texture_view(texture, info, name) };
+        let texture_view = device.create_texture_view(texture, info, name);
         Self {
             texture: None,
             texture_view: ManuallyDrop::new(texture_view),

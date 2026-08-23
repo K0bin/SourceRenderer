@@ -1,19 +1,12 @@
 use crate::asset::asset_manager::AssetFile;
-use crate::asset::AssetData::{Material, Model};
 use crate::asset::{
-    AssetData, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, MaterialData,
-    MaterialValue, MeshData, MeshRange, ModelData, TextureData,
+    AssetData, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, TextureData,
 };
-use crate::renderer::asset::RendererMaterialValue;
 use futures_lite::AsyncReadExt;
 use half::f16;
-use smallvec::{smallvec, SmallVec};
+use smallvec::SmallVec;
+use sourcerenderer_core::Vec3;
 use sourcerenderer_core::gpu::{Format, SampleCount, TextureDimension, TextureInfo, TextureUsage};
-use sourcerenderer_core::{HalfVec3, Vec3, Vec4};
-use std::collections::HashMap;
-use std::fs::File;
-use std::io::{BufWriter, Write};
-use std::path::Path;
 use std::slice;
 use std::sync::Arc;
 
@@ -127,7 +120,9 @@ impl AssetLoader for RawVolumeLoaderTexture {
             downsampled_width,
             downsampled_height,
             downsampled_depth,
-            (downsampled_width as usize) * (downsampled_height as usize) * (downsampled_depth as usize),
+            (downsampled_width as usize)
+                * (downsampled_height as usize)
+                * (downsampled_depth as usize),
             spacing,
         );
 

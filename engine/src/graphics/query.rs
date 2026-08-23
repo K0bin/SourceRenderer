@@ -1,8 +1,4 @@
-use std::fmt::{
-    Debug,
-    Error as FmtError,
-    Formatter,
-};
+use std::fmt::{Debug, Error as FmtError, Formatter};
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
 
@@ -49,7 +45,7 @@ impl QueryAllocator {
         destroyer: &Arc<DeferredDestroyer>,
         query_count: u32,
     ) -> Self {
-        let pool = unsafe { device.create_query_pool(query_count) };
+        let pool = device.create_query_pool(query_count);
         Self {
             pool: Box::new(QueryPool {
                 pool: ManuallyDrop::new(pool),

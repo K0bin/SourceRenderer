@@ -1,5 +1,4 @@
 use crate::graphics::*;
-use bitflags::Flags;
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::sync::Arc;

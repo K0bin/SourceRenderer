@@ -1,20 +1,18 @@
 use std::sync::Arc;
 
-use crate::asset::{AssetLoadPriority, AssetType, TextureHandle};
 use crate::graphics::*;
 use crate::renderer::asset::{
     GraphicsPipelineHandle, GraphicsPipelineInfo, PathPipelineShaderStage, RendererAssets,
-    RendererAssetsReadOnly, RendererMaterial, RendererMaterialValue,
+    RendererAssetsReadOnly,
 };
 use crate::renderer::drawable::View;
-use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
 use crate::renderer::passes::volume::GeometryPass;
+use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use crate::renderer::renderer_scene::RendererScene;
-use smallvec::SmallVec;
 use sourcerenderer_core::gpu::TexturePlane;
-use sourcerenderer_core::{HalfVec3, Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
+use sourcerenderer_core::{Vec2, Vec2I, Vec2UI};
 
 pub struct BackgroundPass {
     pipeline: GraphicsPipelineHandle,

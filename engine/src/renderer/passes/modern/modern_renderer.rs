@@ -9,28 +9,20 @@ use super::draw_prep::DrawPrepPass;
 use super::hi_z::HierarchicalZPass;
 use super::light_binning::LightBinningPass;
 use super::rt_shadows::RTShadowPass;
-use super::shading_pass::ShadingPass;
-use super::shadow_map::ShadowMapPass;
 use super::sharpen::SharpenPass;
 use super::ssao::SsaoPass;
 use super::taa::TAAPass;
 use super::visibility_buffer::VisibilityBufferPass;
 use crate::graphics::{
-    Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef,
-    BufferUsage, CommandBuffer, Device, GraphicsContext, QueueSubmission, QueueType, Swapchain,
-    SwapchainError, TextureInfo, TextureLayout, WHOLE_BUFFER,
+    BindingFrequency, BufferRef, BufferUsage, CommandBuffer, Device, GraphicsContext,
+    QueueSubmission, QueueType, Swapchain, SwapchainError, TextureInfo, WHOLE_BUFFER,
 };
 use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
-use crate::renderer::passes::blue_noise::BlueNoise;
-use crate::renderer::passes::compositing::CompositingPass;
 use crate::renderer::passes::modern::gpu_scene::SceneBuffers;
-use crate::renderer::passes::modern::motion_vectors::MotionVectorPass;
-use crate::renderer::passes::ssr::SsrPass;
-use crate::renderer::passes::ui::UIPass;
 use crate::renderer::render_path::{
     FrameInfo, RenderPassParameters, RenderPath, RenderPathResult, SceneInfo,
 };
-use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
+use crate::renderer::renderer_resources::RendererResources;
 use crate::ui::UIDrawData;
 
 pub struct ModernRenderer {

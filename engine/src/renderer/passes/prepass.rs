@@ -1,6 +1,5 @@
-use bevy_math::{Affine3A, Mat3};
 use bytemuck::{Pod, Zeroable};
-use sourcerenderer_core::{Matrix3, Matrix4, Vec2, Vec2I, Vec2UI, Vec4UI};
+use sourcerenderer_core::{Matrix3, Matrix4, Vec2, Vec2I, Vec2UI};
 
 use crate::graphics::{CommandBuffer, *};
 use crate::renderer::asset::{

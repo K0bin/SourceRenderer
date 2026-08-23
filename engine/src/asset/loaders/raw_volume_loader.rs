@@ -1,10 +1,8 @@
 use crate::asset::asset_manager::AssetFile;
-use crate::asset::AssetData::{Material, Model};
 use crate::asset::{
     AssetData, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, MaterialData,
     MaterialValue, MeshData, MeshRange, ModelData,
 };
-use crate::renderer::asset::RendererMaterialValue;
 use futures_lite::AsyncReadExt;
 use sourcerenderer_core::{HalfVec3, Vec3, Vec4};
 use std::collections::HashMap;
@@ -102,7 +100,9 @@ impl AssetLoader for RawVolumeLoader {
             downsampled_width,
             downsampled_height,
             downsampled_depth,
-            (downsampled_width as usize) * (downsampled_height as usize) * (downsampled_depth as usize),
+            (downsampled_width as usize)
+                * (downsampled_height as usize)
+                * (downsampled_depth as usize),
             spacing,
         );
         let mut values = Vec::<f32>::with_capacity(values_count);
@@ -247,7 +247,7 @@ fn marching_cubes<F: Fn(u32, u32, u32) -> f32>(
     value_lookup: F,
     threshold: f32,
     scale: Vec3,
-    downscale_factor: u32,
+    _downscale_factor: u32,
 ) -> (Vec<HalfVec3>, Vec<u32>) {
     const EDGE_TABLE: [u32; 256] = [
         0x0, 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c, 0x80c, 0x905, 0xa0f, 0xb06, 0xc0a,

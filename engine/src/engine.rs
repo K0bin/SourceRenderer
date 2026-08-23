@@ -7,15 +7,15 @@ use bevy_diagnostic::FrameCountPlugin;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::message::Messages;
 use bevy_ecs::resource::Resource;
+use bevy_input::InputPlugin;
 use bevy_input::keyboard::KeyboardInput;
 use bevy_input::mouse::MouseMotion;
-use bevy_input::InputPlugin;
 use bevy_log::LogPlugin;
 use bevy_time::{Fixed, Time, TimePlugin};
 use bevy_transform::TransformPlugin;
-use sourcerenderer_core::console::Console;
-use sourcerenderer_core::platform::{Event, GraphicsPlatform, PlatformIO, Window};
 use sourcerenderer_core::Vec2UI;
+use sourcerenderer_core::console::Console;
+use sourcerenderer_core::platform::{GraphicsPlatform, PlatformIO, Window};
 
 use crate::asset::{AssetManager, AssetManagerECSResource, AssetManagerPlugin};
 use crate::graphics::*;

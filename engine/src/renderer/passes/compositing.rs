@@ -1,6 +1,5 @@
 use bytemuck::{Pod, Zeroable};
 use sourcerenderer_core::Vec2UI;
-use sourcerenderer_core::gpu::StencilOp::Zero;
 
 use super::ssr::SsrPass;
 use crate::graphics::*;

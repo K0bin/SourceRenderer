@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use atomic_refcell::AtomicRefMut;
-use bytemuck::{AnyBitPattern, NoUninit, Pod, cast_slice};
+use bytemuck::{Pod, cast_slice};
 use crossbeam_channel::Sender;
 use smallvec::SmallVec;
 
@@ -899,11 +899,10 @@ impl<'a> CommandBuffer<'a> {
             max_vertex: info.max_vertex,
         };
 
-        let size = unsafe {
-            self.context
-                .device()
-                .get_bottom_level_acceleration_structure_size(&core_info)
-        };
+        let size = self
+            .context
+            .device()
+            .get_bottom_level_acceleration_structure_size(&core_info);
         let buffer = self
             .context
             .global_buffer_allocator()
@@ -1078,11 +1077,10 @@ impl<'a> CommandBuffer<'a> {
             instances_count: info.instances.len() as u32,
         };
 
-        let size = unsafe {
-            self.context
-                .device()
-                .get_top_level_acceleration_structure_size(&core_info)
-        };
+        let size = self
+            .context
+            .device()
+            .get_top_level_acceleration_structure_size(&core_info);
         let buffer = self
             .context
             .global_buffer_allocator()

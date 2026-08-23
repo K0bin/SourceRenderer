@@ -1,4 +1,4 @@
-use bytemuck::{Pod, cast_box, cast_slice, cast_slice_box};
+use bytemuck::{Pod, cast_slice, cast_slice_box};
 use log::trace;
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
@@ -129,7 +129,7 @@ impl Device {
         shader: &PackedShader,
         name: Option<&str>,
     ) -> active_gpu_backend::Shader {
-        unsafe { self.device.create_shader(shader, name) }
+        self.device.create_shader(shader, name)
     }
 
     #[inline(always)]

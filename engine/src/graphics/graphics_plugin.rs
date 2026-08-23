@@ -1,14 +1,7 @@
 use bevy_app::App;
-use sourcerenderer_core::platform::{
-    GraphicsPlatform,
-    Window,
-};
+use sourcerenderer_core::platform::{GraphicsPlatform, Window};
 
-use super::{
-    active_gpu_backend,
-    APIInstance,
-    Surface,
-};
+use super::{APIInstance, Surface, active_gpu_backend};
 
 pub struct GPUInstanceResource(pub APIInstance);
 
@@ -25,10 +18,10 @@ pub(crate) fn initialize_graphics<P: GraphicsPlatform<active_gpu_backend::Backen
     let api_instance = P::create_instance(false).expect("Failed to initialize graphics");
 
     let gpu_surface = window.create_surface(&api_instance);
-    app.insert_non_send_resource(GPUSurfaceResource {
+    app.insert_non_send(GPUSurfaceResource {
         surface: gpu_surface,
         width: window.width(),
         height: window.height(),
     });
-    app.insert_non_send_resource(GPUInstanceResource(api_instance));
+    app.insert_non_send(GPUInstanceResource(api_instance));
 }

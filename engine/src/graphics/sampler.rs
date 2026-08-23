@@ -14,7 +14,7 @@ impl Sampler {
         destroyer: &Arc<DeferredDestroyer>,
         info: &SamplerInfo,
     ) -> Self {
-        let sampler = unsafe { device.create_sampler(info) };
+        let sampler = device.create_sampler(info);
         Self {
             sampler: ManuallyDrop::new(sampler),
             destroyer: destroyer.clone(),

@@ -16,7 +16,7 @@ impl GraphicsPipeline {
         info: &active_gpu_backend::GraphicsPipelineInfo,
         name: Option<&str>,
     ) -> Self {
-        let pipeline = unsafe { device.create_graphics_pipeline(info, name) };
+        let pipeline = device.create_graphics_pipeline(info, name);
         Self {
             pipeline: ManuallyDrop::new(pipeline),
             destroyer: destroyer.clone(),
@@ -48,7 +48,7 @@ impl MeshGraphicsPipeline {
         info: &active_gpu_backend::MeshGraphicsPipelineInfo,
         name: Option<&str>,
     ) -> Self {
-        let pipeline = unsafe { device.create_mesh_graphics_pipeline(info, name) };
+        let pipeline = device.create_mesh_graphics_pipeline(info, name);
         Self {
             pipeline: ManuallyDrop::new(pipeline),
             destroyer: destroyer.clone(),
@@ -81,7 +81,7 @@ impl ComputePipeline {
         name: Option<&str>,
     ) -> Self {
         // TODO: Spec constants
-        let pipeline = unsafe { device.create_compute_pipeline(shader, name) };
+        let pipeline = device.create_compute_pipeline(shader, name);
         Self {
             pipeline: ManuallyDrop::new(pipeline),
             destroyer: destroyer.clone(),
@@ -94,7 +94,7 @@ impl ComputePipeline {
     }
 
     #[inline(always)]
-    pub fn binding_info(&self, set: BindingFrequency, slot: u32) -> Option<BindingInfo> {
+    pub fn binding_info(&self, set: BindingFrequency, slot: u32) -> Option<BindingInfo<'_>> {
         (*self.pipeline).binding_info(set, slot)
     }
 }
@@ -120,7 +120,7 @@ impl RayTracingPipeline {
         info: &active_gpu_backend::RayTracingPipelineInfo,
         name: Option<&str>,
     ) -> Result<Self, OutOfMemoryError> {
-        let sbt_size = unsafe { device.get_raytracing_pipeline_sbt_buffer_size(info) };
+        let sbt_size = device.get_raytracing_pipeline_sbt_buffer_size(info);
         let sbt = buffer_allocator.get_slice(
             &BufferInfo {
                 size: sbt_size,

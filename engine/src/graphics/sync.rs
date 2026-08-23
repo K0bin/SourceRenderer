@@ -21,7 +21,7 @@ impl Fence {
         device: &active_gpu_backend::Device,
         destoryer: &Arc<DeferredDestroyer>,
     ) -> Self {
-        let fence = unsafe { device.create_fence(true) };
+        let fence = device.create_fence(true);
         Self {
             fence: ManuallyDrop::new(fence),
             destroyer: destoryer.clone(),
@@ -92,7 +92,7 @@ impl SharedFenceValuePair {
     }
 
     #[inline(always)]
-    pub fn as_ref(&self) -> SharedFenceValuePairRef {
+    pub fn as_ref(&self) -> SharedFenceValuePairRef<'_> {
         SharedFenceValuePairRef {
             fence: &self.fence,
             value: self.value,
@@ -101,7 +101,7 @@ impl SharedFenceValuePair {
     }
 
     #[inline(always)]
-    pub fn as_handle_ref(&self) -> active_gpu_backend::FenceValuePairRef {
+    pub fn as_handle_ref(&self) -> active_gpu_backend::FenceValuePairRef<'_> {
         super::gpu::FenceValuePairRef {
             fence: self.fence.handle(),
             value: self.value,

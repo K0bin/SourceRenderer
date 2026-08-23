@@ -3,10 +3,7 @@ use std::sync::Arc;
 
 use log::trace;
 
-use super::{
-    gpu,
-    *,
-};
+use super::{gpu, *};
 use crate::Mutex;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -52,7 +49,7 @@ pub(super) enum MemoryTypeMatchingStrictness {
 
 impl MemoryAllocator {
     pub(super) fn new(device: &Arc<active_gpu_backend::Device>) -> Self {
-        let memory_types = unsafe { device.memory_type_infos() };
+        let memory_types = device.memory_type_infos();
         let is_uma = memory_types
             .iter()
             .all(|memory_type| memory_type.memory_kind == gpu::MemoryKind::VRAM);
@@ -84,7 +81,9 @@ impl MemoryAllocator {
             });
         }
 
-        let heap = unsafe { self.device.create_heap(memory_type_index, CHUNK_SIZE.max(size)) };
+        let heap = self
+            .device
+            .create_heap(memory_type_index, CHUNK_SIZE.max(size));
         if heap.is_err() {
             return Err(OutOfMemoryError {});
         }
@@ -136,7 +135,7 @@ impl MemoryAllocator {
         size: u64,
         alignment: u64,
     ) -> Result<MemoryAllocation<active_gpu_backend::Heap>, OutOfMemoryError> {
-        let memory_types = unsafe { self.device.memory_type_infos() };
+        let memory_types = self.device.memory_type_infos();
         if memory_type_mask == 0 {
             return Err(OutOfMemoryError {});
         }
@@ -158,7 +157,7 @@ impl MemoryAllocator {
         usage: MemoryUsage,
         strictness: MemoryTypeMatchingStrictness,
     ) -> MemoryTypeMask {
-        let memory_types = unsafe { self.device.memory_type_infos() };
+        let memory_types = self.device.memory_type_infos();
 
         let mut mask = 0u32;
         for i in 0..memory_types.len() {
@@ -206,7 +205,7 @@ impl MemoryAllocator {
 
     #[inline(always)]
     pub(super) fn memory_type_info(&self, memory_type_index: u32) -> &gpu::MemoryTypeInfo {
-        let memory_types = unsafe { self.device.memory_type_infos() };
+        let memory_types = self.device.memory_type_infos();
         &memory_types[(memory_type_index as usize).min(memory_types.len() - 1)]
     }
 

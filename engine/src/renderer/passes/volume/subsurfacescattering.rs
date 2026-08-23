@@ -1,7 +1,5 @@
 use bytemuck::{Pod, Zeroable};
-use rand::random;
-use sourcerenderer_core::{Vec2, Vec2I, Vec2UI, Vec4};
-use std::cell::Ref;
+use sourcerenderer_core::{Vec2, Vec2UI};
 use std::sync::Arc;
 
 use crate::graphics::*;

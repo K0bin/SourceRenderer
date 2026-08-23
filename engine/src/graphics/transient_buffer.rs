@@ -1,5 +1,6 @@
 use atomic_refcell::{AtomicRefCell, AtomicRefMut};
 use sourcerenderer_core::extend_lifetime;
+use sourcerenderer_core::gpu::Device;
 use sourcerenderer_core::gpu::*;
 use std::collections::HashMap;
 use std::ffi::c_void;
@@ -52,12 +53,12 @@ impl TransientBufferSlice {
 
     #[inline(always)]
     pub unsafe fn map(&self, frame: u64, invalidate: bool) -> Option<*mut c_void> {
-        self.handle(frame).map(self.offset, self.length, invalidate)
+        unsafe { self.handle(frame).map(self.offset, self.length, invalidate) }
     }
 
     #[inline(always)]
     pub unsafe fn unmap(&self, frame: u64, flush: bool) {
-        self.handle(frame).unmap(self.offset, self.length, flush)
+        unsafe { self.handle(frame).unmap(self.offset, self.length, flush) }
     }
 }
 
@@ -152,7 +153,7 @@ impl TransientBufferAllocator {
         frame: u64,
         _name: Option<&str>,
     ) -> Result<TransientBufferSlice, OutOfMemoryError> {
-        let heap_info = unsafe { self.device.get_buffer_heap_info(info) };
+        let heap_info = self.device.get_buffer_heap_info(info);
         let alignment: u64 = heap_info.alignment;
 
         debug_assert!(UNIQUE_ALLOCATION_THRESHOLD <= BUFFER_SIZE);

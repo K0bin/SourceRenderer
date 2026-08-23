@@ -4,7 +4,7 @@ use crate::asset::asset_manager::{AssetFile, AssetLoader};
 use crate::asset::{AssetData, AssetLoadPriority, AssetLoaderProgress, AssetManager, TextureData};
 use crate::graphics::*;
 use image::{EncodableLayout, GenericImageView, ImageFormat, ImageReader};
-use smallvec::{smallvec, SmallVec};
+use smallvec::smallvec;
 
 pub struct ImageLoader {}
 

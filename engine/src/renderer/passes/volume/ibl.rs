@@ -1,14 +1,14 @@
-use crate::asset::{AssetHandle, AssetLoadPriority, AssetType, TextureHandle};
-use crate::graphics::{CommandBuffer, PipelineBinding, RenderPassBeginInfo, RenderTarget, StoreOp};
+use crate::asset::{AssetLoadPriority, AssetType, TextureHandle};
+use crate::graphics::{CommandBuffer, PipelineBinding};
 use crate::renderer::asset::{
     ComputePipelineHandle, PathPipelineShaderStage, RendererAssets, RendererAssetsReadOnly,
 };
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use sourcerenderer_core::gpu::{
-    BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, ClearColor, Format,
-    LoadOpColor, SampleCount, ShaderType, TextureDimension, TextureInfo, TextureLayout,
-    TexturePlane, TextureUsage, TextureViewInfo,
+    BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, Format, SampleCount,
+    ShaderType, TextureDimension, TextureInfo, TextureLayout, TexturePlane, TextureUsage,
+    TextureViewInfo,
 };
 use std::sync::Arc;
 

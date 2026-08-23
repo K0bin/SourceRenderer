@@ -1,6 +1,6 @@
 use crate::graphics::{
-    BackendTexture, Barrier, BufferSlice, CommandBuffer, Device, GraphicsPipeline, MemoryUsage,
-    PipelineBinding, RenderPassBeginInfo, RenderTarget, StoreOp, TextureView,
+    BackendTexture, Barrier, CommandBuffer, Device, PipelineBinding, RenderPassBeginInfo,
+    RenderTarget, StoreOp, TextureView,
 };
 use crate::renderer::asset::{
     GraphicsPipelineHandle, GraphicsPipelineInfo, PathPipelineShaderStage, RendererAssets,
@@ -10,12 +10,11 @@ use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::HistoryResourceEntry;
 use sourcerenderer_core::gpu::{
     AttachmentBlendInfo, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency,
-    BlendFactor, BlendInfo, BlendOp, BufferInfo, BufferUsage, ColorComponents, CompareFunc,
-    CullMode, DepthStencilInfo, FillMode, Format, FrontFace, LoadOpColor, LogicOp, PrimitiveType,
-    QueueSharingMode, RasterizerInfo, SampleCount, Scissor, ShaderInputElement, Texture,
-    TextureLayout, TexturePlane, TextureViewInfo, VertexLayoutInfo, Viewport,
+    BlendFactor, BlendInfo, BlendOp, ColorComponents, CompareFunc, CullMode, DepthStencilInfo,
+    FillMode, Format, FrontFace, LoadOpColor, LogicOp, PrimitiveType, RasterizerInfo, SampleCount,
+    Scissor, Texture, TextureLayout, TexturePlane, TextureViewInfo, VertexLayoutInfo, Viewport,
 };
-use sourcerenderer_core::{Vec2, Vec2I, Vec2UI, Vec4};
+use sourcerenderer_core::{Vec2, Vec2I, Vec2UI};
 use std::sync::Arc;
 
 pub struct CompositingPass {

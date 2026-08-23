@@ -17,17 +17,17 @@ use bevy_ecs::world::Ref;
 #[allow(unused_imports)]
 use bevy_platform::cell::SyncCell;
 use bevy_transform::components::GlobalTransform;
+use sourcerenderer_core::Vec2UI;
 use sourcerenderer_core::console::Console;
 use sourcerenderer_core::gpu::Surface as _;
 use sourcerenderer_core::platform::GraphicsPlatform;
-use sourcerenderer_core::Vec2UI;
 #[cfg(feature = "render_thread")]
 use web_time::Duration;
 
 use super::renderer::{RendererReceiver, RendererSender};
 use super::{DirectionalLightComponent, PointLightComponent, Renderer, StaticRenderableComponent};
 use crate::asset::{AssetManager, AssetManagerECSResource};
-use crate::engine::{ConsoleResource, WindowState, TICK_RATE};
+use crate::engine::{ConsoleResource, TICK_RATE, WindowState};
 use crate::graphics::{
     APIInstance, ActiveBackend, Adapter, AdapterType, GPUInstanceResource, GPUSurfaceResource,
     Instance, Surface, Swapchain,
@@ -145,8 +145,8 @@ type RendererResourceAccessorMut<'a> = ResMut<'a, RendererResourceWrapper>;
 type RendererResourceAccessorMut<'a> = NonSendMut<'a, RendererResourceWrapper>;
 
 fn insert_renderer_resource<P: GraphicsPlatform<ActiveBackend>>(app: &mut App) {
-    let surface_resource: GPUSurfaceResource = app.world_mut().remove_non_send_resource().unwrap();
-    let instace_resource: GPUInstanceResource = app.world_mut().remove_non_send_resource().unwrap();
+    let surface_resource: GPUSurfaceResource = app.world_mut().remove_non_send().unwrap();
+    let instace_resource: GPUInstanceResource = app.world_mut().remove_non_send().unwrap();
 
     let GPUSurfaceResource {
         surface,
@@ -484,9 +484,9 @@ mod wasm {
     use std::rc::Rc;
 
     use sourcerenderer_webgpu::{NavigatorKind, WebGPUInstance, WebGPUSurface};
+    use wasm_bindgen::JsCast;
     use wasm_bindgen::closure::Closure;
     use wasm_bindgen::prelude::wasm_bindgen;
-    use wasm_bindgen::JsCast;
     use web_sys::{DedicatedWorkerGlobalScope, Navigator, OffscreenCanvas};
 
     use super::*;
