@@ -1,8 +1,8 @@
+use bytemuck::BoxBytes;
+use sourcerenderer_core::Vec3UI;
 use std::collections::{HashSet, VecDeque};
 use std::ffi::c_void;
 use std::sync::Arc;
-
-use sourcerenderer_core::Vec3UI;
 
 use super::gpu::{CommandBuffer as _, CommandPool as _, Queue as _, Texture as _};
 use super::{gpu, *};
@@ -281,7 +281,7 @@ impl Transfer {
 
     pub fn init_buffer_box(
         &self,
-        data: Box<[u8]>,
+        data: BoxBytes,
         dst_buffer: &Arc<BufferSlice>,
         dst_offset: u64,
     ) -> Result<(), OutOfMemoryError> {
@@ -340,7 +340,7 @@ impl Transfer {
 
     pub fn init_texture_box(
         &self,
-        data: Box<[u8]>,
+        data: BoxBytes,
         texture: &Arc<Texture>,
         mip_level: u32,
         array_layer: u32,

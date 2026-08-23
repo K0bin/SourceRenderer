@@ -1,4 +1,4 @@
-use bytemuck::{Pod, cast_slice, cast_slice_box};
+use bytemuck::{BoxBytes, Pod, box_bytes_of, cast_slice};
 use log::trace;
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
@@ -245,7 +245,7 @@ impl Device {
         dst: &Arc<BufferSlice>,
         dst_offset: u64,
     ) -> Result<(), OutOfMemoryError> {
-        let data_u8: Box<[u8]> = cast_slice_box(data);
+        let data_u8: BoxBytes = box_bytes_of(data);
         self.transfer.init_buffer_box(data_u8, dst, dst_offset)?;
         Ok(())
     }
@@ -257,7 +257,7 @@ impl Device {
         mip_level: u32,
         array_layer: u32,
     ) -> Result<(), OutOfMemoryError> {
-        let data_u8: Box<[u8]> = cast_slice_box(data);
+        let data_u8: BoxBytes = box_bytes_of(data);
         let _ = self
             .transfer
             .init_texture_box(data_u8, dst, mip_level, array_layer, false)?;
@@ -309,7 +309,7 @@ impl Device {
         mip_level: u32,
         array_layer: u32,
     ) -> Result<Option<SharedFenceValuePair>, OutOfMemoryError> {
-        let data_u8: Box<[u8]> = cast_slice_box(data);
+        let data_u8: BoxBytes = box_bytes_of(data);
         self.transfer
             .init_texture_box(data_u8, dst, mip_level, array_layer, true)
     }
