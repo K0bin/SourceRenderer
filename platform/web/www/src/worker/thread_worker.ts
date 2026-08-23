@@ -1,6 +1,6 @@
-import { default as initWasm, threadFunc, InitOutput } from "../../../lib/pkg/sourcerenderer_web";
+import {default as initWasm, threadFunc, InitOutput} from "../../../lib/pkg/sourcerenderer_web";
 
-import { ThreadWorkerInit } from "../engine_worker_communication.ts";
+import {ThreadWorkerInit} from "../engine_worker_communication.ts";
 
 onmessage = async (msg: MessageEvent) => {
     console.log("Receiving msg");
@@ -9,15 +9,12 @@ onmessage = async (msg: MessageEvent) => {
 postMessage({});
 console.log("Thread initialized");
 
-let initOutput: InitOutput|null = null;
+let initOutput: InitOutput | null = null;
 
 async function run(data: ThreadWorkerInit) {
     console.log("Thread starting");
 
-    initOutput = await initWasm({
-        module_or_path: data.module,
-        memory: data.memory,
-    });
+    initOutput = await initWasm(undefined, data.memory);
     await threadFunc(data.callbackPtr, data.data);
     console.log("Thread finished");
 }
