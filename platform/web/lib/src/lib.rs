@@ -97,3 +97,14 @@ extern "C" {
         length: u32,
     ) -> Result<Uint8Array, JsValue>;
 }
+
+// Fix missing TLS exports
+thread_local! {
+    static DUMMY: std::cell::RefCell<i32> = std::cell::RefCell::new(0);
+}
+#[wasm_bindgen]
+pub fn __force_tls_initialization() {
+    DUMMY.with(|dummy| {
+        *dummy.borrow_mut() += 1;
+    });
+}

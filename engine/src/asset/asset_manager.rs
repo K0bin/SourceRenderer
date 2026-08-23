@@ -636,7 +636,7 @@ impl AssetManager {
                 return;
             }
             let file = file_opt.unwrap();
-            let load_task = crate::tasks::spawn_async_compute(async move {
+            let load_task = crate::tasks::spawn_async_compute_gpu_maybe_sendable(async move {
                 log::trace!("Loading asset at path: {}", &file.path);
                 let _ = asset_mgr
                     .load_asset(file, handle, priority, &load_request.progress)

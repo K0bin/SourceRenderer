@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use js_sys::wasm_bindgen::JsValue;
 use sourcerenderer_core::{gpu, Matrix4};
 use web_sys::{gpu_texture_usage, GpuCanvasConfiguration, GpuCanvasContext, GpuDevice};
@@ -24,6 +25,7 @@ pub struct WebGPUSwapchain {
     texture_info: gpu::TextureInfo,
     canvas_context: GpuCanvasContext,
     backbuffer_counter: u64,
+    _p: PhantomData<*const std::ffi::c_void>
 }
 
 impl WebGPUSwapchain {
@@ -62,6 +64,7 @@ impl WebGPUSwapchain {
             backbuffer_counter: 0u64,
             texture_info,
             canvas_context: context,
+            _p: PhantomData
         }
     }
 }

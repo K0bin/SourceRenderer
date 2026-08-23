@@ -1,5 +1,6 @@
 use core::panic;
 use std::collections::{hash_set::Iter, HashSet};
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::{
@@ -14,7 +15,7 @@ use crate::{
     texture::{format_to_webgpu, WebGPUTexture, WebGPUTextureView},
     WebGPUBackend, WebGPUBindGroupBinding, WebGPULimits, WebGPUQueryPool,
 };
-use js_sys::{wasm_bindgen::JsValue, Array, Uint32Array, JsNullable, JsString};
+use js_sys::{wasm_bindgen::JsValue, Uint32Array, JsNullable, JsString};
 use js_sys::wasm_bindgen::JsCast;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{Barrier, BarrierSync, SplitBarrierWait};
@@ -92,6 +93,7 @@ impl WebGPUBoundPipeline {
 struct WebGPUResetCommandBuffer {
     command_encoder: GpuCommandEncoder,
     binding_manager: WebGPUBindingManager,
+    _p: PhantomData<*const std::ffi::c_void>
 }
 
 struct WebGPURecordingCommandBuffer {
@@ -99,30 +101,36 @@ struct WebGPURecordingCommandBuffer {
     pass_encoder: WebGPUPassEncoder,
     bound_pipeline: WebGPUBoundPipeline,
     binding_manager: WebGPUBindingManager,
+    _p: PhantomData<*const std::ffi::c_void>
 }
 
 struct WebGPUFinishedCommandBuffer {
     command_buffer: GpuCommandBuffer,
     binding_manager: WebGPUBindingManager,
+    _p: PhantomData<*const std::ffi::c_void>
 }
 
 struct WebGPURenderBundleCommandBuffer {
     bundle: GpuRenderBundleEncoder,
     pipeline_layout: Option<Arc<WebGPUPipelineLayout>>,
     binding_manager: WebGPUBindingManager,
+    _p: PhantomData<*const std::ffi::c_void>
 }
 
 struct WebGPUFinishedRenderBundleCommandBuffer {
     bundle: GpuRenderBundle,
+    _p: PhantomData<*const std::ffi::c_void>
 }
 
 struct WebGPUResetRenderBundleCommandBuffer {
     binding_manager: WebGPUBindingManager,
+    _p: PhantomData<*const std::ffi::c_void>
 }
 
 #[derive(Clone)]
 pub struct WebGPURenderBundleInheritance {
     descriptor: GpuRenderBundleEncoderDescriptor,
+    _p: PhantomData<*const std::ffi::c_void>
 }
 
 enum WebGPUCommandBufferHandle {
@@ -140,6 +148,7 @@ pub(crate) struct WebGPUReadbackBufferSync {
     pub(crate) src: web_sys::GpuBuffer,
     pub(crate) dst: Option<web_sys::GpuBuffer>,
     pub(crate) size: u32,
+    _p: PhantomData<*const std::ffi::c_void>
 }
 
 impl std::hash::Hash for WebGPUReadbackBufferSync {
@@ -162,6 +171,7 @@ pub struct WebGPUCommandBuffer {
     device: GpuDevice,
     frame: u64,
     readback_syncs: HashSet<WebGPUReadbackBufferSync>,
+    _p: PhantomData<*const std::ffi::c_void>
 }
 
 fn load_op_color_to_webgpu(load_op: &gpu::LoadOpColor) -> (GpuLoadOp, &gpu::ClearColor) {
@@ -204,17 +214,20 @@ impl WebGPUCommandBuffer {
             handle: if is_inner {
                 WebGPUCommandBufferHandle::SecondaryReset(WebGPUResetRenderBundleCommandBuffer {
                     binding_manager: WebGPUBindingManager::new(device, limits),
+                    _p: PhantomData
                 })
             } else {
                 let cmd_buffer = device.create_command_encoder();
                 WebGPUCommandBufferHandle::Reset(WebGPUResetCommandBuffer {
                     command_encoder: cmd_buffer,
                     binding_manager: WebGPUBindingManager::new(device, limits),
+                    _p: PhantomData
                 })
             },
             is_inner,
             frame: 0u64,
             readback_syncs: HashSet::new(),
+            _p: PhantomData
         }
     }
 
@@ -716,6 +729,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                 buffer: buffer.handle().clone(),
                 offset,
                 length,
+                _p: PhantomData
             }),
         );
     }
@@ -742,6 +756,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                     buffer: buffer.handle().clone(),
                     offset,
                     length,
+                    _p: PhantomData
                 }),
             );
         }
@@ -750,6 +765,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                 src: buffer.handle().clone(),
                 dst: buffer.readback_handle().map(|h| (*h).clone()),
                 size: buffer.info().size as u32,
+                _p: PhantomData
             });
         }
     }
@@ -1058,6 +1074,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                 bundle: bundle_encoder,
                 pipeline_layout: None,
                 binding_manager,
+                _p: PhantomData
             });
         } else {
             if let WebGPUCommandBufferHandle::Reset(mut cmd_buffer) = handle {
@@ -1067,6 +1084,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                     pass_encoder: WebGPUPassEncoder::None,
                     bound_pipeline: WebGPUBoundPipeline::None,
                     binding_manager: cmd_buffer.binding_manager,
+                    _p: PhantomData
                 });
             } else {
                 unreachable!()
@@ -1113,6 +1131,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
             self.handle = WebGPUCommandBufferHandle::Finished(WebGPUFinishedCommandBuffer {
                 command_buffer: cmd_buffer,
                 binding_manager,
+                _p: PhantomData
             });
         } else {
             let render_bundle = match handle {
@@ -1122,6 +1141,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
             self.handle = WebGPUCommandBufferHandle::SecondaryFinished(
                 WebGPUFinishedRenderBundleCommandBuffer {
                     bundle: render_bundle,
+                    _p: PhantomData
                 },
             );
         }
@@ -1197,6 +1217,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                 src: dst.handle().clone(),
                 dst: dst.readback_handle().map(|h| (*h).clone()),
                 size: dst.info().size as u32,
+                _p: PhantomData
             });
         }
         let recording = self.get_recording_mut();
@@ -1235,6 +1256,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                 src: buffer.handle().clone(),
                 dst: buffer.readback_handle().map(|h| (*h).clone()),
                 size: buffer.info().size as u32,
+                _p: PhantomData
             });
         }
 
@@ -1341,6 +1363,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         if let gpu::RenderpassRecordingMode::CommandBuffers(_) = recording_mode {
             Some(WebGPURenderBundleInheritance {
                 descriptor: bundle_descriptor,
+                _p: PhantomData
             })
         } else {
             None
@@ -1418,6 +1441,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
             self.handle = WebGPUCommandBufferHandle::Reset(WebGPUResetCommandBuffer {
                 command_encoder: encoder,
                 binding_manager,
+                _p: PhantomData
             });
         } else {
             // The work here happens in begin() because we need the inheritance info.
@@ -1431,6 +1455,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
             self.handle =
                 WebGPUCommandBufferHandle::SecondaryReset(WebGPUResetRenderBundleCommandBuffer {
                     binding_manager,
+                    _p: PhantomData
                 });
         }
     }
@@ -1506,6 +1531,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                     src: buffer.handle().clone(),
                     dst: buffer.readback_handle().map(|h| (*h).clone()),
                     size: buffer.info().size as u32,
+                    _p: PhantomData
                 });
             }
 
@@ -1537,6 +1563,7 @@ pub struct WebGPUCommandPool {
     device: GpuDevice,
     pool_type: gpu::CommandPoolType,
     limits: WebGPULimits,
+    _p: PhantomData<*const std::ffi::c_void>
 }
 
 impl WebGPUCommandPool {
@@ -1549,6 +1576,7 @@ impl WebGPUCommandPool {
             device: device.clone(),
             pool_type,
             limits: limits.clone(),
+            _p: PhantomData
         }
     }
 }

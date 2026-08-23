@@ -1,12 +1,13 @@
+use std::marker::PhantomData;
 use sourcerenderer_core::gpu;
 use web_sys::{
     GpuAddressMode, GpuDevice, GpuFilterMode, GpuMipmapFilterMode, GpuSampler, GpuSamplerDescriptor,
 };
-
 use crate::pipeline::compare_func_to_webgpu;
 
 pub struct WebGPUSampler {
     sampler: GpuSampler,
+    _p: PhantomData<*const std::ffi::c_void>
 }
 
 fn filter_to_webgpu(filter: gpu::Filter) -> GpuFilterMode {
@@ -62,7 +63,7 @@ impl WebGPUSampler {
         }
 
         let sampler = device.create_sampler_with_descriptor(&descriptor);
-        Ok(Self { sampler })
+        Ok(Self { sampler, _p: PhantomData })
     }
 
     #[inline(always)]

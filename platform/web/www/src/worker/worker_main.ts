@@ -19,7 +19,13 @@ onmessage = async (event: MessageEvent) => {
 
 console.log("EngineThread initialized");
 
-await initWasm();
+// Values are in WASM pages (64KiB)
+const memory = new WebAssembly.Memory({
+      initial: 80,
+      maximum: 16384,
+      shared: true
+});
+await initWasm(undefined, memory);
 
 if (hasRenderThread()) {
     postMessage({

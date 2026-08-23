@@ -19,7 +19,7 @@ function main() {
         const typedEvent = event.data as EngineWorkerMessage;
         switch (typedEvent.messageType) {
             case EngineWorkerMessageType.StartThreadFromMain:
-                startThreadWorker(typedEvent.data as ThreadWorkerInit);
+                startThreadWorkerBrowserThread(typedEvent.data as ThreadWorkerInit);
                 break;
 
             case EngineWorkerMessageType.RequestCanvas:
@@ -53,7 +53,7 @@ function takeCanvas(): OffscreenCanvas {
     return offscreenCanvas;
 }
 
-function startThreadWorker(msg: ThreadWorkerInit) {
+function startThreadWorkerBrowserThread(msg: ThreadWorkerInit) {
     console.info("Starting thread from main thread.");
     const worker = new ThreadWorker({ name: msg.name });
     let transferables: Array<Transferable> = [];

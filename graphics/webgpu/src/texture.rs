@@ -186,7 +186,7 @@ impl WebGPUTexture {
             let format = JsValue::from(format_to_webgpu(info.format)).unchecked_into::<JsString>();
             descriptor.set_view_formats(&[format]);
         }
-        let texture = device.create_texture(&descriptor).map_err(|_| ())?;
+        let texture = device.create_texture(&descriptor).map_err(|e| { log::error!("Failed to create texture: {:?}", e); () })?;
 
         Ok(Self {
             texture,

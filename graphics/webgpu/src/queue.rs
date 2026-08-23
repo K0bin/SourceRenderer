@@ -1,16 +1,16 @@
+use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use js_sys::Array;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu;
 use web_sys::{GpuCommandBuffer, GpuDevice, GpuQueue};
-
 use crate::{swapchain::WebGPUSwapchain, WebGPUBackbuffer, WebGPUBackend, WebGPUCommandPool, WebGPULimits, WebGPUCommandBuffer};
 
 pub struct WebGPUQueue {
     device: GpuDevice,
     queue: GpuQueue,
     limits: WebGPULimits,
+    _p: PhantomData<*const std::ffi::c_void>
 }
 
 impl WebGPUQueue {
@@ -20,6 +20,7 @@ impl WebGPUQueue {
             device: device.clone(),
             queue,
             limits: limits.clone(),
+            _p: PhantomData
         }
     }
 

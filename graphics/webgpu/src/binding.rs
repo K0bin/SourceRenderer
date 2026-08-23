@@ -1,5 +1,5 @@
 use std::{cell::RefCell, collections::HashMap, hash::Hash, ops::Deref, sync::Arc};
-
+use std::marker::PhantomData;
 use bitflags::bitflags;
 use js_sys::{wasm_bindgen::JsValue, Array, Uint8Array, JsNullable};
 use smallvec::SmallVec;
@@ -12,7 +12,6 @@ use web_sys::{
     GpuSamplerBindingType, GpuStorageTextureAccess, GpuStorageTextureBindingLayout,
     GpuTextureBindingLayout, GpuTextureSampleType, GpuTextureView,
 };
-
 use crate::{
     sampler::WebGPUSampler,
     texture::{format_to_webgpu, texture_dimension_to_webgpu_view, WebGPUTextureView},
@@ -55,6 +54,7 @@ pub(crate) struct WebGPUBindGroupEntryInfo {
     pub(crate) is_multisampled: bool,
     pub(crate) storage_format: gpu::Format,
     pub(crate) struct_size: u32,
+    pub(crate) _p: PhantomData<*const std::ffi::c_void>,
 }
 
 pub struct WebGPUBindGroupLayout {
@@ -62,6 +62,7 @@ pub struct WebGPUBindGroupLayout {
     binding_infos: SmallVec<[Option<WebGPUBindGroupEntryInfo>; DEFAULT_PER_SET_PREALLOCATED_SIZE]>,
     is_empty: bool,
     max_used_binding: u32,
+    _p: PhantomData<*const std::ffi::c_void>,
 }
 
 fn sampling_type_to_webgpu(sampling_type: gpu::SamplingType) -> GpuTextureSampleType {
@@ -153,6 +154,7 @@ impl WebGPUBindGroupLayout {
             binding_infos,
             is_empty: bindings.is_empty(),
             max_used_binding,
+            _p: PhantomData
         })
     }
 
@@ -207,6 +209,7 @@ impl Eq for WebGPUBindGroupLayout {}
 pub struct WebGPUPipelineLayout {
     layout: GpuPipelineLayout,
     bind_group_layouts: [Option<Arc<WebGPUBindGroupLayout>>; gpu::NON_BINDLESS_SET_COUNT as usize],
+    _p: PhantomData<*const std::ffi::c_void>,
 }
 
 impl WebGPUPipelineLayout {
@@ -228,6 +231,7 @@ impl WebGPUPipelineLayout {
         Self {
             layout: handle,
             bind_group_layouts: owned_bind_group_layouts,
+            _p: PhantomData
         }
     }
 
@@ -245,6 +249,7 @@ pub struct WebGPUBindGroup {
     layout: Arc<WebGPUBindGroupLayout>,
     is_transient: bool,
     bindings: SmallVec<[WebGPUBoundResource; DEFAULT_PER_SET_PREALLOCATED_SIZE]>,
+    _p: PhantomData<*const std::ffi::c_void>,
 }
 
 impl WebGPUBindGroup {
@@ -306,6 +311,7 @@ impl WebGPUBindGroup {
             layout: layout.clone(),
             is_transient,
             bindings: stored_bindings,
+            _p: PhantomData
         })
     }
 
@@ -344,6 +350,7 @@ pub(crate) struct WebGPUBufferBindingInfo {
     pub(crate) buffer: GpuBuffer,
     pub(crate) offset: u64,
     pub(crate) length: u64,
+    pub(crate) _p: PhantomData<*const std::ffi::c_void>,
 }
 
 impl Hash for WebGPUBufferBindingInfo {
@@ -356,30 +363,36 @@ impl Hash for WebGPUBufferBindingInfo {
 }
 
 #[derive(Eq, PartialEq, Clone)]
-pub(crate) struct WebGPUHashableTextureView(GpuTextureView);
+pub(crate) struct WebGPUHashableTextureView {
+    view: GpuTextureView,
+    _p: PhantomData<*const std::ffi::c_void>,
+}
 
 impl Hash for WebGPUHashableTextureView {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        let val: usize = unsafe { std::mem::transmute(self.0.as_ref() as *const GpuTextureView) };
+        let val: usize = unsafe { std::mem::transmute(self.view.as_ref() as *const GpuTextureView) };
         val.hash(state);
     }
 }
 
 impl From<GpuTextureView> for WebGPUHashableTextureView {
     fn from(value: GpuTextureView) -> Self {
-        Self(value)
+        Self {
+            view: value,
+            _p: PhantomData
+        }
     }
 }
 
 impl From<&GpuTextureView> for WebGPUHashableTextureView {
     fn from(value: &GpuTextureView) -> Self {
-        Self(value.clone())
+        Self { view: value.clone(), _p: PhantomData }
     }
 }
 
 impl From<&WebGPUTextureView> for WebGPUHashableTextureView {
     fn from(value: &WebGPUTextureView) -> Self {
-        Self(value.handle().clone())
+        Self { view: value.handle().clone(), _p: PhantomData }
     }
 }
 
@@ -387,7 +400,7 @@ impl Deref for WebGPUHashableTextureView {
     type Target = GpuTextureView;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.view
     }
 }
 
@@ -549,11 +562,13 @@ impl PartialEq<WebGPUBoundResourceRefInternal<'_>> for WebGPUBoundResource {
                     buffer: old,
                     offset: old_offset,
                     length: old_length,
+                    ..
                 }),
                 WebGPUBoundResourceRefInternal::UniformBuffer(WebGPUBufferBindingInfo {
                     buffer: new,
                     offset: new_offset,
                     length: new_length,
+                    ..
                 }),
             ) => old == new && old_offset == new_offset && old_length == new_length,
             (
@@ -561,11 +576,13 @@ impl PartialEq<WebGPUBoundResourceRefInternal<'_>> for WebGPUBoundResource {
                     buffer: old,
                     offset: old_offset,
                     length: old_length,
+                    ..
                 }),
                 WebGPUBoundResourceRefInternal::StorageBuffer(WebGPUBufferBindingInfo {
                     buffer: new,
                     offset: new_offset,
                     length: new_length,
+                    ..
                 }),
             ) => old == new && old_offset == new_offset && old_length == new_length,
             (
@@ -626,11 +643,13 @@ impl BindingCompare<Self> for WebGPUBoundResource {
                     buffer: entry_buffer,
                     offset: _,
                     length: entry_length,
+                    ..
                 }),
                 WebGPUBoundResource::UniformBuffer(WebGPUBufferBindingInfo {
                     buffer,
                     offset: _,
                     length,
+                    ..
                 }),
             ) = (self, other)
             {
@@ -640,11 +659,13 @@ impl BindingCompare<Self> for WebGPUBoundResource {
                     buffer: entry_buffer,
                     offset: _,
                     length: entry_length,
+                    ..
                 }),
                 WebGPUBoundResource::StorageBuffer(WebGPUBufferBindingInfo {
                     buffer,
                     offset: _,
                     length,
+                    ..
                 }),
             ) = (self, other)
             {
@@ -691,11 +712,13 @@ impl BindingCompare<WebGPUBoundResourceRefInternal<'_>> for WebGPUBoundResource 
                     buffer: entry_buffer,
                     offset: _,
                     length: entry_length,
+                    ..
                 }),
                 WebGPUBoundResourceRefInternal::UniformBuffer(WebGPUBufferBindingInfo {
                     buffer,
                     offset: _,
                     length,
+                    ..
                 }),
             ) = (self, other)
             {
@@ -705,11 +728,13 @@ impl BindingCompare<WebGPUBoundResourceRefInternal<'_>> for WebGPUBoundResource 
                     buffer: entry_buffer,
                     offset: _,
                     length: entry_length,
+                    ..
                 }),
                 WebGPUBoundResourceRefInternal::StorageBuffer(WebGPUBufferBindingInfo {
                     buffer,
                     offset: _,
                     length,
+                    ..
                 }),
             ) = (self, other)
             {
@@ -1000,6 +1025,7 @@ impl WebGPUBindingManager {
                     buffer: buffer,
                     offset: 0,
                     length: aligned_len as u64,
+                    _p: PhantomData
                 });
         } else {
             let allocator = &mut self.bump_allocator;
@@ -1035,6 +1061,7 @@ impl WebGPUBindingManager {
                     buffer: allocator.buffer.clone(),
                     offset: allocator.offset,
                     length: data_as_bytes.len() as u64,
+                    _p: PhantomData
                 });
 
             allocator.offset = align_up_64(
@@ -1117,6 +1144,7 @@ impl WebGPUBindingManager {
                             buffer: _,
                             offset,
                             length: _,
+                            ..
                         }) => {
                             set_binding.dynamic_offsets.push(*offset as u64);
                         }
@@ -1124,6 +1152,7 @@ impl WebGPUBindingManager {
                             buffer: _,
                             offset,
                             length: _,
+                            ..
                         }) => {
                             set_binding.dynamic_offsets.push(*offset as u64);
                         }
@@ -1132,6 +1161,7 @@ impl WebGPUBindingManager {
                                 buffer: _,
                                 offset,
                                 length: _,
+                                ..
                             } in buffers
                             {
                                 set_binding.dynamic_offsets.push(*offset as u64);
@@ -1142,6 +1172,7 @@ impl WebGPUBindingManager {
                                 buffer: _,
                                 offset,
                                 length: _,
+                                ..
                             } in buffers
                             {
                                 set_binding.dynamic_offsets.push(*offset as u64);

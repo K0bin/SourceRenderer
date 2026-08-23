@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use js_sys::{
     wasm_bindgen::{prelude::Closure, JsCast, JsValue},
     Array,
@@ -21,6 +22,7 @@ pub struct WebGPUDevice {
     queue: WebGPUQueue,
     features: WebGPUFeatures,
     limits: WebGPULimits,
+    _p: PhantomData<*const std::ffi::c_void>,
 }
 
 impl WebGPUDevice {
@@ -62,6 +64,7 @@ impl WebGPUDevice {
             queue,
             features: features.clone(),
             limits: limits.clone(),
+            _p: PhantomData
         }
     }
 

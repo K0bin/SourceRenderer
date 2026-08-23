@@ -1227,7 +1227,7 @@ impl ShaderManager {
             let shaders = task.collect_shaders_for_compilation(assets);
             let handle = task.handle();
 
-            let async_task = crate::tasks::spawn_async_compute(async move {
+            let async_task = crate::tasks::spawn_async_compute_gpu_maybe_sendable(async move {
                 crate::autoreleasepool(|| {
                     let pipeline = task.compile(shaders, &c_device);
                     let mut delayed_pipelines = c_delayed_pipeline.lock().unwrap();

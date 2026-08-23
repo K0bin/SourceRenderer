@@ -2,14 +2,12 @@ use std::{
     error::Error,
     fmt::{Debug, Display},
 };
-use js_sys::JsNullable;
+use std::marker::PhantomData;
+use js_sys::{JsNullable, JsString};
+use smallvec::SmallVec;
 use sourcerenderer_core::gpu;
 use wasm_bindgen_futures::*;
-use web_sys::{
-    Gpu, GpuAdapter, GpuDevice, GpuPowerPreference, GpuRequestAdapterOptions, Navigator,
-    WorkerNavigator,
-};
-
+use web_sys::{Gpu, GpuAdapter, GpuDevice, GpuDeviceDescriptor, GpuPowerPreference, GpuRequestAdapterOptions, Navigator, WorkerNavigator};
 use crate::{adapter::WebGPUAdapter, WebGPUBackend};
 
 pub struct WebGPUInstanceAsyncInitResult {
@@ -57,6 +55,7 @@ impl Error for WebGPUInstanceInitError {}
 pub struct WebGPUInstance {
     instance: Gpu,
     adapters: [WebGPUAdapter; 2],
+    _p: PhantomData<*const std::ffi::c_void>,
 }
 
 pub enum NavigatorKind<'a> {
@@ -93,8 +92,16 @@ impl WebGPUInstance {
             ));
         }
         let discrete_adapter: GpuAdapter = nullable_discrete_adapter.unwrap();
+        let discrete_device_descriptor = GpuDeviceDescriptor::new();
+        let mut discrete_device_features = SmallVec::<[JsString; 4]>::new();
+        for feature_res in discrete_adapter.features().values() {
+            // TODO: Filter out a bunch that we never use.
+            let feature = feature_res.unwrap();
+            discrete_device_features.push(feature);
+        }
+        discrete_device_descriptor.set_required_features(&discrete_device_features);
 
-        let discrete_device_future = JsFuture::from(discrete_adapter.request_device());
+        let discrete_device_future = JsFuture::from(discrete_adapter.request_device_with_descriptor(&discrete_device_descriptor));
         let discrete_device: GpuDevice = discrete_device_future
             .await
             .map_err(|_| WebGPUInstanceInitError::new("Failed to retrieve WebGPU device"))?
@@ -125,8 +132,16 @@ impl WebGPUInstance {
         }
 
         let integrated_adapter = nullable_integrated_adapter.unwrap();
+        let integrated_device_descriptor = GpuDeviceDescriptor::new();
+        let mut integrated_device_features = SmallVec::<[JsString; 4]>::new();
+        for feature_res in integrated_adapter.features().values() {
+            // TODO: Filter out a bunch that we never use.
+            let feature = feature_res.unwrap();
+            integrated_device_features.push(feature);
+        }
+        integrated_device_descriptor.set_required_features(&integrated_device_features);
 
-        let integrated_device_future = JsFuture::from(integrated_adapter.request_device());
+        let integrated_device_future = JsFuture::from(integrated_adapter.request_device_with_descriptor(&integrated_device_descriptor));
         let integrated_device: GpuDevice = integrated_device_future
             .await
             .map_err(|_| WebGPUInstanceInitError::new("Failed to retrieve WebGPU device"))?
@@ -167,6 +182,7 @@ impl WebGPUInstance {
                     debug,
                 ),
             ],
+            _p: PhantomData,
         }
     }
 

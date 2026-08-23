@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use js_sys::wasm_bindgen::JsValue;
 use web_sys::{Gpu, OffscreenCanvas};
 
@@ -14,6 +15,7 @@ enum WebGPUSurfaceCanvas {
 pub struct WebGPUSurface {
     instance: Gpu,
     canvas: WebGPUSurfaceCanvas,
+    _p: PhantomData<*const std::ffi::c_void>
 }
 
 impl PartialEq for WebGPUSurface {
@@ -29,6 +31,7 @@ impl WebGPUSurface {
         Ok(Self {
             instance: instance.handle().clone(),
             canvas: WebGPUSurfaceCanvas::Canvas(canvas),
+            _p: PhantomData
         })
     }
 
@@ -36,6 +39,7 @@ impl WebGPUSurface {
         Ok(Self {
             instance: instance.handle().clone(),
             canvas: WebGPUSurfaceCanvas::Fake,
+            _p: PhantomData
         })
     }
 

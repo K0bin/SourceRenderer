@@ -3,6 +3,7 @@ use log::warn;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu;
 use std::{hash::Hash, sync::Arc};
+use std::marker::PhantomData;
 use web_sys::{
     GpuBlendComponent, GpuBlendFactor, GpuBlendOperation, GpuBlendState, GpuColorTargetState,
     GpuCompareFunction, GpuComputePipeline, GpuComputePipelineDescriptor, GpuCullMode,
@@ -28,6 +29,7 @@ pub struct WebGPUShader {
     resources: [Box<[gpu::Resource]>; gpu::NON_BINDLESS_SET_COUNT as usize],
     bindings: [SmallVec<[WebGPUBindGroupEntryInfo; 8]>; gpu::NON_BINDLESS_SET_COUNT as usize],
     push_constant_size: u32,
+    _p: PhantomData<*const std::ffi::c_void>
 }
 
 impl PartialEq for WebGPUShader {
@@ -76,6 +78,7 @@ impl WebGPUShader {
                     is_multisampled: binding.is_multisampled,
                     storage_format: binding.storage_format,
                     struct_size: binding.struct_size,
+                    _p: PhantomData
                 };
                 if binding.resource_type == gpu::ResourceType::CombinedTextureSampler {
                     binding_info.resource_type = gpu::ResourceType::SampledTexture;
@@ -99,6 +102,7 @@ impl WebGPUShader {
             resources: shader.resources.clone(),
             bindings: binding_infos,
             push_constant_size: shader.push_constant_size,
+            _p: PhantomData
         }
     }
 
@@ -122,6 +126,7 @@ impl gpu::Shader for WebGPUShader {
 pub struct WebGPUGraphicsPipeline {
     pipeline: GpuRenderPipeline,
     layout: Arc<WebGPUPipelineLayout>,
+    _p: PhantomData<*const std::ffi::c_void>
 }
 
 fn format_to_vertex_format(format: gpu::Format) -> GpuVertexFormat {
@@ -296,6 +301,7 @@ impl WebGPUGraphicsPipeline {
             is_multisampled: false,
             storage_format: gpu::Format::Unknown,
             struct_size: info.vs.shader.push_constant_size,
+            _p: PhantomData
         };
         bind_group_layout_keys[gpu::BindingFrequency::VeryFrequent as usize].push(entry);
         let entry = WebGPUBindGroupEntryInfo {
@@ -314,6 +320,7 @@ impl WebGPUGraphicsPipeline {
                 .as_ref()
                 .map(|fs| fs.shader.push_constant_size)
                 .unwrap_or(8),
+            _p: PhantomData
         };
         bind_group_layout_keys[gpu::BindingFrequency::VeryFrequent as usize].push(entry);
 
@@ -518,7 +525,7 @@ impl WebGPUGraphicsPipeline {
 
         let pipeline = device.create_render_pipeline(&descriptor).map_err(|_| ())?;
 
-        Ok(Self { pipeline, layout })
+        Ok(Self { pipeline, layout, _p: PhantomData })
     }
 
     #[inline(always)]
@@ -536,6 +543,7 @@ pub struct WebGPUComputePipeline {
     pipeline: GpuComputePipeline,
     resources: [Box<[gpu::Resource]>; gpu::NON_BINDLESS_SET_COUNT as usize],
     layout: Arc<WebGPUPipelineLayout>,
+    _p: PhantomData<*const std::ffi::c_void>
 }
 
 impl WebGPUComputePipeline {
@@ -562,6 +570,7 @@ impl WebGPUComputePipeline {
             is_multisampled: false,
             storage_format: gpu::Format::Unknown,
             struct_size: 0,
+            _p: PhantomData
         };
         bind_group_layout_keys[gpu::BindingFrequency::VeryFrequent as usize].push(entry);
 
@@ -579,6 +588,7 @@ impl WebGPUComputePipeline {
             is_multisampled: false,
             storage_format: gpu::Format::Unknown,
             struct_size: 0,
+            _p: PhantomData
         };
         bind_group_layout_keys[gpu::BindingFrequency::VeryFrequent as usize].push(entry);
         let mut uniform_dynamic_offsets_count = 1u32;
@@ -650,6 +660,7 @@ impl WebGPUComputePipeline {
             pipeline,
             resources: shader.shader.resources().clone(),
             layout,
+            _p: PhantomData
         })
     }
 

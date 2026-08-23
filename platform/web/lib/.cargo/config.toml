@@ -1,6 +1,21 @@
 [build]
 target = "wasm32-unknown-unknown"
-rustflags = [ "--cfg", "web_sys_unstable_apis", "--cfg", "getrandom_backend=\"wasm_js\"", "-Ctarget-feature=+atomics,+bulk-memory,+mutable-globals"]
+rustflags = [
+    # Enable WebGPU
+    "--cfg", "web_sys_unstable_apis",
+    # Enable features for threads
+    "-Ctarget-feature=+atomics,+bulk-memory,+mutable-globals",
+    "-Clink-arg=--import-memory",
+    "-Clink-arg=--shared-memory",
+    # Fix build with threads
+    "-Clink-arg=--export=__wasm_init_tls",
+    "-Clink-arg=--export=__tls_size",
+    "-Clink-arg=--export=__tls_align",
+    "-Clink-arg=--export=__tls_base",
+    # Set memory limits (values in JS when instantiating the Wasm Memory have to match)
+    "-Clink-arg=--initial-memory=5177344", # 79 Pages, compiler adds one so we're at 80. 80 pages = 5 MB
+    "-Clink-arg=--max-memory=1073741824", # 1 GB. 1 GB = 16384 pages
+]
 
 [unstable]
 build-std = ['std', 'panic_abort']

@@ -14,7 +14,6 @@ export interface FakeCanvasData {
 }
 
 export interface ThreadWorkerInit {
-    module: WebAssembly.Module,
     memory: WebAssembly.Memory,
     name: string,
     callbackPtr: bigint,
