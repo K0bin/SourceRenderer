@@ -30,6 +30,7 @@ console_log = "1.0"
 futures-lite = "2.6"
 async-lock = "3.4"
 async-task = "4.7"
+web-task = "1.1"
 
 # Needs to be specified here with old versions to make sure dependencies that have it as a dependency get the version
 # with the feature enabled

@@ -9,7 +9,6 @@ use std::task::{Context, Poll};
 use async_task::{Runnable, Task};
 use futures_lite::{AsyncRead, AsyncSeek, FutureExt};
 use sourcerenderer_core::platform::{FileWatcher, PlatformIO};
-use wasm_bindgen_futures::spawn_local;
 
 pub struct WebFetchFile {
     length: u64,
@@ -200,16 +199,10 @@ impl AsyncRead for WebFetchFile {
         let length = (self.length - position).min(buf.len() as u64);
         let uri = self.path.as_ref().to_string_lossy().to_string();
 
-        let (runnable, task) = async_task::spawn_local(
-            async move { Self::fetch_range(&uri, position, length).await },
-            |runnable: Runnable| {
-                spawn_local(async {
-                    runnable.run();
-                })
-            },
+        let task = web_task::spawn_local(
+            async move { Self::fetch_range(&uri, position, length).await }
         );
 
-        runnable.schedule();
         self.task = Some(task);
 
         if let Some(task) = self.task.as_mut() {
