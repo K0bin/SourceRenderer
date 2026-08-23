@@ -113,7 +113,9 @@ impl VkInstance {
         }
 
         if !supports_surface_extension || !supports_platform_surface_extension {
-            panic!("The Vulkan instance doesn't support the surface or swapchain or the required platform surface extension.")
+            panic!(
+                "The Vulkan instance doesn't support the surface or swapchain or the required platform surface extension."
+            )
         }
 
         let enabled_extensions_c: Vec<CString> = enabled_extensions
@@ -204,7 +206,7 @@ impl VkInstance {
         p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
         _p_user_data: *mut c_void,
     ) -> vk::Bool32 {
-        let callback_data_opt = p_callback_data.as_ref();
+        let callback_data_opt = unsafe { p_callback_data.as_ref() };
         if callback_data_opt.is_none() {
             return vk::FALSE;
         }
@@ -226,14 +228,14 @@ impl VkInstance {
                 "VK: {:?} - {:?}: {:?}",
                 message_severity,
                 message_types,
-                CStr::from_ptr(callback_data.p_message)
+                unsafe { CStr::from_ptr(callback_data.p_message) }
             );
         } else {
             println!(
                 "VK: {:?} - {:?}: {:?}",
                 message_severity,
                 message_types,
-                CStr::from_ptr(callback_data.p_message)
+                unsafe { CStr::from_ptr(callback_data.p_message) }
             );
         }
         vk::FALSE

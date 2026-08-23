@@ -1,11 +1,10 @@
-use sourcerenderer_core::{atomic_refcell::AtomicRefCell, platform::GraphicsPlatform};
+use crate::window::WebWindow;
+use sourcerenderer_core::platform::GraphicsPlatform;
 use sourcerenderer_webgpu::{
     NavigatorKind, WebGPUBackend, WebGPUInstance, WebGPUInstanceAsyncInitResult,
     WebGPUInstanceInitError,
 };
 use web_sys::{Navigator, OffscreenCanvas, WorkerNavigator};
-
-use crate::window::WebWindow;
 
 thread_local! {
     static GPU_INIT: AtomicRefCell<Result<WebGPUInstanceAsyncInitResult, WebGPUInstanceInitError>> = AtomicRefCell::new(Err(WebGPUInstanceInitError::uninited()));

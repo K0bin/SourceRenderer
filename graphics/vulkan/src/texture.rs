@@ -1,5 +1,5 @@
 use std::cmp::max;
-use std::ffi::{c_void, CString};
+use std::ffi::{CString, c_void};
 use std::hash::{Hash, Hasher};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -8,7 +8,7 @@ use super::*;
 use ash::vk;
 use ash::vk::Handle as _;
 use sourcerenderer_core::gpu::TextureDimension;
-use sourcerenderer_core::{gpu, FixedSizeSmallVec};
+use sourcerenderer_core::{FixedSizeSmallVec, gpu};
 
 pub(crate) struct VkImageCreateInfoCollection<'a> {
     pub(crate) create_info: vk::ImageCreateInfo<'a>,
@@ -210,13 +210,15 @@ impl VkTexture {
                 );
             }
             if (requirements.memory_requirements.memory_type_bits & (1 << memory_type_index)) == 0 {
-                log::info!("Switching from HOST_IMAGE_COPY to gpu image copy because memory type is not compatible.");
+                log::info!(
+                    "Switching from HOST_IMAGE_COPY to gpu image copy because memory type is not compatible."
+                );
                 pinned.create_info.usage |= vk::ImageUsageFlags::TRANSFER_DST;
                 pinned.create_info.usage &= !vk::ImageUsageFlags::HOST_TRANSFER_EXT;
             }
         }
 
-        let image_res = device.create_image(&create_info_collection.create_info, None);
+        let image_res = unsafe { device.create_image(&create_info_collection.create_info, None) };
         if let Err(e) = image_res {
             if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
                 || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
@@ -235,10 +237,12 @@ impl VkTexture {
                     ..Default::default()
                 };
                 let mut requirements = vk::MemoryRequirements2::default();
-                device.get_image_memory_requirements2(&requirements_info, &mut requirements);
-                assert!(
-                    (requirements.memory_requirements.memory_type_bits & (1 << memory_type_index))
-                        != 0
+                unsafe {
+                    device.get_image_memory_requirements2(&requirements_info, &mut requirements);
+                }
+                assert_ne!(
+                    (requirements.memory_requirements.memory_type_bits & (1 << memory_type_index)),
+                    0
                 );
 
                 let dedicated_alloc = vk::MemoryDedicatedAllocateInfo {
@@ -252,37 +256,41 @@ impl VkTexture {
                         as *const c_void,
                     ..Default::default()
                 };
-                let memory_result: Result<vk::DeviceMemory, vk::Result> =
-                    device.allocate_memory(&memory_info, None);
-                if let Err(e) = memory_result {
-                    if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
-                        || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
-                    {
-                        device.destroy_image(image, None);
-                        return Err(gpu::OutOfMemoryError {});
+                vk_memory = unsafe {
+                    let memory_result: Result<vk::DeviceMemory, vk::Result> =
+                        device.allocate_memory(&memory_info, None);
+                    if let Err(e) = memory_result {
+                        if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
+                            || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
+                        {
+                            device.destroy_image(image, None);
+                            return Err(gpu::OutOfMemoryError {});
+                        }
                     }
-                }
-                vk_memory = memory_result.unwrap();
+                    memory_result.unwrap()
+                };
 
-                let bind_result = device.bind_image_memory2(&[vk::BindImageMemoryInfo {
-                    image,
-                    memory: vk_memory,
-                    memory_offset: 0u64,
-                    ..Default::default()
-                }]);
-                if let Err(e) = bind_result {
-                    if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
-                        || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
-                    {
-                        device.destroy_image(image, None);
-                        return Err(gpu::OutOfMemoryError {});
+                unsafe {
+                    let bind_result = device.bind_image_memory2(&[vk::BindImageMemoryInfo {
+                        image,
+                        memory: vk_memory,
+                        memory_offset: 0u64,
+                        ..Default::default()
+                    }]);
+                    if let Err(e) = bind_result {
+                        if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
+                            || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
+                        {
+                            device.destroy_image(image, None);
+                            return Err(gpu::OutOfMemoryError {});
+                        }
                     }
                 }
 
                 is_memory_owned = true;
             }
 
-            ResourceMemory::Suballocated { memory, offset } => {
+            ResourceMemory::Suballocated { memory, offset } => unsafe {
                 let bind_result = device.bind_image_memory2(&[vk::BindImageMemoryInfo {
                     image,
                     memory: memory.handle(),
@@ -299,7 +307,7 @@ impl VkTexture {
                 }
 
                 vk_memory = memory.handle();
-            }
+            },
         }
 
         if let Some(name) = name {

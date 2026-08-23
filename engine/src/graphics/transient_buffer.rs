@@ -1,19 +1,12 @@
+use atomic_refcell::{AtomicRefCell, AtomicRefMut};
+use sourcerenderer_core::extend_lifetime;
+use sourcerenderer_core::gpu::*;
 use std::collections::HashMap;
 use std::ffi::c_void;
-use std::fmt::{
-    Debug,
-    Formatter,
-};
+use std::fmt::{Debug, Formatter};
 use std::hash::Hash;
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
-
-use sourcerenderer_core::atomic_refcell::{
-    AtomicRefCell,
-    AtomicRefMut,
-};
-use sourcerenderer_core::extend_lifetime;
-use sourcerenderer_core::gpu::*;
 
 use super::*;
 

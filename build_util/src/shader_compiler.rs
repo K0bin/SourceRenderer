@@ -1,6 +1,6 @@
 use core::panic;
 use std::collections::HashMap;
-use std::ffi::{c_char, c_void, CStr};
+use std::ffi::{CStr, c_char, c_void};
 use std::fs::*;
 use std::io::{Read, Write};
 use std::path::*;
@@ -14,7 +14,7 @@ use naga::front::spv::Options;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 use spirv_cross_sys;
 
-use sourcerenderer_core::{gpu, Vec3UI};
+use sourcerenderer_core::{Vec3UI, gpu};
 
 use super::spirv_transformer::*;
 
@@ -199,22 +199,24 @@ struct CallbackInfo {
     do_panic: bool,
 }
 unsafe extern "C" fn spirv_cross_error_callback(userdata: *mut c_void, error: *const c_char) {
-    let info = userdata as *const CallbackInfo;
-    let msg_cstr = CStr::from_ptr(error);
-    if (*info).do_panic {
-        panic!(
-            "SPIR-V-CROSS ERROR in shader: {} {:?}: {:?}",
-            (*info).shader_name,
-            (*info).shading_lang,
-            msg_cstr
-        );
-    } else {
-        error!(
-            "SPIR-V-CROSS ERROR in shader: {} {:?}: {:?}",
-            (*info).shader_name,
-            (*info).shading_lang,
-            msg_cstr
-        );
+    unsafe {
+        let info = userdata as *const CallbackInfo;
+        let msg_cstr = CStr::from_ptr(error);
+        if (*info).do_panic {
+            panic!(
+                "SPIR-V-CROSS ERROR in shader: {} {:?}: {:?}",
+                (*info).shader_name,
+                (*info).shading_lang,
+                msg_cstr
+            );
+        } else {
+            error!(
+                "SPIR-V-CROSS ERROR in shader: {} {:?}: {:?}",
+                (*info).shader_name,
+                (*info).shading_lang,
+                msg_cstr
+            );
+        }
     }
 }
 
@@ -401,9 +403,14 @@ fn read_metadata(
         uses_bindless_texture_set: &mut bool,
     ) {
         let mut spv_resources_ptr: spirv_cross_sys::spvc_resources = std::ptr::null_mut();
-        spirv_cross_sys::spvc_compiler_create_shader_resources(compiler, &mut spv_resources_ptr);
+        unsafe {
+            spirv_cross_sys::spvc_compiler_create_shader_resources(
+                compiler,
+                &mut spv_resources_ptr,
+            );
+        }
 
-        let spv_resources = {
+        let spv_resources = unsafe {
             let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
                 std::ptr::null();
             let mut resources_count: usize = 0;
@@ -416,26 +423,32 @@ fn read_metadata(
                 ),
                 spirv_cross_sys::spvc_result_SPVC_SUCCESS
             );
-            std::slice::from_raw_parts(resources_list, resources_count as usize)
+            std::slice::from_raw_parts(resources_list, resources_count)
         };
         for resource in spv_resources {
-            let set_index = spirv_cross_sys::spvc_compiler_get_decoration(
-                compiler,
-                resource.id,
-                spirv_cross_sys::SpvDecoration__SpvDecorationDescriptorSet,
-            );
-            let binding_index = spirv_cross_sys::spvc_compiler_get_decoration(
-                compiler,
-                resource.id,
-                spirv_cross_sys::SpvDecoration__SpvDecorationBinding,
-            );
-            let name = CStr::from_ptr(spirv_cross_sys::spvc_compiler_get_name(
-                compiler,
-                resource.id,
-            ))
-            .to_str()
-            .unwrap()
-            .to_string();
+            let set_index = unsafe {
+                spirv_cross_sys::spvc_compiler_get_decoration(
+                    compiler,
+                    resource.id,
+                    spirv_cross_sys::SpvDecoration__SpvDecorationDescriptorSet,
+                )
+            };
+            let binding_index = unsafe {
+                spirv_cross_sys::spvc_compiler_get_decoration(
+                    compiler,
+                    resource.id,
+                    spirv_cross_sys::SpvDecoration__SpvDecorationBinding,
+                )
+            };
+            let name = unsafe {
+                CStr::from_ptr(spirv_cross_sys::spvc_compiler_get_name(
+                    compiler,
+                    resource.id,
+                ))
+                .to_str()
+                .unwrap()
+                .to_string()
+            };
             if set_index == gpu::BINDLESS_TEXTURE_SET_INDEX {
                 *uses_bindless_texture_set = true;
                 continue;
@@ -443,25 +456,29 @@ fn read_metadata(
             let set = &mut resources[set_index as usize];
 
             let writable = if can_be_writable {
-                spirv_cross_sys::spvc_compiler_get_decoration(
-                    compiler,
-                    resource.id,
-                    spirv_cross_sys::SpvDecoration__SpvDecorationNonWritable,
-                ) == 0
+                unsafe {
+                    spirv_cross_sys::spvc_compiler_get_decoration(
+                        compiler,
+                        resource.id,
+                        spirv_cross_sys::SpvDecoration__SpvDecorationNonWritable,
+                    ) == 0
+                }
             } else {
                 false
             };
 
-            let type_handle =
-                spirv_cross_sys::spvc_compiler_get_type_handle(compiler, resource.type_id);
+            let type_handle = unsafe {
+                spirv_cross_sys::spvc_compiler_get_type_handle(compiler, resource.type_id)
+            };
 
-            let array_size = {
+            let array_size = unsafe {
                 let array_dimensions =
                     spirv_cross_sys::spvc_type_get_num_array_dimensions(type_handle);
                 assert!(array_dimensions == 1 || array_dimensions == 0);
                 if array_dimensions != 0 {
-                    assert!(
-                        spirv_cross_sys::spvc_type_array_dimension_is_literal(type_handle, 0) == 1
+                    assert_eq!(
+                        spirv_cross_sys::spvc_type_array_dimension_is_literal(type_handle, 0),
+                        1
                     );
                     spirv_cross_sys::spvc_type_get_array_dimension(type_handle, 0)
                 } else {
@@ -469,7 +486,7 @@ fn read_metadata(
                 }
             };
 
-            let spv_base_type = spirv_cross_sys::spvc_type_get_basetype(type_handle);
+            let spv_base_type = unsafe { spirv_cross_sys::spvc_type_get_basetype(type_handle) };
             let is_image = spv_base_type == spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_IMAGE
                 || spv_base_type == spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_SAMPLED_IMAGE;
             let is_buffer = spv_resource_type
@@ -483,95 +500,102 @@ fn read_metadata(
             let mut storage_format = gpu::Format::Unknown;
             let mut struct_size: u32 = 0;
             if is_image {
-                let spvc_is_array = spirv_cross_sys::spvc_type_get_image_arrayed(type_handle) != 0;
-                let spv_dim = spirv_cross_sys::spvc_type_get_image_dimension(type_handle);
-                let is_storage = spirv_cross_sys::spvc_type_get_image_is_storage(type_handle) != 0;
-                if is_storage {
-                    storage_format = spvc_format_to_format(
-                        spirv_cross_sys::spvc_type_get_image_storage_format(type_handle),
-                    );
-                }
-                dim = match spv_dim {
-                    spirv_cross_sys::SpvDim__SpvDim1D => {
-                        if !spvc_is_array {
-                            gpu::TextureDimension::Dim1D
-                        } else {
-                            gpu::TextureDimension::Dim1DArray
-                        }
+                unsafe {
+                    let spvc_is_array =
+                        spirv_cross_sys::spvc_type_get_image_arrayed(type_handle) != 0;
+                    let spv_dim = spirv_cross_sys::spvc_type_get_image_dimension(type_handle);
+                    let is_storage =
+                        spirv_cross_sys::spvc_type_get_image_is_storage(type_handle) != 0;
+                    if is_storage {
+                        storage_format = spvc_format_to_format(
+                            spirv_cross_sys::spvc_type_get_image_storage_format(type_handle),
+                        );
                     }
-                    spirv_cross_sys::SpvDim__SpvDim2D => {
-                        if !spvc_is_array {
-                            gpu::TextureDimension::Dim2D
-                        } else {
-                            gpu::TextureDimension::Dim2DArray
+                    dim = match spv_dim {
+                        spirv_cross_sys::SpvDim__SpvDim1D => {
+                            if !spvc_is_array {
+                                gpu::TextureDimension::Dim1D
+                            } else {
+                                gpu::TextureDimension::Dim1DArray
+                            }
                         }
-                    }
-                    spirv_cross_sys::SpvDim__SpvDim3D => {
-                        if !spvc_is_array {
-                            gpu::TextureDimension::Dim3D
-                        } else {
-                            panic!("3D Arrays are not supported")
+                        spirv_cross_sys::SpvDim__SpvDim2D => {
+                            if !spvc_is_array {
+                                gpu::TextureDimension::Dim2D
+                            } else {
+                                gpu::TextureDimension::Dim2DArray
+                            }
                         }
-                    }
-                    spirv_cross_sys::SpvDim__SpvDimCube => {
-                        if !spvc_is_array {
-                            gpu::TextureDimension::Cube
-                        } else {
-                            gpu::TextureDimension::CubeArray
+                        spirv_cross_sys::SpvDim__SpvDim3D => {
+                            if !spvc_is_array {
+                                gpu::TextureDimension::Dim3D
+                            } else {
+                                panic!("3D Arrays are not supported")
+                            }
                         }
-                    }
-                    _ => gpu::TextureDimension::Dim1D,
-                };
-                multisampled = spirv_cross_sys::spvc_type_get_image_multisampled(type_handle) != 0;
-                let is_depth = spirv_cross_sys::spvc_type_get_image_is_depth(type_handle) != 0;
-                if is_depth {
-                    sampling_type = gpu::SamplingType::Depth;
-                } else {
-                    let spv_smapled_type_id =
-                        spirv_cross_sys::spvc_type_get_image_sampled_type(type_handle);
-                    let sampled_type_handle = spirv_cross_sys::spvc_compiler_get_type_handle(
-                        compiler,
-                        spv_smapled_type_id,
-                    );
-                    let sampled_base_type =
-                        spirv_cross_sys::spvc_type_get_basetype(sampled_type_handle);
-                    sampling_type = match sampled_base_type {
-                        spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_FP16
-                        | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_FP32
-                        | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_FP64 => {
-                            gpu::SamplingType::Float
+                        spirv_cross_sys::SpvDim__SpvDimCube => {
+                            if !spvc_is_array {
+                                gpu::TextureDimension::Cube
+                            } else {
+                                gpu::TextureDimension::CubeArray
+                            }
                         }
-                        spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT16
-                        | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT8
-                        | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT32
-                        | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT64
-                        | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT_MAX => {
-                            gpu::SamplingType::SInt
-                        }
-                        spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT16
-                        | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT8
-                        | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT32
-                        | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT64 => {
-                            gpu::SamplingType::UInt
-                        }
-                        _ => gpu::SamplingType::Float,
+                        _ => gpu::TextureDimension::Dim1D,
                     };
+                    multisampled =
+                        spirv_cross_sys::spvc_type_get_image_multisampled(type_handle) != 0;
+                    let is_depth = spirv_cross_sys::spvc_type_get_image_is_depth(type_handle) != 0;
+                    if is_depth {
+                        sampling_type = gpu::SamplingType::Depth;
+                    } else {
+                        let spv_smapled_type_id =
+                            spirv_cross_sys::spvc_type_get_image_sampled_type(type_handle);
+                        let sampled_type_handle = spirv_cross_sys::spvc_compiler_get_type_handle(
+                            compiler,
+                            spv_smapled_type_id,
+                        );
+                        let sampled_base_type =
+                            spirv_cross_sys::spvc_type_get_basetype(sampled_type_handle);
+                        sampling_type = match sampled_base_type {
+                            spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_FP16
+                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_FP32
+                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_FP64 => {
+                                gpu::SamplingType::Float
+                            }
+                            spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT16
+                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT8
+                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT32
+                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT64
+                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_INT_MAX => {
+                                gpu::SamplingType::SInt
+                            }
+                            spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT16
+                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT8
+                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT32
+                            | spirv_cross_sys::spvc_basetype_SPVC_BASETYPE_UINT64 => {
+                                gpu::SamplingType::UInt
+                            }
+                            _ => gpu::SamplingType::Float,
+                        };
+                    }
                 }
             } else if is_buffer {
                 let mut size: usize = 0usize;
-                assert_eq!(
-                    spirv_cross_sys::spvc_compiler_get_declared_struct_size(
-                        compiler,
-                        type_handle,
-                        &mut size as *mut usize
-                    ),
-                    spirv_cross_sys::spvc_result_SPVC_SUCCESS
-                );
+                unsafe {
+                    assert_eq!(
+                        spirv_cross_sys::spvc_compiler_get_declared_struct_size(
+                            compiler,
+                            type_handle,
+                            &mut size as *mut usize
+                        ),
+                        spirv_cross_sys::spvc_result_SPVC_SUCCESS
+                    );
+                }
                 struct_size = size as u32;
             }
 
             set.push(gpu::Resource {
-                name: name,
+                name,
                 set: set_index,
                 binding: binding_index,
                 array_size,
@@ -655,34 +679,35 @@ fn read_metadata(
     }
 
     // Stage inputs
+    let mut spv_resources_ptr: spirv_cross_sys::spvc_resources = std::ptr::null_mut();
     unsafe {
-        let mut spv_resources_ptr: spirv_cross_sys::spvc_resources = std::ptr::null_mut();
         spirv_cross_sys::spvc_compiler_create_shader_resources(compiler, &mut spv_resources_ptr);
+    }
 
-        let spv_resources = {
-            let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
-                std::ptr::null();
-            let mut resources_count: usize = 0;
-            assert_eq!(
-                spirv_cross_sys::spvc_resources_get_resource_list_for_type(
-                    spv_resources_ptr,
-                    spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_STAGE_INPUT,
-                    &mut resources_list,
-                    &mut resources_count
-                ),
-                spirv_cross_sys::spvc_result_SPVC_SUCCESS
-            );
-            std::slice::from_raw_parts(resources_list, resources_count as usize)
-        };
-        stage_input_count = spv_resources.len() as u32;
-        for input in spv_resources {
-            let location = spirv_cross_sys::spvc_compiler_get_decoration(
+    let spv_resources = unsafe {
+        let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource = std::ptr::null();
+        let mut resources_count: usize = 0;
+        assert_eq!(
+            spirv_cross_sys::spvc_resources_get_resource_list_for_type(
+                spv_resources_ptr,
+                spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_STAGE_INPUT,
+                &mut resources_list,
+                &mut resources_count
+            ),
+            spirv_cross_sys::spvc_result_SPVC_SUCCESS
+        );
+        std::slice::from_raw_parts(resources_list, resources_count as usize)
+    };
+    stage_input_count = spv_resources.len() as u32;
+    for input in spv_resources {
+        let location = unsafe {
+            spirv_cross_sys::spvc_compiler_get_decoration(
                 compiler,
                 input.id,
                 spirv_cross_sys::SpvDecoration__SpvDecorationLocation,
-            );
-            max_stage_input = max_stage_input.max(location);
-        }
+            )
+        };
+        max_stage_input = max_stage_input.max(location);
     }
 
     unsafe {
@@ -794,12 +819,17 @@ fn compile_shader_spirv_cross(
             spirv_cross_sys::spvc_context_create_compiler(
                 context,
                 match output_shading_language {
-                    ShadingLanguage::SpirV => panic!("No point invoking compile_shader_spirv_cross if the output is SPIR-V"),
+                    ShadingLanguage::SpirV => panic!(
+                        "No point invoking compile_shader_spirv_cross if the output is SPIR-V"
+                    ),
                     ShadingLanguage::Hlsl | ShadingLanguage::Dxil =>
                         spirv_cross_sys::spvc_backend_SPVC_BACKEND_HLSL,
-                    ShadingLanguage::Msl | ShadingLanguage::Air => spirv_cross_sys::spvc_backend_SPVC_BACKEND_MSL,
+                    ShadingLanguage::Msl | ShadingLanguage::Air =>
+                        spirv_cross_sys::spvc_backend_SPVC_BACKEND_MSL,
                     ShadingLanguage::Wgsl => panic!("SPIRV-Cross does not support WGSL"),
-                    _ => panic!("compile_shader_spirv_cross only supports one output shading language at a time")
+                    _ => panic!(
+                        "compile_shader_spirv_cross only supports one output shading language at a time"
+                    ),
                 },
                 ir,
                 spirv_cross_sys::spvc_capture_mode_SPVC_CAPTURE_MODE_COPY,
@@ -1028,16 +1058,22 @@ fn write_shader(
         .to_string();
     match &shader {
         CompiledShaderType::Packed(_) => compiled_file_name.push_str(".json"),
-        CompiledShaderType::Bytecode(_) | CompiledShaderType::Source(_) => match output_shading_language {
-            ShadingLanguage::SpirV => compiled_file_name.push_str(".spv"),
-            ShadingLanguage::SpirVPreprocessedForWgsl => compiled_file_name.push_str(".wgsl_prep.spv"),
-            ShadingLanguage::Dxil => compiled_file_name.push_str(".dxil"),
-            ShadingLanguage::Hlsl => compiled_file_name.push_str(".hlsl"),
-            ShadingLanguage::Msl => compiled_file_name.push_str(".metal"),
-            ShadingLanguage::Air => compiled_file_name.push_str(".air"),
-            ShadingLanguage::Wgsl => compiled_file_name.push_str(".wgsl"),
-            _ => panic!("write_shader only supports one output shading language at a time when not writing a packed shader")
-        },
+        CompiledShaderType::Bytecode(_) | CompiledShaderType::Source(_) => {
+            match output_shading_language {
+                ShadingLanguage::SpirV => compiled_file_name.push_str(".spv"),
+                ShadingLanguage::SpirVPreprocessedForWgsl => {
+                    compiled_file_name.push_str(".wgsl_prep.spv")
+                }
+                ShadingLanguage::Dxil => compiled_file_name.push_str(".dxil"),
+                ShadingLanguage::Hlsl => compiled_file_name.push_str(".hlsl"),
+                ShadingLanguage::Msl => compiled_file_name.push_str(".metal"),
+                ShadingLanguage::Air => compiled_file_name.push_str(".air"),
+                ShadingLanguage::Wgsl => compiled_file_name.push_str(".wgsl"),
+                _ => panic!(
+                    "write_shader only supports one output shading language at a time when not writing a packed shader"
+                ),
+            }
+        }
     }
     let compiled_file_path = output_dir.join(compiled_file_name);
 

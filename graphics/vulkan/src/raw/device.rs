@@ -1,18 +1,12 @@
 use std::ops::Deref;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
-use ash::{
-    khr,
-    vk,
-};
-use parking_lot::{
-    ReentrantMutex,
-    ReentrantMutexGuard,
-};
+use ash::{khr, vk};
+use parking_lot::{ReentrantMutex, ReentrantMutexGuard};
 
-use crate::raw::RawVkInstance;
 use crate::VkQueueInfo;
+use crate::raw::RawVkInstance;
 
 pub struct RawVkDevice {
     pub device: ash::Device,
@@ -78,17 +72,17 @@ pub struct RawVkMeshShaderEntries {
 
 impl RawVkDevice {
     #[inline(always)]
-    pub fn graphics_queue(&self) -> ReentrantMutexGuard<vk::Queue> {
+    pub fn graphics_queue(&self) -> ReentrantMutexGuard<'_, vk::Queue> {
         self.graphics_queue.lock()
     }
 
     #[inline(always)]
-    pub fn compute_queue(&self) -> Option<ReentrantMutexGuard<vk::Queue>> {
+    pub fn compute_queue(&self) -> Option<ReentrantMutexGuard<'_, vk::Queue>> {
         self.compute_queue.as_ref().map(|queue| queue.lock())
     }
 
     #[inline(always)]
-    pub fn transfer_queue(&self) -> Option<ReentrantMutexGuard<vk::Queue>> {
+    pub fn transfer_queue(&self) -> Option<ReentrantMutexGuard<'_, vk::Queue>> {
         self.transfer_queue.as_ref().map(|queue| queue.lock())
     }
 

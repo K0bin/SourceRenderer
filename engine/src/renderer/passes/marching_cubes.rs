@@ -651,8 +651,4 @@ impl MarchingCubesPass {
 
         command_buffer.end_label();
     }
-
-    pub fn cluster_count(&self) -> Vec3UI {
-        Vec3UI::new(16, 9, 24)
-    }
 }

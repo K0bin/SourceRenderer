@@ -101,39 +101,43 @@ impl VkDevice {
 }
 
 impl gpu::Device<VkBackend> for VkDevice {
-    unsafe fn create_buffer(
+    fn create_buffer(
         &self,
         info: &gpu::BufferInfo,
         memory_type_index: u32,
         name: Option<&str>,
     ) -> Result<VkBuffer, gpu::OutOfMemoryError> {
-        VkBuffer::new(
-            &self.device,
-            ResourceMemory::Dedicated { memory_type_index },
-            info,
-            name,
-        )
+        unsafe {
+            VkBuffer::new(
+                &self.device,
+                ResourceMemory::Dedicated { memory_type_index },
+                info,
+                name,
+            )
+        }
     }
 
-    unsafe fn create_shader(&self, shader: &gpu::PackedShader, name: Option<&str>) -> VkShader {
-        VkShader::new(&self.device, shader, name)
-    }
-
-    unsafe fn create_texture(
+    fn create_texture(
         &self,
         info: &gpu::TextureInfo,
         memory_type_index: u32,
         name: Option<&str>,
     ) -> Result<VkTexture, gpu::OutOfMemoryError> {
-        VkTexture::new(
-            &self.device,
-            info,
-            ResourceMemory::Dedicated { memory_type_index },
-            name,
-        )
+        unsafe {
+            VkTexture::new(
+                &self.device,
+                info,
+                ResourceMemory::Dedicated { memory_type_index },
+                name,
+            )
+        }
     }
 
-    unsafe fn create_texture_view(
+    fn create_shader(&self, shader: &gpu::PackedShader, name: Option<&str>) -> VkShader {
+        VkShader::new(&self.device, shader, name)
+    }
+
+    fn create_texture_view(
         &self,
         texture: &VkTexture,
         info: &gpu::TextureViewInfo,
@@ -142,11 +146,7 @@ impl gpu::Device<VkBackend> for VkDevice {
         VkTextureView::new(&self.device, texture, info, name)
     }
 
-    unsafe fn create_sampler(&self, info: &gpu::SamplerInfo) -> VkSampler {
-        VkSampler::new(&self.device, info)
-    }
-
-    unsafe fn create_compute_pipeline(
+    fn create_compute_pipeline(
         &self,
         shader: PipelineShaderStage<VkBackend>,
         name: Option<&str>,
@@ -154,11 +154,11 @@ impl gpu::Device<VkBackend> for VkDevice {
         VkPipeline::new_compute(&self.device, shader, self.shared.as_ref(), name)
     }
 
-    unsafe fn wait_for_idle(&self) {
-        self.device.wait_for_idle();
+    fn create_sampler(&self, info: &gpu::SamplerInfo) -> VkSampler {
+        VkSampler::new(&self.device, info)
     }
 
-    unsafe fn create_graphics_pipeline(
+    fn create_graphics_pipeline(
         &self,
         info: &gpu::GraphicsPipelineInfo<VkBackend>,
         name: Option<&str>,
@@ -167,7 +167,7 @@ impl gpu::Device<VkBackend> for VkDevice {
         VkPipeline::new_graphics(&self.device, info, shared, name)
     }
 
-    unsafe fn create_mesh_graphics_pipeline(
+    fn create_mesh_graphics_pipeline(
         &self,
         info: &gpu::MeshGraphicsPipelineInfo<VkBackend>,
         name: Option<&str>,
@@ -176,80 +176,15 @@ impl gpu::Device<VkBackend> for VkDevice {
         VkPipeline::new_mesh_graphics(&self.device, info, shared, name)
     }
 
-    unsafe fn create_fence(&self, _is_cpu_accessible: bool) -> VkTimelineSemaphore {
+    unsafe fn wait_for_idle(&self) {
+        self.device.wait_for_idle();
+    }
+
+    fn create_fence(&self, _is_cpu_accessible: bool) -> VkTimelineSemaphore {
         VkTimelineSemaphore::new(&self.device)
     }
 
-    fn graphics_queue(&self) -> &VkQueue {
-        &self.graphics_queue
-    }
-
-    fn compute_queue(&self) -> Option<&VkQueue> {
-        self.compute_queue.as_ref()
-    }
-
-    fn transfer_queue(&self) -> Option<&VkQueue> {
-        self.transfer_queue.as_ref()
-    }
-
-    fn supports_bindless(&self) -> bool {
-        self.device.features_12.descriptor_indexing == vk::TRUE
-    }
-
-    fn supports_ray_tracing_pipeline(&self) -> bool {
-        self.device
-            .rt
-            .as_ref()
-            .map(|rt| rt.rt_pipelines.is_some())
-            .unwrap_or_default()
-    }
-
-    fn supports_ray_tracing_query(&self) -> bool {
-        self.device
-            .rt
-            .as_ref()
-            .map(|rt| rt.rt_query)
-            .unwrap_or_default()
-    }
-
-    fn supports_indirect_count(&self) -> bool {
-        self.device.features.draw_indirect_first_instance == vk::TRUE
-            && self.device.features.multi_draw_indirect == vk::TRUE
-            && self.device.features_12.draw_indirect_count == vk::TRUE
-    }
-
-    fn supports_indirect_first_instance(&self) -> bool {
-        self.device.features.draw_indirect_first_instance == vk::TRUE
-    }
-
-    fn supports_indirect_count_mesh_shader(&self) -> bool {
-        self.supports_indirect_count()
-    }
-
-    fn supports_min_max_filter(&self) -> bool {
-        self.device.features_12.sampler_filter_minmax == vk::TRUE
-    }
-
-    unsafe fn insert_texture_into_bindless_heap(&self, slot: u32, texture: &VkTextureView) {
-        if let Some(bindless_set) = self.shared.bindless_texture_descriptor_set() {
-            bindless_set.write_texture_descriptor(slot, texture);
-        }
-    }
-
-    fn supports_barycentrics(&self) -> bool {
-        self.device
-            .features_barycentrics
-            .fragment_shader_barycentric
-            == vk::TRUE
-    }
-
-    fn supports_mesh_shader(&self) -> bool {
-        self.device.mesh_shader.is_some()
-    }
-
-    unsafe fn memory_infos(&self) -> Vec<gpu::MemoryInfo> {
-        let mut memory_infos = Vec::<gpu::MemoryInfo>::new();
-
+    fn memory_infos(&self) -> Box<[gpu::MemoryInfo]> {
         let supports_ext_budget = self.device.feature_memory_budget;
 
         let mut memory_properties = vk::PhysicalDeviceMemoryProperties2::default();
@@ -258,13 +193,16 @@ impl gpu::Device<VkBackend> for VkDevice {
             memory_properties.p_next =
                 &mut budget as *mut vk::PhysicalDeviceMemoryBudgetPropertiesEXT as *mut c_void;
         }
-        self.device.instance.get_physical_device_memory_properties2(
-            self.device.physical_device,
-            &mut memory_properties,
-        );
+        unsafe {
+            self.device.instance.get_physical_device_memory_properties2(
+                self.device.physical_device,
+                &mut memory_properties,
+            );
+        }
 
         let heap_count = memory_properties.memory_properties.memory_heap_count as usize;
         let heaps = &memory_properties.memory_properties.memory_heaps[..heap_count];
+        let mut memory_infos = Vec::<gpu::MemoryInfo>::with_capacity(heap_count);
 
         for i in 0..heap_count {
             let heap = &heaps[i];
@@ -292,14 +230,14 @@ impl gpu::Device<VkBackend> for VkDevice {
             };
             memory_infos.push(info);
         }
-        memory_infos
+        memory_infos.into_boxed_slice()
     }
 
-    unsafe fn memory_type_infos(&self) -> &[gpu::MemoryTypeInfo] {
+    fn memory_type_infos(&self) -> &[gpu::MemoryTypeInfo] {
         &self.memory_type_infos
     }
 
-    unsafe fn create_heap(
+    fn create_heap(
         &self,
         memory_type_index: u32,
         size: u64,
@@ -307,7 +245,7 @@ impl gpu::Device<VkBackend> for VkDevice {
         VkMemoryHeap::new(&self.device, memory_type_index, size)
     }
 
-    unsafe fn get_buffer_heap_info(&self, info: &gpu::BufferInfo) -> gpu::ResourceHeapInfo {
+    fn get_buffer_heap_info(&self, info: &gpu::BufferInfo) -> gpu::ResourceHeapInfo {
         let mut queue_families = SmallVec::<[u32; 3]>::new();
         let mut sharing_mode = vk::SharingMode::EXCLUSIVE;
         if info.sharing_mode == gpu::QueueSharingMode::Concurrent
@@ -341,8 +279,12 @@ impl gpu::Device<VkBackend> for VkDevice {
             p_create_info: &buffer_info as *const vk::BufferCreateInfo,
             ..Default::default()
         };
-        self.device
-            .get_device_buffer_memory_requirements(&buffer_requirements_info, &mut requirements);
+        unsafe {
+            self.device.get_device_buffer_memory_requirements(
+                &buffer_requirements_info,
+                &mut requirements,
+            );
+        }
 
         let mut alignment = requirements.memory_requirements.alignment;
         alignment = alignment.max(self.device.properties.limits.min_memory_map_alignment as u64);
@@ -392,7 +334,7 @@ impl gpu::Device<VkBackend> for VkDevice {
         }
     }
 
-    unsafe fn get_texture_heap_info(&self, info: &gpu::TextureInfo) -> gpu::ResourceHeapInfo {
+    fn get_texture_heap_info(&self, info: &gpu::TextureInfo) -> gpu::ResourceHeapInfo {
         let mut create_info_collection = VkImageCreateInfoCollection::default();
         let mut pinned = Pin::new(&mut create_info_collection);
         VkTexture::build_create_info(&self.device, pinned.as_mut(), info);
@@ -405,8 +347,10 @@ impl gpu::Device<VkBackend> for VkDevice {
             p_create_info: &pinned.create_info as *const vk::ImageCreateInfo,
             ..Default::default()
         };
-        self.device
-            .get_device_image_memory_requirements(&image_requirements_info, &mut requirements);
+        unsafe {
+            self.device
+                .get_device_image_memory_requirements(&image_requirements_info, &mut requirements);
+        }
 
         let result = gpu::ResourceHeapInfo {
             dedicated_allocation_preference: if dedicated_requirements.requires_dedicated_allocation
@@ -442,8 +386,12 @@ impl gpu::Device<VkBackend> for VkDevice {
             // Analyze the memory types & heaps we'd get without HOST_TRANSFER
             pinned.create_info.usage |= vk::ImageUsageFlags::TRANSFER_DST;
             pinned.create_info.usage &= !vk::ImageUsageFlags::HOST_TRANSFER_EXT;
-            self.device
-                .get_device_image_memory_requirements(&image_requirements_info, &mut requirements);
+            unsafe {
+                self.device.get_device_image_memory_requirements(
+                    &image_requirements_info,
+                    &mut requirements,
+                );
+            }
 
             // Out of all memory types, that the resource supports, find the largest DEVICE_LOCAL one.
             let mut memory_type_mask_without_host_image_copy =
@@ -554,74 +502,9 @@ impl gpu::Device<VkBackend> for VkDevice {
         result
     }
 
-    unsafe fn get_bottom_level_acceleration_structure_size(
-        &self,
-        info: &gpu::BottomLevelAccelerationStructureInfo<VkBackend>,
-    ) -> gpu::AccelerationStructureSizes {
-        VkAccelerationStructure::bottom_level_size(&self.device, info)
-    }
-
-    unsafe fn get_top_level_acceleration_structure_size(
-        &self,
-        info: &gpu::TopLevelAccelerationStructureInfo<VkBackend>,
-    ) -> gpu::AccelerationStructureSizes {
-        VkAccelerationStructure::top_level_size(&self.device, info)
-    }
-
-    unsafe fn get_raytracing_pipeline_sbt_buffer_size(
-        &self,
-        info: &gpu::RayTracingPipelineInfo<VkBackend>,
-    ) -> u64 {
-        VkPipeline::ray_tracing_buffer_size(&self.device, info, &self.shared)
-    }
-
-    unsafe fn create_raytracing_pipeline(
-        &self,
-        info: &gpu::RayTracingPipelineInfo<VkBackend>,
-        sbt_buffer: &VkBuffer,
-        sbt_buffer_offset: u64,
-        name: Option<&str>,
-    ) -> VkPipeline {
-        VkPipeline::new_ray_tracing(
-            &self.device,
-            info,
-            &self.shared,
-            sbt_buffer,
-            sbt_buffer_offset,
-            name,
-        )
-    }
-
-    fn get_top_level_instances_buffer_size(
-        &self,
-        instances: &[gpu::AccelerationStructureInstance<VkBackend>],
-    ) -> u64 {
-        (std::mem::size_of::<vk::AccelerationStructureInstanceKHR>() * instances.len()) as u64
-    }
-
-    unsafe fn transition_texture(
-        &self,
-        dst: &VkTexture,
-        transition: &gpu::CPUTextureTransition<'_, VkBackend>,
-    ) {
-        let host_img_copy = self.device.host_image_copy.as_ref().unwrap();
-        unsafe {
-            host_img_copy
-                .host_image_copy
-                .transition_image_layout(&[vk::HostImageLayoutTransitionInfoEXT {
-                    image: dst.handle(),
-                    old_layout: texture_layout_to_image_layout(transition.old_layout),
-                    new_layout: texture_layout_to_image_layout(transition.new_layout),
-                    subresource_range: vk::ImageSubresourceRange {
-                        aspect_mask: aspect_mask_from_format(dst.info().format),
-                        base_mip_level: 0,
-                        level_count: dst.info().mip_levels,
-                        base_array_layer: 0,
-                        layer_count: dst.info().array_length,
-                    },
-                    ..Default::default()
-                }])
-                .unwrap();
+    unsafe fn insert_texture_into_bindless_heap(&self, slot: u32, texture: &VkTextureView) {
+        if let Some(bindless_set) = self.shared.bindless_texture_descriptor_set() {
+            bindless_set.write_texture_descriptor(slot, texture);
         }
     }
 
@@ -668,24 +551,158 @@ impl gpu::Device<VkBackend> for VkDevice {
             ..Default::default()
         };
 
-        host_img_copy
-            .host_image_copy
-            .copy_memory_to_image(&vk::CopyMemoryToImageInfoEXT {
-                flags: vk::HostImageCopyFlagsEXT::empty(),
-                dst_image: dst.handle(),
-                dst_image_layout: texture_layout_to_image_layout(texture_layout),
-                p_regions: &region as *const vk::MemoryToImageCopyEXT,
-                region_count: 1,
-                ..Default::default()
-            })
-            .unwrap();
+        unsafe {
+            host_img_copy
+                .host_image_copy
+                .copy_memory_to_image(&vk::CopyMemoryToImageInfoEXT {
+                    flags: vk::HostImageCopyFlagsEXT::empty(),
+                    dst_image: dst.handle(),
+                    dst_image_layout: texture_layout_to_image_layout(texture_layout),
+                    p_regions: &region as *const vk::MemoryToImageCopyEXT,
+                    region_count: 1,
+                    ..Default::default()
+                })
+                .unwrap();
+        }
     }
 
-    unsafe fn create_query_pool(&self, count: u32) -> VkQueryPool {
+    unsafe fn transition_texture(
+        &self,
+        dst: &VkTexture,
+        transition: &gpu::CPUTextureTransition<'_, VkBackend>,
+    ) {
+        let host_img_copy = self.device.host_image_copy.as_ref().unwrap();
+        unsafe {
+            host_img_copy
+                .host_image_copy
+                .transition_image_layout(&[vk::HostImageLayoutTransitionInfoEXT {
+                    image: dst.handle(),
+                    old_layout: texture_layout_to_image_layout(transition.old_layout),
+                    new_layout: texture_layout_to_image_layout(transition.new_layout),
+                    subresource_range: vk::ImageSubresourceRange {
+                        aspect_mask: aspect_mask_from_format(dst.info().format),
+                        base_mip_level: 0,
+                        level_count: dst.info().mip_levels,
+                        base_array_layer: 0,
+                        layer_count: dst.info().array_length,
+                    },
+                    ..Default::default()
+                }])
+                .unwrap();
+        }
+    }
+
+    fn graphics_queue(&self) -> &VkQueue {
+        &self.graphics_queue
+    }
+
+    fn compute_queue(&self) -> Option<&VkQueue> {
+        self.compute_queue.as_ref()
+    }
+
+    fn transfer_queue(&self) -> Option<&VkQueue> {
+        self.transfer_queue.as_ref()
+    }
+
+    fn supports_bindless(&self) -> bool {
+        self.device.features_12.descriptor_indexing == vk::TRUE
+    }
+
+    fn supports_ray_tracing_pipeline(&self) -> bool {
+        self.device
+            .rt
+            .as_ref()
+            .map(|rt| rt.rt_pipelines.is_some())
+            .unwrap_or_default()
+    }
+
+    fn supports_ray_tracing_query(&self) -> bool {
+        self.device
+            .rt
+            .as_ref()
+            .map(|rt| rt.rt_query)
+            .unwrap_or_default()
+    }
+
+    fn supports_indirect_first_instance(&self) -> bool {
+        self.device.features.draw_indirect_first_instance == vk::TRUE
+    }
+
+    fn supports_indirect_count(&self) -> bool {
+        self.device.features.draw_indirect_first_instance == vk::TRUE
+            && self.device.features.multi_draw_indirect == vk::TRUE
+            && self.device.features_12.draw_indirect_count == vk::TRUE
+    }
+
+    fn supports_indirect_count_mesh_shader(&self) -> bool {
+        self.supports_indirect_count()
+    }
+
+    fn supports_min_max_filter(&self) -> bool {
+        self.device.features_12.sampler_filter_minmax == vk::TRUE
+    }
+
+    fn supports_barycentrics(&self) -> bool {
+        self.device
+            .features_barycentrics
+            .fragment_shader_barycentric
+            == vk::TRUE
+    }
+
+    fn supports_mesh_shader(&self) -> bool {
+        self.device.mesh_shader.is_some()
+    }
+
+    fn get_bottom_level_acceleration_structure_size(
+        &self,
+        info: &gpu::BottomLevelAccelerationStructureInfo<VkBackend>,
+    ) -> gpu::AccelerationStructureSizes {
+        VkAccelerationStructure::bottom_level_size(&self.device, info)
+    }
+
+    fn get_top_level_acceleration_structure_size(
+        &self,
+        info: &gpu::TopLevelAccelerationStructureInfo<VkBackend>,
+    ) -> gpu::AccelerationStructureSizes {
+        VkAccelerationStructure::top_level_size(&self.device, info)
+    }
+
+    fn get_top_level_instances_buffer_size(
+        &self,
+        instances: &[gpu::AccelerationStructureInstance<VkBackend>],
+    ) -> u64 {
+        (std::mem::size_of::<vk::AccelerationStructureInstanceKHR>() * instances.len()) as u64
+    }
+
+    fn get_raytracing_pipeline_sbt_buffer_size(
+        &self,
+        info: &gpu::RayTracingPipelineInfo<VkBackend>,
+    ) -> u64 {
+        VkPipeline::ray_tracing_buffer_size(&self.device, info, &self.shared)
+    }
+
+    unsafe fn create_raytracing_pipeline(
+        &self,
+        info: &gpu::RayTracingPipelineInfo<VkBackend>,
+        sbt_buffer: &VkBuffer,
+        sbt_buffer_offset: u64,
+        name: Option<&str>,
+    ) -> VkPipeline {
+        VkPipeline::new_ray_tracing(
+            &self.device,
+            info,
+            &self.shared,
+            sbt_buffer,
+            sbt_buffer_offset,
+            name,
+        )
+    }
+
+    fn create_query_pool(&self, count: u32) -> VkQueryPool {
         VkQueryPool::new(&self.device, vk::QueryType::OCCLUSION, count)
     }
 
-    unsafe fn create_split_barrier(&self) -> VkEvent {
+    fn create_split_barrier(&self) -> VkEvent {
         VkEvent::new(&self.device)
     }
 }

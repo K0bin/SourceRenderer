@@ -443,7 +443,7 @@ impl VkPipeline {
     unsafe fn get_spec_map(
         spec_consts: &HashMap<u32, SpecConstValue>,
     ) -> (
-        vk::SpecializationInfo,
+        vk::SpecializationInfo<'_>,
         Box<[u32]>,
         Box<[vk::SpecializationMapEntry]>,
     ) {
@@ -499,7 +499,7 @@ impl VkPipeline {
             add_shader_to_descriptor_set_layout_setup(device, shader, &mut context);
         }
 
-        let mut fs_spec_info = vk::SpecializationInfo::default();
+        let mut _fs_spec_info = vk::SpecializationInfo::default();
         let mut _fs_spec_data = Option::<Box<[u32]>>::None;
         let mut _fs_spec_map = Option::<Box<[vk::SpecializationMapEntry]>>::None;
 
@@ -507,7 +507,7 @@ impl VkPipeline {
             let (spec_info, spec_data, spec_map) =
                 unsafe { Self::get_spec_map(info.vs.spec_consts) };
 
-            fs_spec_info = spec_info;
+            _fs_spec_info = spec_info;
             _fs_spec_data = Some(spec_data);
             _fs_spec_map = Some(spec_map);
 
@@ -515,7 +515,7 @@ impl VkPipeline {
                 module: pipeline_shader.shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
                 stage: shader_type_to_vk(pipeline_shader.shader.shader_type()),
-                p_specialization_info: &fs_spec_info as *const vk::SpecializationInfo,
+                p_specialization_info: &_fs_spec_info as *const vk::SpecializationInfo,
                 ..Default::default()
             };
             shader_stages.push(shader_stage);
@@ -1544,7 +1544,7 @@ impl Drop for VkPipeline {
 }
 
 impl gpu::ComputePipeline for VkPipeline {
-    fn binding_info(&self, set: gpu::BindingFrequency, slot: u32) -> Option<gpu::BindingInfo> {
+    fn binding_info(&self, set: gpu::BindingFrequency, slot: u32) -> Option<gpu::BindingInfo<'_>> {
         self.layout
             .descriptor_set_layouts
             .get(set as usize)

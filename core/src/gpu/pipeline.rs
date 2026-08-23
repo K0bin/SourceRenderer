@@ -4,7 +4,6 @@ use std::hash::Hasher;
 
 use super::*;
 
-use crate::{Vec2, Vec2I, Vec2UI, Vec3, Vec3I, Vec3UI, Vec4, Vec4I, Vec4UI};
 use bitflags::bitflags;
 use serde::Deserialize;
 use serde::Serialize;
@@ -452,5 +451,5 @@ pub struct BindingInfo<'a> {
 }
 
 pub trait ComputePipeline {
-    fn binding_info(&self, set: BindingFrequency, slot: u32) -> Option<BindingInfo>;
+    fn binding_info(&self, set: BindingFrequency, slot: u32) -> Option<BindingInfo<'_>>;
 }

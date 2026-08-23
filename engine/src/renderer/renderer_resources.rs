@@ -210,7 +210,7 @@ impl RendererResources {
     }
 
     #[inline]
-    pub fn texture_info(&self, name: &str) -> Ref<TextureInfo> {
+    pub fn texture_info(&self, name: &str) -> Ref<'_, TextureInfo> {
         let entry = self.textures.get(name);
         let texture_ref = entry.unwrap().a.borrow();
         Ref::map(texture_ref, |texture| texture.texture.info())
@@ -218,7 +218,7 @@ impl RendererResources {
 
     #[allow(unused)]
     #[inline]
-    pub fn buffer_info(&self, name: &str) -> Ref<BufferInfo> {
+    pub fn buffer_info(&self, name: &str) -> Ref<'_, BufferInfo> {
         let entry = self.buffers.get(name);
         let buffer_ref = entry.unwrap().a.borrow();
         Ref::map(buffer_ref, |buffer| buffer.buffer.info())
@@ -357,7 +357,7 @@ impl RendererResources {
         layout: TextureLayout,
         discard: bool,
         history: HistoryResourceEntry,
-    ) -> Ref<Arc<Texture>> {
+    ) -> Ref<'_, Arc<Texture>> {
         self.access_texture_internal(
             cmd_buffer, name, stages, range, access, layout, discard, history,
         );
@@ -387,7 +387,7 @@ impl RendererResources {
         discard: bool,
         info: &TextureViewInfo,
         history: HistoryResourceEntry,
-    ) -> Ref<Arc<TextureView>> {
+    ) -> Ref<'_, Arc<TextureView>> {
         self.access_texture_internal(
             cmd_buffer,
             name,
@@ -406,7 +406,7 @@ impl RendererResources {
         name: &str,
         info: &TextureViewInfo,
         history: HistoryResourceEntry,
-    ) -> Ref<Arc<TextureView>> {
+    ) -> Ref<'_, Arc<TextureView>> {
         let texture_ab = self
             .textures
             .get(name)
@@ -461,7 +461,7 @@ impl RendererResources {
         mut stages: BarrierSync,
         mut access: BarrierAccess,
         history: HistoryResourceEntry,
-    ) -> Ref<Arc<BufferSlice>> {
+    ) -> Ref<'_, Arc<BufferSlice>> {
         debug_assert_eq!(
             access
                 & !(BarrierAccess::VERTEX_INPUT_READ

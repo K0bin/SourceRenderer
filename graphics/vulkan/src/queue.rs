@@ -54,7 +54,7 @@ impl VkQueue {
     }
 
     #[inline(always)]
-    fn lock_queue(&self) -> ReentrantMutexGuard<vk::Queue> {
+    fn lock_queue(&self) -> ReentrantMutexGuard<'_, vk::Queue> {
         match self.queue_type {
             VkQueueType::Graphics => self.device.graphics_queue(),
             VkQueueType::Compute => self.device.compute_queue().unwrap(),
@@ -138,17 +138,21 @@ impl gpu::Queue<VkBackend> for VkQueue {
             .iter()
             .map(|submission| {
                 let submission_cmd_buffer_ptr = cmd_buffer_ptr;
-                cmd_buffer_ptr = cmd_buffer_ptr.add(submission.command_buffers.len());
+                cmd_buffer_ptr = unsafe { cmd_buffer_ptr.add(submission.command_buffers.len()) };
                 let submission_wait_semaphores_ptr = semaphore_ptr;
-                semaphore_ptr = semaphore_ptr.add(
-                    submission.wait_fences.len()
-                        + submission.acquire_swapchain.as_ref().map_or(0, |_| 1),
-                );
+                semaphore_ptr = unsafe {
+                    semaphore_ptr.add(
+                        submission.wait_fences.len()
+                            + submission.acquire_swapchain.as_ref().map_or(0, |_| 1),
+                    )
+                };
                 let submission_signal_semaphores_ptr = semaphore_ptr;
-                semaphore_ptr = semaphore_ptr.add(
-                    submission.signal_fences.len()
-                        + submission.release_swapchain.as_ref().map_or(0, |_| 1),
-                );
+                semaphore_ptr = unsafe {
+                    semaphore_ptr.add(
+                        submission.signal_fences.len()
+                            + submission.release_swapchain.as_ref().map_or(0, |_| 1),
+                    )
+                };
 
                 vk::SubmitInfo2 {
                     flags: vk::SubmitFlags::empty(),
@@ -165,9 +169,11 @@ impl gpu::Queue<VkBackend> for VkQueue {
             })
             .collect();
 
-        self.device
-            .queue_submit2(*guard, &vk_submissions, vk::Fence::null())
-            .unwrap();
+        unsafe {
+            self.device
+                .queue_submit2(*guard, &vk_submissions, vk::Fence::null())
+                .unwrap();
+        }
     }
 
     unsafe fn present(

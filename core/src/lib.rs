@@ -4,8 +4,6 @@ pub mod input;
 pub mod platform;
 pub mod pool;
 
-pub mod atomic_refcell;
-
 pub type Vec2 = bevy_math::Vec2;
 pub type Vec3 = bevy_math::Vec3;
 pub type Vec4 = bevy_math::Vec4;
@@ -31,5 +29,5 @@ mod half_vec;
 pub use fixed_size_vec::*;
 
 pub unsafe fn extend_lifetime<'b, T>(r: &'b T) -> &'static T {
-    std::mem::transmute::<&'b T, &'static T>(r)
+    unsafe { std::mem::transmute::<&'b T, &'static T>(r) }
 }

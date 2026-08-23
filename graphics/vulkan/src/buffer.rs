@@ -1,23 +1,10 @@
-use std::ffi::{
-    c_void,
-    CString,
-};
-use std::hash::{
-    Hash,
-    Hasher,
-};
+use std::ffi::{CString, c_void};
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use ash::vk::{
-    self,
-    Handle as _,
-};
+use ash::vk::{self, Handle as _};
 use smallvec::SmallVec;
-use sourcerenderer_core::{
-    align_down_64,
-    align_up_64,
-    gpu,
-};
+use sourcerenderer_core::{align_down_64, align_up_64, gpu};
 
 use super::*;
 
@@ -66,15 +53,17 @@ impl VkBuffer {
             queue_family_index_count: queue_families.len() as u32,
             ..Default::default()
         };
-        let buffer_res = device.create_buffer(&buffer_info, None);
-        if let Err(e) = buffer_res {
-            if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
-                || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
-            {
-                return Err(gpu::OutOfMemoryError {});
+        let buffer = unsafe {
+            let buffer_res = device.create_buffer(&buffer_info, None);
+            if let Err(e) = buffer_res {
+                if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
+                    || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
+                {
+                    return Err(gpu::OutOfMemoryError {});
+                }
             }
-        }
-        let buffer = buffer_res.unwrap();
+            buffer_res.unwrap()
+        };
 
         let is_host_coherent;
         let mut map_ptr: Option<*mut c_void> = None;
@@ -89,10 +78,12 @@ impl VkBuffer {
                     ..Default::default()
                 };
                 let mut requirements = vk::MemoryRequirements2::default();
-                device.get_buffer_memory_requirements2(&requirements_info, &mut requirements);
-                assert!(
-                    (requirements.memory_requirements.memory_type_bits & (1 << memory_type_index))
-                        != 0
+                unsafe {
+                    device.get_buffer_memory_requirements2(&requirements_info, &mut requirements);
+                }
+                assert_ne!(
+                    (requirements.memory_requirements.memory_type_bits & (1 << memory_type_index)),
+                    0
                 );
 
                 let dedicated_alloc = vk::MemoryDedicatedAllocateInfo {
@@ -115,36 +106,42 @@ impl VkBuffer {
                     p_next: &flags_info as *const vk::MemoryAllocateFlagsInfo as *const c_void,
                     ..Default::default()
                 };
-                let memory_result: Result<vk::DeviceMemory, vk::Result> =
-                    device.allocate_memory(&memory_info, None);
-                if let Err(e) = memory_result {
-                    if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
-                        || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
-                    {
-                        return Err(gpu::OutOfMemoryError {});
+                vk_memory = unsafe {
+                    let memory_result: Result<vk::DeviceMemory, vk::Result> =
+                        device.allocate_memory(&memory_info, None);
+                    if let Err(e) = memory_result {
+                        if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
+                            || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
+                        {
+                            return Err(gpu::OutOfMemoryError {});
+                        }
                     }
-                }
-                vk_memory = memory_result.unwrap();
+                    memory_result.unwrap()
+                };
 
-                let bind_result = device.bind_buffer_memory2(&[vk::BindBufferMemoryInfo {
-                    buffer,
-                    memory: vk_memory,
-                    memory_offset: 0u64,
-                    ..Default::default()
-                }]);
-                if let Err(e) = bind_result {
-                    if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
-                        || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
-                    {
-                        return Err(gpu::OutOfMemoryError {});
+                unsafe {
+                    let bind_result = device.bind_buffer_memory2(&[vk::BindBufferMemoryInfo {
+                        buffer,
+                        memory: vk_memory,
+                        memory_offset: 0u64,
+                        ..Default::default()
+                    }]);
+                    if let Err(e) = bind_result {
+                        if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
+                            || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
+                        {
+                            return Err(gpu::OutOfMemoryError {});
+                        }
                     }
                 }
 
                 let mut memory_info = vk::PhysicalDeviceMemoryProperties2::default();
-                device.instance.get_physical_device_memory_properties2(
-                    device.physical_device,
-                    &mut memory_info,
-                );
+                unsafe {
+                    device.instance.get_physical_device_memory_properties2(
+                        device.physical_device,
+                        &mut memory_info,
+                    );
+                }
                 let memory_type_info =
                     &memory_info.memory_properties.memory_types[memory_type_index as usize];
                 let is_host_visible = memory_type_info
@@ -155,27 +152,31 @@ impl VkBuffer {
                 );
 
                 if is_host_visible {
-                    map_ptr = Some(
-                        device
-                            .map_memory(vk_memory, 0, info.size, vk::MemoryMapFlags::empty())
-                            .unwrap(),
-                    );
+                    unsafe {
+                        map_ptr = Some(
+                            device
+                                .map_memory(vk_memory, 0, info.size, vk::MemoryMapFlags::empty())
+                                .unwrap(),
+                        );
+                    }
                 }
                 is_memory_owned = true;
             }
 
             ResourceMemory::Suballocated { memory, offset } => {
-                let bind_result = device.bind_buffer_memory2(&[vk::BindBufferMemoryInfo {
-                    buffer,
-                    memory: memory.handle(),
-                    memory_offset: offset,
-                    ..Default::default()
-                }]);
-                if let Err(e) = bind_result {
-                    if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
-                        || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
-                    {
-                        return Err(gpu::OutOfMemoryError {});
+                unsafe {
+                    let bind_result = device.bind_buffer_memory2(&[vk::BindBufferMemoryInfo {
+                        buffer,
+                        memory: memory.handle(),
+                        memory_offset: offset,
+                        ..Default::default()
+                    }]);
+                    if let Err(e) = bind_result {
+                        if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
+                            || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
+                        {
+                            return Err(gpu::OutOfMemoryError {});
+                        }
                     }
                 }
 
@@ -183,7 +184,7 @@ impl VkBuffer {
                     .properties()
                     .contains(vk::MemoryPropertyFlags::HOST_VISIBLE);
 
-                map_ptr = memory.map_ptr(offset);
+                map_ptr = unsafe { memory.map_ptr(offset) };
                 suballocation_offset = offset;
                 vk_memory = memory.handle();
             }
@@ -192,14 +193,16 @@ impl VkBuffer {
         if let Some(name) = name {
             if let Some(debug_utils) = device.debug_utils.as_ref() {
                 let name_cstring = CString::new(name).unwrap();
-                debug_utils
-                    .set_debug_utils_object_name(&vk::DebugUtilsObjectNameInfoEXT {
-                        object_type: vk::ObjectType::BUFFER,
-                        object_handle: buffer.as_raw(),
-                        p_object_name: name_cstring.as_ptr(),
-                        ..Default::default()
-                    })
-                    .unwrap();
+                unsafe {
+                    debug_utils
+                        .set_debug_utils_object_name(&vk::DebugUtilsObjectNameInfoEXT {
+                            object_type: vk::ObjectType::BUFFER,
+                            object_handle: buffer.as_raw(),
+                            p_object_name: name_cstring.as_ptr(),
+                            ..Default::default()
+                        })
+                        .unwrap();
+                }
             }
         }
 
@@ -293,16 +296,18 @@ impl gpu::Buffer for VkBuffer {
             );
             let aligned_length = aligned_end - aligned_offset;
 
-            self.device
-                .invalidate_mapped_memory_ranges(&[vk::MappedMemoryRange {
-                    memory: self.memory,
-                    offset: aligned_offset,
-                    size: aligned_length,
-                    ..Default::default()
-                }])
-                .unwrap();
+            unsafe {
+                self.device
+                    .invalidate_mapped_memory_ranges(&[vk::MappedMemoryRange {
+                        memory: self.memory,
+                        offset: aligned_offset,
+                        size: aligned_length,
+                        ..Default::default()
+                    }])
+                    .unwrap();
+            }
         }
-        Some(map_ptr.add(offset as usize))
+        Some(unsafe { map_ptr.add(offset as usize) })
     }
 
     unsafe fn unmap(&self, offset: u64, length: u64, flush: bool) {
@@ -320,14 +325,16 @@ impl gpu::Buffer for VkBuffer {
         );
         let aligned_length = aligned_end - aligned_offset;
 
-        self.device
-            .flush_mapped_memory_ranges(&[vk::MappedMemoryRange {
-                memory: self.memory,
-                offset: aligned_offset,
-                size: aligned_length,
-                ..Default::default()
-            }])
-            .unwrap();
+        unsafe {
+            self.device
+                .flush_mapped_memory_ranges(&[vk::MappedMemoryRange {
+                    memory: self.memory,
+                    offset: aligned_offset,
+                    size: aligned_length,
+                    ..Default::default()
+                }])
+                .unwrap();
+        }
     }
 }
 

@@ -1,9 +1,8 @@
+use crate::graphics::*;
+use atomic_refcell::AtomicRefCell;
 use bytemuck::{Pod, Zeroable};
 use sourcerenderer_core::Vec3;
-use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 use std::sync::Arc;
-
-use crate::graphics::*;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Zeroable, Pod)]

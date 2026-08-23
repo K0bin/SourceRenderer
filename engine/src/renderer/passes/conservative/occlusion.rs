@@ -1,12 +1,13 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
+use atomic_refcell::AtomicRefCell;
 use bitset_core::BitSet;
 use smallvec::SmallVec;
-use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 use sourcerenderer_core::{Matrix4, Platform, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
 
+use crate::Mutex;
 use crate::graphics::*;
 use crate::renderer::render_path::{RenderPassParameters, SceneInfo};
 use crate::renderer::renderer_assets::RendererAssets;
@@ -14,7 +15,6 @@ use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResource
 use crate::renderer::shader_manager::{
     GraphicsPipelineHandle, GraphicsPipelineInfo, ShaderManager,
 };
-use crate::Mutex;
 
 const QUERY_COUNT: usize = 16384;
 const OCCLUDED_FRAME_COUNT: u32 = 5;

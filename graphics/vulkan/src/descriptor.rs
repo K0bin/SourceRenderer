@@ -286,7 +286,7 @@ impl VkDescriptorPool {
     }
 
     #[inline]
-    fn handle(&self) -> MutexGuard<vk::DescriptorPool> {
+    fn handle(&self) -> MutexGuard<'_, vk::DescriptorPool> {
         self.descriptor_pool.lock().unwrap()
     }
 

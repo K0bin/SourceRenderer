@@ -2,18 +2,16 @@ use std::collections::HashMap;
 use std::io::Result as IOResult;
 use std::path::{Path, PathBuf};
 
-use bevy_ecs::entity::Entity;
-use bevy_input::keyboard::KeyCode::KeyC;
+use bevy_input::ButtonState;
 use bevy_input::keyboard::{Key, KeyCode, KeyboardInput};
 use bevy_input::mouse::MouseMotion;
-use bevy_input::ButtonState;
 use crossbeam_channel::Sender;
-use notify::{recommended_watcher, RecommendedWatcher, Watcher};
+use notify::{RecommendedWatcher, Watcher, recommended_watcher};
 use sdl3::event::{Event as SDLEvent, WindowEvent};
 use sdl3::keyboard::Scancode;
 use sdl3::{EventPump, Sdl, VideoSubsystem};
 use sourcerenderer_core::platform::{FileWatcher, PlatformIO, Window};
-use sourcerenderer_core::{gpu, Vec2, Vec2I, Vec2UI};
+use sourcerenderer_core::{Vec2, Vec2I, Vec2UI, gpu};
 use sourcerenderer_engine::{Engine, WindowState};
 
 use crate::sdl_gpu::{self, SDLGPUBackend};

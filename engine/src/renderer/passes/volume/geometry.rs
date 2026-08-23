@@ -12,7 +12,7 @@ use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResource
 use crate::renderer::renderer_scene::RendererScene;
 use bytemuck::{Pod, Zeroable};
 use sourcerenderer_core::gpu::{StencilOp, TexturePlane};
-use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec3UI, Vec4, Vec4UI};
+use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec3UI};
 use std::default::Default;
 use std::sync::Arc;
 
@@ -309,15 +309,11 @@ impl GeometryPass {
                 .is_some()
     }
 
-    pub(crate) fn transfer_function_handle(&self) -> TextureHandle {
-        self.transfer_function_handle
-    }
-
     pub(crate) fn execute(
         &mut self,
         cmd_buffer: &mut CommandBuffer,
-        scene: &RendererScene,
-        view: &View,
+        _scene: &RendererScene,
+        _view: &View,
         camera_buffer: &TransientBufferSlice,
         params: &RenderPassParameters,
         assets: &RendererAssetsReadOnly<'_>,

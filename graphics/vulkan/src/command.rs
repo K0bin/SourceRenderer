@@ -1,10 +1,9 @@
-use std::cmp::min;
 use std::ffi::{CString, c_void};
 use std::hash::Hash;
 use std::sync::Arc;
 
 use ash::vk;
-use bytemuck::{AnyBitPattern, NoUninit, Pod, bytes_of, cast_slice};
+use bytemuck::{Pod, cast_slice};
 use crossbeam_utils::atomic::AtomicCell;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{
@@ -72,10 +71,12 @@ impl gpu::CommandPool<VkBackend> for VkCommandPool {
     }
 
     unsafe fn reset(&mut self) {
-        self.raw
-            .device
-            .reset_command_pool(**self.raw, vk::CommandPoolResetFlags::empty())
-            .unwrap();
+        unsafe {
+            self.raw
+                .device
+                .reset_command_pool(**self.raw, vk::CommandPoolResetFlags::empty())
+                .unwrap();
+        }
     }
 }
 
@@ -732,32 +733,38 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
     }
 
     unsafe fn set_stencil_reference(&mut self, reference: u32) {
-        self.device.cmd_set_stencil_reference(
-            self.cmd_buffer,
-            vk::StencilFaceFlags::FRONT_AND_BACK,
-            reference,
-        );
+        unsafe {
+            self.device.cmd_set_stencil_reference(
+                self.cmd_buffer,
+                vk::StencilFaceFlags::FRONT_AND_BACK,
+                reference,
+            );
+        }
     }
 
     unsafe fn begin_label(&mut self, label: &str) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         let label_cstring = CString::new(label).unwrap();
         if let Some(debug_utils) = self.device.debug_utils.as_ref() {
-            debug_utils.cmd_begin_debug_utils_label(
-                self.cmd_buffer,
-                &vk::DebugUtilsLabelEXT {
-                    p_label_name: label_cstring.as_ptr(),
-                    color: [0.0f32; 4],
-                    ..Default::default()
-                },
-            );
+            unsafe {
+                debug_utils.cmd_begin_debug_utils_label(
+                    self.cmd_buffer,
+                    &vk::DebugUtilsLabelEXT {
+                        p_label_name: label_cstring.as_ptr(),
+                        color: [0.0f32; 4],
+                        ..Default::default()
+                    },
+                );
+            }
         }
     }
 
     unsafe fn end_label(&mut self) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         if let Some(debug_utils) = self.device.debug_utils.as_ref() {
-            debug_utils.cmd_end_debug_utils_label(self.cmd_buffer);
+            unsafe {
+                debug_utils.cmd_end_debug_utils_label(self.cmd_buffer);
+            }
         }
     }
 
@@ -908,9 +915,10 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             }
             return;
         }
-
-        self.device
-            .cmd_pipeline_barrier2(self.cmd_buffer, &dependency_info);
+        unsafe {
+            self.device
+                .cmd_pipeline_barrier2(self.cmd_buffer, &dependency_info);
+        }
     }
 
     unsafe fn begin_render_pass(
@@ -1015,11 +1023,13 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         target_buffer: &VkBuffer,
         target_buffer_offset: u64,
     ) {
-        VkAccelerationStructure::upload_top_level_instances(
-            target_buffer,
-            target_buffer_offset,
-            instances,
-        )
+        unsafe {
+            VkAccelerationStructure::upload_top_level_instances(
+                target_buffer,
+                target_buffer_offset,
+                instances,
+            )
+        }
     }
 
     unsafe fn create_top_level_acceleration_structure(
@@ -1270,12 +1280,14 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             self.is_in_render_pass || self.command_buffer_type == gpu::CommandBufferType::Secondary
         );
         let mesh_shader_device = &self.device.mesh_shader.as_ref().unwrap().mesh_shader;
-        mesh_shader_device.cmd_draw_mesh_tasks(
-            self.cmd_buffer,
-            group_count_x,
-            group_count_y,
-            group_count_z,
-        );
+        unsafe {
+            mesh_shader_device.cmd_draw_mesh_tasks(
+                self.cmd_buffer,
+                group_count_x,
+                group_count_y,
+                group_count_z,
+            );
+        }
     }
 
     unsafe fn draw_mesh_tasks_indirect(
@@ -1577,8 +1589,10 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                 .min(src.info().size - region.src_offset)
                 .min(dst.info().size - region.dst_offset),
         };
-        self.device
-            .cmd_copy_buffer(self.cmd_buffer, src.handle(), dst.handle(), &[copy]);
+        unsafe {
+            self.device
+                .cmd_copy_buffer(self.cmd_buffer, src.handle(), dst.handle(), &[copy]);
+        }
     }
 
     unsafe fn copy_buffer_to_texture(
@@ -1621,47 +1635,59 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                 depth: region.texture_extent.z,
             },
         };
-        self.device.cmd_copy_buffer_to_image(
-            self.cmd_buffer,
-            src.handle(),
-            dst.handle(),
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            &[copy],
-        );
+        unsafe {
+            self.device.cmd_copy_buffer_to_image(
+                self.cmd_buffer,
+                src.handle(),
+                dst.handle(),
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &[copy],
+            );
+        }
     }
 
     unsafe fn finish(&mut self) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         if self.is_in_render_pass {
-            self.end_render_pass();
+            unsafe {
+                self.end_render_pass();
+            }
         }
 
         self.state.store(VkCommandBufferState::Finished);
-        self.device.end_command_buffer(self.cmd_buffer).unwrap();
+        unsafe {
+            self.device.end_command_buffer(self.cmd_buffer).unwrap();
+        }
     }
 
     unsafe fn reset(&mut self, frame: u64) {
         if self.reset_individually {
-            self.device
-                .reset_command_buffer(self.cmd_buffer, vk::CommandBufferResetFlags::empty())
-                .unwrap();
+            unsafe {
+                self.device
+                    .reset_command_buffer(self.cmd_buffer, vk::CommandBufferResetFlags::empty())
+                    .unwrap();
+            }
         }
         self.descriptor_manager.reset(frame);
         self.state.store(VkCommandBufferState::Ready);
     }
 
     unsafe fn begin_query(&mut self, index: u32) {
-        self.device.cmd_begin_query(
-            self.cmd_buffer,
-            self.query_pool.unwrap(),
-            index,
-            vk::QueryControlFlags::empty(),
-        );
+        unsafe {
+            self.device.cmd_begin_query(
+                self.cmd_buffer,
+                self.query_pool.unwrap(),
+                index,
+                vk::QueryControlFlags::empty(),
+            );
+        }
     }
 
     unsafe fn end_query(&mut self, index: u32) {
-        self.device
-            .cmd_end_query(self.cmd_buffer, self.query_pool.unwrap(), index);
+        unsafe {
+            self.device
+                .cmd_end_query(self.cmd_buffer, self.query_pool.unwrap(), index);
+        }
     }
 
     unsafe fn copy_query_results_to_buffer(
@@ -1672,24 +1698,28 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         buffer: &VkBuffer,
         buffer_offset: u64,
     ) {
-        self.device.cmd_copy_query_pool_results(
-            self.cmd_buffer,
-            query_pool.handle(),
-            start_index,
-            count,
-            buffer.handle(),
-            buffer_offset as u64,
-            std::mem::size_of::<u32>() as u64,
-            vk::QueryResultFlags::WAIT | vk::QueryResultFlags::TYPE_64,
-        );
+        unsafe {
+            self.device.cmd_copy_query_pool_results(
+                self.cmd_buffer,
+                query_pool.handle(),
+                start_index,
+                count,
+                buffer.handle(),
+                buffer_offset as u64,
+                std::mem::size_of::<u32>() as u64,
+                vk::QueryResultFlags::WAIT | vk::QueryResultFlags::TYPE_64,
+            );
+        }
     }
 
     unsafe fn split_barrier_reset(&mut self, split_barrier: &VkEvent, after: BarrierSync) {
-        self.device.cmd_reset_event2(
-            self.cmd_buffer,
-            split_barrier.handle(),
-            barrier_sync_to_stage(after),
-        );
+        unsafe {
+            self.device.cmd_reset_event2(
+                self.cmd_buffer,
+                split_barrier.handle(),
+                barrier_sync_to_stage(after),
+            );
+        }
     }
 
     unsafe fn split_barrier_signal(
@@ -1739,8 +1769,10 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             return;
         }
 
-        self.device
-            .cmd_set_event2(self.cmd_buffer, split_barrier.handle(), &dependency_info);
+        unsafe {
+            self.device
+                .cmd_set_event2(self.cmd_buffer, split_barrier.handle(), &dependency_info);
+        }
     }
 
     unsafe fn split_barrier_wait(&mut self, waits: &[SplitBarrierWait<VkBackend>]) {
@@ -1805,8 +1837,10 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             return;
         }
 
-        self.device
-            .cmd_wait_events2(self.cmd_buffer, &event_handles, &dependency_infos)
+        unsafe {
+            self.device
+                .cmd_wait_events2(self.cmd_buffer, &event_handles, &dependency_infos)
+        }
     }
 }
 

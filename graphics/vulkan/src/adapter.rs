@@ -99,11 +99,12 @@ pub(crate) const BINDLESS_TEXTURE_COUNT: u32 = gpu::BINDLESS_TEXTURE_COUNT;
 impl gpu::Adapter<VkBackend> for VkAdapter {
     unsafe fn create_device(&self, surface: &VkSurface) -> VkDevice {
         let mut extensions = VkAdapterExtensionSupport::NONE;
-        let supported_extensions = self
-            .instance
-            .instance
-            .enumerate_device_extension_properties(self.physical_device)
-            .unwrap();
+        let supported_extensions = unsafe {
+            self.instance
+                .instance
+                .enumerate_device_extension_properties(self.physical_device)
+                .unwrap()
+        };
         for extension in &supported_extensions {
             let name_c = unsafe { CStr::from_ptr(&extension.extension_name as *const c_char) };
             let name_res = name_c.to_str();
@@ -132,10 +133,11 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         }
 
         let surface_loader = KhrSurface::load(&self.instance.entry, &self.instance.instance);
-        let queue_properties = self
-            .instance
-            .instance
-            .get_physical_device_queue_family_properties(self.physical_device);
+        let queue_properties = unsafe {
+            self.instance
+                .instance
+                .get_physical_device_queue_family_properties(self.physical_device)
+        };
 
         let graphics_queue_family_props = queue_properties
             .iter()
@@ -175,26 +177,30 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
 
         let graphics_queue_info = VkQueueInfo {
             queue_family_index: graphics_queue_family_props.0,
-            supports_presentation: surface_loader
-                .get_physical_device_surface_support(
-                    self.physical_device,
-                    graphics_queue_family_props.0 as u32,
-                    surface.surface_handle(),
-                )
-                .unwrap_or(false),
+            supports_presentation: unsafe {
+                surface_loader
+                    .get_physical_device_surface_support(
+                        self.physical_device,
+                        graphics_queue_family_props.0 as u32,
+                        surface.surface_handle(),
+                    )
+                    .unwrap_or(false)
+            },
         };
 
         let compute_queue_info = compute_queue_family_props.map(|(index, _)| {
             //There is a separate queue family specifically for compute
             VkQueueInfo {
                 queue_family_index: index,
-                supports_presentation: surface_loader
-                    .get_physical_device_surface_support(
-                        self.physical_device,
-                        index as u32,
-                        surface.surface_handle(),
-                    )
-                    .unwrap_or(false),
+                supports_presentation: unsafe {
+                    surface_loader
+                        .get_physical_device_surface_support(
+                            self.physical_device,
+                            index as u32,
+                            surface.surface_handle(),
+                        )
+                        .unwrap_or(false)
+                },
             }
         });
 
@@ -202,13 +208,15 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             //There is a separate queue family specifically for transfers
             VkQueueInfo {
                 queue_family_index: index,
-                supports_presentation: surface_loader
-                    .get_physical_device_surface_support(
-                        self.physical_device,
-                        index as u32,
-                        surface.surface_handle(),
-                    )
-                    .unwrap_or(false),
+                supports_presentation: unsafe {
+                    surface_loader
+                        .get_physical_device_surface_support(
+                            self.physical_device,
+                            index as u32,
+                            surface.surface_handle(),
+                        )
+                        .unwrap_or(false)
+                },
             }
         });
 
@@ -343,10 +351,12 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             );
         }
 
-        self.instance
-            .get_physical_device_features2(self.physical_device, &mut supported_features);
-        self.instance
-            .get_physical_device_properties2(self.physical_device, &mut properties);
+        unsafe {
+            self.instance
+                .get_physical_device_features2(self.physical_device, &mut supported_features);
+            self.instance
+                .get_physical_device_properties2(self.physical_device, &mut properties);
+        }
 
         if supported_features
             .features
@@ -420,12 +430,12 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         let mut features_acceleration_structure =
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
         let mut features_rt_pipeline = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
-        let mut features_rt_query = vk::PhysicalDeviceRayQueryFeaturesKHR::default();
+        let mut _features_rt_query = vk::PhysicalDeviceRayQueryFeaturesKHR::default();
         let mut features_barycentrics =
             vk::PhysicalDeviceFragmentShaderBarycentricFeaturesKHR::default();
         let mut features_host_image_copy = vk::PhysicalDeviceHostImageCopyFeaturesEXT::default();
         let mut features_mesh_shader = vk::PhysicalDeviceMeshShaderFeaturesEXT::default();
-        let mut features_shader_atomic_float =
+        let mut _features_shader_atomic_float =
             vk::PhysicalDeviceShaderAtomicFloatFeaturesEXT::default();
         let mut enabled_extensions: Vec<&str> = vec![SWAPCHAIN_EXT_NAME];
 
@@ -438,7 +448,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         enabled_features_12.shader_float16 = supported_features_12.shader_float16;
         enabled_features_13.dynamic_rendering = vk::TRUE;
         enabled_features.features.independent_blend = vk::TRUE;
-        features_shader_atomic_float = supported_features_shader_atomic_float;
+        _features_shader_atomic_float = supported_features_shader_atomic_float;
 
         enabled_features_11.p_next = std::mem::replace(
             &mut enabled_features.p_next,
@@ -470,9 +480,9 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             && supported_features_shader_atomic_float.shader_buffer_float32_atomics == vk::TRUE
         {
             enabled_extensions.push(SHADER_ATOMIC_FLOAT_EXT_NAME);
-            features_shader_atomic_float.p_next = std::mem::replace(
+            _features_shader_atomic_float.p_next = std::mem::replace(
                 &mut enabled_features.p_next,
-                &mut features_shader_atomic_float
+                &mut _features_shader_atomic_float
                     as *mut vk::PhysicalDeviceShaderAtomicFloatFeaturesEXT
                     as *mut c_void,
             );
@@ -550,10 +560,11 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         if supports_rt_query {
             println!("Ray tracing queries supported.");
             enabled_extensions.push(RAY_QUERY_EXT_NAME);
-            features_rt_query.ray_query = vk::TRUE;
-            features_rt_query.p_next = std::mem::replace(
+            _features_rt_query.ray_query = vk::TRUE;
+            _features_rt_query.p_next = std::mem::replace(
                 &mut enabled_features.p_next,
-                &mut features_rt_query as *mut vk::PhysicalDeviceRayQueryFeaturesKHR as *mut c_void,
+                &mut _features_rt_query as *mut vk::PhysicalDeviceRayQueryFeaturesKHR
+                    as *mut c_void,
             );
         }
 
@@ -636,11 +647,12 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                 as *const vk::PhysicalDeviceFeatures2 as *const c_void,
             ..Default::default()
         };
-        let vk_device = self
-            .instance
-            .instance
-            .create_device(self.physical_device, &device_create_info, None)
-            .unwrap();
+        let vk_device = unsafe {
+            self.instance
+                .instance
+                .create_device(self.physical_device, &device_create_info, None)
+                .unwrap()
+        };
 
         let graphics_queue =
             unsafe { vk_device.get_device_queue(graphics_queue_info.queue_family_index as u32, 0) };
@@ -663,8 +675,12 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             .contains(vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT);
 
         let mut memory_properties = vk::PhysicalDeviceMemoryProperties2::default();
-        self.instance
-            .get_physical_device_memory_properties2(self.physical_device, &mut memory_properties);
+        unsafe {
+            self.instance.get_physical_device_memory_properties2(
+                self.physical_device,
+                &mut memory_properties,
+            );
+        }
 
         let mut supported_shader_stages = vk::ShaderStageFlags::COMPUTE
             | vk::ShaderStageFlags::VERTEX
@@ -735,39 +751,41 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         }
 
         let rt = if supports_rt_pipeline || supports_rt_query {
-            Some(RawVkRTEntries {
-                rt_pipelines: if supports_rt_pipeline {
-                    Some(ash::khr::ray_tracing_pipeline::Device::load(
+            unsafe {
+                Some(RawVkRTEntries {
+                    rt_pipelines: if supports_rt_pipeline {
+                        Some(ash::khr::ray_tracing_pipeline::Device::load(
+                            &self.instance,
+                            &vk_device,
+                        ))
+                    } else {
+                        None
+                    },
+                    deferred_operations: if extensions
+                        .contains(VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS)
+                    {
+                        Some(ash::khr::deferred_host_operations::Device::load(
+                            &self.instance,
+                            &vk_device,
+                        ))
+                    } else {
+                        None
+                    },
+                    acceleration_structure: ash::khr::acceleration_structure::Device::load(
                         &self.instance,
                         &vk_device,
-                    ))
-                } else {
-                    None
-                },
-                deferred_operations: if extensions
-                    .contains(VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS)
-                {
-                    Some(ash::khr::deferred_host_operations::Device::load(
-                        &self.instance,
-                        &vk_device,
-                    ))
-                } else {
-                    None
-                },
-                acceleration_structure: ash::khr::acceleration_structure::Device::load(
-                    &self.instance,
-                    &vk_device,
-                ),
-                features_acceleration_structure: std::mem::transmute(
-                    features_acceleration_structure,
-                ),
-                properties_acceleration_structure: std::mem::transmute(
-                    properties_acceleration_structure,
-                ),
-                properties_rt_pipeline: std::mem::transmute(properties_rt_pipeline),
-                features_rt_pipeline: std::mem::transmute(features_rt_pipeline),
-                rt_query: supports_rt_query,
-            })
+                    ),
+                    features_acceleration_structure: std::mem::transmute(
+                        features_acceleration_structure,
+                    ),
+                    properties_acceleration_structure: std::mem::transmute(
+                        properties_acceleration_structure,
+                    ),
+                    properties_rt_pipeline: std::mem::transmute(properties_rt_pipeline),
+                    features_rt_pipeline: std::mem::transmute(features_rt_pipeline),
+                    rt_query: supports_rt_query,
+                })
+            }
         } else {
             None
         };
@@ -780,22 +798,26 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
 
         let mut host_image_copy = Option::<RawVkHostImageCopyEntries>::None;
         if features_host_image_copy.host_image_copy == vk::TRUE {
-            host_image_copy = Some(RawVkHostImageCopyEntries {
-                host_image_copy: ash::ext::host_image_copy::Device::load(
-                    &self.instance,
-                    &vk_device,
-                ),
-                properties_host_image_copy: std::mem::transmute(properties_host_image_copy),
-            });
+            unsafe {
+                host_image_copy = Some(RawVkHostImageCopyEntries {
+                    host_image_copy: ash::ext::host_image_copy::Device::load(
+                        &self.instance,
+                        &vk_device,
+                    ),
+                    properties_host_image_copy: std::mem::transmute(properties_host_image_copy),
+                });
+            }
         }
 
         let mut mesh_shader = Option::<RawVkMeshShaderEntries>::None;
         if features_mesh_shader.mesh_shader == vk::TRUE {
-            mesh_shader = Some(RawVkMeshShaderEntries {
-                mesh_shader: ash::ext::mesh_shader::Device::load(&self.instance, &vk_device),
-                features_mesh_shader: std::mem::transmute(features_mesh_shader),
-                properties_mesh_shader: std::mem::transmute(properties_mesh_shader),
-            });
+            unsafe {
+                mesh_shader = Some(RawVkMeshShaderEntries {
+                    mesh_shader: ash::ext::mesh_shader::Device::load(&self.instance, &vk_device),
+                    features_mesh_shader: std::mem::transmute(features_mesh_shader),
+                    properties_mesh_shader: std::mem::transmute(properties_mesh_shader),
+                });
+            }
         }
 
         let raw = Arc::new(RawVkDevice {
@@ -830,12 +852,14 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             mesh_shader,
         });
 
-        VkDevice::new(
-            raw,
-            graphics_queue_info,
-            compute_queue_info,
-            transfer_queue_info,
-        )
+        unsafe {
+            VkDevice::new(
+                raw,
+                graphics_queue_info,
+                compute_queue_info,
+                transfer_queue_info,
+            )
+        }
     }
 
     #[inline(always)]

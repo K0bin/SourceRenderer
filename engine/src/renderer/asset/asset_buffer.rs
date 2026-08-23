@@ -1,8 +1,8 @@
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 
+use atomic_refcell::AtomicRefCell;
 use smallvec::SmallVec;
-use sourcerenderer_core::atomic_refcell::AtomicRefCell;
 
 use crate::graphics::*;
 

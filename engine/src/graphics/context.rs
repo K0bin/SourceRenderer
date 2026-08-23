@@ -2,33 +2,16 @@ use std::collections::VecDeque;
 #[cfg(target_arch = "wasm32")]
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
-use std::sync::atomic::{
-    AtomicU64,
-    Ordering,
-};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
-use atomic_refcell::{
-    AtomicRefCell,
-    AtomicRefMut,
-};
-use crossbeam_channel::{
-    Receiver,
-    Sender,
-};
+use atomic_refcell::{AtomicRefCell, AtomicRefMut};
+use crossbeam_channel::{Receiver, Sender};
 use smallvec::SmallVec;
 use thread_local::ThreadLocal;
 
-use super::gpu::{
-    self,
-    CommandBuffer as _,
-    CommandPool as _,
-    Queue as _,
-};
-use super::{
-    CommandBuffer,
-    *,
-};
+use super::gpu::{self, CommandBuffer as _, CommandPool as _, Queue as _};
+use super::{CommandBuffer, *};
 
 const QUERY_COUNT: u32 = 1024;
 
@@ -199,12 +182,12 @@ impl GraphicsContext {
         recorder
     }
 
-    pub(super) fn get_inner_command_buffer<'a>(
-        &'a self,
+    pub(super) fn get_inner_command_buffer(
+        &self,
         inheritance: &<active_gpu_backend::CommandBuffer as gpu::CommandBuffer<
             active_gpu_backend::Backend,
         >>::CommandBufferInheritance,
-    ) -> CommandBuffer<'a> {
+    ) -> CommandBuffer {
         let thread_context = self.get_thread_context();
         let mut frame_context = thread_context.get_frame(self.current_frame);
 

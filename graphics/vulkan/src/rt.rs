@@ -2,16 +2,11 @@ use std::hash::Hash;
 use std::sync::Arc;
 
 use ash::vk::{
-    self,
-    AccelerationStructureBuildSizesInfoKHR,
-    AccelerationStructureReferenceKHR,
+    self, AccelerationStructureBuildSizesInfoKHR, AccelerationStructureReferenceKHR,
     DeviceOrHostAddressConstKHR,
 };
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{
-    self,
-    Buffer as _,
-};
+use sourcerenderer_core::gpu::{self, Buffer as _};
 
 use super::*;
 
@@ -60,12 +55,14 @@ impl VkAccelerationStructure {
             .collect();
 
         let size: u64 = std::mem::size_of_val(&instances) as u64;
-        let ptr = target_buffer
-            .map(target_buffer_offset, size, false)
-            .expect("Failed to map buffer.")
-            as *mut vk::AccelerationStructureInstanceKHR;
-        ptr.copy_from(instances.as_ptr(), instances.len());
-        target_buffer.unmap(target_buffer_offset, size, true);
+        unsafe {
+            let ptr = target_buffer
+                .map(target_buffer_offset, size, false)
+                .expect("Failed to map buffer.")
+                as *mut vk::AccelerationStructureInstanceKHR;
+            ptr.copy_from(instances.as_ptr(), instances.len());
+            target_buffer.unmap(target_buffer_offset, size, true);
+        }
     }
 
     pub fn top_level_size(
