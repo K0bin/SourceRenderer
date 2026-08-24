@@ -1,18 +1,10 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{
-    Arc,
-    Condvar,
-    Mutex,
-};
+use std::sync::{Arc, Condvar, Mutex};
 
 use js_sys::WebAssembly;
 use wasm_bindgen::closure::Closure;
-use wasm_bindgen::prelude::{
-    wasm_bindgen,
-    JsCast as _,
-    JsValue,
-};
+use wasm_bindgen::prelude::{JsCast as _, JsValue, wasm_bindgen};
 
 // Wasm thread
 pub mod thread {
@@ -96,8 +88,9 @@ pub mod thread {
 
         let boxed: Box<dyn FnOnce(JsValue) -> Pin<Box<dyn Future<Output = ()>>> + Send + 'static> =
             Box::new(wrapper_callback);
-        let boxed_ptr = Box::into_raw(boxed);
-        let boxed_ptr_workaround: u64 = unsafe { std::mem::transmute(boxed_ptr) };
+        let double_boxed = Box::new(boxed);
+        let double_boxed = Box::into_raw(boxed);
+        let boxed_ptr_workaround: u32 = unsafe { std::mem::transmute(double_boxed) };
         // wasm_bindgen doesn't support FnOnce so we have to resort to hacks.
 
         start_thread_worker(
@@ -145,9 +138,9 @@ extern "C" {
 
 #[wasm_bindgen(js_name = "threadFunc")]
 pub async fn thread_func(callback_ptr: u64, data: JsValue) {
-    let callback_ptr: *mut (dyn FnOnce(JsValue) -> Pin<Box<dyn Future<Output = ()>>>
-         + Send
-         + 'static) = unsafe { std::mem::transmute(callback_ptr) };
+    let callback_ptr: Box<
+        *mut (dyn FnOnce(JsValue) -> Pin<Box<dyn Future<Output = ()>>> + Send + 'static),
+    > = unsafe { std::mem::transmute(callback_ptr) };
     let callback = unsafe { Box::from_raw(callback_ptr) };
     callback(data).await;
     destroy_thread();

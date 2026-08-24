@@ -1,8 +1,14 @@
 {
-    "extends": "./tsconfig.json",
-    "compilerOptions": {
-      "lib": ["ES2020", "webworker"],
-    },
-    "include": [ "src/worker/*.ts", "../lib/pkg/*.d.ts"],
-    "exclude": [ ]
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": [
+      "ES2022",
+      "webworker"
+    ]
+  },
+  "include": [
+    "src/worker/*.ts",
+    "../lib/pkg/*.d.ts"
+  ],
+  "exclude": []
 }

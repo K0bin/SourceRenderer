@@ -14,7 +14,7 @@ let initOutput: InitOutput | null = null;
 async function run(data: ThreadWorkerInit) {
     console.log("Thread starting");
 
-    initOutput = await initWasm(undefined, data.memory);
+    initOutput = await initWasm(data.module, data.memory);
     await threadFunc(data.callbackPtr, data.data);
     console.log("Thread finished");
 }

@@ -1,5 +1,5 @@
 import ThreadWorker from './worker/thread_worker?worker'
-import { EngineWorkerMessage, EngineWorkerMessageType, ThreadWorkerInit } from './engine_worker_communication';
+import ThreadWorkerInit from './engine_worker_communication';
 
 export async function fetchAsset(path: string): Promise<Uint8Array> {
     const url = new URL("./enginedata/" + path, location.origin);
@@ -8,8 +8,7 @@ export async function fetchAsset(path: string): Promise<Uint8Array> {
     if (response.status != 200) {
         throw response.status;
     }
-    const buffer = await response.bytes();
-    return buffer;
+    return await response.bytes();
 }
 
 export async function fetchAssetRange(path: string, offset: number, length: number): Promise<Uint8Array> {
@@ -23,8 +22,7 @@ export async function fetchAssetRange(path: string, offset: number, length: numb
     if (response.status != 200 && response.status != 206) {
         throw response.status;
     }
-    const buffer = await response.bytes();
-    return buffer;
+    return await response.bytes();
 }
 
 export async function fetchAssetHead(path: string): Promise<number> {
@@ -57,18 +55,7 @@ export function startThreadWorker(
         data,
         name,
     };
-    if (data === "FAKE_CANVAS") {
-        console.warn("Starting thread from main thread as a browser bug workaround.");
-        // Start the thread from the main thread.
-        // This will break if this is a nested thread but it's just an ugly hack
-        // workaround for browser bugs.
-        postMessage({
-            messageType: EngineWorkerMessageType.StartThreadFromMain,
-            data: msg,
-        } as EngineWorkerMessage);
-        return;
-    }
-    const worker = new ThreadWorker({ name });
+    const worker = new ThreadWorker({name});
     let transferables: Array<Transferable> = [];
     if (data instanceof OffscreenCanvas || data instanceof ArrayBuffer) {
         transferables.push(data);

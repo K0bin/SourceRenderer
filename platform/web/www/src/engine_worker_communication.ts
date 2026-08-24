@@ -1,12 +1,25 @@
 export enum EngineWorkerMessageType {
-    StartThreadFromMain, // Browsers are buggy when starting workers from other workers
     TransferCanvas,
-    TransferFakeCanvas,
     RequestCanvas,
-    RequestFakeCanvas,
 }
 
-export type EngineMessageData = string|FakeCanvasData|OffscreenCanvas|ThreadWorkerInit;
+let offscreenCanvas: OffscreenCanvas | null = null;
+
+export function takeCanvas(): OffscreenCanvas {
+    if (offscreenCanvas === null) {
+        throw new Error("Canvas can only be transferred once.");
+    }
+    return offscreenCanvas;
+}
+
+export function receiveCanvas(canvas: OffscreenCanvas) {
+    if (offscreenCanvas !== null) {
+        throw new Error("Worker already owned a canvas.");
+    }
+    offscreenCanvas = canvas;
+}
+
+export type EngineMessageData = string | FakeCanvasData | OffscreenCanvas | ThreadWorkerInit;
 
 export interface FakeCanvasData {
     width: number,
@@ -14,6 +27,7 @@ export interface FakeCanvasData {
 }
 
 export interface ThreadWorkerInit {
+    module: WebAssembly.Module,
     memory: WebAssembly.Memory,
     name: string,
     callbackPtr: bigint,

@@ -1,21 +1,15 @@
-use std::marker::PhantomData;
 use js_sys::wasm_bindgen::JsValue;
+use std::marker::PhantomData;
 use web_sys::{Gpu, OffscreenCanvas};
 
 use sourcerenderer_core::gpu;
 
 use crate::{WebGPUBackend, WebGPUDevice, WebGPUInstance, WebGPUSwapchain};
 
-#[derive(PartialEq, Debug)]
-enum WebGPUSurfaceCanvas {
-    Fake,
-    Canvas(OffscreenCanvas),
-}
-
 pub struct WebGPUSurface {
     instance: Gpu,
-    canvas: WebGPUSurfaceCanvas,
-    _p: PhantomData<*const std::ffi::c_void>
+    canvas: OffscreenCanvas,
+    _p: PhantomData<*const std::ffi::c_void>,
 }
 
 impl PartialEq for WebGPUSurface {
@@ -30,26 +24,14 @@ impl WebGPUSurface {
     pub fn new(instance: &WebGPUInstance, canvas: OffscreenCanvas) -> Result<Self, ()> {
         Ok(Self {
             instance: instance.handle().clone(),
-            canvas: WebGPUSurfaceCanvas::Canvas(canvas),
-            _p: PhantomData
-        })
-    }
-
-    pub fn new_fake(instance: &WebGPUInstance) -> Result<Self, ()> {
-        Ok(Self {
-            instance: instance.handle().clone(),
-            canvas: WebGPUSurfaceCanvas::Fake,
-            _p: PhantomData
+            canvas,
+            _p: PhantomData,
         })
     }
 
     #[inline(always)]
     pub(crate) fn canvas(&self) -> &OffscreenCanvas {
-        if let WebGPUSurfaceCanvas::Canvas(canvas) = &self.canvas {
-            canvas
-        } else {
-            panic!("Surface only has a fake canvas.")
-        }
+        &self.canvas
     }
 
     #[inline(always)]
@@ -59,26 +41,7 @@ impl WebGPUSurface {
 
     #[inline(always)]
     pub fn take_canvas(self) -> OffscreenCanvas {
-        if let WebGPUSurfaceCanvas::Canvas(canvas) = self.canvas {
-            canvas
-        } else {
-            panic!("Surface only has a fake canvas.")
-        }
-    }
-
-    #[inline(always)]
-    pub fn take_js_val(self) -> JsValue {
-        if let WebGPUSurfaceCanvas::Canvas(canvas) = self.canvas {
-            canvas.into()
-        } else {
-            JsValue::from_str("FAKE_CANVAS")
-        }
-    }
-
-    #[inline(always)]
-    pub fn take_fake_canvas(self) -> JsValue {
-        assert_eq!(self.canvas, WebGPUSurfaceCanvas::Fake);
-        JsValue::from_str("FAKE_CANVAS")
+        self.canvas
     }
 }
 

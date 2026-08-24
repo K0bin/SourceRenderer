@@ -1,23 +1,25 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ES2022",
     "useDefineForClassFields": true,
-    "module": "ESNext",
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ES2022",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "skipLibCheck": true,
     "noImplicitAny": true,
     "allowJs": false,
     "sourceMap": true,
     "removeComments": true,
     "outDir": "dist",
-
     /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "moduleDetection": "force",
-     "noEmit": true,
-
+    "noEmit": true,
     /* Linting */
     "strict": true,
     "noUnusedLocals": true,
@@ -25,6 +27,11 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": [ "src/*.ts", "../lib/src/*.ts", "../../../engine/src/*.ts", "src/worker/thread_worker.ts" ],
-  "exclude": [ ]
+  "include": [
+    "src/*.ts",
+    "../lib/src/*.ts",
+    "../../../engine/src/*.ts",
+    "src/worker/thread_worker.ts"
+  ],
+  "exclude": []
 }
