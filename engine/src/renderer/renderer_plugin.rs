@@ -19,8 +19,8 @@ use bevy_platform::cell::SyncCell;
 use bevy_transform::components::GlobalTransform;
 use sourcerenderer_core::Vec2UI;
 use sourcerenderer_core::console::Console;
-use sourcerenderer_core::gpu::Surface as _;
-use sourcerenderer_core::platform::GraphicsPlatform;
+use sourcerenderer_core::gpu::{GPUBackend, Surface as _};
+use sourcerenderer_core::platform::{GraphicsPlatform, Window};
 #[cfg(feature = "render_thread")]
 use web_time::Duration;
 
@@ -29,8 +29,7 @@ use super::{DirectionalLightComponent, PointLightComponent, Renderer, StaticRend
 use crate::asset::{AssetManager, AssetManagerECSResource};
 use crate::engine::{ConsoleResource, TICK_RATE, WindowState};
 use crate::graphics::{
-    APIInstance, ActiveBackend, Adapter, AdapterType, GPUInstanceResource, GPUSurfaceResource,
-    Instance, Surface, Swapchain,
+    APIInstance, ActiveBackend, Adapter, AdapterType, Instance, Surface, Swapchain,
 };
 use crate::transform::InterpolatedTransform;
 #[cfg(all(feature = "render_thread", target_arch = "wasm32"))]
@@ -47,32 +46,16 @@ struct WindowSizeChangedEvent {
 #[derive(Message)]
 struct WindowMinimized {}
 
-pub struct RendererPlugin<P: GraphicsPlatform<ActiveBackend>>(PhantomData<P>);
-unsafe impl<P: GraphicsPlatform<ActiveBackend>> Send for RendererPlugin<P> {}
-unsafe impl<P: GraphicsPlatform<ActiveBackend>> Sync for RendererPlugin<P> {}
-
-impl<P: GraphicsPlatform<ActiveBackend>> Plugin for RendererPlugin<P> {
-    fn build(&self, app: &mut App) {
-        insert_renderer_resource::<P>(app);
-        install_renderer_systems(app);
-    }
-}
-
-impl<P: GraphicsPlatform<ActiveBackend>> RendererPlugin<P> {
-    pub fn new() -> Self {
-        Self(PhantomData)
-    }
-    pub fn window_changed(app: &App, window_state: WindowState) {
-        #[cfg(any(feature = "render_thread", not(target_arch = "wasm32")))]
-        let resource = app.world().get_resource::<RendererResourceWrapper>();
-        #[cfg(all(not(feature = "render_thread"), target_arch = "wasm32"))]
-        let resource = app
-            .world()
-            .get_non_send_resource::<RendererResourceWrapper>();
-        if let Some(resource) = resource {
-            // It might not be finished initializing yet.
-            resource.sender.window_changed(window_state);
-        }
+pub fn window_changed(app: &App, window_state: WindowState) {
+    #[cfg(any(feature = "render_thread", not(target_arch = "wasm32")))]
+    let resource = app.world().get_resource::<RendererResourceWrapper>();
+    #[cfg(all(not(feature = "render_thread"), target_arch = "wasm32"))]
+    let resource = app
+        .world()
+        .get_non_send_resource::<RendererResourceWrapper>();
+    if let Some(resource) = resource {
+        // It might not be finished initializing yet.
+        resource.sender.window_changed(window_state);
     }
 }
 
@@ -118,7 +101,7 @@ struct SyncSet;
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 struct ExtractSet;
 
-fn install_renderer_systems(app: &mut App) {
+pub fn install_systems(app: &mut App) {
     app.add_systems(Last, (begin_frame).in_set(SyncSet));
     app.add_systems(
         Last,
@@ -144,17 +127,10 @@ type RendererResourceAccessorMut<'a> = ResMut<'a, RendererResourceWrapper>;
 #[cfg(all(not(feature = "render_thread"), target_arch = "wasm32"))]
 type RendererResourceAccessorMut<'a> = NonSendMut<'a, RendererResourceWrapper>;
 
-fn insert_renderer_resource<P: GraphicsPlatform<ActiveBackend>>(app: &mut App) {
-    let surface_resource: GPUSurfaceResource = app.world_mut().remove_non_send_resource().unwrap();
-    let instace_resource: GPUInstanceResource = app.world_mut().remove_non_send_resource().unwrap();
-
-    let GPUSurfaceResource {
-        surface,
-        width: swapchain_width,
-        height: swapchain_height,
-    } = surface_resource;
-    let instance = instace_resource.0;
-
+pub fn insert_resource<P: GraphicsPlatform<ActiveBackend>>(
+    app: &mut App,
+    window: &impl Window<ActiveBackend>,
+) {
     let console_resource = app.world().resource::<ConsoleResource>();
     let asset_manager_resource = app.world().resource::<AssetManagerECSResource>();
 
@@ -167,25 +143,26 @@ fn insert_renderer_resource<P: GraphicsPlatform<ActiveBackend>>(app: &mut App) {
 
     #[cfg(feature = "render_thread")]
     let handle = start_render_thread::<P>(
+        window,
         receiver,
-        instance,
-        surface,
-        swapchain_width,
-        swapchain_height,
         &asset_manager_resource.0,
         &console_resource.0,
     );
 
     #[cfg(not(feature = "render_thread"))]
-    let renderer = create_renderer(
-        receiver,
-        instance,
-        surface,
-        swapchain_width,
-        swapchain_height,
-        &asset_manager_resource.0,
-        &console_resource.0,
-    );
+    let renderer = {
+        let instance = P::create_instance(false).unwrap();
+        let surface = window.create_surface(&instance);
+        create_renderer(
+            receiver,
+            instance,
+            surface,
+            window.width(),
+            window.height(),
+            &asset_manager_resource.0,
+            &console_resource.0,
+        )
+    };
 
     let wrapper = RendererResourceWrapper {
         sender: ManuallyDrop::new(sender),
@@ -205,16 +182,19 @@ fn insert_renderer_resource<P: GraphicsPlatform<ActiveBackend>>(app: &mut App) {
 
 #[cfg(all(feature = "render_thread", not(target_arch = "wasm32")))]
 fn start_render_thread<P: GraphicsPlatform<ActiveBackend>>(
+    window: &impl Window<ActiveBackend>,
     receiver: RendererReceiver,
-    instance: APIInstance,
-    surface: Surface,
-    swapchain_width: u32,
-    swapchain_height: u32,
     asset_manager: &Arc<AssetManager>,
     console: &Arc<Console>,
 ) -> std::thread::JoinHandle<()> {
     let c_asset_manager = asset_manager.clone();
     let c_console = console.clone();
+
+    let instance = P::create_instance(false).unwrap();
+    let surface = window.create_surface(&instance);
+    let width = window.width();
+    let height = window.height();
+
     std::thread::Builder::new()
         .name("RenderThread".to_string())
         .spawn(move || {
@@ -224,8 +204,8 @@ fn start_render_thread<P: GraphicsPlatform<ActiveBackend>>(
                 receiver,
                 instance,
                 surface,
-                swapchain_width,
-                swapchain_height,
+                width,
+                height,
                 &c_asset_manager,
                 &c_console,
             );
@@ -483,7 +463,7 @@ mod wasm {
     use std::cell::{Cell, RefCell};
     use std::rc::Rc;
 
-    use sourcerenderer_webgpu::{NavigatorKind, WebGPUInstance, WebGPUSurface};
+    use sourcerenderer_webgpu::{WebGPUInstance, WebGPUSurface};
     use wasm_bindgen::JsCast;
     use wasm_bindgen::closure::Closure;
     use wasm_bindgen::prelude::wasm_bindgen;
@@ -493,11 +473,8 @@ mod wasm {
     use crate::AsyncCounter;
 
     pub fn start_render_thread<P: GraphicsPlatform<ActiveBackend>>(
+        window: &impl Window<ActiveBackend>,
         receiver: RendererReceiver,
-        instance: APIInstance,
-        surface: Surface,
-        swapchain_width: u32,
-        swapchain_height: u32,
         asset_manager: &Arc<AssetManager>,
         console: &Arc<Console>,
     ) -> crate::wasm::thread::JoinHandle<()> {
@@ -505,16 +482,18 @@ mod wasm {
         let c_asset_manager = asset_manager.clone();
         let c_console = console.clone();
 
+        let width = window.width();
+        let height = window.height();
+
+        let dummy_instance = P::create_instance(false).unwrap();
+        let surface = window.create_surface(&dummy_instance);
+
         crate::wasm::thread::spawn_with_js_val(
             async move |data| {
                 let scope: DedicatedWorkerGlobalScope = js_sys::global().dyn_into().unwrap();
-                let navigator = scope.navigator();
-                let webgpu_init = WebGPUInstance::async_init(NavigatorKind::Worker(&navigator))
-                    .await
-                    .unwrap();
-                let instance = WebGPUInstance::new(&webgpu_init, false);
                 let canvas: OffscreenCanvas = data.dyn_into().unwrap();
-                let surface = WebGPUSurface::new(&instance, canvas).unwrap();
+                let instance = WebGPUInstance::new(false).await.unwrap();
+                let surface = WebGPUSurface::new_offscreen(canvas).unwrap();
 
                 let counter = Arc::new(AsyncCounter::new(0));
                 counter.increment();
@@ -523,8 +502,8 @@ mod wasm {
                     receiver,
                     instance,
                     surface,
-                    swapchain_width,
-                    swapchain_height,
+                    width,
+                    height,
                     &c_asset_manager,
                     &c_console,
                 );
@@ -566,7 +545,7 @@ mod wasm {
                     let _ = scope.cancel_animation_frame(final_id);
                 }
             },
-            surface.take_canvas().into(),
+            surface.transfer_canvas().into(),
             Some("RenderThread"),
         )
     }

@@ -8,6 +8,7 @@ import {
 } from "../engine_worker_communication.ts";
 
 onmessage = async (event: MessageEvent) => {
+    console.warn("Message");
     let msg = event.data as EngineWorkerMessage;
     switch (msg.messageType) {
         case EngineWorkerMessageType.InitThread: {
@@ -24,6 +25,7 @@ console.log("Thread initialized");
 let thread: InitOutput | null = null;
 
 async function run(data: ThreadWorkerInit) {
+    console.warn("Initializing!!!");
     console.log("Thread starting with payload:");
     console.log(data);
 

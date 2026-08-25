@@ -18,12 +18,9 @@ pub use self::command::RendererCommand;
 pub use self::drawable::DrawablePart;
 use self::drawable::RendererStaticDrawable;
 pub use self::ecs::{
-    DirectionalLightComponent,
-    Lightmap,
-    PointLightComponent,
-    StaticRenderableComponent,
+    DirectionalLightComponent, Lightmap, PointLightComponent, StaticRenderableComponent,
 };
 pub use self::light::PointLight;
 pub use self::renderer::Renderer;
-pub use self::renderer_plugin::RendererPlugin;
+pub use self::renderer_plugin::*;
 pub use self::vertex::Vertex;

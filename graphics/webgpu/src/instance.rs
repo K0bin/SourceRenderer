@@ -1,4 +1,5 @@
 use crate::{WebGPUBackend, adapter::WebGPUAdapter};
+use js_sys::wasm_bindgen::JsCast;
 use js_sys::{JsNullable, JsString};
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu;
@@ -9,18 +10,9 @@ use std::{
 };
 use wasm_bindgen_futures::*;
 use web_sys::{
-    Gpu, GpuAdapter, GpuDevice, GpuDeviceDescriptor, GpuPowerPreference, GpuRequestAdapterOptions,
-    Navigator, WorkerNavigator,
+    DedicatedWorkerGlobalScope, Gpu, GpuAdapter, GpuDevice, GpuDeviceDescriptor,
+    GpuPowerPreference, GpuRequestAdapterOptions, window,
 };
-
-pub struct WebGPUInstanceAsyncInitResult {
-    instance: Gpu,
-    discrete_adapter: GpuAdapter,
-    discrete_device: GpuDevice,
-    integrated_adapter: GpuAdapter,
-    integrated_device: GpuDevice,
-    _p: PhantomData<*const std::ffi::c_void>,
-}
 
 #[derive(Clone)]
 pub struct WebGPUInstanceInitError {
@@ -58,23 +50,13 @@ impl Error for WebGPUInstanceInitError {}
 
 pub struct WebGPUInstance {
     instance: Gpu,
-    adapters: [WebGPUAdapter; 2],
+    adapters: Option<[WebGPUAdapter; 2]>,
     _p: PhantomData<*const std::ffi::c_void>,
 }
 
-pub enum NavigatorKind<'a> {
-    Window(&'a Navigator),
-    Worker(&'a WorkerNavigator),
-}
-
 impl WebGPUInstance {
-    pub async fn async_init(
-        navigator: NavigatorKind<'_>,
-    ) -> Result<WebGPUInstanceAsyncInitResult, WebGPUInstanceInitError> {
-        let gpu = match navigator {
-            NavigatorKind::Window(navigator) => navigator.gpu(),
-            NavigatorKind::Worker(navigator) => navigator.gpu(),
-        };
+    pub async fn new(debug: bool) -> Result<Self, WebGPUInstanceInitError> {
+        let gpu = Self::get_webgpu();
         if !gpu.is_object() || gpu.is_null() || gpu.is_undefined() {
             return Err(WebGPUInstanceInitError::new(
                 "Browser does not support WebGPU",
@@ -163,36 +145,43 @@ impl WebGPUInstance {
                 "Failed to retrieve WebGPU device",
             ));
         }
-
-        Ok(WebGPUInstanceAsyncInitResult {
+        Ok(Self {
             instance: gpu,
-            discrete_adapter,
-            discrete_device,
-            integrated_adapter,
-            integrated_device,
-            _p: PhantomData,
-        })
-    }
-
-    pub fn new(async_result: &WebGPUInstanceAsyncInitResult, debug: bool) -> Self {
-        Self {
-            instance: async_result.instance.clone(),
-            adapters: [
+            adapters: Some([
                 WebGPUAdapter::new(
-                    async_result.discrete_adapter.clone(),
-                    async_result.discrete_device.clone(),
+                    discrete_adapter.clone(),
+                    discrete_device.clone(),
                     gpu::AdapterType::Discrete,
                     debug,
                 ),
                 WebGPUAdapter::new(
-                    async_result.integrated_adapter.clone(),
-                    async_result.integrated_device.clone(),
+                    integrated_adapter.clone(),
+                    integrated_device.clone(),
                     gpu::AdapterType::Integrated,
                     debug,
                 ),
-            ],
+            ]),
+            _p: PhantomData,
+        })
+    }
+
+    pub fn new_dummy() -> Self {
+        Self {
+            instance: Self::get_webgpu(),
+            adapters: None,
             _p: PhantomData,
         }
+    }
+
+    pub(crate) fn get_webgpu() -> Gpu {
+        window().map_or_else(
+            || {
+                let global = js_sys::global();
+                let worker_scope: DedicatedWorkerGlobalScope = global.dyn_into().unwrap();
+                worker_scope.navigator().gpu()
+            },
+            |window| window.navigator().gpu(),
+        )
     }
 
     #[inline(always)]
@@ -203,6 +192,8 @@ impl WebGPUInstance {
 
 impl gpu::Instance<WebGPUBackend> for WebGPUInstance {
     fn list_adapters(&self) -> &[WebGPUAdapter] {
-        &self.adapters
+        self.adapters
+            .as_ref()
+            .expect("Can't create adapters from a dummy instance.")
     }
 }

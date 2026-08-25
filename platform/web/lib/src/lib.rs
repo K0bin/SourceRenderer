@@ -5,7 +5,7 @@ use platform::WebPlatform;
 use sourcerenderer_engine::{Engine as ActualEngine, EngineLoopFuncResult};
 use sourcerenderer_game::GamePlugin;
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
-use web_sys::{OffscreenCanvas, WorkerNavigator};
+use web_sys::{HtmlCanvasElement, OffscreenCanvas, WorkerNavigator};
 
 mod io;
 mod platform;
@@ -34,12 +34,12 @@ impl Engine {
 }
 
 #[wasm_bindgen(js_name = "startEngine")]
-pub async fn start_engine(navigator: &WorkerNavigator, canvas: OffscreenCanvas) -> Engine {
+pub async fn start_engine(navigator: &WorkerNavigator, canvas: HtmlCanvasElement) -> Engine {
     utils::set_panic_hook();
     console_log::init_with_level(log::Level::Trace).unwrap();
 
     info!("Initializing platform");
-    let platform = WebPlatform::new_on_worker(navigator, canvas).await;
+    let platform = WebPlatform::new_on_worker(canvas).await;
 
     info!("Initializing engine");
     let engine = ActualEngine::run::<_, WebIO, WebPlatform>(
