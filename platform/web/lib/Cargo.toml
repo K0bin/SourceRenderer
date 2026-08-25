@@ -16,6 +16,7 @@ js-sys = "0.3"
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 sourcerenderer_core = { path = "../../../core", features = ["non_send_io", "non_send_gpu"] }
 sourcerenderer_engine = { path = "../../../engine", default-features = false, features = ["render_thread", "non_send_gpu", "non_send_io"] }
+# sourcerenderer_engine = { path = "../../../engine", default-features = false, features = ["non_send_gpu", "non_send_io"] }
 sourcerenderer_webgpu = { path = "../../../graphics/webgpu" }
 sourcerenderer_game = { path = "../../../game" }
 serde = "1.0"

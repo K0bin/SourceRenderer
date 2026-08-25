@@ -1,5 +1,5 @@
 import ThreadWorker from './worker/thread_worker?worker'
-import ThreadWorkerInit from './engine_worker_communication';
+import {ThreadWorkerInit} from './engine_worker_communication';
 
 export async function fetchAsset(path: string): Promise<Uint8Array> {
     const url = new URL("./enginedata/" + path, location.origin);

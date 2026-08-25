@@ -2,15 +2,9 @@ import {
     default as initWasm,
     Engine,
     startEngine,
-    startEngineWithFakeCanvas,
-    hasRenderThread
+    InitOutput
 } from "../../../lib/pkg/sourcerenderer_web";
-import {
-    EngineWorkerMessage,
-    EngineWorkerMessageType,
-    FakeCanvasData,
-    receiveCanvas, takeCanvas
-} from "../engine_worker_communication.ts";
+import {destroyThread} from "../engine_worker_communication";
 
 
 // Values are in WASM pages (64KiB)
@@ -19,20 +13,21 @@ const memory = new WebAssembly.Memory({
     maximum: 16384,
     shared: true
 });
-await initWasm(undefined, memory);
+
+let thread: InitOutput | null = null;
+let engine: Engine | null = null;
 
 console.log("EngineThread initialized");
 
 onmessage = async (event: MessageEvent) => {
+    thread = await initWasm({module_or_path: undefined, memory: memory});
     let canvas = event.data as OffscreenCanvas;
     await init(canvas);
 };
 
-let engine: Engine | null = null;
-
 async function init(canvas: OffscreenCanvas) {
     if (engine !== null) {
-        throw new Exception("Engine already initialized.");
+        throw new Error("Engine already initialized.");
     }
     engine = await startEngine(navigator, canvas);
     requestAnimationFrame((_time) => {
@@ -43,6 +38,10 @@ async function init(canvas: OffscreenCanvas) {
 onerror = (e) => {
     console.error(e);
     engine?.free();
+    if (thread !== null) {
+        destroyThread(thread);
+        thread = null;
+    }
     engine = null;
 };
 

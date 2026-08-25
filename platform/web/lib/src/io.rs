@@ -16,7 +16,7 @@ pub struct WebFetchFile {
     path: Box<Path>,
     data: Option<Box<[u8]>>,
     task: Option<Task<IOResult<Box<[u8]>>>>,
-    _p: PhantomData<*const std::ffi::c_void>
+    _p: PhantomData<*const std::ffi::c_void>,
 }
 
 const MAX_NON_RANGED_FETCH: usize = 2_000_000;
@@ -43,7 +43,7 @@ impl WebFetchFile {
             current_position: 0,
             data,
             task: None,
-            _p: PhantomData
+            _p: PhantomData,
         })
     }
 
@@ -199,9 +199,23 @@ impl AsyncRead for WebFetchFile {
         let length = (self.length - position).min(buf.len() as u64);
         let uri = self.path.as_ref().to_string_lossy().to_string();
 
+        /*
+        Web-Task causes problems.
         let task = web_task::spawn_local(
             async move { Self::fetch_range(&uri, position, length).await }
         );
+        */
+
+        let (runnable, task) = async_task::spawn_local(
+            async move { Self::fetch_range(&uri, position, length).await },
+            |runnable: Runnable| {
+                wasm_bindgen_futures::spawn_local(async {
+                    runnable.run();
+                })
+            },
+        );
+
+        runnable.schedule();
 
         self.task = Some(task);
 
