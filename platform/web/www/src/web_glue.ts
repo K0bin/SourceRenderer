@@ -1,5 +1,5 @@
 import ThreadWorker from './worker/thread_worker?worker'
-import {ThreadWorkerInit} from './engine_worker_communication';
+import {EngineWorkerMessage, EngineWorkerMessageType, ThreadWorkerInit} from './engine_worker_communication';
 
 export async function fetchAsset(path: string): Promise<Uint8Array> {
     const url = new URL("./enginedata/" + path, location.origin);
@@ -48,17 +48,43 @@ export function startThreadWorker(
     data: any,
     name: string,
 ) {
-    const msg: ThreadWorkerInit = {
+    const init: ThreadWorkerInit = {
         module,
         memory,
         callbackPtr,
         data,
         name,
     };
-    const worker = new ThreadWorker({name});
+    const msg: EngineWorkerMessage = {
+        messageType: EngineWorkerMessageType.InitThread,
+        data: init
+    };
+
     let transferables: Array<Transferable> = [];
     if (data instanceof OffscreenCanvas || data instanceof ArrayBuffer) {
         transferables.push(data);
     }
+
+    if (name == "RenderThread" && isBlink()) {
+        // https://issues.chromium.org/issues/41483010
+        console.warn("Working around annoying Chrome bug.");
+
+        msg.messageType = EngineWorkerMessageType.StartRenderThread;
+        const scope = self as DedicatedWorkerGlobalScope;
+        scope.postMessage(msg, transferables);
+        return;
+    }
+
+    const worker = new ThreadWorker({name});
     worker.postMessage(msg, transferables);
+}
+
+function isBlink() {
+    const ua = self.navigator.userAgent;
+    const isChrome = /Chrome/.test(ua);
+    const isEdge = /Edg/.test(ua);
+    const isOpera = /OPR/.test(ua);
+    const isVivaldi = /Vivaldi/.test(ua);
+
+    return isChrome || isEdge || isOpera || isVivaldi;
 }

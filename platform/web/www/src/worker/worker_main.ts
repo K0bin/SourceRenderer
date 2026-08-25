@@ -1,10 +1,5 @@
-import {
-    default as initWasm,
-    Engine,
-    startEngine,
-    InitOutput
-} from "../../../lib/pkg/sourcerenderer_web";
-import {destroyThread} from "../engine_worker_communication";
+import {default as initWasm, Engine, InitOutput, startEngine} from "../../../lib/pkg/sourcerenderer_web";
+import {destroyThread, EngineWorkerMessage, EngineWorkerMessageType} from "../engine_worker_communication";
 
 
 // Values are in WASM pages (64KiB)
@@ -20,9 +15,19 @@ let engine: Engine | null = null;
 console.log("EngineThread initialized");
 
 onmessage = async (event: MessageEvent) => {
-    thread = await initWasm({module_or_path: undefined, memory: memory});
-    let canvas = event.data as OffscreenCanvas;
-    await init(canvas);
+    let msg = event.data as EngineWorkerMessage;
+    switch (msg.messageType) {
+        case EngineWorkerMessageType.InitMainThread: {
+            thread
+                = await initWasm({module_or_path: undefined, memory: memory});
+            let canvas = msg.data as OffscreenCanvas;
+            await init(canvas);
+        }
+            break;
+
+        default:
+            throw new Error("Unexpected message type on thread: " + msg.messageType);
+    }
 };
 
 async function init(canvas: OffscreenCanvas) {

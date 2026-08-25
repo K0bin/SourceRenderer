@@ -1,10 +1,23 @@
 import {default as initWasm, threadFunc, InitOutput} from "../../../lib/pkg/sourcerenderer_web";
 
-import {destroyThread, ThreadWorkerInit} from "../engine_worker_communication.ts";
+import {
+    destroyThread,
+    EngineWorkerMessage,
+    EngineWorkerMessageType,
+    ThreadWorkerInit
+} from "../engine_worker_communication.ts";
 
-onmessage = async (msg: MessageEvent) => {
-    console.log("Receiving msg");
-    await run(msg.data as ThreadWorkerInit);
+onmessage = async (event: MessageEvent) => {
+    let msg = event.data as EngineWorkerMessage;
+    switch (msg.messageType) {
+        case EngineWorkerMessageType.InitThread: {
+            await run(msg.data as ThreadWorkerInit);
+        }
+            break;
+
+        default:
+            throw new Error("Unexpected message type on main thread: " + msg.messageType);
+    }
 };
 console.log("Thread initialized");
 
