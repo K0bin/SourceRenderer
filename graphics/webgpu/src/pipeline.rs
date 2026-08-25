@@ -1,4 +1,4 @@
-use js_sys::{wasm_bindgen::JsValue, Array, JsNullable};
+use js_sys::JsNullable;
 use log::warn;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu;
@@ -676,7 +676,7 @@ impl WebGPUComputePipeline {
 }
 
 impl gpu::ComputePipeline for WebGPUComputePipeline {
-    fn binding_info(&self, set: gpu::BindingFrequency, slot: u32) -> Option<gpu::BindingInfo> {
+    fn binding_info(&self, set: gpu::BindingFrequency, slot: u32) -> Option<gpu::BindingInfo<'_>> {
         let bind_group = &self.resources[set as usize];
         for resource in bind_group {
             if resource.binding == slot {

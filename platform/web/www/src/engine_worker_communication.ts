@@ -19,18 +19,13 @@ export function receiveCanvas(canvas: OffscreenCanvas) {
     offscreenCanvas = canvas;
 }
 
-export type EngineMessageData = string | FakeCanvasData | OffscreenCanvas | ThreadWorkerInit;
-
-export interface FakeCanvasData {
-    width: number,
-    height: number
-}
+export type EngineMessageData = string | OffscreenCanvas | ThreadWorkerInit;
 
 export interface ThreadWorkerInit {
     module: WebAssembly.Module,
     memory: WebAssembly.Memory,
     name: string,
-    callbackPtr: bigint,
+    callbackPtr: number,
     data: any,
 }
 

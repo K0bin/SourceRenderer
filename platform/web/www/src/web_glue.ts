@@ -44,7 +44,7 @@ export async function fetchAssetHead(path: string): Promise<number> {
 export function startThreadWorker(
     module: WebAssembly.Module,
     memory: WebAssembly.Memory,
-    callbackPtr: bigint,
+    callbackPtr: number,
     data: any,
     name: string,
 ) {

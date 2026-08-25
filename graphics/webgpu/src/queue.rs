@@ -1,10 +1,10 @@
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use crate::{WebGPUBackbuffer, WebGPUBackend, WebGPUCommandPool, WebGPULimits, swapchain::WebGPUSwapchain};
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu;
 use web_sys::{GpuCommandBuffer, GpuDevice, GpuQueue};
-use crate::{swapchain::WebGPUSwapchain, WebGPUBackbuffer, WebGPUBackend, WebGPUCommandPool, WebGPULimits, WebGPUCommandBuffer};
 
 pub struct WebGPUQueue {
     device: GpuDevice,

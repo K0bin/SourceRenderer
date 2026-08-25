@@ -3,7 +3,7 @@ use std::hash::Hash;
 use js_sys::JsString;
 use js_sys::wasm_bindgen::JsCast;
 use web_sys::{
-    js_sys, wasm_bindgen::JsValue, Gpu, GpuDevice, GpuExtent3dDict, GpuTexture,
+    js_sys, wasm_bindgen::JsValue, GpuDevice, GpuExtent3dDict, GpuTexture,
     GpuTextureDescriptor, GpuTextureFormat, GpuTextureView, GpuTextureViewDescriptor,
     GpuTextureViewDimension,
 };

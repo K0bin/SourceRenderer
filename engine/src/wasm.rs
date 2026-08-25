@@ -89,8 +89,8 @@ pub mod thread {
         let boxed: Box<dyn FnOnce(JsValue) -> Pin<Box<dyn Future<Output = ()>>> + Send + 'static> =
             Box::new(wrapper_callback);
         let double_boxed = Box::new(boxed);
-        let double_boxed = Box::into_raw(boxed);
-        let boxed_ptr_workaround: u32 = unsafe { std::mem::transmute(double_boxed) };
+        let double_boxed_ptr = Box::into_raw(double_boxed);
+        let boxed_ptr_workaround: usize = unsafe { std::mem::transmute(double_boxed_ptr) };
         // wasm_bindgen doesn't support FnOnce so we have to resort to hacks.
 
         start_thread_worker(
@@ -124,7 +124,7 @@ extern "C" {
     fn start_thread_worker(
         module: WebAssembly::Module,
         memory: WebAssembly::Memory,
-        callback_ptr: u64, // dyn => fat pointer => Pointer size of wasm32 is 32 => u64
+        callback_ptr: usize, // Wasm32 -> u32 Pointer. And it avoids a BigInt in JS
         data: JsValue,
         name: &str,
     );
@@ -137,10 +137,8 @@ extern "C" {
 }
 
 #[wasm_bindgen(js_name = "threadFunc")]
-pub async fn thread_func(callback_ptr: u64, data: JsValue) {
-    let callback_ptr: Box<
-        *mut (dyn FnOnce(JsValue) -> Pin<Box<dyn Future<Output = ()>>> + Send + 'static),
-    > = unsafe { std::mem::transmute(callback_ptr) };
+pub async fn thread_func(callback_ptr: usize, data: JsValue) {
+    let callback_ptr: *mut Box<dyn FnOnce(JsValue) -> Pin<Box<dyn Future<Output = ()>>> + Send + 'static> = std::ptr::without_provenance_mut(callback_ptr);
     let callback = unsafe { Box::from_raw(callback_ptr) };
     callback(data).await;
     destroy_thread();

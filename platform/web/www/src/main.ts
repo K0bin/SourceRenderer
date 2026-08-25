@@ -1,5 +1,4 @@
 import EngineWorker from './worker/worker_main.ts?worker'
-import ThreadWorker from './worker/thread_worker.ts?worker'
 import {
     EngineWorkerMessageType,
     EngineWorkerMessage,
@@ -15,23 +14,8 @@ function main() {
     offscreenCanvas = canvas.transferControlToOffscreen();
 
     const worker = new EngineWorker({name: "EngineThread"});
-
-    // Workaround for browser bugs
-    worker.onmessage = (event) => {
-        const typedEvent = event.data as EngineWorkerMessage;
-        switch (typedEvent.messageType) {
-            case EngineWorkerMessageType.RequestCanvas:
-                const canvas = takeCanvas();
-                worker.postMessage({
-                        messageType: EngineWorkerMessageType.TransferCanvas,
-                        data: canvas,
-                    } as EngineWorkerMessage,
-                    [canvas]
-                );
-                offscreenCanvas = null;
-                break;
-        }
-    };
+    worker.postMessage({}, [offscreenCanvas]);
+    offscreenCanvas = null;
 }
 
 main();

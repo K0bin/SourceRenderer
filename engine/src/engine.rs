@@ -14,7 +14,7 @@ use bevy_log::LogPlugin;
 use bevy_time::{Fixed, Time, TimePlugin};
 use bevy_transform::TransformPlugin;
 use sourcerenderer_core::console::Console;
-use sourcerenderer_core::platform::{Event, GraphicsPlatform, PlatformIO, Window};
+use sourcerenderer_core::platform::{GraphicsPlatform, PlatformIO, Window};
 use sourcerenderer_core::Vec2UI;
 
 use crate::asset::{AssetManager, AssetManagerECSResource, AssetManagerPlugin};

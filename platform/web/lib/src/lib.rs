@@ -36,7 +36,6 @@ impl Engine {
 #[wasm_bindgen(js_name = "startEngine")]
 pub async fn start_engine(navigator: &WorkerNavigator, canvas: OffscreenCanvas) -> Engine {
     utils::set_panic_hook();
-
     console_log::init_with_level(log::Level::Trace).unwrap();
 
     info!("Initializing platform");

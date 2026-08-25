@@ -169,12 +169,12 @@ impl WebGPUBuffer {
     }
 
     #[inline(always)]
-    pub(crate) fn handle(&self) -> Ref<GpuBuffer> {
+    pub(crate) fn handle(&self) -> Ref<'_, GpuBuffer> {
         self.buffer.borrow()
     }
 
     #[inline(always)]
-    pub(crate) fn readback_handle(&self) -> Option<Ref<GpuBuffer>> {
+    pub(crate) fn readback_handle(&self) -> Option<Ref<'_, GpuBuffer>> {
         self.readback_buffer.as_ref().map(|b| b.borrow())
     }
 

@@ -1,4 +1,3 @@
-use js_sys::wasm_bindgen::JsValue;
 use std::marker::PhantomData;
 use web_sys::{Gpu, OffscreenCanvas};
 

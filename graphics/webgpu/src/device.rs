@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 use js_sys::{
-    wasm_bindgen::{prelude::Closure, JsCast, JsValue},
+    wasm_bindgen::{prelude::Closure, JsCast},
     Array,
 };
 use sourcerenderer_core::{

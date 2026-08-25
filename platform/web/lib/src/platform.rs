@@ -16,11 +16,6 @@ pub struct WebPlatform {
 }
 
 impl WebPlatform {
-    pub(crate) async fn new(navigator: &Navigator, canvas: OffscreenCanvas) -> Self {
-        let window = WebWindow::new(canvas);
-        init_webgpu_on_thread(NavigatorKind::Window(navigator)).await;
-        Self { window }
-    }
     pub(crate) async fn new_on_worker(
         navigator: &WorkerNavigator,
         canvas: OffscreenCanvas,

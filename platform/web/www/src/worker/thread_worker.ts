@@ -6,7 +6,6 @@ onmessage = async (msg: MessageEvent) => {
     console.log("Receiving msg");
     await run(msg.data as ThreadWorkerInit);
 };
-postMessage({});
 console.log("Thread initialized");
 
 let initOutput: InitOutput | null = null;
@@ -19,7 +18,8 @@ async function run(data: ThreadWorkerInit) {
     console.log("Thread finished");
 }
 
-onerror = (_e) => {
+onerror = (e) => {
+    console.error(e);
     destroyThread();
 };
 

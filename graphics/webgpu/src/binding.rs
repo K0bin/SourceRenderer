@@ -1,7 +1,7 @@
 use std::{cell::RefCell, collections::HashMap, hash::Hash, ops::Deref, sync::Arc};
 use std::marker::PhantomData;
 use bitflags::bitflags;
-use js_sys::{wasm_bindgen::JsValue, Array, Uint8Array, JsNullable};
+use js_sys::{Uint8Array, JsNullable};
 use smallvec::SmallVec;
 use sourcerenderer_core::{align_up_64, gpu};
 use web_sys::{
