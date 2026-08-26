@@ -75,6 +75,6 @@ pub fn init_with_filter(filter: impl Fn(&Record) -> bool + Send + Sync + 'static
     unsafe {
         let ptr = Box::into_raw(boxed);
         log::set_logger(&*ptr).unwrap();
-        log::set_max_level(log::LevelFilter::Warn);
+        log::set_max_level(log::LevelFilter::Info);
     }
 }

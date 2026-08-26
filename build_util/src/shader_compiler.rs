@@ -1260,7 +1260,7 @@ pub fn compile_shader(
     }
 
     info!(
-        "Shader: {:?}, file type: {:?}, shading langs: {:?}",
+        "Compiling shader: {:?}, file type: {:?}, shading langs: {:?}",
         file_path, output_file_type, output_shading_languages
     );
     println!("cargo:rerun-if-changed={}", file_path.to_str().unwrap());

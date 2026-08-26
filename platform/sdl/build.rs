@@ -1,22 +1,16 @@
+use build_util::{ShadingLanguage, compile_shaders, copy_directory_rec};
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
-use build_util::{
-    compile_shaders,
-    copy_directory_rec,
-    ShadingLanguage,
-};
-
 fn main() {
     build_util::build_script_logger::init();
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
     // Copy shaders over
-    let mut shader_dest_dir = out_dir.clone();
-    for _ in 0..5 {
-        shader_dest_dir.pop();
+    let mut shader_dest_dir = manifest_dir.clone();
+    for _ in 0..2 {
+        assert!(shader_dest_dir.pop());
     }
     shader_dest_dir.push("shaders");
 
@@ -25,17 +19,13 @@ fn main() {
             .expect("Failed to create shader target directory.");
     }
 
-    let mut output_shading_languages =
-        ShadingLanguage::SpirV | ShadingLanguage::Dxil | ShadingLanguage::Air;
+    let mut output_shading_languages = ShadingLanguage::SpirV;
     if env::var("DUMP_SHADERS")
         .map(|envvar| envvar == "true" || envvar == "True" || envvar == "1")
         .unwrap_or_default()
     {
         output_shading_languages |= ShadingLanguage::Msl | ShadingLanguage::Hlsl;
     }
-
-    // Unimplemented and the warning is annoying.
-    output_shading_languages &= !ShadingLanguage::Dxil;
 
     let mut shader_dir = manifest_dir.clone();
     shader_dir.pop();
