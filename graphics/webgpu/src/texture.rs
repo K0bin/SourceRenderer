@@ -3,7 +3,7 @@ use std::hash::Hash;
 use js_sys::JsString;
 use js_sys::wasm_bindgen::JsCast;
 use web_sys::{
-    js_sys, wasm_bindgen::JsValue, Gpu, GpuDevice, GpuExtent3dDict, GpuTexture,
+    js_sys, wasm_bindgen::JsValue, GpuDevice, GpuExtent3dDict, GpuTexture,
     GpuTextureDescriptor, GpuTextureFormat, GpuTextureView, GpuTextureViewDescriptor,
     GpuTextureViewDimension,
 };
@@ -186,7 +186,7 @@ impl WebGPUTexture {
             let format = JsValue::from(format_to_webgpu(info.format)).unchecked_into::<JsString>();
             descriptor.set_view_formats(&[format]);
         }
-        let texture = device.create_texture(&descriptor).map_err(|_| ())?;
+        let texture = device.create_texture(&descriptor).map_err(|e| { log::error!("Failed to create texture: {:?}", e); () })?;
 
         Ok(Self {
             texture,

@@ -65,7 +65,7 @@ impl VolumeRenderer {
     ) -> Self {
         let (texture_handle, progress) = assets.asset_manager().request_asset(
             //"ct_head_256.raw.txt",
-            "manix.raw.txt",
+            "assets/manix.raw.txt",
             AssetType::Texture,
             AssetLoadPriority::High,
         );

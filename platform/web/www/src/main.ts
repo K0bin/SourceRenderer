@@ -1,69 +1,38 @@
-import EngineWorker from './worker/worker_main.ts?worker'
 import ThreadWorker from './worker/thread_worker.ts?worker'
-import { EngineWorkerMessageType, ThreadWorkerInit, EngineWorkerMessage, FakeCanvasData } from './engine_worker_communication';
+import {EngineWorkerMessage, EngineWorkerMessageType, ThreadWorkerInit} from "./engine_worker_communication.ts";
 
-let offscreenCanvas: OffscreenCanvas|null = null;
+let offscreenCanvas: OffscreenCanvas | null = null;
+let worker: Worker | null = null;
 
 function main() {
     const canvas = document.getElementById("canvas") as HTMLCanvasElement;
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    const width = canvas.width;
-    const height = canvas.height;
     offscreenCanvas = canvas.transferControlToOffscreen();
+    const msg: EngineWorkerMessage = {
+        messageType: EngineWorkerMessageType.InitMainThread,
+        data: offscreenCanvas
+    };
 
-    const worker = new EngineWorker({ name: "EngineThread" });
+    worker = new ThreadWorker({name: "EngineThread"});
+    worker.postMessage(msg, [offscreenCanvas]);
+    offscreenCanvas = null;
+    worker.onmessage = async (event: MessageEvent) => {
+        const msg = event.data as EngineWorkerMessage;
+        switch (msg.messageType) {
+            case EngineWorkerMessageType.StartRenderThread: {
+                console.warn("got render thread msg");
+                const threadMsg = msg.data as ThreadWorkerInit;
+                msg.messageType = EngineWorkerMessageType.InitThread;
+                const worker = new ThreadWorker({name: "RenderThread"});
+                worker.postMessage(msg, [threadMsg.data]);
+                return;
+            }
 
-    // Workaround for browser bugs
-    worker.onmessage = (event) => {
-        const typedEvent = event.data as EngineWorkerMessage;
-        switch (typedEvent.messageType) {
-            case EngineWorkerMessageType.StartThreadFromMain:
-                startThreadWorker(typedEvent.data as ThreadWorkerInit);
-                break;
-
-            case EngineWorkerMessageType.RequestCanvas:
-                const canvas = takeCanvas();
-                worker.postMessage({
-                        messageType: EngineWorkerMessageType.TransferCanvas,
-                        data: canvas,
-                    } as EngineWorkerMessage,
-                    [canvas]
-                );
-                offscreenCanvas = null;
-                break;
-
-            case EngineWorkerMessageType.RequestFakeCanvas:
-                worker.postMessage({
-                    messageType: EngineWorkerMessageType.TransferFakeCanvas,
-                    data: {
-                        width: width,
-                        height: height,
-                    } as FakeCanvasData,
-                } as EngineWorkerMessage);
-                break;
+            default:
+                throw new Error("Unexpected message type: " + msg.messageType);
         }
     };
-}
-
-function takeCanvas(): OffscreenCanvas {
-    if (offscreenCanvas === null) {
-        throw new Error("Canvas can only be transferred once.");
-    }
-    return offscreenCanvas;
-}
-
-function startThreadWorker(msg: ThreadWorkerInit) {
-    console.info("Starting thread from main thread.");
-    const worker = new ThreadWorker({ name: msg.name });
-    let transferables: Array<Transferable> = [];
-    if (msg.data === "FAKE_CANVAS") {
-        msg.data = takeCanvas();
-    }
-    if (msg.data instanceof OffscreenCanvas || msg.data instanceof ArrayBuffer) {
-        transferables.push(msg.data);
-    }
-    worker.postMessage(msg, transferables);
 }
 
 main();

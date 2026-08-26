@@ -1227,7 +1227,7 @@ impl ShaderManager {
             let shaders = task.collect_shaders_for_compilation(assets);
             let handle = task.handle();
 
-            let async_task = crate::tasks::spawn_async_compute(async move {
+            let async_task = crate::tasks::spawn_async_compute_gpu_maybe_sendable(async move {
                 crate::autoreleasepool(|| {
                     let pipeline = task.compile(shaders, &c_device);
                     let mut delayed_pipelines = c_delayed_pipeline.lock().unwrap();
@@ -1249,7 +1249,6 @@ impl ShaderManager {
     ) where
         T: PipelineCompileTask + Send + 'static,
     {
-        let task_pool = bevy_tasks::ComputeTaskPool::get();
         for task in ready_tasks.drain(..) {
             let c_device = self.device.clone();
             let c_manager: Arc<PipelineTypeManager<T>> = pipeline_type_manager.clone();
@@ -1257,7 +1256,7 @@ impl ShaderManager {
             let shaders = task.collect_shaders_for_compilation(assets);
             let handle = task.handle();
 
-            let async_task = task_pool.spawn_local(async move {
+            let async_task = crate::tasks::spawn_async_compute_gpu_maybe_sendable(async move {
                 crate::autoreleasepool(|| {
                     let pipeline = task.compile(shaders, &c_device);
                     let mut delayed_pipelines = c_delayed_pipeline.lock().unwrap();

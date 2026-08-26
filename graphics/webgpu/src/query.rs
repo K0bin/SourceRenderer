@@ -1,13 +1,13 @@
-use sourcerenderer_core::{
-    atomic_refcell::{AtomicRef, AtomicRefCell},
-    gpu,
-};
+use std::marker::PhantomData;
+use atomic_refcell::{AtomicRef, AtomicRefCell};
+use sourcerenderer_core::gpu;
 use web_sys::{GpuDevice, GpuQuerySet, GpuQuerySetDescriptor, GpuQueryType};
 
 pub struct WebGPUQueryPool {
     device: GpuDevice,
     descriptor: GpuQuerySetDescriptor,
     query_set: AtomicRefCell<GpuQuerySet>,
+    _p: PhantomData<*const std::ffi::c_void>
 }
 
 impl WebGPUQueryPool {
@@ -18,6 +18,7 @@ impl WebGPUQueryPool {
             device: device.clone(),
             descriptor,
             query_set: AtomicRefCell::new(query_set),
+            _p: PhantomData
         }
     }
 

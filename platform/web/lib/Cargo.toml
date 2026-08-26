@@ -14,8 +14,9 @@ default = ["console_error_panic_hook"]
 [dependencies]
 js-sys = "0.3"
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
-sourcerenderer_core = { path = "../../../core", features = ["non_send_io"] }
-sourcerenderer_engine = { path = "../../../engine", default-features = false, features = ["web", "render_thread"] }
+sourcerenderer_core = { path = "../../../core", features = ["non_send_io", "non_send_gpu"] }
+sourcerenderer_engine = { path = "../../../engine", default-features = false, features = ["render_thread", "non_send_gpu", "non_send_io"] }
+# sourcerenderer_engine = { path = "../../../engine", default-features = false, features = ["non_send_gpu", "non_send_io"] }
 sourcerenderer_webgpu = { path = "../../../graphics/webgpu" }
 sourcerenderer_game = { path = "../../../game" }
 serde = "1.0"
@@ -30,7 +31,8 @@ console_log = "1.0"
 futures-lite = "2.6"
 async-lock = "3.4"
 async-task = "4.7"
-atomic_refcell = "0.1.14"
+atomic_refcell = "0.1"
+web-task = "1.1"
 
 # Needs to be specified here with old versions to make sure dependencies that have it as a dependency get the version
 # with the feature enabled

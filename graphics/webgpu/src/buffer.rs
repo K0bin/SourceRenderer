@@ -2,7 +2,7 @@ use std::{
     cell::{Ref, RefCell},
     hash::Hash,
 };
-
+use std::marker::PhantomData;
 use sourcerenderer_core::gpu;
 
 use web_sys::{js_sys::Uint8Array, GpuBuffer, GpuBufferDescriptor, GpuDevice};
@@ -18,6 +18,7 @@ pub struct WebGPUBuffer {
     retained_memory_limit: u64,
     mappable: bool,
     info: gpu::BufferInfo,
+    _p: PhantomData<*const std::ffi::c_void>,
 }
 
 impl PartialEq for WebGPUBuffer {
@@ -163,16 +164,17 @@ impl WebGPUBuffer {
             mappable,
             retained_memory_limit: retained_rust_memory_limit,
             info: info.clone(),
+            _p: PhantomData
         })
     }
 
     #[inline(always)]
-    pub(crate) fn handle(&self) -> Ref<GpuBuffer> {
+    pub(crate) fn handle(&self) -> Ref<'_, GpuBuffer> {
         self.buffer.borrow()
     }
 
     #[inline(always)]
-    pub(crate) fn readback_handle(&self) -> Option<Ref<GpuBuffer>> {
+    pub(crate) fn readback_handle(&self) -> Option<Ref<'_, GpuBuffer>> {
         self.readback_buffer.as_ref().map(|b| b.borrow())
     }
 

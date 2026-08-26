@@ -1,11 +1,9 @@
+use std::marker::PhantomData;
 use js_sys::wasm_bindgen::JsValue;
 use sourcerenderer_core::{gpu, Matrix4};
 use web_sys::{gpu_texture_usage, GpuCanvasConfiguration, GpuCanvasContext, GpuDevice};
 
-use crate::{
-    surface::WebGPUSurface, texture::format_from_webgpu, texture::format_to_webgpu,
-    texture::WebGPUTexture, WebGPUBackend,
-};
+use crate::{surface::WebGPUSurface, texture::format_from_webgpu, texture::format_to_webgpu, texture::WebGPUTexture, WebGPUBackend, WebGPUInstance};
 
 pub struct WebGPUBackbuffer {
     texture: WebGPUTexture,
@@ -24,10 +22,11 @@ pub struct WebGPUSwapchain {
     texture_info: gpu::TextureInfo,
     canvas_context: GpuCanvasContext,
     backbuffer_counter: u64,
+    _p: PhantomData<*const std::ffi::c_void>
 }
 
 impl WebGPUSwapchain {
-    pub fn new(device: &GpuDevice, surface: WebGPUSurface) -> Self {
+    pub fn new(device: &GpuDevice, surface: WebGPUSurface, width: u32, height: u32) -> Self {
         let context_obj: JsValue = surface
             .canvas()
             .get_context("webgpu")
@@ -35,13 +34,14 @@ impl WebGPUSwapchain {
             .expect("Failed to retrieve context from OffscreenCanvas")
             .into();
         let context: GpuCanvasContext = context_obj.into();
-        let preferred_format = surface.instance_handle().get_preferred_canvas_format();
+        let instance = WebGPUInstance::get_webgpu();
+        let preferred_format = instance.get_preferred_canvas_format();
 
         let texture_info = gpu::TextureInfo {
             dimension: gpu::TextureDimension::Dim2D,
             format: format_from_webgpu(preferred_format),
-            width: surface.canvas().width(),
-            height: surface.canvas().height(),
+            width,
+            height,
             depth: 1,
             mip_levels: 1,
             array_length: 1,
@@ -62,6 +62,7 @@ impl WebGPUSwapchain {
             backbuffer_counter: 0u64,
             texture_info,
             canvas_context: context,
+            _p: PhantomData
         }
     }
 }

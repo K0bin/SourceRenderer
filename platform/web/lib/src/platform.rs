@@ -1,40 +1,17 @@
 use crate::window::WebWindow;
 use sourcerenderer_core::platform::GraphicsPlatform;
 use sourcerenderer_webgpu::{
-    NavigatorKind, WebGPUBackend, WebGPUInstance, WebGPUInstanceAsyncInitResult,
-    WebGPUInstanceInitError,
+    WebGPUBackend, WebGPUInstance,
 };
-use web_sys::{Navigator, OffscreenCanvas, WorkerNavigator};
-
-thread_local! {
-    static GPU_INIT: AtomicRefCell<Result<WebGPUInstanceAsyncInitResult, WebGPUInstanceInitError>> = AtomicRefCell::new(Err(WebGPUInstanceInitError::uninited()));
-}
+use web_sys::OffscreenCanvas;
 
 pub struct WebPlatform {
     window: WebWindow,
 }
 
 impl WebPlatform {
-    pub(crate) async fn new(navigator: &Navigator, canvas: OffscreenCanvas) -> Self {
+    pub(crate) async fn new_on_worker(canvas: OffscreenCanvas) -> Self {
         let window = WebWindow::new(canvas);
-        init_webgpu_on_thread(NavigatorKind::Window(navigator)).await;
-        Self { window }
-    }
-    pub(crate) async fn new_on_worker(
-        navigator: &WorkerNavigator,
-        canvas: OffscreenCanvas,
-    ) -> Self {
-        let window = WebWindow::new(canvas);
-        init_webgpu_on_thread(NavigatorKind::Worker(navigator)).await;
-        Self { window }
-    }
-    pub(crate) async fn new_on_worker_without_canvas(
-        navigator: &WorkerNavigator,
-        width: u32,
-        height: u32,
-    ) -> Self {
-        let window = WebWindow::new_fake(width, height);
-        init_webgpu_on_thread(NavigatorKind::Worker(navigator)).await;
         Self { window }
     }
 
@@ -50,24 +27,6 @@ impl GraphicsPlatform<WebGPUBackend> for WebPlatform {
         <WebGPUBackend as sourcerenderer_core::gpu::GPUBackend>::Instance,
         Box<dyn std::error::Error>,
     > {
-        GPU_INIT.with(|gpu_init_refcell| {
-            let gpu_init = gpu_init_refcell.borrow();
-            gpu_init
-                .as_ref()
-                .map(|init| WebGPUInstance::new(init, debug_layers))
-                .map_err(|e| Box::new(e.clone()) as Box<dyn std::error::Error>)
-        })
+        Ok(WebGPUInstance::new(debug_layers))
     }
-}
-
-async fn init_webgpu_on_thread(navigator: NavigatorKind<'_>) {
-    GPU_INIT.with(|gpu_init_refcell| {
-        let mut gpu_init = gpu_init_refcell.borrow_mut();
-        *gpu_init = Err(WebGPUInstanceInitError::unfinished());
-    });
-    let instance_init = WebGPUInstance::async_init(navigator).await;
-    GPU_INIT.with(|gpu_init_refcell| {
-        let mut gpu_init = gpu_init_refcell.borrow_mut();
-        *gpu_init = instance_init;
-    });
 }

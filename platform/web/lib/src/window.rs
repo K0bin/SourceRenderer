@@ -1,50 +1,32 @@
 use sourcerenderer_core::platform::Window;
 use sourcerenderer_webgpu::{WebGPUBackend, WebGPUInstance, WebGPUSurface};
+use std::marker::PhantomData;
 use web_sys::OffscreenCanvas;
 
-enum CanvasKind {
-    Canvas(OffscreenCanvas),
-    Fake { width: u32, height: u32 },
-}
-
 pub struct WebWindow {
-    canvas: CanvasKind,
+    canvas: OffscreenCanvas,
+    _p: PhantomData<*const std::ffi::c_void>,
 }
 
 impl WebWindow {
     pub(crate) fn new(canvas: OffscreenCanvas) -> Self {
         Self {
-            canvas: CanvasKind::Canvas(canvas),
-        }
-    }
-    pub(crate) fn new_fake(width: u32, height: u32) -> Self {
-        Self {
-            canvas: CanvasKind::Fake { width, height },
+            canvas,
+            _p: PhantomData,
         }
     }
 }
 
 impl Window<WebGPUBackend> for WebWindow {
-    fn create_surface(&self, graphics_instance: &WebGPUInstance) -> WebGPUSurface {
-        match &self.canvas {
-            CanvasKind::Canvas(canvas) => {
-                WebGPUSurface::new(graphics_instance, canvas.clone()).unwrap()
-            }
-            CanvasKind::Fake { .. } => WebGPUSurface::new_fake(graphics_instance).unwrap(),
-        }
+    fn create_surface(&self, _graphics_instance: &WebGPUInstance) -> WebGPUSurface {
+        WebGPUSurface::new(self.canvas.clone()).unwrap()
     }
 
     fn width(&self) -> u32 {
-        match &self.canvas {
-            CanvasKind::Canvas(canvas) => canvas.width(),
-            CanvasKind::Fake { width, .. } => *width,
-        }
+        self.canvas.width()
     }
 
     fn height(&self) -> u32 {
-        match &self.canvas {
-            CanvasKind::Canvas(canvas) => canvas.height(),
-            CanvasKind::Fake { height, .. } => *height,
-        }
+        self.canvas.height()
     }
 }

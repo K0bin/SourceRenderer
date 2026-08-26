@@ -1,5 +1,6 @@
+use std::marker::PhantomData;
 use js_sys::{
-    wasm_bindgen::{prelude::Closure, JsCast, JsValue},
+    wasm_bindgen::{prelude::Closure, JsCast},
     Array,
 };
 use sourcerenderer_core::{
@@ -7,7 +8,7 @@ use sourcerenderer_core::{
     gpu::{self, Texture as _},
 };
 use web_sys::{GpuDevice, GpuExtent3dDict, GpuTexelCopyBufferLayout, GpuTexelCopyTextureInfo};
-use sourcerenderer_core::gpu::PipelineShaderStage;
+use sourcerenderer_core::gpu::{MemoryInfo, PipelineShaderStage};
 use crate::{
     WebGPUBackend, WebGPUBuffer, WebGPUComputePipeline, WebGPUFeatures, WebGPUFence,
     WebGPUGraphicsPipeline, WebGPUHeap, WebGPULimits, WebGPUQueryPool, WebGPUQueue, WebGPUSampler,
@@ -21,6 +22,7 @@ pub struct WebGPUDevice {
     queue: WebGPUQueue,
     features: WebGPUFeatures,
     limits: WebGPULimits,
+    _p: PhantomData<*const std::ffi::c_void>,
 }
 
 impl WebGPUDevice {
@@ -62,6 +64,7 @@ impl WebGPUDevice {
             queue,
             features: features.clone(),
             limits: limits.clone(),
+            _p: PhantomData,
         }
     }
 
@@ -88,7 +91,7 @@ impl Drop for WebGPUDevice {
 }
 
 impl gpu::Device<WebGPUBackend> for WebGPUDevice {
-    unsafe fn create_buffer(
+    fn create_buffer(
         &self,
         info: &gpu::BufferInfo,
         memory_type_index: u32,
@@ -99,7 +102,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
             .map_err(|_e| gpu::OutOfMemoryError {})
     }
 
-    unsafe fn create_texture(
+    fn create_texture(
         &self,
         info: &gpu::TextureInfo,
         _memory_type_index: u32,
@@ -108,11 +111,11 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         WebGPUTexture::new(&self.device, info, name).map_err(|_e| gpu::OutOfMemoryError {})
     }
 
-    unsafe fn create_shader(&self, shader: &gpu::PackedShader, name: Option<&str>) -> WebGPUShader {
+    fn create_shader(&self, shader: &gpu::PackedShader, name: Option<&str>) -> WebGPUShader {
         WebGPUShader::new(&self.device, shader, name)
     }
 
-    unsafe fn create_texture_view(
+    fn create_texture_view(
         &self,
         texture: &WebGPUTexture,
         info: &gpu::TextureViewInfo,
@@ -121,7 +124,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         WebGPUTextureView::new(&self.device, texture, info, name).unwrap()
     }
 
-    unsafe fn create_compute_pipeline(
+    fn create_compute_pipeline(
         &self,
         shader: PipelineShaderStage<WebGPUBackend>,
         name: Option<&str>,
@@ -129,11 +132,11 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         WebGPUComputePipeline::new(&self.device, shader, &self.shared, name, &self.limits).unwrap()
     }
 
-    unsafe fn create_sampler(&self, info: &gpu::SamplerInfo) -> WebGPUSampler {
+    fn create_sampler(&self, info: &gpu::SamplerInfo) -> WebGPUSampler {
         WebGPUSampler::new(&self.device, info, None).unwrap()
     }
 
-    unsafe fn create_graphics_pipeline(
+    fn create_graphics_pipeline(
         &self,
         info: &gpu::GraphicsPipelineInfo<WebGPUBackend>,
         name: Option<&str>,
@@ -143,11 +146,11 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
 
     unsafe fn wait_for_idle(&self) {}
 
-    unsafe fn create_fence(&self, _is_cpu_accessible: bool) -> WebGPUFence {
+    fn create_fence(&self, _is_cpu_accessible: bool) -> WebGPUFence {
         WebGPUFence::new(&self.device)
     }
 
-    unsafe fn memory_infos(&self) -> Vec<gpu::MemoryInfo> {
+    fn memory_infos(&self) -> Box<[MemoryInfo]> {
         /*
            TODO: Implement rudimentary memory tracking by having a fixed number and change it in WebGPUTexture, WebGPUBuffer and WebGPUHeap.
            Increase it in the constructor and decrease it in the destructor.
@@ -156,14 +159,14 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
             available: (u32::MAX as u64) / 3u64,
             total: (u32::MAX as u64) / 3u64,
             memory_kind: gpu::MemoryKind::VRAM,
-        }]
+        }].into_boxed_slice()
     }
 
-    unsafe fn memory_type_infos(&self) -> &[gpu::MemoryTypeInfo] {
+    fn memory_type_infos(&self) -> &[gpu::MemoryTypeInfo] {
         &self.memory_infos
     }
 
-    unsafe fn create_heap(
+    fn create_heap(
         &self,
         memory_type_index: u32,
         size: u64,
@@ -177,7 +180,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         ))
     }
 
-    unsafe fn get_buffer_heap_info(&self, info: &gpu::BufferInfo) -> gpu::ResourceHeapInfo {
+    fn get_buffer_heap_info(&self, info: &gpu::BufferInfo) -> gpu::ResourceHeapInfo {
         let mut alignment = 4;
         if info.usage.contains(gpu::BufferUsage::CONSTANT) {
             alignment = alignment.max(self.limits.min_uniform_buffer_offset_alignment);
@@ -193,7 +196,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         }
     }
 
-    unsafe fn get_texture_heap_info(&self, info: &gpu::TextureInfo) -> gpu::ResourceHeapInfo {
+    fn get_texture_heap_info(&self, info: &gpu::TextureInfo) -> gpu::ResourceHeapInfo {
         gpu::ResourceHeapInfo {
             dedicated_allocation_preference: gpu::DedicatedAllocationPreference::PreferDedicated,
             memory_type_mask: 1,
@@ -255,14 +258,14 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         false
     }
 
-    unsafe fn get_bottom_level_acceleration_structure_size(
+    fn get_bottom_level_acceleration_structure_size(
         &self,
         _info: &gpu::BottomLevelAccelerationStructureInfo<WebGPUBackend>,
     ) -> gpu::AccelerationStructureSizes {
         panic!("WebGPU does not support ray tracing")
     }
 
-    unsafe fn get_top_level_acceleration_structure_size(
+    fn get_top_level_acceleration_structure_size(
         &self,
         _info: &gpu::TopLevelAccelerationStructureInfo<WebGPUBackend>,
     ) -> gpu::AccelerationStructureSizes {
@@ -276,7 +279,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         panic!("WebGPU does not support ray tracing")
     }
 
-    unsafe fn get_raytracing_pipeline_sbt_buffer_size(
+    fn get_raytracing_pipeline_sbt_buffer_size(
         &self,
         _info: &gpu::RayTracingPipelineInfo<WebGPUBackend>,
     ) -> u64 {
@@ -293,7 +296,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         panic!("WebGPU does not support ray tracing")
     }
 
-    unsafe fn create_mesh_graphics_pipeline(
+    fn create_mesh_graphics_pipeline(
         &self,
         _info: &gpu::MeshGraphicsPipelineInfo<WebGPUBackend>,
         _name: Option<&str>,
@@ -367,11 +370,11 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
             .unwrap();
     }
 
-    unsafe fn create_query_pool(&self, count: u32) -> WebGPUQueryPool {
+    fn create_query_pool(&self, count: u32) -> WebGPUQueryPool {
         WebGPUQueryPool::new(&self.device, count)
     }
 
-    unsafe fn create_split_barrier(&self) -> () {
+    fn create_split_barrier(&self) -> () {
         ()
     }
 }

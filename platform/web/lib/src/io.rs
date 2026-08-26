@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io::{Error as IOError, ErrorKind, Result as IOResult};
+use std::marker::PhantomData;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::LazyLock;
@@ -8,14 +9,13 @@ use std::task::{Context, Poll};
 use async_task::{Runnable, Task};
 use futures_lite::{AsyncRead, AsyncSeek, FutureExt};
 use sourcerenderer_core::platform::{FileWatcher, PlatformIO};
-use wasm_bindgen_futures::spawn_local;
 
 pub struct WebFetchFile {
     length: u64,
     current_position: u64,
     path: Box<Path>,
     data: Option<Box<[u8]>>,
-    task: Option<Task<IOResult<Box<[u8]>>>>,
+    _p: PhantomData<*const std::ffi::c_void>,
 }
 
 const MAX_NON_RANGED_FETCH: usize = 2_000_000;
@@ -41,7 +41,7 @@ impl WebFetchFile {
             length: length as u64,
             current_position: 0,
             data,
-            task: None,
+            _p: PhantomData,
         })
     }
 
@@ -184,41 +184,18 @@ impl AsyncRead for WebFetchFile {
             return Poll::Ready(Ok(len));
         }
 
-        if let Some(task) = self.task.as_mut() {
-            let data = std::task::ready!(task.poll(cx))?;
-            let len = ((self.length - self.current_position) as usize).min(buf.len());
-            buf[..len].copy_from_slice(&data[..len]);
-            self.current_position += len as u64;
-            self.task = None;
-            return Poll::Ready(Ok(len));
-        }
-
         let position = self.current_position;
         let length = (self.length - position).min(buf.len() as u64);
         let uri = self.path.as_ref().to_string_lossy().to_string();
 
-        let (runnable, task) = async_task::spawn_local(
-            async move { Self::fetch_range(&uri, position, length).await },
-            |runnable: Runnable| {
-                spawn_local(async {
-                    runnable.run();
-                })
-            },
-        );
+        let mut task =
+            web_task::spawn_local(async move { Self::fetch_range(&uri, position, length).await });
 
-        runnable.schedule();
-        self.task = Some(task);
-
-        if let Some(task) = self.task.as_mut() {
-            let data = std::task::ready!(task.poll(cx))?;
-            let len = ((self.length - self.current_position) as usize).min(buf.len());
-            buf[..len].copy_from_slice(&data[..len]);
-            self.current_position += len as u64;
-            self.task = None;
-            return Poll::Ready(Ok(len));
-        } else {
-            unreachable!();
-        }
+        let data = std::task::ready!(task.poll(cx))?;
+        let len = ((self.length - position) as usize).min(buf.len());
+        buf[..len].copy_from_slice(&data[..len]);
+        self.current_position += len as u64;
+        return Poll::Ready(Ok(len));
     }
 }
 
@@ -228,13 +205,6 @@ impl AsyncSeek for WebFetchFile {
         cx: &mut Context<'_>,
         pos: std::io::SeekFrom,
     ) -> Poll<IOResult<u64>> {
-        if let Some(task) = self.task.as_mut() {
-            let data = std::task::ready!(task.poll(cx))?;
-            let len = data.len() as u64;
-            self.current_position = (self.current_position + len).min(self.length);
-            self.task = None;
-        }
-
         let new_pos: u64 = match pos {
             std::io::SeekFrom::Start(offset) => offset.min(self.length),
             std::io::SeekFrom::End(offset) => {

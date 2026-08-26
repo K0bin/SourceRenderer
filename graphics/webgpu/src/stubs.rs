@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use sourcerenderer_core::gpu;
 use web_sys::GpuDevice;
 
@@ -12,6 +13,7 @@ pub struct WebGPUHeap {
     memory_type_index: u32,
     mappable: bool,
     _size: u64,
+    _p: PhantomData<*const std::ffi::c_void>
 }
 
 impl WebGPUHeap {
@@ -26,6 +28,7 @@ impl WebGPUHeap {
             memory_type_index,
             mappable,
             _size: size,
+            _p: PhantomData
         }
     }
 }

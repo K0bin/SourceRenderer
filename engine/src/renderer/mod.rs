@@ -25,5 +25,5 @@ pub use self::ecs::{
 };
 pub use self::light::PointLight;
 pub use self::renderer::Renderer;
-pub use self::renderer_plugin::RendererPlugin;
+pub use self::renderer_plugin::*;
 pub use self::vertex::Vertex;

@@ -19,7 +19,7 @@ use sourcerenderer_core::platform::{GraphicsPlatform, PlatformIO, Window};
 
 use crate::asset::{AssetManager, AssetManagerECSResource, AssetManagerPlugin};
 use crate::graphics::*;
-use crate::renderer::RendererPlugin;
+use crate::renderer;
 use crate::transform::InterpolationPlugin;
 
 #[derive(Resource)]
@@ -64,7 +64,6 @@ impl Engine {
         let mut app = App::new();
         app.init_resource::<Messages<MouseMotion>>();
         app.init_resource::<Messages<KeyboardInput>>();
-        initialize_graphics::<G>(&mut app, window);
 
         app.add_plugins(PanicHandlerPlugin::default());
 
@@ -82,9 +81,12 @@ impl Engine {
             .add_plugins(InterpolationPlugin::default())
             .add_plugins(InputPlugin::default())
             .add_plugins(AssetManagerPlugin::<IO>::default())
-            .insert_resource(console_resource)
-            .add_plugins(RendererPlugin::<G>::new())
-            .add_plugins(game_plugins);
+            .insert_resource(console_resource);
+
+        renderer::insert_resources::<G>(&mut app, window);
+        renderer::install_systems(&mut app);
+
+        app.add_plugins(game_plugins);
 
         if app.plugins_state() == PluginsState::Ready {
             app.finish();
@@ -171,7 +173,7 @@ impl Engine {
         &mut self,
         window_state: WindowState,
     ) {
-        RendererPlugin::<P>::window_changed(&self.app, window_state);
+        renderer::window_changed(&self.app, window_state);
     }
 
     pub fn debug_world(&self) {

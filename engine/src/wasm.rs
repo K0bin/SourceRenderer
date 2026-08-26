@@ -1,18 +1,10 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{
-    Arc,
-    Condvar,
-    Mutex,
-};
+use std::sync::{Arc, Condvar, Mutex};
 
 use js_sys::WebAssembly;
 use wasm_bindgen::closure::Closure;
-use wasm_bindgen::prelude::{
-    wasm_bindgen,
-    JsCast as _,
-    JsValue,
-};
+use wasm_bindgen::prelude::{JsCast as _, JsValue, wasm_bindgen};
 
 // Wasm thread
 pub mod thread {
@@ -96,14 +88,16 @@ pub mod thread {
 
         let boxed: Box<dyn FnOnce(JsValue) -> Pin<Box<dyn Future<Output = ()>>> + Send + 'static> =
             Box::new(wrapper_callback);
-        let boxed_ptr = Box::into_raw(boxed);
-        let boxed_ptr_workaround: u64 = unsafe { std::mem::transmute(boxed_ptr) };
-        // wasm_bindgen doesn't support FnOnce so we have to resort to hacks.
+        let double_boxed = Box::new(boxed);
+        // Double Pointer to turn a fat pointer (Box<dyn Fn>) into a regular pointer.
+        let double_boxed_ptr = Box::into_raw(double_boxed);
+        let ptr_number: usize = unsafe { std::mem::transmute(double_boxed_ptr) };
+        // wasm_bindgen doesn't support Boxed FnOnce with Future so we have to resort to hacks.
 
         start_thread_worker(
             wasm_bindgen::module().dyn_into().unwrap(),
             wasm_bindgen::memory().dyn_into().unwrap(),
-            boxed_ptr_workaround,
+            ptr_number,
             data,
             name.unwrap_or("Thread"),
         );
@@ -131,24 +125,17 @@ extern "C" {
     fn start_thread_worker(
         module: WebAssembly::Module,
         memory: WebAssembly::Memory,
-        callback_ptr: u64, // dyn => fat pointer => Pointer size of wasm32 is 32 => u64
+        callback_ptr: usize, // Wasm32 -> u32 Pointer.
         data: JsValue,
         name: &str,
     );
 }
 
-#[wasm_bindgen(raw_module = "../../www/src/worker/thread_worker.ts")]
-extern "C" {
-    #[wasm_bindgen(js_name = "destroyThread")]
-    fn destroy_thread();
-}
-
 #[wasm_bindgen(js_name = "threadFunc")]
-pub async fn thread_func(callback_ptr: u64, data: JsValue) {
-    let callback_ptr: *mut (dyn FnOnce(JsValue) -> Pin<Box<dyn Future<Output = ()>>>
-         + Send
-         + 'static) = unsafe { std::mem::transmute(callback_ptr) };
+pub async fn thread_func(callback_ptr: usize, data: JsValue) {
+    let callback_ptr: *mut Box<
+        dyn FnOnce(JsValue) -> Pin<Box<dyn Future<Output = ()>>> + Send + 'static,
+    > = std::ptr::without_provenance_mut(callback_ptr);
     let callback = unsafe { Box::from_raw(callback_ptr) };
     callback(data).await;
-    destroy_thread();
 }

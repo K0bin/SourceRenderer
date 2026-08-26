@@ -75,7 +75,7 @@ getrandom = { version = "0.4", features = ["wasm_js"] }
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 web-sys = { version = "0.3", features = ["OffscreenCanvas", "Navigator", "DedicatedWorkerGlobalScope", "WorkerNavigator"] }
 js-sys = "0.3"
-wasm-bindgen-futures = "0.4.50"
+wasm-bindgen-futures = "0.4"
 
 [features]
 default = ["threading"]
@@ -83,5 +83,6 @@ default = ["threading"]
 ecs_threading = ["bevy_tasks/multi_threaded"]
 render_thread = []
 threading = ["ecs_threading", "render_thread"]
-web = []
 profile = ["profiling/profile-with-optick"]
+non_send_gpu = ["sourcerenderer_core/non_send_gpu"]
+non_send_io = ["sourcerenderer_core/non_send_io"]

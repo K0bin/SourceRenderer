@@ -1,8 +1,8 @@
+use std::marker::PhantomData;
 use bitflags::bitflags;
 
 use sourcerenderer_core::gpu;
 use web_sys::{GpuAdapter, GpuDevice};
-
 use crate::{WebGPUBackend, WebGPUDevice, WebGPUSurface};
 
 pub struct WebGPUAdapter {
@@ -12,6 +12,7 @@ pub struct WebGPUAdapter {
     features: WebGPUFeatures,
     limits: WebGPULimits,
     adapter_type: gpu::AdapterType,
+    _p: PhantomData<*const std::ffi::c_void>,
 }
 
 impl WebGPUAdapter {
@@ -127,6 +128,7 @@ impl WebGPUAdapter {
             features,
             limits,
             adapter_type,
+            _p: PhantomData
         }
     }
 }

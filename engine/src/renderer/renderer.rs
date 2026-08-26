@@ -2,13 +2,13 @@ use std::sync::Arc;
 
 use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;
-use crossbeam_channel::{unbounded, Receiver, SendError, Sender, TryRecvError};
-use sourcerenderer_core::console::Console;
+use crossbeam_channel::{Receiver, SendError, Sender, TryRecvError, unbounded};
 use sourcerenderer_core::Vec3;
+use sourcerenderer_core::console::Console;
 use web_time::{Duration, Instant};
 
 use super::asset::RendererAssets;
-use super::drawable::{make_camera_proj, make_camera_view, RendererStaticDrawable};
+use super::drawable::{RendererStaticDrawable, make_camera_proj, make_camera_view};
 use super::ecs::{DirectionalLightComponent, PointLightComponent};
 use super::light::DirectionalLight;
 #[cfg(not(target_arch = "wasm32"))]
