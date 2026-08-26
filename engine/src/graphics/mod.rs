@@ -5,6 +5,7 @@ pub use command::{PipelineBinding, *};
 pub use context::*;
 use destroyer::*;
 pub use device::*;
+pub use graphics_plugin::*;
 pub use instance::*;
 pub use memory::*;
 pub use pipeline::*;
@@ -27,6 +28,7 @@ mod command;
 mod context;
 mod destroyer;
 mod device;
+mod graphics_plugin;
 mod instance;
 mod memory;
 mod pipeline;
@@ -119,14 +121,14 @@ pub use self::gpu::{
 };
 #[allow(unused)]
 pub(crate) use self::gpu::{
-    AttachmentBlendInfo, BINDLESS_TEXTURE_COUNT, BarrierAccess, BarrierSync, BarrierTextureRange,
-    BindingInfo, BindingType, BlendFactor, BlendInfo, BlendOp, BufferCopyRegion,
-    BufferTextureCopyRegion, ClearColor, ClearDepthStencilValue, ColorComponents, CompareFunc,
-    CullMode, DedicatedAllocationPreference, DepthStencilInfo, Device as CoreDevice, FillMode,
-    FrontFace, GPUBackend, IndexFormat, InputAssemblerElement, InputRate, LoadOpColor,
-    LoadOpDepthStencil, LogicOp, MemoryTextureCopyRegion, OutOfMemoryError, PackedShader,
-    PrimitiveType, QueueOwnershipTransfer, QueueSharingMode, QueueType, RasterizerInfo,
-    RenderpassRecordingMode, ResolveMode, Scissor, ShaderInputElement, ShaderType, StencilInfo,
-    Swapchain as CoreSwapchain, SwapchainError, TextureLayout, TextureSubresource,
-    VertexLayoutInfo, Viewport, WHOLE_BUFFER,
+    AttachmentBlendInfo, BarrierAccess, BarrierSync, BarrierTextureRange, BindingInfo, BindingType,
+    BlendFactor, BlendInfo, BlendOp, BufferCopyRegion, BufferTextureCopyRegion, ClearColor,
+    ClearDepthStencilValue, ColorComponents, CompareFunc, CullMode, DedicatedAllocationPreference,
+    DepthStencilInfo, Device as CoreDevice, FillMode, FrontFace, GPUBackend, IndexFormat,
+    InputAssemblerElement, InputRate, LoadOpColor, LoadOpDepthStencil, LogicOp,
+    MemoryTextureCopyRegion, OutOfMemoryError, PackedShader, PrimitiveType, QueueOwnershipTransfer,
+    QueueSharingMode, QueueType, RasterizerInfo, RenderpassRecordingMode, ResolveMode, Scissor,
+    ShaderInputElement, ShaderType, StencilInfo, Swapchain as CoreSwapchain, SwapchainError,
+    TextureLayout, TextureSubresource, VertexLayoutInfo, Viewport, BINDLESS_TEXTURE_COUNT,
+    WHOLE_BUFFER,
 };

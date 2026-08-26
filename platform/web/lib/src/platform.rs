@@ -1,6 +1,8 @@
 use sourcerenderer_core::platform::GraphicsPlatform;
-use sourcerenderer_webgpu::{WebGPUBackend, WebGPUInstance};
-use web_sys::HtmlCanvasElement;
+use sourcerenderer_webgpu::{
+    WebGPUBackend, WebGPUInstance,
+};
+use web_sys::OffscreenCanvas;
 
 use crate::window::WebWindow;
 
@@ -9,7 +11,7 @@ pub struct WebPlatform {
 }
 
 impl WebPlatform {
-    pub(crate) async fn new_on_worker(canvas: HtmlCanvasElement) -> Self {
+    pub(crate) async fn new_on_worker(canvas: OffscreenCanvas) -> Self {
         let window = WebWindow::new(canvas);
         Self { window }
     }
@@ -26,6 +28,6 @@ impl GraphicsPlatform<WebGPUBackend> for WebPlatform {
         <WebGPUBackend as sourcerenderer_core::gpu::GPUBackend>::Instance,
         Box<dyn std::error::Error>,
     > {
-        Ok(WebGPUInstance::new_dummy())
+        Ok(WebGPUInstance::new(debug_layers))
     }
 }

@@ -1,4 +1,4 @@
-import {default as initWasm, threadFunc, InitOutput} from "../../../lib/pkg/sourcerenderer_web";
+import {default as initWasm, threadFunc, InitOutput, startEngine} from "../../../lib/pkg/sourcerenderer_web";
 
 import {
     destroyThread,
@@ -8,7 +8,6 @@ import {
 } from "../engine_worker_communication.ts";
 
 onmessage = async (event: MessageEvent) => {
-    console.warn("Message");
     let msg = event.data as EngineWorkerMessage;
     switch (msg.messageType) {
         case EngineWorkerMessageType.InitThread: {
@@ -16,16 +15,41 @@ onmessage = async (event: MessageEvent) => {
         }
             break;
 
+        case EngineWorkerMessageType.InitMainThread: {
+            await initMain(msg.data as OffscreenCanvas);
+        }
+            break;
+
         default:
-            throw new Error("Unexpected message type on main thread: " + msg.messageType);
+            throw new Error("Unexpected message type on thread: " + msg.messageType);
     }
 };
 console.log("Thread initialized");
 
+let memory: WebAssembly.Memory | null = null;
 let thread: InitOutput | null = null;
+let engine: Engine | null = null;
+
+async function initMain(canvas: OffscreenCanvas) {
+    // Values are in WASM pages (64KiB)
+    memory = new WebAssembly.Memory({
+        initial: 80,
+        maximum: 16384,
+        shared: true
+    });
+    thread
+        = await initWasm({module_or_path: undefined, memory: memory});
+
+    if (engine !== null) {
+        throw new Error("Engine already initialized.");
+    }
+    engine = await startEngine(canvas);
+    requestAnimationFrame((_time) => {
+        frame();
+    });
+}
 
 async function run(data: ThreadWorkerInit) {
-    console.warn("Initializing!!!");
     console.log("Thread starting with payload:");
     console.log(data);
 
@@ -40,8 +64,18 @@ async function run(data: ThreadWorkerInit) {
 
 onerror = (e) => {
     console.error(e);
+    engine?.free();
     if (thread !== null) {
         destroyThread(thread);
         thread = null;
     }
+    engine = null;
 };
+
+function frame() {
+    engine?.frame();
+
+    requestAnimationFrame((_time) => {
+        frame();
+    });
+}

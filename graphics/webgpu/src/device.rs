@@ -1,20 +1,18 @@
-use crate::{
-    WebGPUBackend, WebGPUBuffer, WebGPUComputePipeline, WebGPUFeatures, WebGPUFence,
-    WebGPUGraphicsPipeline, WebGPUHeap, WebGPUInstance, WebGPULimits, WebGPUQueryPool, WebGPUQueue,
-    WebGPUSampler, WebGPUShader, WebGPUShared, WebGPUTexture, WebGPUTextureView,
-};
+use std::marker::PhantomData;
 use js_sys::{
+    wasm_bindgen::{prelude::Closure, JsCast},
     Array,
-    wasm_bindgen::{JsCast, prelude::Closure},
 };
-use sourcerenderer_core::gpu::PipelineShaderStage;
 use sourcerenderer_core::{
     align_up_32,
     gpu::{self, Texture as _},
 };
-use std::marker::PhantomData;
-use web_sys::{
-    Gpu, GpuDevice, GpuExtent3dDict, GpuTexelCopyBufferLayout, GpuTexelCopyTextureInfo, Navigator,
+use web_sys::{GpuDevice, GpuExtent3dDict, GpuTexelCopyBufferLayout, GpuTexelCopyTextureInfo};
+use sourcerenderer_core::gpu::PipelineShaderStage;
+use crate::{
+    WebGPUBackend, WebGPUBuffer, WebGPUComputePipeline, WebGPUFeatures, WebGPUFence,
+    WebGPUGraphicsPipeline, WebGPUHeap, WebGPULimits, WebGPUQueryPool, WebGPUQueue, WebGPUSampler,
+    WebGPUShader, WebGPUShared, WebGPUTexture, WebGPUTextureView,
 };
 
 pub struct WebGPUDevice {
@@ -342,11 +340,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         src_info.set_rows_per_image((slice_pitch / row_pitch) as u32);
         let dst_info = GpuTexelCopyTextureInfo::new(dst.handle());
         dst_info.set_mip_level(region.texture_subresource.mip_level);
-        let mut origin = [
-            js_sys::Number::from(0),
-            js_sys::Number::from(0),
-            js_sys::Number::from(0),
-        ];
+        let mut origin = [js_sys::Number::from(0), js_sys::Number::from(0), js_sys::Number::from(0)];
         origin[0] = js_sys::Number::from(region.texture_offset.x as f64);
         origin[1] = js_sys::Number::from(region.texture_offset.y as f64);
         let copy_size = GpuExtent3dDict::new(region.texture_extent.x);

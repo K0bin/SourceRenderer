@@ -186,7 +186,6 @@ impl Renderer {
             // Skip this frame.
             let mut counter_guard = self.receiver.state.queued_frames_counter.lock().unwrap();
             *counter_guard -= 1;
-            log::warn!("Not ready :(");
             return EngineLoopFuncResult::KeepRunning;
         } else if !self.was_ready {
             self.was_ready = true;

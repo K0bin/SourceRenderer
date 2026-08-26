@@ -65,6 +65,26 @@ export function startThreadWorker(
         transferables.push(data);
     }
 
+    if (name == "RenderThread" && isBlink()) {
+        // https://issues.chromium.org/issues/41483010
+        console.warn("Working around annoying Chrome bug.");
+
+        msg.messageType = EngineWorkerMessageType.StartRenderThread;
+        const scope = self as DedicatedWorkerGlobalScope;
+        scope.postMessage(msg, transferables);
+        return;
+    }
+
     const worker = new ThreadWorker({name});
     worker.postMessage(msg, transferables);
+}
+
+function isBlink() {
+    const ua = self.navigator.userAgent;
+    const isChrome = /Chrome/.test(ua);
+    const isEdge = /Edg/.test(ua);
+    const isOpera = /OPR/.test(ua);
+    const isVivaldi = /Vivaldi/.test(ua);
+
+    return isChrome || isEdge || isOpera || isVivaldi;
 }

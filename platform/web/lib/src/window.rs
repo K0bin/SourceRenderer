@@ -1,15 +1,15 @@
 use sourcerenderer_core::platform::Window;
 use sourcerenderer_webgpu::{WebGPUBackend, WebGPUInstance, WebGPUSurface};
 use std::marker::PhantomData;
-use web_sys::{HtmlCanvasElement, OffscreenCanvas};
+use web_sys::OffscreenCanvas;
 
 pub struct WebWindow {
-    canvas: HtmlCanvasElement,
+    canvas: OffscreenCanvas,
     _p: PhantomData<*const std::ffi::c_void>,
 }
 
 impl WebWindow {
-    pub(crate) fn new(canvas: HtmlCanvasElement) -> Self {
+    pub(crate) fn new(canvas: OffscreenCanvas) -> Self {
         Self {
             canvas,
             _p: PhantomData,
@@ -19,7 +19,7 @@ impl WebWindow {
 
 impl Window<WebGPUBackend> for WebWindow {
     fn create_surface(&self, _graphics_instance: &WebGPUInstance) -> WebGPUSurface {
-        WebGPUSurface::new_offscreen(self.canvas.transfer_control_to_offscreen().unwrap()).unwrap()
+        WebGPUSurface::new(self.canvas.clone()).unwrap()
     }
 
     fn width(&self) -> u32 {

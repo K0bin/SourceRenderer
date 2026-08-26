@@ -1,18 +1,29 @@
 use crate::{WebGPUBackend, adapter::WebGPUAdapter};
 use js_sys::wasm_bindgen::JsCast;
-use js_sys::{JsNullable, JsString};
+use js_sys::{global, JsNullable, JsString};
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu;
+use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::{
     error::Error,
     fmt::{Debug, Display},
 };
 use wasm_bindgen_futures::*;
-use web_sys::{
-    DedicatedWorkerGlobalScope, Gpu, GpuAdapter, GpuDevice, GpuDeviceDescriptor,
-    GpuPowerPreference, GpuRequestAdapterOptions, window,
-};
+use web_sys::{DedicatedWorkerGlobalScope, Gpu, GpuAdapter, GpuDevice, GpuDeviceDescriptor, GpuPowerPreference, GpuRequestAdapterOptions, window};
+
+thread_local! {
+    static GPU_INIT: RefCell<Option<WebGPUInstanceAsyncInitResult>> = RefCell::new(None);
+}
+
+struct WebGPUInstanceAsyncInitResult {
+    instance: Gpu,
+    discrete_adapter: GpuAdapter,
+    discrete_device: GpuDevice,
+    integrated_adapter: GpuAdapter,
+    integrated_device: GpuDevice,
+    _p: PhantomData<*const std::ffi::c_void>,
+}
 
 #[derive(Clone)]
 pub struct WebGPUInstanceInitError {
@@ -31,6 +42,9 @@ impl WebGPUInstanceInitError {
     }
     pub fn unfinished() -> Self {
         Self::new("The asynchronous WebGPU initialization has not yet finished.")
+    }
+    pub fn cleared() -> Self {
+        Self::new("The WebGPU cache has been cleared.")
     }
 }
 
@@ -55,7 +69,7 @@ pub struct WebGPUInstance {
 }
 
 impl WebGPUInstance {
-    pub async fn new(debug: bool) -> Result<Self, WebGPUInstanceInitError> {
+    pub async fn async_init() -> Result<(), WebGPUInstanceInitError> {
         let gpu = Self::get_webgpu();
         if !gpu.is_object() || gpu.is_null() || gpu.is_undefined() {
             return Err(WebGPUInstanceInitError::new(
@@ -145,27 +159,48 @@ impl WebGPUInstance {
                 "Failed to retrieve WebGPU device",
             ));
         }
-        Ok(Self {
+
+        GPU_INIT.replace(Some(WebGPUInstanceAsyncInitResult {
             instance: gpu,
-            adapters: Some([
-                WebGPUAdapter::new(
-                    discrete_adapter.clone(),
-                    discrete_device.clone(),
-                    gpu::AdapterType::Discrete,
-                    debug,
-                ),
-                WebGPUAdapter::new(
-                    integrated_adapter.clone(),
-                    integrated_device.clone(),
-                    gpu::AdapterType::Integrated,
-                    debug,
-                ),
-            ]),
+            discrete_adapter,
+            discrete_device,
+            integrated_adapter,
+            integrated_device,
             _p: PhantomData,
-        })
+        }));
+
+        Ok(())
     }
 
-    pub fn new_dummy() -> Self {
+    pub fn clear_thread_cache() {
+        GPU_INIT.replace(None);
+    }
+
+    pub fn new(debug: bool) -> Self {
+        GPU_INIT.with_borrow(|init_ref_cell| {
+            init_ref_cell.as_ref().map_or_else(|| Self::new_dummy(), |init|
+            Self {
+                instance: init.instance.clone(),
+                adapters: Some([
+                    WebGPUAdapter::new(
+                        init.discrete_adapter.clone(),
+                        init.discrete_device.clone(),
+                        gpu::AdapterType::Discrete,
+                        debug,
+                    ),
+                    WebGPUAdapter::new(
+                        init.integrated_adapter.clone(),
+                        init.integrated_device.clone(),
+                        gpu::AdapterType::Integrated,
+                        debug,
+                    ),
+                ]),
+                _p: PhantomData,
+            }
+        )})
+    }
+
+    fn new_dummy() -> Self {
         Self {
             instance: Self::get_webgpu(),
             adapters: None,
@@ -174,13 +209,13 @@ impl WebGPUInstance {
     }
 
     pub(crate) fn get_webgpu() -> Gpu {
-        window().map_or_else(
-            || {
-                let global = js_sys::global();
-                let worker_scope: DedicatedWorkerGlobalScope = global.dyn_into().unwrap();
-                worker_scope.navigator().gpu()
+        global().dyn_into::<DedicatedWorkerGlobalScope>().map_or_else(
+            |_e| {
+                window().unwrap().navigator().gpu()
             },
-            |window| window.navigator().gpu(),
+            |scope| {
+                scope.navigator().gpu()
+            },
         )
     }
 
@@ -192,8 +227,6 @@ impl WebGPUInstance {
 
 impl gpu::Instance<WebGPUBackend> for WebGPUInstance {
     fn list_adapters(&self) -> &[WebGPUAdapter] {
-        self.adapters
-            .as_ref()
-            .expect("Can't create adapters from a dummy instance.")
+        self.adapters.as_ref().map(|a| &a[..]).unwrap_or(&[])
     }
 }

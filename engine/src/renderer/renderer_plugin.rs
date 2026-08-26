@@ -19,7 +19,7 @@ use bevy_platform::cell::SyncCell;
 use bevy_transform::components::GlobalTransform;
 use sourcerenderer_core::Vec2UI;
 use sourcerenderer_core::console::Console;
-use sourcerenderer_core::gpu::{GPUBackend, Surface as _};
+use sourcerenderer_core::gpu::Surface as _;
 use sourcerenderer_core::platform::{GraphicsPlatform, Window};
 #[cfg(feature = "render_thread")]
 use web_time::Duration;
@@ -29,7 +29,8 @@ use super::{DirectionalLightComponent, PointLightComponent, Renderer, StaticRend
 use crate::asset::{AssetManager, AssetManagerECSResource};
 use crate::engine::{ConsoleResource, TICK_RATE, WindowState};
 use crate::graphics::{
-    APIInstance, ActiveBackend, Adapter, AdapterType, Instance, Surface, Swapchain,
+    APIInstance, ActiveBackend, Adapter, AdapterType, GPUInstanceResource, GPUSurfaceResource,
+    Instance, Surface, Swapchain,
 };
 use crate::transform::InterpolatedTransform;
 #[cfg(all(feature = "render_thread", target_arch = "wasm32"))]
@@ -482,18 +483,18 @@ mod wasm {
         let c_asset_manager = asset_manager.clone();
         let c_console = console.clone();
 
+        let dummy_instance = P::create_instance(false).unwrap();
+        let surface = window.create_surface(&dummy_instance);
         let width = window.width();
         let height = window.height();
 
-        let dummy_instance = P::create_instance(false).unwrap();
-        let surface = window.create_surface(&dummy_instance);
-
         crate::wasm::thread::spawn_with_js_val(
             async move |data| {
+                WebGPUInstance::async_init().await.unwrap();
                 let scope: DedicatedWorkerGlobalScope = js_sys::global().dyn_into().unwrap();
                 let canvas: OffscreenCanvas = data.dyn_into().unwrap();
-                let instance = WebGPUInstance::new(false).await.unwrap();
-                let surface = WebGPUSurface::new_offscreen(canvas).unwrap();
+                let instance = WebGPUInstance::new(false);
+                let surface = WebGPUSurface::new(canvas).unwrap();
 
                 let counter = Arc::new(AsyncCounter::new(0));
                 counter.increment();
@@ -545,7 +546,7 @@ mod wasm {
                     let _ = scope.cancel_animation_frame(final_id);
                 }
             },
-            surface.transfer_canvas().into(),
+            surface.take_canvas().into(),
             Some("RenderThread"),
         )
     }
