@@ -125,7 +125,7 @@ extern "C" {
     fn start_thread_worker(
         module: WebAssembly::Module,
         memory: WebAssembly::Memory,
-        callback_ptr: usize, // Wasm32 -> u32 Pointer. And it avoids a BigInt in JS
+        callback_ptr: usize, // Wasm32 -> u32 Pointer.
         data: JsValue,
         name: &str,
     );
