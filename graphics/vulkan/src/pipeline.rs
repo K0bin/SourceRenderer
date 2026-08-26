@@ -9,7 +9,7 @@ use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{
     self, Buffer as _, PipelineShaderStage, Shader as _, SpecConstValue,
 };
-use sourcerenderer_core::{align_up_32, align_up_64};
+use sourcerenderer_core::{align_up, align_up_32, align_up_64};
 
 use super::*;
 
@@ -430,10 +430,10 @@ fn remap_push_constant_ranges(context: &mut DescriptorSetLayoutSetupContext) {
         if let Some(range) = &context.push_constants_ranges[i] {
             remapped_push_constant_ranges[i] = Some(VkConstantRange {
                 offset,
-                size: range.size - offset,
+                size: align_up_32(range.size - offset, 16), // Pad to 16 bytes for std430
                 shader_stage: range.shader_stage,
             });
-            offset += (((range.size - offset) + 15) / 16) * 16; // Pad to 16 bytes for std430
+            offset += align_up_32(range.size - offset, 16); // Pad to 16 bytes for std430
         }
     }
     context.push_constants_ranges = remapped_push_constant_ranges;

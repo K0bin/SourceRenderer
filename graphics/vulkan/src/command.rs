@@ -1366,13 +1366,31 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             .push_constant_range(visible_for_shader_type)
             .expect("No push constants set up for shader");
         let data_u8: &[u8] = cast_slice(data);
+        let len = data_u8.len().min(range.size as usize);
+        if cfg!(debug_assertions) {
+            /*if data_u8.len() != range.size as usize {
+                log::warn!(
+                    "Mismatching sizes in set_push_constant_data with type: {:?}. Type size: {:?}, push constant range size: {:?}",
+                    std::any::type_name::<T>(),
+                    data_u8.len(),
+                    range.size
+                );
+            }*/
+            if len % 4 != 0 {
+                log::error!(
+                    "Push constant size is not aligned to 4: {:?}. Size: {:?}",
+                    std::any::type_name::<T>(),
+                    len
+                );
+            }
+        }
         unsafe {
             self.device.cmd_push_constants(
                 self.cmd_buffer,
                 pipeline_layout.handle(),
                 shader_type_to_vk(visible_for_shader_type),
                 range.offset,
-                data_u8,
+                &data_u8[..len],
             );
         }
     }
