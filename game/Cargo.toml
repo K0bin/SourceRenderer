@@ -16,3 +16,4 @@ bevy_tasks = "0.19"
 bevy_utils = "0.19"
 bevy_time = "0.19"
 bevy_input = "0.19"
+bytemuck = { version = "1.25", features = ["extern_crate_std"] }

@@ -6,7 +6,7 @@ mod fixed_byte_size_cache;
 mod loaded_level;
 pub mod loaders;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug, Zeroable, Pod)]
 #[repr(C)]
 pub struct Vertex {
     pub position: Vec3,
@@ -16,14 +16,11 @@ pub struct Vertex {
 }
 
 pub use asset_manager::{
-    AssetContainer,
-    AssetLoadPriority,
-    AssetLoader,
-    AssetLoaderProgress,
-    AssetManager,
+    AssetContainer, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager,
     LoadedAssetData,
 };
 use bevy_math::Vec2;
+use bytemuck::{Pod, Zeroable};
 pub use fixed_byte_size_cache::*;
 use sourcerenderer_core::Vec3;
 

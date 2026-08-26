@@ -1,67 +1,27 @@
-use std::io::{
-    Cursor,
-    Read as _,
-    Seek as _,
-    SeekFrom,
-};
+use std::io::{Cursor, Read as _, Seek as _, SeekFrom};
 use std::sync::Arc;
-use std::{
-    slice,
-    usize,
-};
+use std::{slice, usize};
 
-use bevy_math::{
-    EulerRot,
-    Quat,
-};
+use bevy_math::{EulerRot, Quat};
 use bevy_tasks::futures_lite::AsyncReadExt;
 use bevy_transform::components::Transform;
+use bytemuck::box_bytes_of;
 use futures_lite::AsyncSeekExt;
-use gltf::buffer::{
-    Source,
-    View,
-};
+use gltf::buffer::{Source, View};
 use gltf::material::AlphaMode;
 use gltf::texture::WrappingMode;
-use gltf::{
-    Gltf,
-    Material,
-    Node,
-    Primitive,
-    Scene,
-    Semantic,
-};
+use gltf::{Gltf, Material, Node, Primitive, Scene, Semantic};
 use io_util::RawDataReadAsync;
-use sourcerenderer_core::{
-    Vec2,
-    Vec3,
-    Vec4,
-};
+use sourcerenderer_core::{Vec2, Vec3, Vec4};
 
 use crate::asset::asset_manager::AssetFile;
-use crate::asset::loaded_level::{
-    LevelData,
-    LoadedEntityParent,
-};
+use crate::asset::loaded_level::{LevelData, LoadedEntityParent};
 use crate::asset::{
-    AssetData,
-    AssetLoadPriority,
-    AssetLoader,
-    AssetLoaderProgress,
-    AssetManager,
-    AssetType,
-    FixedByteSizeCache,
-    MeshData,
-    MeshRange,
-    ModelData,
-    Vertex,
+    AssetData, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, AssetType,
+    FixedByteSizeCache, MeshData, MeshRange, ModelData, Vertex,
 };
 use crate::math::BoundingBox;
-use crate::renderer::{
-    DirectionalLightComponent,
-    PointLightComponent,
-    StaticRenderableComponent,
-};
+use crate::renderer::{DirectionalLightComponent, PointLightComponent, StaticRenderableComponent};
 
 const FILE_PAGE_SIZE: usize = 16_384;
 const READ_AHEAD_PAGE_COUNT: usize = 16;
@@ -205,29 +165,11 @@ impl GltfLoader {
 
             let vertices_count = vertices.len();
             let vertices_box = vertices.into_boxed_slice();
-            let size_old = std::mem::size_of_val(vertices_box.as_ref());
-            let ptr = Box::into_raw(vertices_box);
-            let data_ptr = unsafe {
-                slice::from_raw_parts_mut(
-                    ptr as *mut u8,
-                    vertices_count * std::mem::size_of::<Vertex>(),
-                ) as *mut [u8]
-            };
-            let vertices_data = unsafe { Box::from_raw(data_ptr) };
-            assert_eq!(size_old, std::mem::size_of_val(vertices_data.as_ref()));
+            let vertices_data = box_bytes_of(vertices_box);
 
             let indices_count = indices.len();
             let indices_box = indices.into_boxed_slice();
-            let size_old = std::mem::size_of_val(indices_box.as_ref());
-            let ptr = Box::into_raw(indices_box);
-            let data_ptr = unsafe {
-                slice::from_raw_parts_mut(
-                    ptr as *mut u8,
-                    indices_count * std::mem::size_of::<u32>(),
-                ) as *mut [u8]
-            };
-            let indices_data = unsafe { Box::from_raw(data_ptr) };
-            assert_eq!(size_old, std::mem::size_of_val(indices_data.as_ref()));
+            let indices_data = box_bytes_of(indices_box);
 
             if let Some(bounding_box) = bounding_box.as_mut() {
                 // Right hand -> left hand coordinate system conversion
@@ -242,7 +184,7 @@ impl GltfLoader {
                     AssetData::Mesh(MeshData {
                         indices: (indices_count > 0).then(|| indices_data),
                         vertices: vertices_data,
-                        bounding_box: bounding_box,
+                        bounding_box,
                         parts: parts.into_boxed_slice(),
                         vertex_count: vertices_count as u32,
                     }),

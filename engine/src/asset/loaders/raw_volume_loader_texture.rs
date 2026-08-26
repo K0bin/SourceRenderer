@@ -2,6 +2,7 @@ use crate::asset::asset_manager::AssetFile;
 use crate::asset::{
     AssetData, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, TextureData,
 };
+use bytemuck::{BoxBytes, box_bytes_of};
 use futures_lite::AsyncReadExt;
 use half::f16;
 use smallvec::SmallVec;
@@ -234,17 +235,9 @@ impl AssetLoader for RawVolumeLoaderTexture {
             }
         }
 
-        let mut mips_boxed = SmallVec::<[Box<[u8]>; 4]>::new();
+        let mut mips_boxed = SmallVec::<[BoxBytes; 4]>::new();
         for mip_values in data {
-            let mip_box = unsafe {
-                let values_box = mip_values.into_boxed_slice();
-                let values_len = values_box.len();
-                let values_raw = Box::into_raw(values_box);
-                Box::from_raw(slice::from_raw_parts_mut(
-                    values_raw as *mut u8,
-                    values_len * std::mem::size_of::<f16>(),
-                ))
-            };
+            let mip_box = box_bytes_of(mip_values.into_boxed_slice());
             mips_boxed.push(mip_box);
         }
 

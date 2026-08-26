@@ -1,8 +1,11 @@
 use crate::{Vec3, Vec4};
 use bevy_math::vec4;
+use bytemuck::{Pod, Zeroable};
 use half::f16;
 use std::fmt::{Debug, Formatter};
 
+#[repr(C)]
+#[derive(Zeroable, Pod)]
 pub struct HalfVec3 {
     pub x: f16,
     pub y: f16,

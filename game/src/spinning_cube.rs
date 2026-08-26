@@ -6,20 +6,22 @@ use bevy_ecs::component::Component;
 use bevy_ecs::query::With;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Query, Res, ResMut};
-use bevy_input::keyboard::KeyCode;
 use bevy_input::ButtonInput;
+use bevy_input::keyboard::KeyCode;
 use bevy_log::*;
 use bevy_transform::components::Transform;
 use sourcerenderer_core::{Quaternion, Vec2, Vec3};
-use sourcerenderer_engine::graphics::*;
 use sourcerenderer_engine::Engine;
+use sourcerenderer_engine::graphics::*;
 
 use crate::fps_camera::FPSCameraComponent;
+use sourcerenderer_engine::Camera;
 use sourcerenderer_engine::asset::{AssetManager, MeshRange, Vertex};
 use sourcerenderer_engine::camera::ActiveCamera;
 use sourcerenderer_engine::math::BoundingBox;
 use sourcerenderer_engine::renderer::{PointLightComponent, StaticRenderableComponent};
-use sourcerenderer_engine::Camera;
+
+use bytemuck::box_bytes_of;
 
 pub(crate) struct SpinningCubePlugin;
 
@@ -198,22 +200,10 @@ impl Plugin for SpinningCubePlugin {
                 },
             ];
 
-            let triangle_data = unsafe {
-                std::slice::from_raw_parts(
-                    triangle.as_ptr() as *const u8,
-                    std::mem::size_of_val(&triangle[..]),
-                )
-            }
-            .to_vec()
-            .into_boxed_slice();
-            let index_data = unsafe {
-                std::slice::from_raw_parts(
-                    indices.as_ptr() as *const u8,
-                    std::mem::size_of_val(&indices[..]),
-                )
-            }
-            .to_vec()
-            .into_boxed_slice();
+            let triangle_box = triangle.to_vec().into_boxed_slice();
+            let triangle_data = box_bytes_of(triangle_box);
+            let indices_box = indices.to_vec().into_boxed_slice();
+            let index_data = box_bytes_of(indices_box);
             let bounding_box =
                 BoundingBox::new(Vec3::new(-1f32, -1f32, -1f32), Vec3::new(1f32, 1f32, 1f32));
             asset_manager.add_mesh_data(
@@ -252,7 +242,7 @@ impl Plugin for SpinningCubePlugin {
             asset_manager.add_texture_data(
                 "cube_texture_albedo",
                 &texture_info,
-                data.to_vec().into_boxed_slice(),
+                box_bytes_of(data.to_vec().into_boxed_slice()),
             );
             asset_manager.add_material_data("cube_material", "cube_texture_albedo", 0f32, 0f32);
             asset_manager.add_model_data("cube_model", "cube_mesh", &["cube_material"]);

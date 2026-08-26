@@ -1,10 +1,10 @@
-use std::sync::Arc;
-
 use crate::asset::asset_manager::{AssetFile, AssetLoader};
 use crate::asset::{AssetData, AssetLoadPriority, AssetLoaderProgress, AssetManager, TextureData};
 use crate::graphics::*;
+use bytemuck::box_bytes_of;
 use image::{EncodableLayout, GenericImageView, ImageFormat, ImageReader};
 use smallvec::smallvec;
+use std::sync::Arc;
 
 pub struct ImageLoader {}
 
@@ -79,7 +79,7 @@ impl AssetLoader for ImageLoader {
                     usage: TextureUsage::SAMPLED | TextureUsage::INITIAL_COPY,
                     supports_srgb: false,
                 },
-                data: smallvec![data.into_boxed_slice()],
+                data: smallvec![box_bytes_of(data.into_boxed_slice())],
             }),
             Some(progress),
             priority,

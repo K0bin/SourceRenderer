@@ -28,7 +28,7 @@ bitset-core = "0.1"
 web-time = "1.1"
 log = "0.4"
 rapier3d = { version = "0.35", features = ["enhanced-determinism", "f32"] }
-half = "2.6"
+half = { version = "2.7", features = ["bytemuck"] }
 profiling = "1.0"
 field-offset = "0.3"
 widestring = "1.2"

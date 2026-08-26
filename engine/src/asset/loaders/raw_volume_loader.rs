@@ -3,6 +3,7 @@ use crate::asset::{
     AssetData, AssetLoadPriority, AssetLoader, AssetLoaderProgress, AssetManager, MaterialData,
     MaterialValue, MeshData, MeshRange, ModelData,
 };
+use bytemuck::box_bytes_of;
 use futures_lite::AsyncReadExt;
 use sourcerenderer_core::{HalfVec3, Vec3, Vec4};
 use std::collections::HashMap;
@@ -173,35 +174,14 @@ impl AssetLoader for RawVolumeLoader {
         );
         let vertex_count = vertices.len() as u32;
         let vertices_box = vertices.into_boxed_slice();
-        let size_old = std::mem::size_of_val(vertices_box.as_ref());
-        let ptr = Box::into_raw(vertices_box);
-        let data_ptr = unsafe {
-            slice::from_raw_parts_mut(
-                ptr as *mut u8,
-                (vertex_count as usize) * std::mem::size_of::<HalfVec3>(),
-            ) as *mut [u8]
-        };
-        let vertices_data = unsafe { Box::from_raw(data_ptr) };
-        assert_eq!(size_old, std::mem::size_of_val(vertices_data.as_ref()));
+        let vertices_data = box_bytes_of(vertices_box);
         let index_count = indices.len() as u32;
         let indices_box = indices.into_boxed_slice();
-        let indices_size_old = std::mem::size_of_val(indices_box.as_ref());
-        let indices_ptr = Box::into_raw(indices_box);
-        let indices_data_ptr = unsafe {
-            slice::from_raw_parts_mut(
-                indices_ptr as *mut u8,
-                (index_count as usize) * std::mem::size_of::<u32>(),
-            ) as *mut [u8]
-        };
-        let indices_data = unsafe { Box::from_raw(indices_data_ptr) };
-        assert_eq!(
-            indices_size_old,
-            std::mem::size_of_val(indices_data.as_ref())
-        );
+        let indices_data = box_bytes_of(indices_box);
         log::info!(
             "Generated {} vertices ({} MB) + {} indices ({} MB)",
             vertex_count,
-            vertices_data.len() / 1024usize / 1024usize,
+            data.len() / 1024usize / 1024usize,
             index_count,
             indices_data.len() / 1024usize / 1024usize
         );

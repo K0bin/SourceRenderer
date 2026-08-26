@@ -1,9 +1,10 @@
+use bytemuck::BoxBytes;
 use smallvec::SmallVec;
 use sourcerenderer_core::Vec4;
 use std::collections::HashMap;
 
-use super::loaded_level::LevelData;
 use super::AssetType;
+use super::loaded_level::LevelData;
 use crate::graphics::{PackedShader, TextureInfo};
 use crate::math::BoundingBox;
 
@@ -15,12 +16,12 @@ pub struct MeshRange {
 
 pub struct TextureData {
     pub info: TextureInfo,
-    pub data: SmallVec<[Box<[u8]>; 4]>,
+    pub data: SmallVec<[BoxBytes; 4]>,
 }
 
 pub struct MeshData {
-    pub indices: Option<Box<[u8]>>,
-    pub vertices: Box<[u8]>,
+    pub indices: Option<BoxBytes>,
+    pub vertices: BoxBytes,
     pub parts: Box<[MeshRange]>,
     pub bounding_box: Option<BoundingBox>,
     pub vertex_count: u32,

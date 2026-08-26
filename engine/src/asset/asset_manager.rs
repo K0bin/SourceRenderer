@@ -1,18 +1,18 @@
+use bytemuck::BoxBytes;
+use crossbeam_channel::{Receiver, Sender, unbounded};
+use futures_io::{AsyncRead, AsyncSeek};
+use futures_lite::io::{AsyncSeekExt, Cursor};
+use io_util::ReadEntireSeekableFileAsync as _;
 use smallvec::smallvec;
+use sourcerenderer_core::Vec4;
+use sourcerenderer_core::platform::{IOMaybeSend, PlatformFile};
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::hash::Hash;
 use std::io::{Result as IOResult, SeekFrom};
-use std::pin::{pin, Pin};
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::pin::{Pin, pin};
 use std::sync::Arc;
-
-use crossbeam_channel::{unbounded, Receiver, Sender};
-use futures_io::{AsyncRead, AsyncSeek};
-use futures_lite::io::{AsyncSeekExt, Cursor};
-use io_util::ReadEntireSeekableFileAsync as _;
-use sourcerenderer_core::platform::{IOMaybeSend, PlatformFile};
-use sourcerenderer_core::Vec4;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use strum::VariantArray as _;
 
 use super::{
@@ -269,9 +269,9 @@ impl AssetManager {
     pub fn add_mesh_data(
         self: &Arc<Self>,
         path: &str,
-        vertex_buffer_data: Box<[u8]>,
+        vertex_buffer_data: BoxBytes,
         vertex_count: u32,
-        index_buffer_data: Box<[u8]>,
+        index_buffer_data: BoxBytes,
         parts: Box<[MeshRange]>,
         bounding_box: Option<BoundingBox>,
     ) {
@@ -332,13 +332,13 @@ impl AssetManager {
         self: &Arc<Self>,
         path: &str,
         info: &TextureInfo,
-        texture_data: Box<[u8]>,
+        texture_data: BoxBytes,
     ) {
         self.add_asset_data(
             path,
             AssetData::Texture(TextureData {
                 info: info.clone(),
-                data: smallvec![texture_data.to_vec().into_boxed_slice()],
+                data: smallvec![texture_data],
             }),
             AssetLoadPriority::Normal,
         );
@@ -567,19 +567,34 @@ impl AssetManager {
             let mut already_loaded = false;
             if let Some(existing_handle) = asset_set.requested.get(&handle) {
                 if existing_handle.asset_type() != asset_type {
-                    log::error!("Requested an asset with the same path as a previously requested asset but with a different asset type. Path: {}, requested asset type: {:?}, previously requested asset type: {:?}.", path, asset_type, handle.asset_type());
+                    log::error!(
+                        "Requested an asset with the same path as a previously requested asset but with a different asset type. Path: {}, requested asset type: {:?}, previously requested asset type: {:?}.",
+                        path,
+                        asset_type,
+                        handle.asset_type()
+                    );
                 }
                 already_loaded = true;
             }
             if let Some(existing_handle) = asset_set.loaded.get(&handle) {
                 if existing_handle.asset_type() != asset_type {
-                    log::error!("Requested an asset with the same path as a previously loaded asset but with a different asset type. Path: {}, requested asset type: {:?}, previously requested asset type: {:?}.", path, asset_type, handle.asset_type());
+                    log::error!(
+                        "Requested an asset with the same path as a previously loaded asset but with a different asset type. Path: {}, requested asset type: {:?}, previously requested asset type: {:?}.",
+                        path,
+                        asset_type,
+                        handle.asset_type()
+                    );
                 }
                 already_loaded = true;
             }
             if let Some(existing_handle) = asset_set.ready.get(&handle) {
                 if existing_handle.asset_type() != asset_type {
-                    log::error!("Requested an asset with the same path as ready asset but with a different asset type. Path: {}, requested asset type: {:?}, previously requested asset type: {:?}.", path, asset_type, handle.asset_type());
+                    log::error!(
+                        "Requested an asset with the same path as ready asset but with a different asset type. Path: {}, requested asset type: {:?}, previously requested asset type: {:?}.",
+                        path,
+                        asset_type,
+                        handle.asset_type()
+                    );
                 }
                 already_loaded = true;
             }
@@ -747,7 +762,12 @@ impl AssetManager {
             let path_map = self.path_map.lock().unwrap();
             if let Some(handle) = path_map.get(path) {
                 if handle.asset_type() != asset_type {
-                    log::error!("An asset of a different type ({:?}) was previously loaded from the path \"{:?}\". Requested asset type now: {:?}", handle.asset_type(), path, asset_type);
+                    log::error!(
+                        "An asset of a different type ({:?}) was previously loaded from the path \"{:?}\". Requested asset type now: {:?}",
+                        handle.asset_type(),
+                        path,
+                        asset_type
+                    );
                 }
                 return *handle;
             }
