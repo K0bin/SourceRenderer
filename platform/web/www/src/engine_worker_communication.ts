@@ -3,10 +3,11 @@ import {InitOutput} from "sourcerenderer_web";
 export enum EngineWorkerMessageType {
     StartRenderThread,
     InitMainThread,
-    InitThread
+    InitThread,
+    CanvasResized
 }
 
-export type EngineMessageData = string | OffscreenCanvas | ThreadWorkerInit;
+export type EngineMessageData = string | OffscreenCanvas | ThreadWorkerInit | CanvasResized;
 
 export interface ThreadWorkerInit {
     module: WebAssembly.Module,
@@ -14,6 +15,11 @@ export interface ThreadWorkerInit {
     name: string,
     callbackPtr: number,
     data: any,
+}
+
+export interface CanvasResized {
+    width: number,
+    height: number,
 }
 
 export interface EngineWorkerMessage {

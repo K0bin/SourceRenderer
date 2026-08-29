@@ -1,6 +1,7 @@
-import {default as initWasm, threadFunc, InitOutput, startEngine} from "../../../lib/pkg/sourcerenderer_web";
+import {default as initWasm, Engine, InitOutput, startEngine, threadFunc} from "../../../lib/pkg/sourcerenderer_web";
 
 import {
+    CanvasResized,
     destroyThread,
     EngineWorkerMessage,
     EngineWorkerMessageType,
@@ -17,6 +18,13 @@ onmessage = async (event: MessageEvent) => {
 
         case EngineWorkerMessageType.InitMainThread: {
             await initMain(msg.data as OffscreenCanvas);
+        }
+            break;
+
+        case EngineWorkerMessageType.CanvasResized: {
+            const data = msg.data as CanvasResized;
+            engine
+                ?.windowResized(data.width, data.height);
         }
             break;
 

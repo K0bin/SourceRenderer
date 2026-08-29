@@ -1,9 +1,12 @@
+use crate::window::WebWindow;
 use io::WebIO;
 use js_sys::Uint8Array;
 use log::info;
 use platform::WebPlatform;
-use sourcerenderer_engine::{Engine as ActualEngine, EngineLoopFuncResult};
+use sourcerenderer_core::Vec2UI;
+use sourcerenderer_engine::{Engine as ActualEngine, EngineLoopFuncResult, WindowState};
 use sourcerenderer_game::GamePlugin;
+use std::marker::PhantomData;
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 use web_sys::{OffscreenCanvas, WorkerNavigator};
 
@@ -15,6 +18,7 @@ mod window;
 #[wasm_bindgen]
 pub struct Engine {
     engine: Option<ActualEngine>,
+    platform: WebPlatform,
 }
 
 #[wasm_bindgen]
@@ -30,6 +34,18 @@ impl Engine {
         if result == EngineLoopFuncResult::Exit {
             self.engine = None;
         }
+    }
+
+    #[wasm_bindgen(js_name = "windowResized")]
+    pub fn window_resized(&mut self, width: u32, height: u32) {
+        let engine = if let Some(engine) = self.engine.as_mut() {
+            engine
+        } else {
+            log::error!("Engine has been stopped.");
+            return;
+        };
+
+        engine.window_changed::<WebPlatform>(WindowState::Window(width, height));
     }
 }
 
@@ -49,6 +65,7 @@ pub async fn start_engine(canvas: OffscreenCanvas) -> Engine {
 
     let wrapper = Engine {
         engine: Some(engine),
+        platform,
     };
     wrapper
 }
