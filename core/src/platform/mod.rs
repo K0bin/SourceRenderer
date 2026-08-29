@@ -65,5 +65,7 @@ impl<B: GPUBackend> Clone for Event<B> {
 pub trait Window<B: GPUBackend> {
     fn width(&self) -> u32;
     fn height(&self) -> u32;
+    fn fullscreen(&self) -> bool;
+    fn set_fullscreen(&mut self, fullscreen: bool);
     fn create_surface(&self, graphics_instance: &B::Instance) -> B::Surface;
 }

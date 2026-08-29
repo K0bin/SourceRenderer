@@ -4,6 +4,7 @@ use js_sys::{JsString, Uint8Array};
 use log::info;
 use platform::WebPlatform;
 use sourcerenderer_core::Vec2;
+use sourcerenderer_core::platform::Window;
 use sourcerenderer_engine::{
     ButtonState, Engine as ActualEngine, EngineLoopFuncResult, Key, KeyCode, KeyboardInput,
     MouseMotion, WindowState,
@@ -28,7 +29,7 @@ impl Engine {
     pub fn frame(&mut self) {
         let result: EngineLoopFuncResult;
         if let Some(engine) = self.engine.as_mut() {
-            result = engine.frame();
+            result = engine.frame(&mut self.platform.window);
         } else {
             log::error!("Engine has been stopped.");
             return;
@@ -82,7 +83,11 @@ impl Engine {
         engine.dispatch_keyboard_input(KeyboardInput {
             key_code: key_code.unwrap(),
             logical_key: Key::Dead(None),
-            state: ButtonState::Released,
+            state: if down {
+                ButtonState::Pressed
+            } else {
+                ButtonState::Released
+            },
             window: engine.get_window_dummy_entity(),
             repeat: false,
             text: None,
@@ -99,6 +104,11 @@ impl Engine {
         };
         engine.is_mouse_locked()
     }
+
+    #[wasm_bindgen(js_name = "requestsFullscreen")]
+    pub fn requests_fullscreen(&self) -> bool {
+        self.platform.window.fullscreen()
+    }
 }
 
 #[wasm_bindgen(js_name = "startEngine")]
@@ -111,7 +121,7 @@ pub async fn start_engine(canvas: OffscreenCanvas) -> Engine {
 
     info!("Initializing engine");
     let engine = ActualEngine::run::<_, WebIO, WebPlatform>(
-        platform.window(),
+        &platform.window,
         GamePlugin::<WebIO>::default(),
     );
 

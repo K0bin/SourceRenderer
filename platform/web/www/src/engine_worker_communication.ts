@@ -8,7 +8,8 @@ export enum EngineWorkerMessageType {
     MouseMoved,
     KeyUp,
     KeyDown,
-    UpdateMouseLock
+    UpdateMouseLock,
+    UpdateFullscreen
 }
 
 export type EngineMessageData =

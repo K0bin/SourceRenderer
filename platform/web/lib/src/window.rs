@@ -5,6 +5,7 @@ use web_sys::OffscreenCanvas;
 
 pub struct WebWindow {
     canvas: OffscreenCanvas,
+    fullscreen: bool,
     _p: PhantomData<*const std::ffi::c_void>,
 }
 
@@ -12,6 +13,7 @@ impl WebWindow {
     pub(crate) fn new(canvas: OffscreenCanvas) -> Self {
         Self {
             canvas,
+            fullscreen: false,
             _p: PhantomData,
         }
     }
@@ -28,5 +30,13 @@ impl Window<WebGPUBackend> for WebWindow {
 
     fn height(&self) -> u32 {
         self.canvas.height()
+    }
+
+    fn fullscreen(&self) -> bool {
+        self.fullscreen
+    }
+
+    fn set_fullscreen(&mut self, fullscreen: bool) {
+        self.fullscreen = fullscreen;
     }
 }

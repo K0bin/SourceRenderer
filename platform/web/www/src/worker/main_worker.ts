@@ -47,6 +47,7 @@ console.log("Main worker initialized");
 let memory: WebAssembly.Memory | null = null;
 let thread: InitOutput | null = null;
 let lastMouseLock = false;
+let lastFullscreen = false;
 let engine: Engine | null = null;
 
 async function initMain(canvas: OffscreenCanvas) {
@@ -82,6 +83,8 @@ function frame() {
     if (engine === null)
         return;
 
+    engine.frame();
+
     if (engine.isMouseLocked() != lastMouseLock) {
         lastMouseLock = engine.isMouseLocked();
         const msg: EngineWorkerMessage = {
@@ -91,7 +94,14 @@ function frame() {
         postMessage(msg);
     }
 
-    engine.frame();
+    if (engine.requestsFullscreen() != lastFullscreen) {
+        lastFullscreen = engine.requestsFullscreen();
+        const msg: EngineWorkerMessage = {
+            messageType: EngineWorkerMessageType.UpdateFullscreen,
+            data: lastFullscreen
+        }
+        postMessage(msg);
+    }
 
     requestAnimationFrame((_time) => {
         frame();

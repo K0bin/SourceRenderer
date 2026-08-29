@@ -9,6 +9,7 @@ use crossbeam_channel::Sender;
 use notify::{RecommendedWatcher, Watcher, recommended_watcher};
 use sdl3::event::{Event as SDLEvent, WindowEvent};
 use sdl3::keyboard::Scancode;
+use sdl3::video::FullscreenType;
 use sdl3::{EventPump, Sdl, VideoSubsystem};
 use sourcerenderer_core::platform::{FileWatcher, PlatformIO, Window};
 use sourcerenderer_core::{Vec2, Vec2I, Vec2UI, gpu};
@@ -30,15 +31,15 @@ lazy_static! {
         key_to_scancode.insert(Scancode::LCtrl, KeyCode::ControlLeft);
         key_to_scancode.insert(Scancode::Escape, KeyCode::Escape);
         key_to_scancode.insert(Scancode::F11, KeyCode::F11);
+        key_to_scancode.insert(Scancode::F10, KeyCode::F10);
         key_to_scancode
     };
 }
 
 pub struct SDLPlatform {
     sdl_context: Sdl,
-    _video_subsystem: VideoSubsystem,
+    video_subsystem: VideoSubsystem,
     event_pump: EventPump,
-    window: SDLWindow,
     _mouse_pos: Vec2I,
 }
 
@@ -53,19 +54,16 @@ impl SDLPlatform {
         let video_subsystem = sdl_context.video().unwrap();
         let event_pump = sdl_context.event_pump().unwrap();
 
-        let window = SDLWindow::new(&sdl_context, &video_subsystem);
-
         Box::new(SDLPlatform {
             sdl_context,
-            _video_subsystem: video_subsystem,
+            video_subsystem,
             event_pump,
-            window,
             _mouse_pos: Vec2I::new(0, 0),
         })
     }
 
-    pub fn window(&self) -> &SDLWindow {
-        &self.window
+    pub fn create_window(&self) -> SDLWindow {
+        SDLWindow::new(&self.video_subsystem)
     }
 
     pub(crate) fn poll_events(&mut self, engine: &mut Engine) -> bool {
@@ -81,10 +79,6 @@ impl SDLPlatform {
                 } => {
                     let key = SCANCODE_TO_KEY.get(&keycode).copied();
                     if let Some(key) = key {
-                        if key == KeyCode::Escape {
-                            return false;
-                        }
-
                         engine.dispatch_keyboard_input(KeyboardInput {
                             key_code: key,
                             logical_key: Key::Dead(None),
@@ -101,16 +95,6 @@ impl SDLPlatform {
                 } => {
                     let key = SCANCODE_TO_KEY.get(&keycode).copied();
                     if let Some(key) = key {
-                        if key == KeyCode::F11 {
-                            self.window
-                                .window
-                                .set_fullscreen(
-                                    self.window.window.fullscreen_state()
-                                        == sdl3::video::FullscreenType::Off,
-                                )
-                                .unwrap();
-                        }
-
                         engine.dispatch_keyboard_input(KeyboardInput {
                             key_code: key,
                             logical_key: Key::Dead(None),
@@ -154,27 +138,13 @@ impl SDLPlatform {
         }
         true
     }
-
-    pub(crate) fn update_mouse_lock(&self, is_locked: bool) {
-        let mouse_util = self.sdl_context.mouse();
-        mouse_util.set_relative_mouse_mode(self.window.sdl_window_handle(), is_locked);
-        if is_locked && false {
-            let (width, height) = self.window.window.size_in_pixels();
-            mouse_util.warp_mouse_in_window(
-                self.window.sdl_window_handle(),
-                width as f32 / 2.0f32,
-                height as f32 / 2.0f32,
-            );
-        }
-    }
 }
 
 impl SDLWindow {
-    fn new(_sdl_context: &Sdl, video_subsystem: &VideoSubsystem) -> SDLWindow {
+    fn new(video_subsystem: &VideoSubsystem) -> SDLWindow {
         let mut window_builder = video_subsystem.window("sourcerenderer", 1280, 720);
         window_builder.position_centered();
         window_builder.resizable();
-        //window_builder.fullscreen();
 
         sdl_gpu::prepare_window(&mut window_builder);
 
@@ -185,8 +155,17 @@ impl SDLWindow {
         }
     }
 
-    pub(crate) fn sdl_window_handle(&self) -> &sdl3::video::Window {
-        &self.window
+    pub(crate) fn update_mouse_lock(&self, is_locked: bool, platform: &SDLPlatform) {
+        let mouse_util = platform.sdl_context.mouse();
+        mouse_util.set_relative_mouse_mode(&self.window, is_locked);
+        if is_locked && false {
+            let (width, height) = self.window.size_in_pixels();
+            mouse_util.warp_mouse_in_window(
+                &self.window,
+                width as f32 / 2.0f32,
+                height as f32 / 2.0f32,
+            );
+        }
     }
 }
 
@@ -204,6 +183,14 @@ impl Window<SDLGPUBackend> for SDLWindow {
 
     fn height(&self) -> u32 {
         self.window.size_in_pixels().1
+    }
+
+    fn fullscreen(&self) -> bool {
+        self.window.fullscreen_state() != FullscreenType::Off
+    }
+
+    fn set_fullscreen(&mut self, fullscreen: bool) {
+        let _res = self.window.set_fullscreen(fullscreen);
     }
 }
 

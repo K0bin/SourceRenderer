@@ -31,6 +31,7 @@ use std::sync::{Condvar, Mutex, MutexGuard};
 #[allow(unused_imports)]
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
+mod convenience_inputs;
 pub mod tasks;
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]

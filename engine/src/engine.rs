@@ -13,11 +13,11 @@ use bevy_input::mouse::MouseMotion;
 use bevy_log::LogPlugin;
 use bevy_time::{Fixed, Time, TimePlugin};
 use bevy_transform::TransformPlugin;
-use sourcerenderer_core::Vec2UI;
 use sourcerenderer_core::console::Console;
 use sourcerenderer_core::platform::{GraphicsPlatform, PlatformIO, Window};
 
 use crate::asset::{AssetManager, AssetManagerECSResource, AssetManagerPlugin};
+use crate::convenience_inputs::ConvenienceInputs;
 use crate::graphics::*;
 use crate::renderer;
 use crate::transform::InterpolationPlugin;
@@ -37,6 +37,16 @@ pub const TICK_RATE: u32 = 5;
 pub enum EngineLoopFuncResult {
     KeepRunning,
     Exit,
+}
+
+#[derive(Resource, Default)]
+pub(crate) struct FullscreenPreference {
+    pub(crate) request_fullscreen: bool,
+}
+
+#[derive(Resource, Default)]
+pub(crate) struct MouseLockPreference {
+    pub(crate) request_lock: bool,
 }
 
 #[cfg(all(feature = "threading", target_arch = "wasm32"))]
@@ -64,6 +74,11 @@ impl Engine {
         let mut app = App::new();
         app.init_resource::<Messages<MouseMotion>>();
         app.init_resource::<Messages<KeyboardInput>>();
+
+        app.insert_resource(MouseLockPreference::default());
+        app.insert_resource(FullscreenPreference::default());
+
+        app.add_plugins(ConvenienceInputs);
 
         app.add_plugins(PanicHandlerPlugin::default());
 
@@ -101,7 +116,7 @@ impl Engine {
         }
     }
 
-    pub fn frame(&mut self) -> EngineLoopFuncResult {
+    pub fn frame(&mut self, window: &mut impl Window<ActiveBackend>) -> EngineLoopFuncResult {
         crate::autoreleasepool(|| {
             let app = &mut self.app;
             let plugins_state = app.plugins_state();
@@ -134,6 +149,13 @@ impl Engine {
             }
 
             app.update();
+
+            let fullscreen = app
+                .world()
+                .get_resource::<FullscreenPreference>()
+                .map_or_default(|p| p.request_fullscreen);
+            window.set_fullscreen(fullscreen);
+
             if let Some(exit) = app.should_exit() {
                 log::info!("Exiting because of app: {:?}", exit);
                 EngineLoopFuncResult::Exit
@@ -144,9 +166,10 @@ impl Engine {
     }
 
     pub fn is_mouse_locked(&self) -> bool {
-        //false
-        true
-        //self.app..poll().mouse_locked()
+        self.app
+            .world()
+            .get_resource::<MouseLockPreference>()
+            .map_or_default(|p| p.request_lock)
     }
 
     pub fn get_window_dummy_entity(&self) -> Entity {

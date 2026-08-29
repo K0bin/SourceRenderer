@@ -35,6 +35,27 @@ function main() {
 
             case EngineWorkerMessageType.UpdateMouseLock: {
                 mouseLocked = msg.data as boolean;
+                try {
+                    if (mouseLocked) {
+                        await canvas.requestPointerLock();
+                    } else {
+                        document.exitPointerLock();
+                    }
+                } catch (_e) {
+                }
+                return;
+            }
+
+            case EngineWorkerMessageType.UpdateFullscreen: {
+                fullscreen = msg.data as boolean;
+                try {
+                    if (fullscreen) {
+                        await canvas.requestFullscreen();
+                    } else {
+                        await document.exitFullscreen();
+                    }
+                } catch (_e) {
+                }
                 return;
             }
 
@@ -98,11 +119,21 @@ function main() {
     };
 
     canvas.onmousedown = async (_e) => {
-        if (mouseLocked) {
-            try {
+        try {
+            if (mouseLocked) {
                 await canvas.requestPointerLock();
-            } catch (_e) {
+            } else {
+                document.exitPointerLock();
             }
+        } catch (_e) {
+        }
+        try {
+            if (fullscreen) {
+                await canvas.requestFullscreen();
+            } else {
+                await document.exitFullscreen();
+            }
+        } catch (_e) {
         }
     }
 

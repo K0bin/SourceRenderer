@@ -43,8 +43,9 @@ fn autoreleasepool<T, F: FnOnce() -> T>(func: F) -> T {
 
 pub fn main() {
     let mut platform = SDLPlatform::new();
+    let mut window = platform.create_window();
     let mut engine = Box::new(Engine::run::<_, StdIO, SDLPlatform>(
-        platform.window(),
+        &window,
         GamePlugin::<StdIO>::default(),
     ));
 
@@ -54,9 +55,9 @@ pub fn main() {
                 return EngineLoopFuncResult::Exit;
             }
 
-            platform.update_mouse_lock(engine.is_mouse_locked());
-
-            engine.frame()
+            let result = engine.frame(&mut window);
+            window.update_mouse_lock(engine.is_mouse_locked(), &platform);
+            result
         });
         if engine_loop_result == EngineLoopFuncResult::Exit {
             break 'event_loop;

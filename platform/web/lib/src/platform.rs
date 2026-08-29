@@ -1,22 +1,16 @@
 use crate::window::WebWindow;
 use sourcerenderer_core::platform::GraphicsPlatform;
-use sourcerenderer_webgpu::{
-    WebGPUBackend, WebGPUInstance,
-};
+use sourcerenderer_webgpu::{WebGPUBackend, WebGPUInstance};
 use web_sys::OffscreenCanvas;
 
 pub struct WebPlatform {
-    window: WebWindow,
+    pub(crate) window: WebWindow,
 }
 
 impl WebPlatform {
     pub(crate) async fn new_on_worker(canvas: OffscreenCanvas) -> Self {
         let window = WebWindow::new(canvas);
         Self { window }
-    }
-
-    pub(crate) fn window(&self) -> &WebWindow {
-        &self.window
     }
 }
 
