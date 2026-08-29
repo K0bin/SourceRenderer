@@ -15,6 +15,7 @@ pub struct WebFetchFile {
     current_position: u64,
     path: Box<Path>,
     data: Option<Box<[u8]>>,
+    task: Option<Task<IOResult<Box<[u8]>>>>,
     _p: PhantomData<*const std::ffi::c_void>,
 }
 
@@ -41,6 +42,7 @@ impl WebFetchFile {
             length: length as u64,
             current_position: 0,
             data,
+            task: None,
             _p: PhantomData,
         })
     }
@@ -184,18 +186,24 @@ impl AsyncRead for WebFetchFile {
             return Poll::Ready(Ok(len));
         }
 
+        if let Some(task) = self.task.as_mut() {
+            let data = std::task::ready!(task.poll(cx))?;
+            let len = ((self.length - self.current_position) as usize).min(buf.len());
+            buf[..len].copy_from_slice(&data[..len]);
+            self.current_position += len as u64;
+            self.task = None;
+            return Poll::Ready(Ok(len));
+        }
+
         let position = self.current_position;
         let length = (self.length - position).min(buf.len() as u64);
         let uri = self.path.as_ref().to_string_lossy().to_string();
 
-        let mut task =
-            web_task::spawn_local(async move { Self::fetch_range(&uri, position, length).await });
-
-        let data = std::task::ready!(task.poll(cx))?;
-        let len = ((self.length - position) as usize).min(buf.len());
-        buf[..len].copy_from_slice(&data[..len]);
-        self.current_position += len as u64;
-        return Poll::Ready(Ok(len));
+        log::warn!("Spawning a task! {:?} {:?} {:?}", &self.path, position, length);
+        self.task = Some(
+            web_task::spawn_local(async move { Self::fetch_range(&uri, position, length).await })
+        );
+        Poll::Pending
     }
 }
 
@@ -205,6 +213,8 @@ impl AsyncSeek for WebFetchFile {
         cx: &mut Context<'_>,
         pos: std::io::SeekFrom,
     ) -> Poll<IOResult<u64>> {
+        self.task = None;
+
         let new_pos: u64 = match pos {
             std::io::SeekFrom::Start(offset) => offset.min(self.length),
             std::io::SeekFrom::End(offset) => {
