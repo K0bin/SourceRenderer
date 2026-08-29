@@ -12,12 +12,11 @@ use sourcerenderer_core::{EulerRot, Matrix4, Vec3};
 
 use super::*;
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-#[repr(u32)]
 pub enum VkSwapchainState {
-    Okay = 0,
-    Suboptimal = 1,
-    OutOfDate = 2,
+    Okay,
+    Suboptimal,
+    OutOfDate,
+    NeedsResize(vk::Extent2D),
 }
 
 #[derive(Debug)]
@@ -400,7 +399,7 @@ impl VkSwapchain {
 
             match result {
                 Ok(optimal) => {
-                    if optimal && self.state == VkSwapchainState::Okay {
+                    if !optimal {
                         self.state = VkSwapchainState::Suboptimal;
                     }
                 }
@@ -472,8 +471,17 @@ impl Swapchain<VkBackend> for VkSwapchain {
         self.device.wait_for_idle();
 
         let info = self.textures.first().unwrap().info();
-        let width = info.width;
-        let height = info.height;
+        let mut width = info.width;
+        let mut height = info.height;
+
+        if let VkSwapchainState::NeedsResize(vk::Extent2D {
+            width: w,
+            height: h,
+        }) = self.state
+        {
+            width = w;
+            height = h;
+        }
 
         let (swapchain, textures, matrix, _) = Self::create_swapchain_and_textures(
             &self.device,
@@ -487,6 +495,8 @@ impl Swapchain<VkBackend> for VkSwapchain {
         self.swapchain = swapchain;
         self.textures = textures;
         self.transform_matrix = matrix;
+
+        self.state = VkSwapchainState::Okay;
     }
 
     unsafe fn next_backbuffer(&mut self) -> Result<VkBackbufferIndices, SwapchainError> {
@@ -498,6 +508,7 @@ impl Swapchain<VkBackend> for VkSwapchain {
         let needs_recreate = match self.state {
             VkSwapchainState::OutOfDate => true,
             VkSwapchainState::Okay | VkSwapchainState::Suboptimal => false,
+            VkSwapchainState::NeedsResize(_) => true,
         };
         if needs_recreate {
             return Err(SwapchainError::NeedsRecreation);
@@ -522,7 +533,7 @@ impl Swapchain<VkBackend> for VkSwapchain {
             (self.present_semaphore_counter % self.present_semaphores.len() as u64) as usize;
 
         if let Ok((image_index, is_optimal)) = result {
-            if !is_optimal && false {
+            if !is_optimal {
                 self.state = VkSwapchainState::Suboptimal;
             }
             Ok(VkBackbufferIndices {
@@ -531,7 +542,7 @@ impl Swapchain<VkBackend> for VkSwapchain {
                 present_semaphore_index: present_semaphore_index as u32,
             })
         } else {
-            // The semaphores are unaffect in the error case.
+            // The semaphores are unaffected in the error case.
             match result.err().unwrap() {
                 vk::Result::ERROR_SURFACE_LOST_KHR => {
                     panic!("Vulkan surface lost");
@@ -561,8 +572,19 @@ impl Swapchain<VkBackend> for VkSwapchain {
         self.height()
     }
 
-    fn size_changed(&mut self, _width: u32, _height: u32) {
-        // The swapchain should return out of date without us doing anything?
+    fn size_changed(&mut self, width: u32, height: u32) {
+        let capabilities = match self.surface.get_capabilities(&self.device.physical_device) {
+            Ok(capabilities) => capabilities,
+            Err(e) => match e {
+                vk::Result::ERROR_SURFACE_LOST_KHR => {
+                    panic!("Vulkan surface lost");
+                }
+                _ => {
+                    panic!("Could not get surface capabilities: {:?}", e);
+                }
+            },
+        };
+        self.state = VkSwapchainState::NeedsResize(Self::pick_extent(&capabilities, width, height));
     }
 }
 
