@@ -45,7 +45,7 @@ impl GeometryPass {
             Self::DEPTH_TEXTURE_NAME,
             &TextureInfo {
                 dimension: TextureDimension::Dim2D,
-                format: Format::D32S8,
+                format: Format::D32,
                 width: swapchain.width(),
                 height: swapchain.height(),
                 depth: 1,
@@ -302,5 +302,25 @@ impl GeometryPass {
             queue_ownership: None,
             range: BarrierTextureRange::default(),
         }]);
+    }
+
+    pub(crate) fn recreate_swapchain(&mut self, new_swapchain: &mut Swapchain,
+                                     resources: &mut RendererResources,) {
+        resources.create_texture(
+            Self::DEPTH_TEXTURE_NAME,
+            &TextureInfo {
+                dimension: TextureDimension::Dim2D,
+                format: Format::D32S8,
+                width: new_swapchain.width(),
+                height: new_swapchain.height(),
+                depth: 1,
+                mip_levels: 1,
+                array_length: 1,
+                samples: SampleCount::Samples1,
+                usage: TextureUsage::DEPTH_STENCIL,
+                supports_srgb: false,
+            },
+            false,
+        );
     }
 }
