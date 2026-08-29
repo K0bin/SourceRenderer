@@ -137,11 +137,15 @@ impl Renderer {
             &assets,
         ));
 
+        let mut scene = RendererScene::new();
+        scene.main_view_mut().aspect_ratio =
+            (swapchain.width() as f32) / (swapchain.height() as f32);
+
         Self {
             device: device.clone(),
             receiver,
             resources,
-            scene: RendererScene::new(),
+            scene,
             swapchain: Arc::new(Mutex::new(swapchain)),
             context,
             render_path,
@@ -412,10 +416,12 @@ impl Renderer {
                     WindowState::Fullscreen(width, height) => {
                         let mut swapchain = self.swapchain.lock().unwrap();
                         swapchain.size_changed(width, height);
+                        self.scene.main_view_mut().aspect_ratio = (width as f32) / (height as f32);
                     }
                     WindowState::Window(width, height) => {
                         let mut swapchain = self.swapchain.lock().unwrap();
                         swapchain.size_changed(width, height);
+                        self.scene.main_view_mut().aspect_ratio = (width as f32) / (height as f32);
                     }
                     WindowState::Minimized => {}
                 },
