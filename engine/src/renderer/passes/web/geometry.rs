@@ -304,13 +304,16 @@ impl GeometryPass {
         }]);
     }
 
-    pub(crate) fn recreate_swapchain(&mut self, new_swapchain: &mut Swapchain,
-                                     resources: &mut RendererResources,) {
+    pub(crate) fn recreate_swapchain(
+        &mut self,
+        new_swapchain: &mut Swapchain,
+        resources: &mut RendererResources,
+    ) {
         resources.create_texture(
             Self::DEPTH_TEXTURE_NAME,
             &TextureInfo {
                 dimension: TextureDimension::Dim2D,
-                format: Format::D32S8,
+                format: Format::D32,
                 width: new_swapchain.width(),
                 height: new_swapchain.height(),
                 depth: 1,
