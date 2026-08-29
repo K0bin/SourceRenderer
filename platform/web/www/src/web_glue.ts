@@ -63,16 +63,16 @@ export function startThreadWorker(
     let transferables: Array<Transferable> = [];
     if (data instanceof OffscreenCanvas || data instanceof ArrayBuffer) {
         transferables.push(data);
-    }
 
-    if (name == "RenderThread" && isBlink()) {
-        // https://issues.chromium.org/issues/41483010
-        console.warn("Working around annoying Chrome bug.");
+        if (data instanceof OffscreenCanvas && isBlink()) {
+            // https://issues.chromium.org/issues/41483010
+            console.warn("Working around annoying Chrome bug.");
 
-        msg.messageType = EngineWorkerMessageType.StartRenderThread;
-        const scope = self as DedicatedWorkerGlobalScope;
-        scope.postMessage(msg, transferables);
-        return;
+            msg.messageType = EngineWorkerMessageType.StartRenderThread;
+            const scope = self as DedicatedWorkerGlobalScope;
+            scope.postMessage(msg, transferables);
+            return;
+        }
     }
 
     const worker = new ThreadWorker({name});

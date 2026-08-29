@@ -21,7 +21,6 @@ function main() {
         const msg = event.data as EngineWorkerMessage;
         switch (msg.messageType) {
             case EngineWorkerMessageType.StartRenderThread: {
-                console.warn("got render thread msg");
                 const threadMsg = msg.data as ThreadWorkerInit;
                 msg.messageType = EngineWorkerMessageType.InitThread;
                 const worker = new ThreadWorker({name: "RenderThread"});
