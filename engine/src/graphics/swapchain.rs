@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use sourcerenderer_core::gpu::Backbuffer as _;
 use sourcerenderer_core::Matrix4;
+use sourcerenderer_core::gpu::Backbuffer as _;
 
 use super::*;
 
@@ -117,5 +117,9 @@ impl Swapchain {
     #[inline(always)]
     pub fn handle_mut(&mut self) -> &mut active_gpu_backend::Swapchain {
         &mut self.swapchain
+    }
+
+    pub fn size_changed(&mut self, width: u32, height: u32) {
+        self.swapchain.size_changed(width, height);
     }
 }

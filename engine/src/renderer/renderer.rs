@@ -255,7 +255,8 @@ impl Renderer {
             }
             Err(_swapchain_err) => {
                 swapchain_guard.recreate();
-                self.render_path.recreate_swapchain(&mut swapchain_guard, &mut self.resources);
+                self.render_path
+                    .recreate_swapchain(&mut swapchain_guard, &mut self.resources);
             }
         }
         std::mem::drop(swapchain_guard);
@@ -408,8 +409,14 @@ impl Renderer {
                 }
                 //RendererCommand::RenderUI(data) => { self.render_path.set_ui_data(data); },
                 RendererCommand::WindowChanged(window_state) => match window_state {
-                    WindowState::Fullscreen(_size) => {}
-                    WindowState::Window(_size) => {}
+                    WindowState::Fullscreen(width, height) => {
+                        let mut swapchain = self.swapchain.lock().unwrap();
+                        swapchain.size_changed(width, height);
+                    }
+                    WindowState::Window(width, height) => {
+                        let mut swapchain = self.swapchain.lock().unwrap();
+                        swapchain.size_changed(width, height);
+                    }
                     WindowState::Minimized => {}
                 },
             }

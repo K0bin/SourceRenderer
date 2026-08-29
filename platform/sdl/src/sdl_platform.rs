@@ -127,10 +127,10 @@ impl SDLPlatform {
                     win_event,
                 } => match win_event {
                     WindowEvent::PixelSizeChanged(width, height) => {
-                        engine.window_changed::<SDLPlatform>(WindowState::Window(Vec2UI::new(
+                        engine.window_changed::<SDLPlatform>(WindowState::Window(
                             width as u32,
                             height as u32,
-                        )));
+                        ));
                     }
                     WindowEvent::CloseRequested => {
                         return false;

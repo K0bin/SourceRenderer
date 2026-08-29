@@ -1,24 +1,14 @@
 use core::panic;
-use std::cmp::{
-    max,
-    min,
-};
+use std::cmp::{max, min};
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::sync::{
-    Arc,
-    Condvar,
-};
+use std::sync::{Arc, Condvar};
 
 use ash::khr::swapchain::Device as SwapchainDevice;
 use ash::vk;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::*;
-use sourcerenderer_core::{
-    EulerRot,
-    Matrix4,
-    Vec3,
-};
+use sourcerenderer_core::{EulerRot, Matrix4, Vec3};
 
 use super::*;
 
@@ -569,6 +559,10 @@ impl Swapchain<VkBackend> for VkSwapchain {
 
     fn height(&self) -> u32 {
         self.height()
+    }
+
+    fn size_changed(&mut self, _width: u32, _height: u32) {
+        // The swapchain should return out of date without us doing anything?
     }
 }
 

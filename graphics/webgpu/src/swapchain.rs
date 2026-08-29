@@ -1,9 +1,12 @@
-use std::marker::PhantomData;
 use js_sys::wasm_bindgen::JsValue;
-use sourcerenderer_core::{gpu, Matrix4};
-use web_sys::{gpu_texture_usage, GpuCanvasConfiguration, GpuCanvasContext, GpuDevice};
+use sourcerenderer_core::{Matrix4, gpu};
+use std::marker::PhantomData;
+use web_sys::{GpuCanvasConfiguration, GpuCanvasContext, GpuDevice, gpu_texture_usage};
 
-use crate::{surface::WebGPUSurface, texture::format_from_webgpu, texture::format_to_webgpu, texture::WebGPUTexture, WebGPUBackend, WebGPUInstance};
+use crate::{
+    WebGPUBackend, WebGPUInstance, surface::WebGPUSurface, texture::WebGPUTexture,
+    texture::format_from_webgpu, texture::format_to_webgpu,
+};
 
 pub struct WebGPUBackbuffer {
     texture: WebGPUTexture,
@@ -22,7 +25,7 @@ pub struct WebGPUSwapchain {
     texture_info: gpu::TextureInfo,
     canvas_context: GpuCanvasContext,
     backbuffer_counter: u64,
-    _p: PhantomData<*const std::ffi::c_void>
+    _p: PhantomData<*const std::ffi::c_void>,
 }
 
 impl WebGPUSwapchain {
@@ -62,7 +65,7 @@ impl WebGPUSwapchain {
             backbuffer_counter: 0u64,
             texture_info,
             canvas_context: context,
-            _p: PhantomData
+            _p: PhantomData,
         }
     }
 }
@@ -141,5 +144,12 @@ impl gpu::Swapchain<WebGPUBackend> for WebGPUSwapchain {
 
     fn height(&self) -> u32 {
         self.texture_info.height
+    }
+
+    fn size_changed(&mut self, width: u32, height: u32) {
+        log::info!("Resizing swapchain to {:?}x{:?}!", width, height);
+        let canvas = self.surface.canvas();
+        canvas.set_width(width);
+        canvas.set_height(height);
     }
 }

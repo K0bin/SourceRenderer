@@ -27,8 +27,8 @@ pub struct ConsoleResource(pub Arc<Console>);
 
 pub enum WindowState {
     Minimized,
-    Window(Vec2UI),
-    Fullscreen(Vec2UI),
+    Window(u32, u32),
+    Fullscreen(u32, u32),
 }
 
 pub const TICK_RATE: u32 = 5;

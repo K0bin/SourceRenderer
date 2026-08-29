@@ -40,4 +40,5 @@ pub trait Swapchain<B: GPUBackend> {
     fn transform(&self) -> Matrix4;
     fn width(&self) -> u32;
     fn height(&self) -> u32;
+    fn size_changed(&mut self, width: u32, height: u32);
 }
