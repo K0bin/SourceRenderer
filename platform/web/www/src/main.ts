@@ -1,5 +1,9 @@
 import ThreadWorker from './worker/thread_worker.ts?worker'
+import MainWorker from './worker/main_worker.ts?worker'
 import {EngineWorkerMessage, EngineWorkerMessageType, ThreadWorkerInit} from "./engine_worker_communication.ts";
+
+let mouseLocked = false;
+let fullscreen = false;
 
 function main() {
     const canvas = document.getElementById("canvas") as HTMLCanvasElement;
@@ -11,7 +15,7 @@ function main() {
         data: offscreenCanvas
     };
 
-    let worker: Worker | null = new ThreadWorker({name: "EngineThread"});
+    let worker: Worker | null = new MainWorker({name: "EngineThread"});
     worker.postMessage(msg, [offscreenCanvas]);
     offscreenCanvas = null;
 
@@ -26,6 +30,11 @@ function main() {
                 renderWorker.onerror = (e) => {
                     console.error("Error on render worker: ", e);
                 };
+                return;
+            }
+
+            case EngineWorkerMessageType.UpdateMouseLock: {
+                mouseLocked = msg.data as boolean;
                 return;
             }
 
@@ -58,6 +67,46 @@ function main() {
     canvasSizeObserver.observe(canvas, {
         box: "device-pixel-content-box"
     });
+
+    canvas.onmousemove = (e) => {
+        const msg: EngineWorkerMessage = {
+            messageType: EngineWorkerMessageType.MouseMoved,
+            data: {
+                x: e.x,
+                y: e.y,
+                deltaX: e.movementX,
+                deltaY: e.movementY
+            }
+        };
+        worker?.postMessage(msg);
+    };
+
+    canvas.onkeydown = (e) => {
+        const msg: EngineWorkerMessage = {
+            messageType: EngineWorkerMessageType.KeyDown,
+            data: e.code
+        };
+        worker?.postMessage(msg);
+    };
+
+    canvas.onkeyup = (e) => {
+        const msg: EngineWorkerMessage = {
+            messageType: EngineWorkerMessageType.KeyUp,
+            data: e.code
+        };
+        worker?.postMessage(msg);
+    };
+
+    canvas.onmousedown = async (_e) => {
+        if (mouseLocked) {
+            try {
+                await canvas.requestPointerLock();
+            } catch (_e) {
+            }
+        }
+    }
+
+    canvas.focus();
 }
 
 main();

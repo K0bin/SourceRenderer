@@ -4,10 +4,20 @@ export enum EngineWorkerMessageType {
     StartRenderThread,
     InitMainThread,
     InitThread,
-    CanvasResized
+    CanvasResized,
+    MouseMoved,
+    KeyUp,
+    KeyDown,
+    UpdateMouseLock
 }
 
-export type EngineMessageData = string | OffscreenCanvas | ThreadWorkerInit | CanvasResized;
+export type EngineMessageData =
+    string
+    | OffscreenCanvas
+    | ThreadWorkerInit
+    | CanvasResized
+    | MouseMoved
+    | boolean;
 
 export interface ThreadWorkerInit {
     module: WebAssembly.Module,
@@ -20,6 +30,13 @@ export interface ThreadWorkerInit {
 export interface CanvasResized {
     width: number,
     height: number,
+}
+
+export interface MouseMoved {
+    x: number,
+    y: number,
+    deltaX: number,
+    deltaY: number,
 }
 
 export interface EngineWorkerMessage {

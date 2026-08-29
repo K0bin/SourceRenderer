@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use crate::input::Key;
-use crate::{gpu::GPUBackend, Vec2, Vec2I, Vec2UI};
+use crate::{Vec2, Vec2I, Vec2UI, gpu::GPUBackend};
 
 mod io;
 pub use io::FileWatcher;

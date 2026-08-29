@@ -56,7 +56,7 @@ bevy_log = "0.19"
 bevy_tasks = { version = "0.19" }
 bevy_utils = "0.19"
 bevy_time = "0.19"
-bevy_input = { version = "0.19", features = ["mouse", "keyboard", "gamepad"] }
+bevy_input = { version = "0.19", features = ["mouse", "keyboard", "gamepad", "touch"] }
 bevy_diagnostic = "0.19"
 bevy_platform = "0.19"
 

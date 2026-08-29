@@ -1,7 +1,6 @@
-import {default as initWasm, Engine, InitOutput, startEngine, threadFunc} from "../../../lib/pkg/sourcerenderer_web";
+import {default as initWasm, InitOutput, threadFunc} from "../../../lib/pkg/sourcerenderer_web";
 
 import {
-    CanvasResized,
     destroyThread,
     EngineWorkerMessage,
     EngineWorkerMessageType,
@@ -16,46 +15,13 @@ onmessage = async (event: MessageEvent) => {
         }
             break;
 
-        case EngineWorkerMessageType.InitMainThread: {
-            await initMain(msg.data as OffscreenCanvas);
-        }
-            break;
-
-        case EngineWorkerMessageType.CanvasResized: {
-            const data = msg.data as CanvasResized;
-            engine
-                ?.windowResized(data.width, data.height);
-        }
-            break;
-
         default:
             throw new Error("Unexpected message type on thread: " + msg.messageType);
     }
 };
 console.log("Thread initialized");
 
-let memory: WebAssembly.Memory | null = null;
 let thread: InitOutput | null = null;
-let engine: Engine | null = null;
-
-async function initMain(canvas: OffscreenCanvas) {
-    // Values are in WASM pages (64KiB)
-    memory = new WebAssembly.Memory({
-        initial: 80,
-        maximum: 16384,
-        shared: true
-    });
-    thread
-        = await initWasm({module_or_path: undefined, memory: memory});
-
-    if (engine !== null) {
-        throw new Error("Engine already initialized.");
-    }
-    engine = await startEngine(canvas);
-    requestAnimationFrame((_time) => {
-        frame();
-    });
-}
 
 async function run(data: ThreadWorkerInit) {
     console.log("Thread starting with payload:");
@@ -72,18 +38,8 @@ async function run(data: ThreadWorkerInit) {
 
 onerror = (e) => {
     console.error(e);
-    engine?.free();
     if (thread !== null) {
         destroyThread(thread);
         thread = null;
     }
-    engine = null;
 };
-
-function frame() {
-    engine?.frame();
-
-    requestAnimationFrame((_time) => {
-        frame();
-    });
-}

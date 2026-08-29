@@ -1,13 +1,11 @@
-pub use camera::{
-    ActiveCamera,
-    Camera,
-};
+pub use camera::{ActiveCamera, Camera};
 
-pub use self::engine::{
-    Engine,
-    EngineLoopFuncResult,
-    WindowState,
-};
+pub use self::engine::{Engine, EngineLoopFuncResult, WindowState};
+
+pub use bevy_input::ButtonState;
+pub use bevy_input::keyboard::{Key, KeyboardInput};
+pub use bevy_input::mouse::MouseMotion;
+pub use bevy_input::prelude::*;
 
 mod engine;
 
@@ -28,18 +26,10 @@ pub use async_counter::*;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
 
-use std::sync::{
-    Condvar,
-    Mutex,
-    MutexGuard,
-};
+use std::sync::{Condvar, Mutex, MutexGuard};
 
 #[allow(unused_imports)]
-use parking_lot::{
-    RwLock,
-    RwLockReadGuard,
-    RwLockWriteGuard,
-};
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 pub mod tasks;
 
