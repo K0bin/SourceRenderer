@@ -56,6 +56,8 @@ pub trait RenderPath {
         resources: &mut RendererResources,
         assets: &RendererAssetsReadOnly<'_>,
     ) -> Result<RenderPathResult, SwapchainError>;
+
+    fn recreate_swapchain(&mut self, new_swapchain: &mut Swapchain, resources: &mut RendererResources);
 }
 
 pub struct NoOpRenderPath;
@@ -97,4 +99,6 @@ impl RenderPath for NoOpRenderPath {
             backbuffer: Some(backbuffer),
         })
     }
+
+    fn recreate_swapchain(&mut self, _new_swapchain: &mut Swapchain, _resources: &mut RendererResources) {}
 }

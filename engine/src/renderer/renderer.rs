@@ -254,7 +254,8 @@ impl Renderer {
                 }
             }
             Err(_swapchain_err) => {
-                todo!("Handle swapchain recreation");
+                swapchain_guard.recreate();
+                self.render_path.recreate_swapchain(&mut swapchain_guard, &mut self.resources);
             }
         }
         std::mem::drop(swapchain_guard);

@@ -145,5 +145,10 @@ impl RenderPath for WebRenderer {
         });
     }
 
+    fn recreate_swapchain(&mut self, new_swapchain: &mut Swapchain,
+                          resources: &mut RendererResources,) {
+        self.geometry.recreate_swapchain(new_swapchain, resources);
+    }
+
     fn set_ui_data(&mut self, _data: crate::ui::UIDrawData) {}
 }
