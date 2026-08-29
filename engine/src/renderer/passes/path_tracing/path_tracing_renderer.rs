@@ -432,6 +432,14 @@ impl RenderPath for PathTracingRenderer {
         });
     }
 
+    fn recreate_swapchain(
+        &mut self,
+        _new_swapchain: &mut Swapchain,
+        _resources: &mut RendererResources,
+    ) {
+        todo!()
+    }
+
     fn set_ui_data(&mut self, data: crate::ui::UIDrawData) {
         self.ui_data = data;
     }

@@ -526,6 +526,14 @@ impl RenderPath for ConservativeRenderer {
         })
     }
 
+    fn recreate_swapchain(
+        &mut self,
+        _new_swapchain: &mut Swapchain,
+        _resources: &mut RendererResources,
+    ) {
+        todo!()
+    }
+
     fn set_ui_data(&mut self, _data: crate::ui::UIDrawData) {}
 }
 
