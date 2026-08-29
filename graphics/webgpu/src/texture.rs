@@ -107,7 +107,7 @@ impl WebGPUTexture {
         name: Option<&str>,
     ) -> Result<Self, ()> {
         let mut size = [js_sys::Number::from(0), js_sys::Number::from(0), js_sys::Number::from(0)];
-        size[0] = js_sys::Number::from(info.height);
+        size[0] = js_sys::Number::from(info.width);
         if info.dimension != gpu::TextureDimension::Dim1D
             && info.dimension != gpu::TextureDimension::Dim1DArray
         {
