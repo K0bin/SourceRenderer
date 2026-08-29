@@ -23,7 +23,7 @@ pub struct CompositingPass {
 
 impl CompositingPass {
     pub fn new(
-        device: &Arc<Device>,
+        _device: &Arc<Device>,
         assets: &RendererAssets,
         swapchain: &crate::graphics::Swapchain,
     ) -> Self {

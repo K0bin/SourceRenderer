@@ -74,21 +74,25 @@ impl VolumeRenderer {
 
         let marching_cubes_pass = MarchingCubesPass::new(device, resources, assets);
 
-        let geometry_pass =
-            GeometryPass::new(device, assets, swapchain, &mut init_cmd_buffer, resources);
+        let geometry_pass = GeometryPass::new(
+            device,
+            assets,
+            resources,
+            Vec2UI::new(swapchain.width(), swapchain.height()),
+        );
 
         let ssao = SsaoPass::new(
             device,
-            Vec2UI::new(swapchain.width(), swapchain.height()),
             resources,
             assets,
+            Vec2UI::new(swapchain.width(), swapchain.height()),
             false,
         );
 
         let sss = SSSPass::new(
             device,
-            Vec2UI::new(swapchain.width(), swapchain.height()),
             resources,
+            Vec2UI::new(swapchain.width(), swapchain.height()),
             assets,
         );
 
@@ -368,10 +372,13 @@ impl RenderPath for VolumeRenderer {
 
     fn recreate_swapchain(
         &mut self,
-        _new_swapchain: &mut Swapchain,
-        _resources: &mut RendererResources,
+        new_swapchain: &mut Swapchain,
+        resources: &mut RendererResources,
     ) {
-        //todo!()
+        let resolution = Vec2UI::new(new_swapchain.width(), new_swapchain.height());
+        SSSPass::create_textures(resources, resolution);
+        GeometryPass::create_textures(resources, resolution);
+        SsaoPass::create_textures(resources, resolution);
     }
 
     fn set_ui_data(&mut self, _data: crate::ui::UIDrawData) {}

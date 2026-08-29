@@ -28,45 +28,12 @@ impl SsaoPass {
     #[allow(unused)]
     pub fn new(
         device: &Arc<Device>,
-        resolution: Vec2UI,
         resources: &mut RendererResources,
         assets: &RendererAssets,
+        resolution: Vec2UI,
         visibility_buffer: bool,
     ) -> Self {
-        resources.create_texture(
-            Self::SSAO_INTERNAL_TEXTURE_NAME,
-            &TextureInfo {
-                dimension: TextureDimension::Dim2D,
-                format: Format::R16Float,
-                width: resolution.x / 2,
-                height: resolution.y / 2,
-                depth: 1,
-                mip_levels: 1,
-                array_length: 1,
-                samples: SampleCount::Samples1,
-                usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
-                supports_srgb: false,
-            },
-            false,
-        );
-
-        resources.create_texture(
-            Self::SSAO_TEXTURE_NAME,
-            &TextureInfo {
-                dimension: TextureDimension::Dim2D,
-                format: Format::R16Float,
-                width: resolution.x / 2,
-                height: resolution.y / 2,
-                depth: 1,
-                mip_levels: 1,
-                array_length: 1,
-                samples: SampleCount::Samples1,
-                usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
-                supports_srgb: false,
-            },
-            true,
-        );
-
+        Self::create_textures(resources, resolution);
         let noise_texture_view = Self::create_noise_texture(device, 4u32);
 
         let noise_sampler = device.create_sampler(&SamplerInfo {
@@ -106,6 +73,42 @@ impl SsaoPass {
             noise_texture_view,
             noise_sampler: Arc::new(noise_sampler),
         }
+    }
+
+    pub fn create_textures(resources: &mut RendererResources, resolution: Vec2UI) {
+        resources.create_texture(
+            Self::SSAO_INTERNAL_TEXTURE_NAME,
+            &TextureInfo {
+                dimension: TextureDimension::Dim2D,
+                format: Format::R16Float,
+                width: resolution.x / 2,
+                height: resolution.y / 2,
+                depth: 1,
+                mip_levels: 1,
+                array_length: 1,
+                samples: SampleCount::Samples1,
+                usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
+                supports_srgb: false,
+            },
+            false,
+        );
+
+        resources.create_texture(
+            Self::SSAO_TEXTURE_NAME,
+            &TextureInfo {
+                dimension: TextureDimension::Dim2D,
+                format: Format::R16Float,
+                width: resolution.x / 2,
+                height: resolution.y / 2,
+                depth: 1,
+                mip_levels: 1,
+                array_length: 1,
+                samples: SampleCount::Samples1,
+                usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
+                supports_srgb: false,
+            },
+            true,
+        );
     }
 
     fn create_hemisphere(device: &Arc<Device>, samples: u32) -> Arc<BufferSlice> {

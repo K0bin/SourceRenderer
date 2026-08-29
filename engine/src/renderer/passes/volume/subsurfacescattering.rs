@@ -25,26 +25,11 @@ impl SSSPass {
     #[allow(unused)]
     pub fn new(
         device: &Arc<Device>,
-        resolution: Vec2UI,
         resources: &mut RendererResources,
+        resolution: Vec2UI,
         assets: &RendererAssets,
     ) -> Self {
-        resources.create_texture(
-            Self::SSS_INTERNAL_TEMP_TEXTURE_NAME,
-            &TextureInfo {
-                dimension: TextureDimension::Dim2D,
-                format: Format::RGBA16UNorm,
-                width: resolution.x,
-                height: resolution.y,
-                depth: 1,
-                mip_levels: 1,
-                array_length: 1,
-                samples: SampleCount::Samples1,
-                usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
-                supports_srgb: false,
-            },
-            false,
-        );
+        Self::create_textures(resources, resolution);
 
         let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(
             "shaders/subsurface_scattering.comp.json",
@@ -68,6 +53,25 @@ impl SSSPass {
             pipeline,
             linear_sampler: Arc::new(sampler),
         }
+    }
+
+    pub fn create_textures(resources: &mut RendererResources, resolution: Vec2UI) {
+        resources.create_texture(
+            Self::SSS_INTERNAL_TEMP_TEXTURE_NAME,
+            &TextureInfo {
+                dimension: TextureDimension::Dim2D,
+                format: Format::RGBA16UNorm,
+                width: resolution.x,
+                height: resolution.y,
+                depth: 1,
+                mip_levels: 1,
+                array_length: 1,
+                samples: SampleCount::Samples1,
+                usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
+                supports_srgb: false,
+            },
+            false,
+        );
     }
 
     #[inline(always)]

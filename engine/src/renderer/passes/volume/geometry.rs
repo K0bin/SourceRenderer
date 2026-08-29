@@ -61,10 +61,11 @@ impl GeometryPass {
     pub(crate) fn new(
         device: &Arc<crate::graphics::Device>,
         assets: &RendererAssets,
-        swapchain: &crate::graphics::Swapchain,
-        _init_cmd_buffer: &mut crate::graphics::CommandBuffer,
         resources: &mut RendererResources,
+        resolution: Vec2UI,
     ) -> Self {
+        Self::create_textures(resources, resolution);
+
         let sampler = device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Linear,
             min_filter: Filter::Linear,
@@ -78,57 +79,6 @@ impl GeometryPass {
             min_lod: 0.0f32,
             max_lod: None,
         });
-
-        resources.create_texture(
-            Self::COLOR_TEXTURE_NAME,
-            &TextureInfo {
-                dimension: TextureDimension::Dim2D,
-                format: Format::RGBA16UNorm,
-                width: swapchain.width(),
-                height: swapchain.height(),
-                depth: 1,
-                mip_levels: 1,
-                array_length: 1,
-                samples: SampleCount::Samples1,
-                usage: TextureUsage::SAMPLED | TextureUsage::RENDER_TARGET | TextureUsage::STORAGE,
-                supports_srgb: false,
-            },
-            false,
-        );
-
-        resources.create_texture(
-            Self::DEPTH_TEXTURE_NAME,
-            &TextureInfo {
-                dimension: TextureDimension::Dim2D,
-                format: Format::D32S8,
-                width: swapchain.width(),
-                height: swapchain.height(),
-                depth: 1,
-                mip_levels: 1,
-                array_length: 1,
-                samples: SampleCount::Samples1,
-                usage: TextureUsage::SAMPLED | TextureUsage::DEPTH_STENCIL,
-                supports_srgb: false,
-            },
-            false,
-        );
-
-        resources.create_texture(
-            Self::SSS_INTENSITY_TEXTURE_NAME,
-            &TextureInfo {
-                dimension: TextureDimension::Dim2D,
-                format: Format::R8UNorm,
-                width: swapchain.width(),
-                height: swapchain.height(),
-                depth: 1,
-                mip_levels: 1,
-                array_length: 1,
-                samples: SampleCount::Samples1,
-                usage: TextureUsage::SAMPLED | TextureUsage::RENDER_TARGET | TextureUsage::STORAGE,
-                supports_srgb: false,
-            },
-            false,
-        );
 
         let shader_file_extension = "json";
 
@@ -296,6 +246,59 @@ impl GeometryPass {
             transfer_function_handle: TextureHandle::from(transfer_function_handle),
             pipeline_transparent_prepass,
         }
+    }
+
+    pub fn create_textures(resources: &mut RendererResources, resolution: Vec2UI) {
+        resources.create_texture(
+            Self::COLOR_TEXTURE_NAME,
+            &TextureInfo {
+                dimension: TextureDimension::Dim2D,
+                format: Format::RGBA16UNorm,
+                width: resolution.x,
+                height: resolution.y,
+                depth: 1,
+                mip_levels: 1,
+                array_length: 1,
+                samples: SampleCount::Samples1,
+                usage: TextureUsage::SAMPLED | TextureUsage::RENDER_TARGET | TextureUsage::STORAGE,
+                supports_srgb: false,
+            },
+            false,
+        );
+
+        resources.create_texture(
+            Self::DEPTH_TEXTURE_NAME,
+            &TextureInfo {
+                dimension: TextureDimension::Dim2D,
+                format: Format::D32S8,
+                width: resolution.x,
+                height: resolution.y,
+                depth: 1,
+                mip_levels: 1,
+                array_length: 1,
+                samples: SampleCount::Samples1,
+                usage: TextureUsage::SAMPLED | TextureUsage::DEPTH_STENCIL,
+                supports_srgb: false,
+            },
+            false,
+        );
+
+        resources.create_texture(
+            Self::SSS_INTENSITY_TEXTURE_NAME,
+            &TextureInfo {
+                dimension: TextureDimension::Dim2D,
+                format: Format::R8UNorm,
+                width: resolution.x,
+                height: resolution.y,
+                depth: 1,
+                mip_levels: 1,
+                array_length: 1,
+                samples: SampleCount::Samples1,
+                usage: TextureUsage::SAMPLED | TextureUsage::RENDER_TARGET | TextureUsage::STORAGE,
+                supports_srgb: false,
+            },
+            false,
+        );
     }
 
     #[inline(always)]
