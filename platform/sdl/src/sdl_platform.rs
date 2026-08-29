@@ -29,6 +29,7 @@ lazy_static! {
         key_to_scancode.insert(Scancode::LShift, KeyCode::ShiftLeft);
         key_to_scancode.insert(Scancode::LCtrl, KeyCode::ControlLeft);
         key_to_scancode.insert(Scancode::Escape, KeyCode::Escape);
+        key_to_scancode.insert(Scancode::F11, KeyCode::F11);
         key_to_scancode
     };
 }
@@ -100,6 +101,16 @@ impl SDLPlatform {
                 } => {
                     let key = SCANCODE_TO_KEY.get(&keycode).copied();
                     if let Some(key) = key {
+                        if key == KeyCode::F11 {
+                            self.window
+                                .window
+                                .set_fullscreen(
+                                    self.window.window.fullscreen_state()
+                                        == sdl3::video::FullscreenType::Off,
+                                )
+                                .unwrap();
+                        }
+
                         engine.dispatch_keyboard_input(KeyboardInput {
                             key_code: key,
                             logical_key: Key::Dead(None),
@@ -162,6 +173,7 @@ impl SDLWindow {
     fn new(_sdl_context: &Sdl, video_subsystem: &VideoSubsystem) -> SDLWindow {
         let mut window_builder = video_subsystem.window("sourcerenderer", 1280, 720);
         window_builder.position_centered();
+        window_builder.resizable();
         //window_builder.fullscreen();
 
         sdl_gpu::prepare_window(&mut window_builder);
