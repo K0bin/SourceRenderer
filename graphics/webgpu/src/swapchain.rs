@@ -70,7 +70,25 @@ impl WebGPUSwapchain {
 impl gpu::Swapchain<WebGPUBackend> for WebGPUSwapchain {
     type Backbuffer = WebGPUBackbuffer;
 
-    unsafe fn recreate(&mut self) {}
+    unsafe fn recreate(&mut self) {
+        let instance = WebGPUInstance::get_webgpu();
+        let preferred_format = instance.get_preferred_canvas_format();
+
+        self.texture_info = gpu::TextureInfo {
+            dimension: gpu::TextureDimension::Dim2D,
+            format: format_from_webgpu(preferred_format),
+            width: self.surface.canvas().width(),
+            height: self.surface.canvas().height(),
+            depth: 1,
+            mip_levels: 1,
+            array_length: 1,
+            samples: gpu::SampleCount::Samples1,
+            usage: gpu::TextureUsage::RENDER_TARGET
+                | gpu::TextureUsage::COPY_DST
+                | gpu::TextureUsage::BLIT_DST,
+            supports_srgb: false,
+        };
+    }
 
     fn will_reuse_backbuffers(&self) -> bool {
         false
