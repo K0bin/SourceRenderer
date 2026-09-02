@@ -1,13 +1,12 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+use super::gpu::{self, Buffer as _, CommandBuffer as _};
+use super::{AccelerationStructure, BottomLevelAccelerationStructureInfo, *};
 use atomic_refcell::AtomicRefMut;
 use bytemuck::{Pod, cast_slice};
 use crossbeam_channel::Sender;
 use smallvec::SmallVec;
-
-use super::gpu::{self, Buffer as _, CommandBuffer as _};
-use super::{AccelerationStructure, BottomLevelAccelerationStructureInfo, *};
 
 const DEBUG_FORCE_FAT_BARRIER: bool = false;
 
@@ -109,6 +108,12 @@ struct BufferHandleRef<'a> {
     handle: &'a active_gpu_backend::Buffer,
     offset: u64,
     length: u64,
+}
+
+pub struct BufferArrayEntry<'a> {
+    pub buffer: BufferRef<'a>,
+    pub offset: u64,
+    pub length: u64,
 }
 
 impl<'a> Copy for BufferRef<'a> {}
@@ -418,6 +423,35 @@ impl<'a> CommandBuffer<'a> {
         }
     }
 
+    pub fn bind_uniform_buffer_array(
+        &mut self,
+        frequency: BindingFrequency,
+        binding: u32,
+        buffers: &[BufferArrayEntry],
+    ) {
+        let buffers: SmallVec<[gpu::BufferArrayEntry<ActiveBackend>; 4]> = buffers
+            .iter()
+            .map(|b| {
+                let BufferHandleRef {
+                    handle: buffer_handle,
+                    offset: buffer_offset,
+                    length: buffer_length,
+                } = b.buffer.deconstruct(self.frame());
+
+                gpu::BufferArrayEntry {
+                    buffer: buffer_handle,
+                    offset: buffer_offset + b.offset,
+                    length: b.length.min(buffer_length - b.offset),
+                }
+            })
+            .collect();
+
+        unsafe {
+            self.cmd_buffer_handle
+                .bind_uniform_buffer_array(frequency, binding, &buffers);
+        }
+    }
+
     pub fn bind_storage_buffer(
         &mut self,
         frequency: BindingFrequency,
@@ -439,6 +473,35 @@ impl<'a> CommandBuffer<'a> {
                 buffer_offset + offset,
                 length.min(buffer_length - offset),
             );
+        }
+    }
+
+    pub fn bind_storage_buffer_array(
+        &mut self,
+        frequency: BindingFrequency,
+        binding: u32,
+        buffers: &[BufferArrayEntry],
+    ) {
+        let buffers: SmallVec<[gpu::BufferArrayEntry<ActiveBackend>; 4]> = buffers
+            .iter()
+            .map(|b| {
+                let BufferHandleRef {
+                    handle: buffer_handle,
+                    offset: buffer_offset,
+                    length: buffer_length,
+                } = b.buffer.deconstruct(self.frame());
+
+                gpu::BufferArrayEntry {
+                    buffer: buffer_handle,
+                    offset: buffer_offset + b.offset,
+                    length: b.length.min(buffer_length - b.offset),
+                }
+            })
+            .collect();
+
+        unsafe {
+            self.cmd_buffer_handle
+                .bind_storage_buffer_array(frequency, binding, &buffers);
         }
     }
 

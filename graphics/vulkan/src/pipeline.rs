@@ -86,7 +86,11 @@ impl VkShader {
                     shader_stage: vk_shader_stage,
                     count: binding_metadata.array_size,
                     writable: false,
-                    flags: vk::DescriptorBindingFlags::empty(),
+                    flags: if binding_metadata.array_size == 1 {
+                        vk::DescriptorBindingFlags::empty()
+                    } else {
+                        vk::DescriptorBindingFlags::PARTIALLY_BOUND
+                    },
                 });
             }
         }
@@ -354,6 +358,7 @@ fn add_shader_to_descriptor_set_layout_setup(
                             .properties
                             .limits
                             .max_descriptor_set_storage_buffers_dynamic
+                    && binding_clone.count == 1
                 {
                     context.dynamic_storage_buffers[index as usize] += binding_clone.count;
                     binding_clone.descriptor_type = vk::DescriptorType::STORAGE_BUFFER_DYNAMIC;
@@ -364,6 +369,7 @@ fn add_shader_to_descriptor_set_layout_setup(
                             .properties
                             .limits
                             .max_descriptor_set_uniform_buffers_dynamic
+                    && binding_clone.count == 1
                 {
                     context.dynamic_uniform_buffers[index as usize] += binding_clone.count;
                     binding_clone.descriptor_type = vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC;

@@ -104,6 +104,12 @@ pub struct BufferCopyRegion {
     pub size: u64,
 }
 
+pub struct BufferArrayEntry<'a, B: GPUBackend> {
+    pub buffer: &'a B::Buffer,
+    pub offset: u64,
+    pub length: u64,
+}
+
 pub trait CommandPool<B: GPUBackend> {
     unsafe fn create_command_buffer(&mut self) -> B::CommandBuffer;
     unsafe fn reset(&mut self);
@@ -227,6 +233,12 @@ pub trait CommandBuffer<B: GPUBackend> {
         offset: u64,
         length: u64,
     );
+    unsafe fn bind_uniform_buffer_array(
+        &mut self,
+        frequency: BindingFrequency,
+        binding: u32,
+        buffers: &[BufferArrayEntry<B>],
+    );
     unsafe fn bind_storage_buffer(
         &mut self,
         frequency: BindingFrequency,
@@ -234,6 +246,12 @@ pub trait CommandBuffer<B: GPUBackend> {
         buffer: &B::Buffer,
         offset: u64,
         length: u64,
+    );
+    unsafe fn bind_storage_buffer_array(
+        &mut self,
+        frequency: BindingFrequency,
+        binding: u32,
+        buffers: &[BufferArrayEntry<B>],
     );
     unsafe fn bind_storage_texture(
         &mut self,

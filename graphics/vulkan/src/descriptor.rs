@@ -19,6 +19,7 @@ use super::*;
 
 const DEFAULT_DESCRIPTOR_ARRAY_SIZE: usize = 4usize;
 const DEFAULT_PER_SET_PREALLOCATED_SIZE: usize = 8usize;
+const MAX_DESCRIPTOR_ARRAY_SIZE: u32 = 32u32;
 
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -62,7 +63,6 @@ pub(crate) struct VkDescriptorSetLayout {
     layout: vk::DescriptorSetLayout,
     binding_infos: SmallVec<[Option<VkDescriptorSetEntryInfo>; DEFAULT_PER_SET_PREALLOCATED_SIZE]>,
     is_empty: bool,
-    template: Option<vk::DescriptorUpdateTemplate>,
     max_used_binding: u32,
 }
 
@@ -74,7 +74,6 @@ impl VkDescriptorSetLayout {
     ) -> Self {
         let mut vk_bindings: Vec<vk::DescriptorSetLayoutBinding> = Vec::new();
         let mut vk_binding_flags: Vec<vk::DescriptorBindingFlags> = Vec::new();
-        let mut vk_template_entries: Vec<vk::DescriptorUpdateTemplateEntry> = Vec::new();
         let mut binding_infos: SmallVec<
             [Option<VkDescriptorSetEntryInfo>; DEFAULT_PER_SET_PREALLOCATED_SIZE],
         > = SmallVec::with_capacity(bindings.len());
@@ -87,24 +86,21 @@ impl VkDescriptorSetLayout {
             }
             binding_infos[binding.index as usize] = Some(binding.clone());
 
+            let descriptor_count = if binding.count != 0 {
+                binding.count
+            } else {
+                MAX_DESCRIPTOR_ARRAY_SIZE
+            };
+
             vk_bindings.push(vk::DescriptorSetLayoutBinding {
                 binding: binding.index,
-                descriptor_count: binding.count,
+                descriptor_count,
                 descriptor_type: binding.descriptor_type,
                 stage_flags: binding.shader_stage,
                 p_immutable_samplers: std::ptr::null(),
                 _marker: PhantomData,
             });
             vk_binding_flags.push(binding.flags);
-
-            vk_template_entries.push(vk::DescriptorUpdateTemplateEntry {
-                dst_binding: binding.index,
-                dst_array_element: 0,
-                descriptor_count: binding.count,
-                descriptor_type: binding.descriptor_type,
-                offset: binding.index as usize * std::mem::size_of::<VkDescriptorEntry>(),
-                stride: std::mem::size_of::<VkDescriptorEntry>(),
-            });
             max_used_binding = max_used_binding.max(binding.index);
         }
 
@@ -128,34 +124,10 @@ impl VkDescriptorSetLayout {
         };
         let layout = unsafe { device.create_descriptor_set_layout(&info, None) }.unwrap();
 
-        let template_info = vk::DescriptorUpdateTemplateCreateInfo {
-            s_type: vk::StructureType::DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO,
-            p_next: std::ptr::null(),
-            flags: vk::DescriptorUpdateTemplateCreateFlags::empty(),
-            descriptor_update_entry_count: vk_template_entries.len() as u32,
-            p_descriptor_update_entries: vk_template_entries.as_ptr(),
-            template_type: vk::DescriptorUpdateTemplateType::DESCRIPTOR_SET,
-            descriptor_set_layout: layout,
-            // the following are irrelevant because we're not updating push descriptors
-            pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
-            pipeline_layout: vk::PipelineLayout::null(),
-            set: 0,
-            _marker: PhantomData,
-        };
-        let template = if !flags
-            .contains(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT)
-            && !vk_template_entries.is_empty()
-        {
-            Some(unsafe { device.create_descriptor_update_template(&template_info, None) }.unwrap())
-        } else {
-            None
-        };
-
         Self {
             device: device.clone(),
             layout,
             binding_infos,
-            template,
             is_empty: bindings.is_empty(),
             max_used_binding,
         }
@@ -201,10 +173,6 @@ impl VkDescriptorSetLayout {
 impl Drop for VkDescriptorSetLayout {
     fn drop(&mut self) {
         unsafe {
-            if let Some(template) = self.template {
-                self.device
-                    .destroy_descriptor_update_template(template, None);
-            }
             self.device.destroy_descriptor_set_layout(self.layout, None);
         }
     }
@@ -362,552 +330,317 @@ impl VkDescriptorSet {
             stored_bindings.push(binding.into());
         }
 
-        match Option::<vk::DescriptorUpdateTemplate>::None {
-            None => {
-                let mut writes: SmallVec<
-                    [vk::WriteDescriptorSet; DEFAULT_PER_SET_PREALLOCATED_SIZE],
-                > = SmallVec::with_capacity(bindings.len());
-                let mut image_writes: SmallVec<
-                    [vk::DescriptorImageInfo; DEFAULT_PER_SET_PREALLOCATED_SIZE],
-                > = SmallVec::with_capacity(bindings.len());
-                let mut buffer_writes: SmallVec<
-                    [vk::DescriptorBufferInfo; DEFAULT_PER_SET_PREALLOCATED_SIZE],
-                > = SmallVec::with_capacity(bindings.len());
-                let mut acceleration_structures: SmallVec<[vk::AccelerationStructureKHR; 2]> =
-                    Default::default();
-                let mut acceleration_structure_writes: SmallVec<
-                    [vk::WriteDescriptorSetAccelerationStructureKHR; 2],
-                > = Default::default();
-                for (binding, resource) in stored_bindings.iter().enumerate() {
-                    // We're using pointers to elements in those vecs, so we cant relocate
-                    assert_ne!(writes.len(), writes.capacity());
-                    assert_ne!(image_writes.len(), image_writes.capacity());
-                    assert_ne!(buffer_writes.len(), buffer_writes.capacity());
-                    assert_ne!(
-                        acceleration_structures.len(),
-                        acceleration_structures.capacity()
-                    );
-                    assert_ne!(
-                        acceleration_structure_writes.len(),
-                        acceleration_structure_writes.capacity()
+        let mut writes: SmallVec<[vk::WriteDescriptorSet; DEFAULT_PER_SET_PREALLOCATED_SIZE]> =
+            SmallVec::with_capacity(bindings.len());
+        let mut image_writes: SmallVec<
+            [vk::DescriptorImageInfo; DEFAULT_PER_SET_PREALLOCATED_SIZE],
+        > = SmallVec::with_capacity(bindings.len());
+        let mut buffer_writes: SmallVec<
+            [vk::DescriptorBufferInfo; DEFAULT_PER_SET_PREALLOCATED_SIZE],
+        > = SmallVec::with_capacity(bindings.len());
+        let mut acceleration_structures: SmallVec<[vk::AccelerationStructureKHR; 2]> =
+            Default::default();
+        let mut acceleration_structure_writes: SmallVec<
+            [vk::WriteDescriptorSetAccelerationStructureKHR; 2],
+        > = Default::default();
+        for (binding, resource) in stored_bindings.iter().enumerate() {
+            // We're using pointers to elements in those vecs, so we cant relocate
+            assert_ne!(writes.len(), writes.capacity());
+            assert_ne!(image_writes.len(), image_writes.capacity());
+            assert_ne!(buffer_writes.len(), buffer_writes.capacity());
+            assert_ne!(
+                acceleration_structures.len(),
+                acceleration_structures.capacity()
+            );
+            assert_ne!(
+                acceleration_structure_writes.len(),
+                acceleration_structure_writes.capacity()
+            );
+
+            let binding_info = layout.binding(binding as u32);
+            if binding_info.is_none() {
+                continue;
+            }
+            let binding_info = binding_info.unwrap();
+
+            let mut write = vk::WriteDescriptorSet {
+                dst_set: set,
+                dst_binding: binding as u32,
+                dst_array_element: 0,
+                descriptor_count: 1,
+                ..Default::default()
+            };
+
+            match resource {
+                VkBoundResource::StorageBuffer(VkBufferBindingInfo {
+                    buffer,
+                    offset,
+                    length,
+                }) => {
+                    assert!(
+                        binding_info.descriptor_type == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
+                            || binding_info.descriptor_type == vk::DescriptorType::STORAGE_BUFFER
                     );
 
-                    let binding_info = layout.binding(binding as u32);
-                    if binding_info.is_none() {
-                        continue;
-                    }
-                    let binding_info = binding_info.unwrap();
-
-                    let mut write = vk::WriteDescriptorSet {
-                        dst_set: set,
-                        dst_binding: binding as u32,
-                        dst_array_element: 0,
-                        descriptor_count: 1,
-                        ..Default::default()
+                    let buffer_info = vk::DescriptorBufferInfo {
+                        buffer: *buffer,
+                        offset: if binding_info.descriptor_type
+                            == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
+                        {
+                            0
+                        } else {
+                            *offset as vk::DeviceSize
+                        },
+                        range: *length as vk::DeviceSize,
                     };
-
-                    match resource {
-                        VkBoundResource::StorageBuffer(VkBufferBindingInfo {
-                            buffer,
-                            offset,
-                            length,
-                        }) => {
-                            assert!(
-                                binding_info.descriptor_type
-                                    == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
-                                    || binding_info.descriptor_type
-                                        == vk::DescriptorType::STORAGE_BUFFER
-                            );
-
-                            let buffer_info = vk::DescriptorBufferInfo {
-                                buffer: *buffer,
-                                offset: if binding_info.descriptor_type
-                                    == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
-                                {
-                                    0
-                                } else {
-                                    *offset as vk::DeviceSize
-                                },
-                                range: *length as vk::DeviceSize,
-                            };
-                            buffer_writes.push(buffer_info);
-                            write.p_buffer_info = unsafe {
-                                buffer_writes
-                                    .as_ptr()
-                                    .offset(buffer_writes.len() as isize - 1)
-                            };
-                            write.descriptor_type = binding_info.descriptor_type;
-                        }
-                        VkBoundResource::StorageBufferArray(buffers) => {
-                            assert!(
-                                binding_info.descriptor_type
-                                    == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
-                                    || binding_info.descriptor_type
-                                        == vk::DescriptorType::STORAGE_BUFFER
-                            );
-                            assert_eq!(binding_info.count, buffers.len() as u32);
-
-                            for VkBufferBindingInfo {
-                                buffer,
-                                offset,
-                                length,
-                            } in buffers
-                            {
-                                let buffer_info = vk::DescriptorBufferInfo {
-                                    buffer: *buffer,
-                                    offset: if binding_info.descriptor_type
-                                        == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
-                                    {
-                                        0
-                                    } else {
-                                        *offset as vk::DeviceSize
-                                    },
-                                    range: *length as vk::DeviceSize,
-                                };
-                                buffer_writes.push(buffer_info);
-                            }
-                            write.p_buffer_info = unsafe {
-                                buffer_writes
-                                    .as_ptr()
-                                    .offset(buffer_writes.len() as isize - buffers.len() as isize)
-                            };
-                            write.descriptor_type = binding_info.descriptor_type;
-                            write.descriptor_count = buffers.len() as u32;
-                        }
-                        VkBoundResource::StorageTexture(texture) => {
-                            let texture_info = vk::DescriptorImageInfo {
-                                image_view: *texture,
-                                sampler: vk::Sampler::null(),
-                                image_layout: vk::ImageLayout::GENERAL,
-                            };
-                            image_writes.push(texture_info);
-                            write.p_image_info = unsafe {
-                                image_writes
-                                    .as_ptr()
-                                    .offset(image_writes.len() as isize - 1)
-                            };
-                            write.descriptor_type = vk::DescriptorType::STORAGE_IMAGE;
-                        }
-                        VkBoundResource::StorageTextureArray(textures) => {
-                            assert_eq!(binding_info.count, textures.len() as u32);
-
-                            for texture in textures {
-                                let texture_info = vk::DescriptorImageInfo {
-                                    image_view: *texture,
-                                    sampler: vk::Sampler::null(),
-                                    image_layout: vk::ImageLayout::GENERAL,
-                                };
-                                image_writes.push(texture_info);
-                            }
-                            write.p_image_info = unsafe {
-                                image_writes
-                                    .as_ptr()
-                                    .offset(image_writes.len() as isize - textures.len() as isize)
-                            };
-                            write.descriptor_type = vk::DescriptorType::STORAGE_IMAGE;
-                            write.descriptor_count = textures.len() as u32;
-                        }
-                        VkBoundResource::UniformBuffer(VkBufferBindingInfo {
-                            buffer,
-                            offset,
-                            length,
-                        }) => {
-                            assert!(
-                                binding_info.descriptor_type
-                                    == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
-                                    || binding_info.descriptor_type
-                                        == vk::DescriptorType::UNIFORM_BUFFER
-                            );
-
-                            let buffer_info = vk::DescriptorBufferInfo {
-                                buffer: *buffer,
-                                offset: if binding_info.descriptor_type
-                                    == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
-                                {
-                                    0
-                                } else {
-                                    *offset as vk::DeviceSize
-                                },
-                                range: *length as vk::DeviceSize,
-                            };
-                            buffer_writes.push(buffer_info);
-                            write.p_buffer_info = unsafe {
-                                buffer_writes
-                                    .as_ptr()
-                                    .offset(buffer_writes.len() as isize - 1)
-                            };
-                            write.descriptor_type = binding_info.descriptor_type;
-                        }
-                        VkBoundResource::UniformBufferArray(buffers) => {
-                            assert!(
-                                binding_info.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER
-                                    || binding_info.descriptor_type
-                                        == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
-                            );
-                            assert_eq!(binding_info.count, buffers.len() as u32);
-
-                            for VkBufferBindingInfo {
-                                buffer,
-                                offset,
-                                length,
-                            } in buffers
-                            {
-                                let buffer_info = vk::DescriptorBufferInfo {
-                                    buffer: *buffer,
-                                    offset: if binding_info.descriptor_type
-                                        == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
-                                    {
-                                        0
-                                    } else {
-                                        *offset as vk::DeviceSize
-                                    },
-                                    range: *length as vk::DeviceSize,
-                                };
-                                buffer_writes.push(buffer_info);
-                            }
-                            write.p_buffer_info = unsafe {
-                                buffer_writes
-                                    .as_ptr()
-                                    .offset(buffer_writes.len() as isize - buffers.len() as isize)
-                            };
-                            write.descriptor_type = binding_info.descriptor_type;
-                            write.descriptor_count = buffers.len() as u32;
-                        }
-                        VkBoundResource::SampledTexture(texture) => {
-                            let texture_info = vk::DescriptorImageInfo {
-                                image_view: *texture,
-                                sampler: vk::Sampler::null(),
-                                image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                            };
-                            image_writes.push(texture_info);
-                            write.p_image_info = unsafe {
-                                image_writes
-                                    .as_ptr()
-                                    .offset(image_writes.len() as isize - 1)
-                            };
-                            write.descriptor_type = vk::DescriptorType::SAMPLED_IMAGE;
-                        }
-                        VkBoundResource::SampledTextureArray(textures) => {
-                            assert_eq!(binding_info.count, textures.len() as u32);
-
-                            for texture in textures {
-                                let texture_info = vk::DescriptorImageInfo {
-                                    image_view: *texture,
-                                    sampler: vk::Sampler::null(),
-                                    image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                                };
-                                image_writes.push(texture_info);
-                            }
-                            write.p_image_info = unsafe {
-                                image_writes
-                                    .as_ptr()
-                                    .offset(image_writes.len() as isize - textures.len() as isize)
-                            };
-                            write.descriptor_type = vk::DescriptorType::SAMPLED_IMAGE;
-                            write.descriptor_count = textures.len() as u32;
-                        }
-                        VkBoundResource::SampledTextureAndSampler(texture, sampler) => {
-                            let texture_info = vk::DescriptorImageInfo {
-                                image_view: *texture,
-                                sampler: *sampler,
-                                image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                            };
-                            image_writes.push(texture_info);
-                            write.p_image_info = unsafe {
-                                image_writes
-                                    .as_ptr()
-                                    .offset(image_writes.len() as isize - 1)
-                            };
-                            write.descriptor_type = vk::DescriptorType::COMBINED_IMAGE_SAMPLER;
-                        }
-                        VkBoundResource::SampledTextureAndSamplerArray(textures_and_samplers) => {
-                            assert_eq!(binding_info.count, textures_and_samplers.len() as u32);
-
-                            for (texture, sampler) in textures_and_samplers {
-                                let texture_info = vk::DescriptorImageInfo {
-                                    image_view: *texture,
-                                    sampler: *sampler,
-                                    image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                                };
-                                image_writes.push(texture_info);
-                            }
-                            write.p_image_info = unsafe {
-                                image_writes.as_ptr().offset(
-                                    image_writes.len() as isize
-                                        - textures_and_samplers.len() as isize,
-                                )
-                            };
-                            write.descriptor_type = vk::DescriptorType::SAMPLED_IMAGE;
-                            write.descriptor_count = textures_and_samplers.len() as u32;
-                        }
-                        VkBoundResource::Sampler(sampler) => {
-                            let texture_info = vk::DescriptorImageInfo {
-                                image_view: vk::ImageView::null(),
-                                sampler: *sampler,
-                                image_layout: vk::ImageLayout::UNDEFINED,
-                            };
-                            image_writes.push(texture_info);
-                            write.p_image_info = unsafe {
-                                image_writes
-                                    .as_ptr()
-                                    .offset(image_writes.len() as isize - 1)
-                            };
-                            write.descriptor_type = vk::DescriptorType::SAMPLER;
-                        }
-                        VkBoundResource::AccelerationStructure(accel_struct) => {
-                            acceleration_structures.push(*accel_struct);
-                            let acceleration_structure_write =
-                                vk::WriteDescriptorSetAccelerationStructureKHR {
-                                    acceleration_structure_count: 1,
-                                    p_acceleration_structures: unsafe {
-                                        acceleration_structures
-                                            .as_ptr()
-                                            .offset(acceleration_structures.len() as isize - 1)
-                                    },
-                                    ..Default::default()
-                                };
-                            acceleration_structure_writes.push(acceleration_structure_write);
-                            write.p_next = unsafe {
-                                acceleration_structure_writes
-                                    .as_ptr()
-                                    .offset(acceleration_structure_writes.len() as isize - 1)
-                                    as _
-                            };
-                            write.descriptor_type = vk::DescriptorType::ACCELERATION_STRUCTURE_KHR;
-                        }
-                        VkBoundResource::None => {
-                            panic!("Shader expects resource in binding: {}", binding)
-                        }
-                    }
+                    buffer_writes.push(buffer_info);
+                    write.p_buffer_info = unsafe {
+                        buffer_writes
+                            .as_ptr()
+                            .offset(buffer_writes.len() as isize - 1)
+                    };
+                    write.descriptor_type = binding_info.descriptor_type;
+                }
+                VkBoundResource::StorageBufferArray(buffers) => {
                     assert_eq!(
-                        layout.binding_infos[binding]
-                            .as_ref()
-                            .unwrap()
-                            .descriptor_type,
-                        write.descriptor_type
+                        binding_info.descriptor_type,
+                        vk::DescriptorType::STORAGE_BUFFER
                     );
-                    writes.push(write);
+                    assert!(binding_info.count == 0 || binding_info.count >= buffers.len() as u32);
+                    assert!(buffers.len() <= MAX_DESCRIPTOR_ARRAY_SIZE as usize);
+                    for VkBufferBindingInfo {
+                        buffer,
+                        offset,
+                        length,
+                    } in buffers
+                    {
+                        let buffer_info = vk::DescriptorBufferInfo {
+                            buffer: *buffer,
+                            offset: *offset as vk::DeviceSize,
+                            range: *length as vk::DeviceSize,
+                        };
+                        buffer_writes.push(buffer_info);
+                    }
+                    write.p_buffer_info = unsafe {
+                        buffer_writes
+                            .as_ptr()
+                            .offset(buffer_writes.len() as isize - buffers.len() as isize)
+                    };
+                    write.descriptor_type = binding_info.descriptor_type;
+                    write.descriptor_count = buffers.len() as u32;
                 }
-                unsafe {
-                    device.update_descriptor_sets(&writes, &[]);
+                VkBoundResource::StorageTexture(texture) => {
+                    let texture_info = vk::DescriptorImageInfo {
+                        image_view: *texture,
+                        sampler: vk::Sampler::null(),
+                        image_layout: vk::ImageLayout::GENERAL,
+                    };
+                    image_writes.push(texture_info);
+                    write.p_image_info = unsafe {
+                        image_writes
+                            .as_ptr()
+                            .offset(image_writes.len() as isize - 1)
+                    };
+                    write.descriptor_type = vk::DescriptorType::STORAGE_IMAGE;
+                }
+                VkBoundResource::StorageTextureArray(textures) => {
+                    assert!(binding_info.count == 0 || binding_info.count >= textures.len() as u32);
+                    assert!(textures.len() <= MAX_DESCRIPTOR_ARRAY_SIZE as usize);
+
+                    for texture in textures {
+                        let texture_info = vk::DescriptorImageInfo {
+                            image_view: *texture,
+                            sampler: vk::Sampler::null(),
+                            image_layout: vk::ImageLayout::GENERAL,
+                        };
+                        image_writes.push(texture_info);
+                    }
+                    write.p_image_info = unsafe {
+                        image_writes
+                            .as_ptr()
+                            .offset(image_writes.len() as isize - textures.len() as isize)
+                    };
+                    write.descriptor_type = vk::DescriptorType::STORAGE_IMAGE;
+                    write.descriptor_count = textures.len() as u32;
+                }
+                VkBoundResource::UniformBuffer(VkBufferBindingInfo {
+                    buffer,
+                    offset,
+                    length,
+                }) => {
+                    assert!(
+                        binding_info.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
+                            || binding_info.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER
+                    );
+
+                    let buffer_info = vk::DescriptorBufferInfo {
+                        buffer: *buffer,
+                        offset: if binding_info.descriptor_type
+                            == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
+                        {
+                            0
+                        } else {
+                            *offset as vk::DeviceSize
+                        },
+                        range: *length as vk::DeviceSize,
+                    };
+                    buffer_writes.push(buffer_info);
+                    write.p_buffer_info = unsafe {
+                        buffer_writes
+                            .as_ptr()
+                            .offset(buffer_writes.len() as isize - 1)
+                    };
+                    write.descriptor_type = binding_info.descriptor_type;
+                }
+                VkBoundResource::UniformBufferArray(buffers) => {
+                    assert_eq!(
+                        binding_info.descriptor_type,
+                        vk::DescriptorType::UNIFORM_BUFFER
+                    );
+                    assert!(binding_info.count == 0 || binding_info.count >= buffers.len() as u32);
+                    assert!(buffers.len() <= MAX_DESCRIPTOR_ARRAY_SIZE as usize);
+                    for VkBufferBindingInfo {
+                        buffer,
+                        offset,
+                        length,
+                    } in buffers
+                    {
+                        let buffer_info = vk::DescriptorBufferInfo {
+                            buffer: *buffer,
+                            offset: *offset as vk::DeviceSize,
+                            range: *length as vk::DeviceSize,
+                        };
+                        buffer_writes.push(buffer_info);
+                    }
+                    write.p_buffer_info = unsafe {
+                        buffer_writes
+                            .as_ptr()
+                            .offset(buffer_writes.len() as isize - buffers.len() as isize)
+                    };
+                    write.descriptor_type = binding_info.descriptor_type;
+                    write.descriptor_count = buffers.len() as u32;
+                }
+                VkBoundResource::SampledTexture(texture) => {
+                    let texture_info = vk::DescriptorImageInfo {
+                        image_view: *texture,
+                        sampler: vk::Sampler::null(),
+                        image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                    };
+                    image_writes.push(texture_info);
+                    write.p_image_info = unsafe {
+                        image_writes
+                            .as_ptr()
+                            .offset(image_writes.len() as isize - 1)
+                    };
+                    write.descriptor_type = vk::DescriptorType::SAMPLED_IMAGE;
+                }
+                VkBoundResource::SampledTextureArray(textures) => {
+                    assert!(binding_info.count == 0 || binding_info.count >= textures.len() as u32);
+                    assert!(textures.len() <= MAX_DESCRIPTOR_ARRAY_SIZE as usize);
+
+                    for texture in textures {
+                        let texture_info = vk::DescriptorImageInfo {
+                            image_view: *texture,
+                            sampler: vk::Sampler::null(),
+                            image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                        };
+                        image_writes.push(texture_info);
+                    }
+                    write.p_image_info = unsafe {
+                        image_writes
+                            .as_ptr()
+                            .offset(image_writes.len() as isize - textures.len() as isize)
+                    };
+                    write.descriptor_type = vk::DescriptorType::SAMPLED_IMAGE;
+                    write.descriptor_count = textures.len() as u32;
+                }
+                VkBoundResource::SampledTextureAndSampler(texture, sampler) => {
+                    let texture_info = vk::DescriptorImageInfo {
+                        image_view: *texture,
+                        sampler: *sampler,
+                        image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                    };
+                    image_writes.push(texture_info);
+                    write.p_image_info = unsafe {
+                        image_writes
+                            .as_ptr()
+                            .offset(image_writes.len() as isize - 1)
+                    };
+                    write.descriptor_type = vk::DescriptorType::COMBINED_IMAGE_SAMPLER;
+                }
+                VkBoundResource::SampledTextureAndSamplerArray(textures_and_samplers) => {
+                    assert!(
+                        binding_info.count == 0
+                            || binding_info.count == textures_and_samplers.len() as u32
+                    );
+                    assert!(textures_and_samplers.len() <= MAX_DESCRIPTOR_ARRAY_SIZE as usize);
+
+                    for (texture, sampler) in textures_and_samplers {
+                        let texture_info = vk::DescriptorImageInfo {
+                            image_view: *texture,
+                            sampler: *sampler,
+                            image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                        };
+                        image_writes.push(texture_info);
+                    }
+                    write.p_image_info = unsafe {
+                        image_writes.as_ptr().offset(
+                            image_writes.len() as isize - textures_and_samplers.len() as isize,
+                        )
+                    };
+                    write.descriptor_type = vk::DescriptorType::SAMPLED_IMAGE;
+                    write.descriptor_count = textures_and_samplers.len() as u32;
+                }
+                VkBoundResource::Sampler(sampler) => {
+                    let texture_info = vk::DescriptorImageInfo {
+                        image_view: vk::ImageView::null(),
+                        sampler: *sampler,
+                        image_layout: vk::ImageLayout::UNDEFINED,
+                    };
+                    image_writes.push(texture_info);
+                    write.p_image_info = unsafe {
+                        image_writes
+                            .as_ptr()
+                            .offset(image_writes.len() as isize - 1)
+                    };
+                    write.descriptor_type = vk::DescriptorType::SAMPLER;
+                }
+                VkBoundResource::AccelerationStructure(accel_struct) => {
+                    acceleration_structures.push(*accel_struct);
+                    let acceleration_structure_write =
+                        vk::WriteDescriptorSetAccelerationStructureKHR {
+                            acceleration_structure_count: 1,
+                            p_acceleration_structures: unsafe {
+                                acceleration_structures
+                                    .as_ptr()
+                                    .offset(acceleration_structures.len() as isize - 1)
+                            },
+                            ..Default::default()
+                        };
+                    acceleration_structure_writes.push(acceleration_structure_write);
+                    write.p_next = unsafe {
+                        acceleration_structure_writes
+                            .as_ptr()
+                            .offset(acceleration_structure_writes.len() as isize - 1)
+                            as _
+                    };
+                    write.descriptor_type = vk::DescriptorType::ACCELERATION_STRUCTURE_KHR;
+                }
+                VkBoundResource::None => {
+                    panic!("Shader expects resource in binding: {}", binding)
                 }
             }
-            Some(template) => {
-                let mut entries: SmallVec<[VkDescriptorEntry; DEFAULT_PER_SET_PREALLOCATED_SIZE]> =
-                    SmallVec::with_capacity(bindings.len());
-
-                for (binding, resource) in stored_bindings.iter().enumerate() {
-                    assert_ne!(entries.len(), entries.capacity());
-                    let binding_info = layout.binding(binding as u32);
-                    if binding_info.is_none() {
-                        continue;
-                    }
-                    let binding_info = binding_info.unwrap();
-
-                    match resource {
-                        VkBoundResource::StorageBuffer(VkBufferBindingInfo {
-                            buffer,
-                            offset,
-                            length,
-                        }) => {
-                            assert!(
-                                binding_info.descriptor_type
-                                    == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
-                                    || binding_info.descriptor_type
-                                        == vk::DescriptorType::STORAGE_BUFFER
-                            );
-
-                            let mut entry = VkDescriptorEntry::default();
-                            entry.buffer = vk::DescriptorBufferInfo {
-                                buffer: *buffer,
-                                offset: if binding_info.descriptor_type
-                                    == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
-                                {
-                                    0
-                                } else {
-                                    *offset as vk::DeviceSize
-                                },
-                                range: *length as vk::DeviceSize,
-                            };
-                            entries.push(entry);
-                        }
-                        VkBoundResource::StorageBufferArray(buffers) => {
-                            assert!(
-                                binding_info.descriptor_type
-                                    == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
-                                    || binding_info.descriptor_type
-                                        == vk::DescriptorType::STORAGE_BUFFER
-                            );
-                            assert_eq!(binding_info.count, buffers.len() as u32);
-
-                            for VkBufferBindingInfo {
-                                buffer,
-                                offset,
-                                length,
-                            } in buffers
-                            {
-                                let mut entry = VkDescriptorEntry::default();
-                                entry.buffer = vk::DescriptorBufferInfo {
-                                    buffer: *buffer,
-                                    offset: if binding_info.descriptor_type
-                                        == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
-                                    {
-                                        0
-                                    } else {
-                                        *offset as vk::DeviceSize
-                                    },
-                                    range: *length as vk::DeviceSize,
-                                };
-                                entries.push(entry);
-                            }
-                        }
-                        VkBoundResource::UniformBuffer(VkBufferBindingInfo {
-                            buffer,
-                            offset,
-                            length,
-                        }) => {
-                            assert!(
-                                binding_info.descriptor_type
-                                    == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
-                                    || binding_info.descriptor_type
-                                        == vk::DescriptorType::UNIFORM_BUFFER
-                            );
-
-                            let mut entry = VkDescriptorEntry::default();
-                            entry.buffer = vk::DescriptorBufferInfo {
-                                buffer: *buffer,
-                                offset: if binding_info.descriptor_type
-                                    == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
-                                {
-                                    0
-                                } else {
-                                    *offset as vk::DeviceSize
-                                },
-                                range: *length as vk::DeviceSize,
-                            };
-                            entries.push(entry);
-                        }
-                        VkBoundResource::UniformBufferArray(buffers) => {
-                            assert!(
-                                binding_info.descriptor_type
-                                    == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
-                                    || binding_info.descriptor_type
-                                        == vk::DescriptorType::UNIFORM_BUFFER
-                            );
-                            assert_eq!(binding_info.count, buffers.len() as u32);
-
-                            for VkBufferBindingInfo {
-                                buffer,
-                                offset,
-                                length,
-                            } in buffers
-                            {
-                                let mut entry = VkDescriptorEntry::default();
-                                entry.buffer = vk::DescriptorBufferInfo {
-                                    buffer: *buffer,
-                                    offset: if binding_info.descriptor_type
-                                        == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
-                                    {
-                                        0
-                                    } else {
-                                        *offset as vk::DeviceSize
-                                    },
-                                    range: *length as vk::DeviceSize,
-                                };
-                                entries.push(entry);
-                            }
-                        }
-                        VkBoundResource::SampledTexture(texture) => {
-                            let mut entry = VkDescriptorEntry::default();
-                            entry.image = vk::DescriptorImageInfo {
-                                image_view: *texture,
-                                sampler: vk::Sampler::null(),
-                                image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                            };
-                            entries.push(entry);
-                        }
-                        VkBoundResource::SampledTextureArray(textures) => {
-                            assert_eq!(binding_info.count, textures.len() as u32);
-
-                            for texture in textures {
-                                let mut entry = VkDescriptorEntry::default();
-                                entry.image = vk::DescriptorImageInfo {
-                                    image_view: *texture,
-                                    sampler: vk::Sampler::null(),
-                                    image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                                };
-                                entries.push(entry);
-                            }
-                        }
-                        VkBoundResource::SampledTextureAndSampler(texture, sampler) => {
-                            let mut entry = VkDescriptorEntry::default();
-                            entry.image = vk::DescriptorImageInfo {
-                                image_view: *texture,
-                                sampler: *sampler,
-                                image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                            };
-                            entries.push(entry);
-                        }
-                        VkBoundResource::SampledTextureAndSamplerArray(textures_and_samplers) => {
-                            assert_eq!(binding_info.count, textures_and_samplers.len() as u32);
-
-                            for (texture, sampler) in textures_and_samplers {
-                                let mut entry = VkDescriptorEntry::default();
-                                entry.image = vk::DescriptorImageInfo {
-                                    image_view: *texture,
-                                    sampler: *sampler,
-                                    image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                                };
-                                entries.push(entry);
-                            }
-                        }
-                        VkBoundResource::StorageTexture(texture) => {
-                            let mut entry = VkDescriptorEntry::default();
-                            entry.image = vk::DescriptorImageInfo {
-                                image_view: *texture,
-                                sampler: vk::Sampler::null(),
-                                image_layout: vk::ImageLayout::GENERAL,
-                            };
-                            entries.push(entry);
-                        }
-                        VkBoundResource::StorageTextureArray(textures) => {
-                            assert_eq!(binding_info.count, textures.len() as u32);
-
-                            for texture in textures {
-                                let mut entry = VkDescriptorEntry::default();
-                                entry.image = vk::DescriptorImageInfo {
-                                    image_view: *texture,
-                                    sampler: vk::Sampler::null(),
-                                    image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                                };
-                                entries.push(entry);
-                            }
-                        }
-                        VkBoundResource::Sampler(sampler) => {
-                            let mut entry = VkDescriptorEntry::default();
-                            entry.image = vk::DescriptorImageInfo {
-                                image_view: vk::ImageView::null(),
-                                sampler: *sampler,
-                                image_layout: vk::ImageLayout::UNDEFINED,
-                            };
-                            entries.push(entry);
-                        }
-                        VkBoundResource::AccelerationStructure(acceleration_structure) => {
-                            let mut entry = VkDescriptorEntry::default();
-                            entry.acceleration_structure = *acceleration_structure;
-                            entries.push(entry);
-                        }
-                        _ => {}
-                    }
-                }
-                unsafe {
-                    device.update_descriptor_set_with_template(
-                        set,
-                        template,
-                        entries.as_ptr() as *const c_void,
-                    );
-                }
-            }
+            assert_eq!(
+                layout.binding_infos[binding]
+                    .as_ref()
+                    .unwrap()
+                    .descriptor_type,
+                write.descriptor_type
+            );
+            writes.push(write);
+        }
+        unsafe {
+            device.update_descriptor_sets(&writes, &[]);
         }
 
         Ok(Self {
@@ -1126,17 +859,21 @@ impl BindingCompare<Self> for VkBoundResource {
                 VkBoundResource::StorageBufferArray(arr1),
             ) = (self, other)
             {
-                arr.iter()
-                    .zip(arr1)
-                    .all(|(b, b1)| b.buffer == b1.buffer && b.length == b1.length)
+                arr.len() == arr1.len()
+                    && arr
+                        .iter()
+                        .zip(arr1)
+                        .all(|(b, b1)| b.buffer == b1.buffer && b.length == b1.length)
             } else if let (
                 VkBoundResource::UniformBufferArray(arr),
                 VkBoundResource::UniformBufferArray(arr1),
             ) = (self, other)
             {
-                arr.iter()
-                    .zip(arr1)
-                    .all(|(b, b1)| b.buffer == b1.buffer && b.length == b1.length)
+                arr.len() == arr1.len()
+                    && arr
+                        .iter()
+                        .zip(arr1)
+                        .all(|(b, b1)| b.buffer == b1.buffer && b.length == b1.length)
             } else {
                 false
             }

@@ -7,7 +7,8 @@ use bytemuck::{Pod, cast_slice};
 use crossbeam_utils::atomic::AtomicCell;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{
-    self, Barrier, BarrierSync, Buffer as _, QueueOwnershipTransfer, SplitBarrierWait, TexturePlane,
+    self, Barrier, BarrierSync, BindingFrequency, Buffer as _, BufferArrayEntry,
+    QueueOwnershipTransfer, SplitBarrierWait, TexturePlane,
 };
 
 use super::*;
@@ -560,6 +561,35 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         );
     }
 
+    unsafe fn bind_uniform_buffer_array(
+        &mut self,
+        frequency: BindingFrequency,
+        binding: u32,
+        buffers: &[BufferArrayEntry<VkBackend>],
+    ) {
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
+        debug_assert_ne!(buffers.len(), 0);
+
+        let vk_bindings: SmallVec<[VkBufferBindingInfo; 4]> = buffers
+            .iter()
+            .map(|b| VkBufferBindingInfo {
+                buffer: b.buffer.handle(),
+                offset: b.offset,
+                length: if b.length == gpu::WHOLE_BUFFER {
+                    b.buffer.info().size - b.offset
+                } else {
+                    b.length
+                },
+            })
+            .collect();
+
+        self.descriptor_manager.bind(
+            frequency,
+            binding,
+            VkBoundResourceRef::UniformBufferArray(&vk_bindings),
+        );
+    }
+
     unsafe fn bind_storage_buffer(
         &mut self,
         frequency: gpu::BindingFrequency,
@@ -582,6 +612,35 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                     length
                 },
             }),
+        );
+    }
+
+    unsafe fn bind_storage_buffer_array(
+        &mut self,
+        frequency: BindingFrequency,
+        binding: u32,
+        buffers: &[BufferArrayEntry<VkBackend>],
+    ) {
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
+        debug_assert_ne!(buffers.len(), 0);
+
+        let vk_bindings: SmallVec<[VkBufferBindingInfo; 4]> = buffers
+            .iter()
+            .map(|b| VkBufferBindingInfo {
+                buffer: b.buffer.handle(),
+                offset: b.offset,
+                length: if b.length == gpu::WHOLE_BUFFER {
+                    b.buffer.info().size - b.offset
+                } else {
+                    b.length
+                },
+            })
+            .collect();
+
+        self.descriptor_manager.bind(
+            frequency,
+            binding,
+            VkBoundResourceRef::StorageBufferArray(&vk_bindings),
         );
     }
 
