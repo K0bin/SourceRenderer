@@ -8,6 +8,7 @@ use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResource
 use bytemuck::{Pod, Zeroable};
 use smallvec::SmallVec;
 use sourcerenderer_core::Vec3UI;
+use sourcerenderer_core::gpu::SpecConstValue;
 use std::cell::Ref;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -69,7 +70,7 @@ pub struct MarchingCubesIndirectCall {
 }
 
 pub struct MarchingCubesPass {
-    pipeline: ComputePipelineHandle,
+    pipelines: [ComputePipelineHandle; 4],
     edges_buffer: Arc<BufferSlice>,
     tris_buffer: Arc<BufferSlice>,
     executed_count: u32,
@@ -91,9 +92,16 @@ impl MarchingCubesPass {
         resources: &mut RendererResources,
         assets: &RendererAssets,
     ) -> Self {
-        let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(
-            "shaders/marching_cubes.comp.json",
-        ));
+        // Compile optimized pipelines for 1-3 thresholds
+        let mut spec_consts = HashMap::<u32, SpecConstValue>::with_capacity(1);
+        let mut pipelines = SmallVec::<[ComputePipelineHandle; 4]>::with_capacity(4);
+        for i in 0..4 {
+            spec_consts.insert(0u32, SpecConstValue::UInt(i));
+            pipelines.push(assets.request_compute_pipeline(PathPipelineShaderStage {
+                shader_path: "shaders/marching_cubes.comp.json",
+                spec_consts: Some(&spec_consts),
+            }));
+        }
 
         // Allocate enough room for 16 draws
         resources.create_buffer(
@@ -486,7 +494,7 @@ impl MarchingCubesPass {
         device.flush_transfers();
 
         Self {
-            pipeline,
+            pipelines: pipelines.as_array().unwrap().clone(),
             edges_buffer,
             tris_buffer,
             executed_count: 0u32,
@@ -532,7 +540,12 @@ impl MarchingCubesPass {
         &self,
         assets: &RendererAssetsReadOnly<'_>,
     ) -> bool {
-        assets.get_compute_pipeline(self.pipeline).is_some()
+        for &pipeline in &self.pipelines {
+            if !assets.get_compute_pipeline(pipeline).is_some() {
+                return false;
+            }
+        }
+        true
     }
 
     pub fn execute(
@@ -656,29 +669,6 @@ impl MarchingCubesPass {
         command_buffer.flush_barriers();
         std::mem::drop(buffer_slices);
 
-        let pipeline = pass_params
-            .assets
-            .get_compute_pipeline(self.pipeline)
-            .unwrap();
-        command_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
-        command_buffer.bind_storage_buffer(
-            BindingFrequency::Frequent,
-            0,
-            BufferRef::Regular(&self.edges_buffer),
-            0,
-            WHOLE_BUFFER,
-        );
-        command_buffer.bind_storage_buffer(
-            BindingFrequency::Frequent,
-            1,
-            BufferRef::Regular(&self.tris_buffer),
-            0,
-            WHOLE_BUFFER,
-        );
-
-        command_buffer.bind_sampler(BindingFrequency::Frequent, 6, resources.linear_sampler());
-        command_buffer.bind_sampler(BindingFrequency::Frequent, 7, resources.nearest_sampler());
-
         for (texture, lod) in textures_with_lod {
             let mut buffer_slices = SmallVec::<[Ref<Arc<BufferSlice>>; 4]>::new();
             let mut thresholds = SmallVec::<[MarchingCubesThresholds; 4]>::new();
@@ -729,6 +719,35 @@ impl MarchingCubesPass {
                     length: WHOLE_BUFFER,
                 })
                 .collect();
+
+            let pipeline_index = if entries.len() < self.pipelines.len() {
+                entries.len()
+            } else {
+                0 // Spec const value 0 makes it use the dynamic value
+            };
+            let pipeline = pass_params
+                .assets
+                .get_compute_pipeline(self.pipelines[pipeline_index])
+                .unwrap();
+            command_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
+            command_buffer.bind_storage_buffer(
+                BindingFrequency::Frequent,
+                0,
+                BufferRef::Regular(&self.edges_buffer),
+                0,
+                WHOLE_BUFFER,
+            );
+            command_buffer.bind_storage_buffer(
+                BindingFrequency::Frequent,
+                1,
+                BufferRef::Regular(&self.tris_buffer),
+                0,
+                WHOLE_BUFFER,
+            );
+
+            command_buffer.bind_sampler(BindingFrequency::Frequent, 6, resources.linear_sampler());
+            command_buffer.bind_sampler(BindingFrequency::Frequent, 7, resources.nearest_sampler());
+
             command_buffer.bind_storage_buffer_array(BindingFrequency::Frequent, 3, &entries);
 
             let volume_texture = pass_params.assets.get_texture(texture);

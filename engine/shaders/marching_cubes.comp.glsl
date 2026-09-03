@@ -12,6 +12,8 @@
 #extension GL_EXT_maximal_reconvergence : enable
 #extension GL_EXT_nonuniform_qualifier : enable
 
+layout(constant_id = 0) const uint thresholdsCountConst = 0u;
+
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
 #include "descriptor_sets.inc.glsl"
@@ -57,7 +59,7 @@ layout(push_constant, std430) uniform Config {
     uvec3 extent;
     uint lod;
     uvec3 minBox;
-    uint thresholdsCount; // TODO: Optimize with spec constant
+    uint thresholdsCount;
 };
 
 
@@ -134,8 +136,10 @@ void main() {
     if (subgroupAll(any(greaterThanEqual(unshiftedBase + uvec3(1u), extent))))
         return;
 
+    uint finalThresholdsCount = thresholdsCountConst == 0 ? thresholdsCount : thresholdsCountConst;
+
     uint[16u] voxelKeys;
-    for (uint i = 0u; i < thresholdsCount; i++) {
+    for (uint i = 0u; i < finalThresholdsCount; i++) {
         voxelKeys[i] = 0u;
     }
     bool empty = true;
@@ -151,7 +155,7 @@ void main() {
 
                 uint index = ((x + z) & 1u) + z * 2u + y * 4u;
 
-                for (uint i = 0u; i < thresholdsCount; i++) {
+                for (uint i = 0u; i < finalThresholdsCount; i++) {
                     bool passes = density >= thresholdInstances[i].minThreshold && density < thresholdInstances[i].maxThreshold;
                     empty = empty && !passes;
                     full = full && passes;
@@ -168,7 +172,7 @@ void main() {
         return;
 
 
-    for (uint j = 0u; j < thresholdsCount; j++) {
+    for (uint j = 0u; j < finalThresholdsCount; j++) {
         uint voxelKey = voxelKeys[j];
         if (voxelKey == 0u || voxelKey == 255u)
             continue;
