@@ -40,6 +40,21 @@ impl RendererAssetWithHandle {
             RendererAssetWithHandle::RayTracingPipeline(_, _) => AssetType::RayTracingPipeline,
         }
     }
+
+    #[inline]
+    pub fn handle(&self) -> AssetHandle {
+        match self {
+            RendererAssetWithHandle::Texture(handle, _) => (*handle).into(),
+            RendererAssetWithHandle::Mesh(handle, _) => (*handle).into(),
+            RendererAssetWithHandle::Model(handle, _) => (*handle).into(),
+            RendererAssetWithHandle::Material(handle, _) => (*handle).into(),
+            RendererAssetWithHandle::Shader(handle, _) => (*handle).into(),
+            RendererAssetWithHandle::MeshGraphicsPipeline(handle, _) => (*handle).into(),
+            RendererAssetWithHandle::GraphicsPipeline(handle, _) => (*handle).into(),
+            RendererAssetWithHandle::ComputePipeline(handle, _) => (*handle).into(),
+            RendererAssetWithHandle::RayTracingPipeline(handle, _) => (*handle).into(),
+        }
+    }
 }
 
 pub struct RendererAssets {
@@ -94,6 +109,7 @@ impl RendererAssets {
     #[inline(always)]
     pub(crate) fn add_asset(&self, asset: RendererAssetWithHandle) -> bool {
         let mut assets = self.assets.write();
+        self.asset_manager.notify_ready(asset.handle());
         match asset {
             RendererAssetWithHandle::Texture(handle, asset) => {
                 assets.textures.insert(handle.into(), asset).is_some()

@@ -445,6 +445,8 @@ impl AssetManager {
             handle
         );
 
+        self.notify_loaded(handle);
+
         let asset_type = asset_data.asset_type();
         let group = asset_type.group();
         let (sender, _) = self.channels.get(&group).unwrap();
@@ -839,7 +841,20 @@ impl AssetManager {
         false
     }
 
-    pub fn unload_asset(&self, handle: AssetHandle) -> bool {
+    pub fn notify_loaded(&self, handle: AssetHandle) {
+        let mut asset_set = self.asset_sets.lock().unwrap();
+        asset_set.requested.remove(&handle);
+        asset_set.loaded.insert(handle);
+    }
+
+    pub fn notify_ready(&self, handle: AssetHandle) {
+        let mut asset_set = self.asset_sets.lock().unwrap();
+        asset_set.requested.remove(&handle);
+        asset_set.loaded.remove(&handle);
+        asset_set.ready.insert(handle);
+    }
+
+    pub fn notify_unloaded(&self, handle: AssetHandle) -> bool {
         let mut found = false;
         let mut asset_set = self.asset_sets.lock().unwrap();
         found = asset_set.requested.remove(&handle) || found;
