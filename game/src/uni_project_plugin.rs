@@ -17,14 +17,7 @@ pub struct UniProjectPlugin;
 impl Plugin for UniProjectPlugin {
     fn build(&self, app: &mut App) {
         {
-            log::info!("Initializing GamePlugin");
-            let asset_manager: &Arc<AssetManager> = Engine::get_asset_manager(app);
-            asset_manager.request_asset(
-                "FlightHelmet/FlightHelmet.gltf/scene/0",
-                AssetType::Level,
-                AssetLoadPriority::High,
-            );
-
+            log::info!("Initializing university project plugin");
             let marching_cube_scale =
                 Vec3::new(0.488281f32, 0.488281f32, 0.700012f32) * 8f32 * 0.01f32;
             let model_matrix = Matrix4::from_rotation_x(-1.57f32)
