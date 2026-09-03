@@ -16,8 +16,8 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use strum::VariantArray as _;
 
 use super::{
-    AssetData, AssetHandle, AssetType, AssetTypeGroup, MaterialData, MeshData, MeshRange,
-    ModelData, TextureData,
+    AssetData, AssetHandle, AssetType, AssetTypeGroup, MaterialData, MaterialHandle, MeshData,
+    MeshHandle, MeshRange, ModelData, ModelHandle, TextureData, TextureHandle,
 };
 use crate::graphics::TextureInfo;
 use crate::math::BoundingBox;
@@ -285,7 +285,7 @@ impl AssetManager {
         index_buffer_data: BoxBytes,
         parts: Box<[MeshRange]>,
         bounding_box: Option<BoundingBox>,
-    ) {
+    ) -> MeshHandle {
         assert_ne!(vertex_count, 0);
         let mesh = MeshData {
             vertices: vertex_buffer_data,
@@ -298,7 +298,8 @@ impl AssetManager {
             bounding_box,
             vertex_count,
         };
-        self.add_asset_data(path, AssetData::Mesh(mesh), AssetLoadPriority::Normal);
+        self.add_asset_data(path, AssetData::Mesh(mesh), AssetLoadPriority::Normal)
+            .into()
     }
 
     pub fn add_material_data(
@@ -307,13 +308,14 @@ impl AssetManager {
         albedo: &str,
         roughness: f32,
         metalness: f32,
-    ) {
+    ) -> MaterialHandle {
         let material = MaterialData::new_pbr(albedo, roughness, metalness);
         self.add_asset_data(
             path,
             AssetData::Material(material),
             AssetLoadPriority::Normal,
-        );
+        )
+        .into()
     }
 
     pub fn add_material_data_color(
@@ -322,21 +324,28 @@ impl AssetManager {
         albedo: Vec4,
         roughness: f32,
         metalness: f32,
-    ) {
+    ) -> MaterialHandle {
         let material: MaterialData = MaterialData::new_pbr_color(albedo, roughness, metalness);
         self.add_asset_data(
             path,
             AssetData::Material(material),
             AssetLoadPriority::Normal,
-        );
+        )
+        .into()
     }
 
-    pub fn add_model_data(self: &Arc<Self>, path: &str, mesh_path: &str, material_paths: &[&str]) {
+    pub fn add_model_data(
+        self: &Arc<Self>,
+        path: &str,
+        mesh_path: &str,
+        material_paths: &[&str],
+    ) -> ModelHandle {
         let model = ModelData {
             mesh_path: mesh_path.to_string(),
             material_paths: material_paths.iter().map(|mat| (*mat).to_owned()).collect(),
         };
-        self.add_asset_data(path, AssetData::Model(model), AssetLoadPriority::Normal);
+        self.add_asset_data(path, AssetData::Model(model), AssetLoadPriority::Normal)
+            .into()
     }
 
     pub fn add_texture_data(
@@ -344,7 +353,7 @@ impl AssetManager {
         path: &str,
         info: &TextureInfo,
         texture_data: BoxBytes,
-    ) {
+    ) -> TextureHandle {
         self.add_asset_data(
             path,
             AssetData::Texture(TextureData {
@@ -352,7 +361,8 @@ impl AssetManager {
                 data: smallvec![texture_data],
             }),
             AssetLoadPriority::Normal,
-        );
+        )
+        .into()
     }
 
     pub fn add_container_async(
@@ -416,7 +426,7 @@ impl AssetManager {
         path: &str,
         asset: AssetData,
         priority: AssetLoadPriority,
-    ) {
+    ) -> AssetHandle {
         self.add_asset_data_with_progress(path, asset, None, priority)
     }
 
@@ -426,7 +436,7 @@ impl AssetManager {
         asset_data: AssetData,
         progress: Option<&Arc<AssetLoaderProgress>>,
         priority: AssetLoadPriority,
-    ) {
+    ) -> AssetHandle {
         let handle = self.get_or_reserve_handle(path, asset_data.asset_type());
         log::trace!(
             "Adding asset data for path: {:?} {} to handle: {:?}",
@@ -450,6 +460,7 @@ impl AssetManager {
         if let Some(progress) = progress {
             progress.inc_finished(1);
         }
+        handle
     }
 
     fn reserve_handle(&self, path: &str, asset_type: AssetType) -> AssetHandle {
@@ -826,5 +837,14 @@ impl AssetManager {
             return true;
         }
         false
+    }
+
+    pub fn unload_asset(&self, handle: AssetHandle) -> bool {
+        let mut found = false;
+        let mut asset_set = self.asset_sets.lock().unwrap();
+        found = asset_set.requested.remove(&handle) || found;
+        found = asset_set.loaded.remove(&handle) || found;
+        found = asset_set.ready.remove(&handle) || found;
+        found
     }
 }
