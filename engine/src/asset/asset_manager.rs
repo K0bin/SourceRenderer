@@ -98,8 +98,8 @@ impl AsyncRead for AssetFile {
         buf: &mut [u8],
     ) -> std::task::Poll<IOResult<usize>> {
         match &mut self.contents {
-            AssetFileContents::File(file) => pin!(file).poll_read(cx, buf),
-            AssetFileContents::Memory(memory) => pin!(memory).poll_read(cx, buf),
+            AssetFileContents::File(file) => Pin::new(file).poll_read(cx, buf),
+            AssetFileContents::Memory(memory) => Pin::new(memory).poll_read(cx, buf),
         }
     }
 }
@@ -111,8 +111,8 @@ impl AsyncSeek for AssetFile {
         pos: SeekFrom,
     ) -> std::task::Poll<IOResult<u64>> {
         match &mut self.contents {
-            AssetFileContents::File(file) => pin!(file).poll_seek(cx, pos),
-            AssetFileContents::Memory(memory) => pin!(memory).poll_seek(cx, pos),
+            AssetFileContents::File(file) => Pin::new(file).poll_seek(cx, pos),
+            AssetFileContents::Memory(memory) => Pin::new(memory).poll_seek(cx, pos),
         }
     }
 }
@@ -150,6 +150,7 @@ pub struct AssetLoaderProgress {
 }
 
 impl AssetLoaderProgress {
+    #[inline(always)]
     pub fn is_done(&self) -> bool {
         self.finished.load(Ordering::SeqCst) == self.expected.load(Ordering::SeqCst)
     }
@@ -160,6 +161,16 @@ impl AssetLoaderProgress {
             self.finished.load(Ordering::Relaxed),
             self.expected.load(Ordering::Relaxed)
         );
+    }
+
+    #[inline(always)]
+    pub fn inc_expected(&self, increment: u32) {
+        self.expected.fetch_add(increment, Ordering::SeqCst);
+    }
+
+    #[inline(always)]
+    pub fn inc_finished(&self, increment: u32) {
+        self.finished.fetch_add(increment, Ordering::SeqCst);
     }
 }
 
@@ -379,7 +390,7 @@ impl AssetManager {
                 containers.push(container_box);
             }
             if let Some(progress) = c_progress {
-                progress.finished.fetch_add(1, Ordering::SeqCst);
+                progress.inc_finished(1);
             }
 
             let _count = c_self.pending_containers.decrement();
@@ -437,7 +448,7 @@ impl AssetManager {
             .unwrap();
 
         if let Some(progress) = progress {
-            progress.finished.fetch_add(1, Ordering::SeqCst);
+            progress.inc_finished(1);
         }
     }
 
@@ -557,7 +568,7 @@ impl AssetManager {
             },
             |p| p.clone(),
         );
-        progress.expected.fetch_add(1, Ordering::SeqCst);
+        progress.inc_expected(1);
 
         let handle = self.get_or_reserve_handle(path, asset_type);
 
@@ -599,7 +610,7 @@ impl AssetManager {
                 already_loaded = true;
             }
             if already_loaded && !refresh {
-                progress.finished.fetch_add(1, Ordering::SeqCst);
+                progress.inc_finished(1);
                 return (handle, progress);
             }
             // Already add it before it's really loaded so it's not racy with the loading process.
@@ -741,7 +752,7 @@ impl AssetManager {
         let loader_opt: Option<&dyn ErasedAssetLoader> =
             AssetManager::find_loader(&mut file, loaders.as_ref(), &self.pending_loaders).await;
         if loader_opt.is_none() {
-            progress.finished.fetch_add(1, Ordering::SeqCst);
+            progress.inc_finished(1);
             log::error!("Could not find loader for file: {:?}", &file.path);
             return Err(());
         }
@@ -750,7 +761,7 @@ impl AssetManager {
         let path = file.path.clone();
         let result = loader.load(file, self, priority, progress).await;
         if result.is_err() {
-            progress.finished.fetch_add(1, Ordering::SeqCst);
+            progress.inc_finished(1);
             log::error!("Could not load file: {:?}", &path);
             return Err(());
         }
