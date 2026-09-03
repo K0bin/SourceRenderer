@@ -3,17 +3,31 @@ use bevy_ecs::component::Component;
 use bevy_ecs::message::MessageReader;
 use bevy_ecs::query::With;
 use bevy_ecs::system::{Query, Res};
+use bevy_input::ButtonInput;
 use bevy_input::keyboard::KeyCode;
 use bevy_input::mouse::MouseMotion;
-use bevy_input::ButtonInput;
 use bevy_math::Vec2;
 use bevy_time::{Fixed, Time};
 use bevy_transform::components::Transform;
 use sourcerenderer_core::{Quaternion, Vec3};
 
-use sourcerenderer_engine::Camera;
+use sourcerenderer_engine::{ActiveCamera, Camera};
 
 pub fn install(app: &mut App) {
+    let camera = app
+        .world_mut()
+        .spawn((
+            Camera {
+                fov: std::f32::consts::PI / 2f32,
+                interpolate_rotation: false,
+            },
+            Transform::from_translation(Vec3::new(0.0f32, 1.0f32, -1.0f32)),
+            FPSCameraComponent::default(),
+        ))
+        .flush();
+
+    app.insert_resource(ActiveCamera(camera));
+
     app.add_systems(FixedUpdate, (fps_camera_movement,));
     app.add_systems(Update, (retrieve_fps_camera_rotation,));
 }

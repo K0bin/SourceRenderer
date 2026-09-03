@@ -4,15 +4,20 @@ use crate::renderer::asset::{
     GraphicsPipelineHandle, GraphicsPipelineInfo, PathPipelineShaderStage, RendererAssets,
     RendererAssetsReadOnly,
 };
-use crate::renderer::drawable::View;
-use crate::renderer::passes::marching_cubes::{MarchingCubesIndirectCall, MarchingCubesPass};
+use crate::renderer::drawable::{RendererVolumeDrawable, View};
 use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
+use crate::renderer::passes::volume::marching_cubes::{
+    MarchingCubesIndirectCall, MarchingCubesInfo, MarchingCubesKey, MarchingCubesPass,
+};
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use crate::renderer::renderer_scene::RendererScene;
 use bytemuck::{Pod, Zeroable};
+use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{StencilOp, TexturePlane};
 use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec3UI};
+use std::cell::Ref;
+use std::collections::HashMap;
 use std::default::Default;
 use std::sync::Arc;
 
@@ -22,6 +27,7 @@ struct PushConstantData {
     model_matrix: Matrix4,
     lod_extents: Vec3UI,
     threshold: f32,
+    // TODO: max threshold
     lod: u32,
     _padding0: u32,
     _padding1: u32,
@@ -37,6 +43,7 @@ struct MaterialData {
     metalness: f32,
     lod: u32,
     threshold: f32,
+    // TODO: max threshold
     width: f32,
     height: f32,
     _padding0: u32,
@@ -315,16 +322,10 @@ impl GeometryPass {
     pub(crate) fn execute(
         &mut self,
         cmd_buffer: &mut CommandBuffer,
-        _scene: &RendererScene,
-        _view: &View,
         camera_buffer: &TransientBufferSlice,
         params: &RenderPassParameters,
         assets: &RendererAssetsReadOnly<'_>,
-        volume_texture: TextureHandle,
-        model_matrix: Matrix4,
-        threshold: f32,
-        threshold_transparency: f32,
-        lod: u32,
+        marching_cubes_map: &HashMap<MarchingCubesKey, MarchingCubesInfo>,
     ) {
         let resources = &params.resources;
 
@@ -373,21 +374,6 @@ impl GeometryPass {
             HistoryResourceEntry::Current,
         );
 
-        let marchingcubes_ibo = resources.access_buffer(
-            cmd_buffer,
-            MarchingCubesPass::INDICES_BUFFER_NAME,
-            BarrierSync::INDEX_INPUT,
-            BarrierAccess::INDEX_READ,
-            HistoryResourceEntry::Current,
-        );
-
-        let marchingcubes_transparent_ibo = resources.access_buffer(
-            cmd_buffer,
-            MarchingCubesPass::TRANSPARENT_INDICES_BUFFER_NAME,
-            BarrierSync::INDEX_INPUT,
-            BarrierAccess::INDEX_READ,
-            HistoryResourceEntry::Current,
-        );
         let marchingcubes_indirect = resources.access_buffer(
             cmd_buffer,
             MarchingCubesPass::ATOMICS_BUFFER_NAME,
@@ -439,7 +425,27 @@ impl GeometryPass {
             HistoryResourceEntry::Current,
         );
 
+        let mut slices: SmallVec<[Ref<Arc<BufferSlice>>; 4]> =
+            SmallVec::with_capacity(params.scene.scene.volume_mesh_instances().len());
+        for drawable in params.scene.scene.volume_mesh_instances() {
+            let key = MarchingCubesKey::new(
+                drawable.volume_texture,
+                drawable.texture_lod,
+                drawable.min_threshold,
+                drawable.max_threshold,
+            );
+            let buffer_info = marching_cubes_map.get(&key).unwrap();
+            slices.push(resources.access_buffer(
+                cmd_buffer,
+                &buffer_info.buffer_name,
+                BarrierSync::INDEX_INPUT,
+                BarrierAccess::INDEX_READ,
+                HistoryResourceEntry::Current,
+            ));
+        }
+
         cmd_buffer.flush_barriers();
+        std::mem::drop(slices);
 
         cmd_buffer.begin_label("Geometry");
 
@@ -519,22 +525,6 @@ impl GeometryPass {
             &integration_lut,
             resources.linear_sampler(),
         );
-
-        let volume_texture = assets.get_texture(volume_texture);
-        let volume_texture_base = volume_texture.view.texture().unwrap();
-        let volume_texture_info = volume_texture_base.info();
-        let volume_texture_lod_extents = Vec3UI::new(
-            volume_texture_info.width >> lod,
-            volume_texture_info.height >> lod,
-            volume_texture_info.depth >> lod,
-        );
-        cmd_buffer.bind_sampling_view_and_sampler(
-            BindingFrequency::Frequent,
-            0u32,
-            &volume_texture.view,
-            resources.linear_sampler(),
-        );
-
         cmd_buffer.bind_uniform_buffer(
             BindingFrequency::Frame,
             0,
@@ -543,162 +533,334 @@ impl GeometryPass {
             WHOLE_BUFFER,
         );
 
-        let transfer_function = assets.get_texture(self.transfer_function_handle);
-        cmd_buffer.bind_sampling_view_and_sampler(
-            BindingFrequency::Frequent,
-            1u32,
-            &transfer_function.view,
-            resources.linear_sampler(),
-        );
+        for drawable in params.scene.scene.volume_mesh_instances() {
+            if drawable.transparent {
+                continue;
+            }
 
-        cmd_buffer.set_push_constant_data(
-            &[PushConstantData {
-                model_matrix,
-                lod_extents: volume_texture_lod_extents,
-                threshold,
-                lod,
-                ..Zeroable::zeroed()
-            }],
-            ShaderType::VertexShader,
-        );
-        cmd_buffer.set_push_constant_data(
-            &[MaterialData {
-                roughness: 0.6f32,
-                metalness: 0.3f32,
-                //roughness: 0.1f32,
-                //metalness: 0.9f32,
-                f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
-                inv_model_matrix: Matrix4::inverse(&model_matrix),
-                lod,
-                width: color_tex_extent.x as f32,
-                height: color_tex_extent.y as f32,
-                threshold,
-                ..Zeroable::zeroed()
-            }],
-            ShaderType::FragmentShader,
-        );
-        cmd_buffer.set_index_buffer(
-            BufferRef::Regular(&*marchingcubes_ibo),
-            0u64,
-            IndexFormat::U32,
-        );
-        cmd_buffer.finish_binding();
-        cmd_buffer.draw_indexed_indirect(
-            BufferRef::Regular(&*marchingcubes_indirect),
-            0u64,
-            1u32,
-            std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
-        );
+            let mut model_matrix = drawable.transform.into();
+            let lod_scale = (1u32 << drawable.texture_lod) as f32;
+            model_matrix *= Matrix4::from_scale(Vec3::new(lod_scale, lod_scale, lod_scale));
+
+            let volume_texture = assets.get_texture(drawable.volume_texture);
+            let volume_texture_base_opt = volume_texture.view.texture();
+            if volume_texture_base_opt.is_none() {
+                continue;
+            }
+            let volume_texture_base = volume_texture_base_opt.unwrap();
+            let volume_texture_info = volume_texture_base.info();
+            let volume_texture_lod_extents = Vec3UI::new(
+                volume_texture_info.width >> drawable.texture_lod,
+                volume_texture_info.height >> drawable.texture_lod,
+                volume_texture_info.depth >> drawable.texture_lod,
+            );
+            cmd_buffer.bind_sampling_view_and_sampler(
+                BindingFrequency::Frequent,
+                0u32,
+                &volume_texture.view,
+                resources.linear_sampler(),
+            );
+
+            let transfer_function = assets.get_texture(drawable.transfer_function_texture);
+            cmd_buffer.bind_sampling_view_and_sampler(
+                BindingFrequency::Frequent,
+                1u32,
+                &transfer_function.view,
+                resources.linear_sampler(),
+            );
+
+            cmd_buffer.set_push_constant_data(
+                &[PushConstantData {
+                    model_matrix,
+                    lod_extents: volume_texture_lod_extents,
+                    threshold: drawable.min_threshold,
+                    lod: drawable.texture_lod,
+                    ..Zeroable::zeroed()
+                }],
+                ShaderType::VertexShader,
+            );
+            cmd_buffer.set_push_constant_data(
+                &[MaterialData {
+                    roughness: 0.6f32,
+                    metalness: 0.3f32,
+                    //roughness: 0.1f32,
+                    //metalness: 0.9f32,
+                    f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
+                    inv_model_matrix: Matrix4::inverse(&model_matrix),
+                    lod: drawable.texture_lod,
+                    width: color_tex_extent.x as f32,
+                    height: color_tex_extent.y as f32,
+                    threshold: drawable.min_threshold,
+                    ..Zeroable::zeroed()
+                }],
+                ShaderType::FragmentShader,
+            );
+            let key = MarchingCubesKey::new(
+                drawable.volume_texture,
+                drawable.texture_lod,
+                drawable.min_threshold,
+                drawable.max_threshold,
+            );
+            let buffer_info = marching_cubes_map.get(&key).unwrap();
+            let ibo = resources.access_buffer(
+                cmd_buffer,
+                &buffer_info.buffer_name,
+                BarrierSync::INDEX_INPUT,
+                BarrierAccess::INDEX_READ,
+                HistoryResourceEntry::Current,
+            );
+
+            cmd_buffer.set_index_buffer(BufferRef::Regular(&*ibo), 0u64, IndexFormat::U32);
+            cmd_buffer.finish_binding();
+            cmd_buffer.draw_indexed_indirect(
+                BufferRef::Regular(&*marchingcubes_indirect),
+                buffer_info.indirect_buffer_offset as u64,
+                1u32,
+                std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
+            );
+        }
 
         // Geometry 2 - Non overlapping
 
-        cmd_buffer.set_pipeline(PipelineBinding::Graphics(pipeline_non_overlapping));
-        cmd_buffer.set_push_constant_data(
-            &[PushConstantData {
-                model_matrix,
-                lod_extents: volume_texture_lod_extents,
-                threshold: threshold_transparency,
-                lod,
-                ..Zeroable::zeroed()
-            }],
-            ShaderType::VertexShader,
-        );
-        cmd_buffer.set_push_constant_data(
-            &[MaterialData {
-                roughness: 0.4f32,
-                metalness: 0.3f32,
-                //roughness: 0.1f32,
-                //metalness: 0.9f32,
-                inv_model_matrix: Matrix4::inverse(&model_matrix),
-                lod,
-                width: color_tex_extent.x as f32,
-                height: color_tex_extent.y as f32,
-                f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
-                threshold: threshold_transparency,
-                ..Zeroable::zeroed()
-            }],
-            ShaderType::FragmentShader,
-        );
-        cmd_buffer.set_index_buffer(
-            BufferRef::Regular(&*marchingcubes_transparent_ibo),
-            0u64,
-            IndexFormat::U32,
-        );
-        cmd_buffer.finish_binding();
-        cmd_buffer.draw_indexed_indirect(
-            BufferRef::Regular(&*marchingcubes_indirect),
-            std::mem::size_of::<MarchingCubesIndirectCall>() as u64,
-            1u32,
-            std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
-        );
+        let mut transparent_drawables: SmallVec<[RendererVolumeDrawable; 2]> = params
+            .scene
+            .scene
+            .volume_mesh_instances()
+            .iter()
+            .filter(|d| d.transparent)
+            .cloned()
+            .collect();
+        transparent_drawables.sort_by_key(|d| (d.min_threshold * 1000.0f32) as u32); // good enough
+
+        for drawable in &transparent_drawables {
+            if !drawable.transparent {
+                continue;
+            }
+
+            let mut model_matrix = drawable.transform.into();
+            let lod_scale = (1u32 << drawable.texture_lod) as f32;
+            model_matrix *= Matrix4::from_scale(Vec3::new(lod_scale, lod_scale, lod_scale));
+
+            let volume_texture = assets.get_texture(drawable.volume_texture);
+            let volume_texture_base_opt = volume_texture.view.texture();
+            if volume_texture_base_opt.is_none() {
+                continue;
+            }
+            let volume_texture_base = volume_texture_base_opt.unwrap();
+            let volume_texture_info = volume_texture_base.info();
+            let volume_texture_lod_extents = Vec3UI::new(
+                volume_texture_info.width >> drawable.texture_lod,
+                volume_texture_info.height >> drawable.texture_lod,
+                volume_texture_info.depth >> drawable.texture_lod,
+            );
+            cmd_buffer.bind_sampling_view_and_sampler(
+                BindingFrequency::Frequent,
+                0u32,
+                &volume_texture.view,
+                resources.linear_sampler(),
+            );
+
+            let transfer_function = assets.get_texture(drawable.transfer_function_texture);
+            cmd_buffer.bind_sampling_view_and_sampler(
+                BindingFrequency::Frequent,
+                1u32,
+                &transfer_function.view,
+                resources.linear_sampler(),
+            );
+
+            cmd_buffer.set_pipeline(PipelineBinding::Graphics(pipeline_non_overlapping));
+            cmd_buffer.set_push_constant_data(
+                &[PushConstantData {
+                    model_matrix,
+                    lod_extents: volume_texture_lod_extents,
+                    threshold: drawable.min_threshold,
+                    lod: drawable.texture_lod,
+                    ..Zeroable::zeroed()
+                }],
+                ShaderType::VertexShader,
+            );
+            cmd_buffer.set_push_constant_data(
+                &[MaterialData {
+                    roughness: 0.4f32,
+                    metalness: 0.3f32,
+                    //roughness: 0.1f32,
+                    //metalness: 0.9f32,
+                    inv_model_matrix: Matrix4::inverse(&model_matrix),
+                    lod: drawable.texture_lod,
+                    width: color_tex_extent.x as f32,
+                    height: color_tex_extent.y as f32,
+                    f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
+                    threshold: drawable.min_threshold,
+                    ..Zeroable::zeroed()
+                }],
+                ShaderType::FragmentShader,
+            );
+
+            let key = MarchingCubesKey::new(
+                drawable.volume_texture,
+                drawable.texture_lod,
+                drawable.min_threshold,
+                drawable.max_threshold,
+            );
+            let buffer_info = marching_cubes_map.get(&key).unwrap();
+            let ibo = resources.access_buffer(
+                cmd_buffer,
+                &buffer_info.buffer_name,
+                BarrierSync::INDEX_INPUT,
+                BarrierAccess::INDEX_READ,
+                HistoryResourceEntry::Current,
+            );
+            cmd_buffer.set_index_buffer(BufferRef::Regular(&*ibo), 0u64, IndexFormat::U32);
+            cmd_buffer.finish_binding();
+            cmd_buffer.draw_indexed_indirect(
+                BufferRef::Regular(&*marchingcubes_indirect),
+                buffer_info.indirect_buffer_offset as u64,
+                1u32,
+                std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
+            );
+        }
 
         // Geometry 2 - Depth prepass
 
-        cmd_buffer.set_pipeline(PipelineBinding::Graphics(pipeline_transparent_prepass));
-        cmd_buffer.set_push_constant_data(
-            &[PushConstantData {
-                model_matrix,
-                lod_extents: volume_texture_lod_extents,
-                threshold: threshold_transparency,
-                lod,
-                ..Zeroable::zeroed()
-            }],
-            ShaderType::VertexShader,
-        );
-        cmd_buffer.set_index_buffer(
-            BufferRef::Regular(&*marchingcubes_transparent_ibo),
-            0u64,
-            IndexFormat::U32,
-        );
-        cmd_buffer.finish_binding();
-        cmd_buffer.draw_indexed_indirect(
-            BufferRef::Regular(&*marchingcubes_indirect),
-            std::mem::size_of::<MarchingCubesIndirectCall>() as u64,
-            1u32,
-            std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
-        );
+        for drawable in &transparent_drawables {
+            let mut model_matrix = drawable.transform.into();
+            let lod_scale = (1u32 << drawable.texture_lod) as f32;
+            model_matrix *= Matrix4::from_scale(Vec3::new(lod_scale, lod_scale, lod_scale));
+
+            let volume_texture = assets.get_texture(drawable.volume_texture);
+            let volume_texture_base_opt = volume_texture.view.texture();
+            if volume_texture_base_opt.is_none() {
+                continue;
+            }
+            let volume_texture_base = volume_texture_base_opt.unwrap();
+            let volume_texture_info = volume_texture_base.info();
+            let volume_texture_lod_extents = Vec3UI::new(
+                volume_texture_info.width >> drawable.texture_lod,
+                volume_texture_info.height >> drawable.texture_lod,
+                volume_texture_info.depth >> drawable.texture_lod,
+            );
+
+            cmd_buffer.set_pipeline(PipelineBinding::Graphics(pipeline_transparent_prepass));
+            cmd_buffer.set_push_constant_data(
+                &[PushConstantData {
+                    model_matrix,
+                    lod_extents: volume_texture_lod_extents,
+                    threshold: drawable.min_threshold,
+                    lod: drawable.texture_lod,
+                    ..Zeroable::zeroed()
+                }],
+                ShaderType::VertexShader,
+            );
+
+            let key = MarchingCubesKey::new(
+                drawable.volume_texture,
+                drawable.texture_lod,
+                drawable.min_threshold,
+                drawable.max_threshold,
+            );
+            let buffer_info = marching_cubes_map.get(&key).unwrap();
+            let ibo = resources.access_buffer(
+                cmd_buffer,
+                &buffer_info.buffer_name,
+                BarrierSync::INDEX_INPUT,
+                BarrierAccess::INDEX_READ,
+                HistoryResourceEntry::Current,
+            );
+            cmd_buffer.set_index_buffer(BufferRef::Regular(&*ibo), 0u64, IndexFormat::U32);
+            cmd_buffer.finish_binding();
+            cmd_buffer.draw_indexed_indirect(
+                BufferRef::Regular(&*marchingcubes_indirect),
+                buffer_info.indirect_buffer_offset as u64,
+                1u32,
+                std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
+            );
+        }
 
         // Geometry 2 - Transparent
 
-        cmd_buffer.set_pipeline(PipelineBinding::Graphics(pipeline_transparent));
-        cmd_buffer.set_push_constant_data(
-            &[PushConstantData {
-                model_matrix,
-                threshold: threshold_transparency,
-                lod_extents: volume_texture_lod_extents,
-                lod,
-                ..Zeroable::zeroed()
-            }],
-            ShaderType::VertexShader,
-        );
-        cmd_buffer.set_push_constant_data(
-            &[MaterialData {
-                roughness: 0.6f32,
-                metalness: 0.3f32,
-                //roughness: 0.1f32,
-                //metalness: 0.9f32,
-                f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
-                inv_model_matrix: Matrix4::inverse(&model_matrix),
-                lod,
-                width: color_tex_extent.x as f32,
-                height: color_tex_extent.y as f32,
-                threshold: threshold_transparency,
-                ..Zeroable::zeroed()
-            }],
-            ShaderType::FragmentShader,
-        );
-        cmd_buffer.set_index_buffer(
-            BufferRef::Regular(&*marchingcubes_transparent_ibo),
-            0u64,
-            IndexFormat::U32,
-        );
-        cmd_buffer.finish_binding();
-        cmd_buffer.draw_indexed_indirect(
-            BufferRef::Regular(&*marchingcubes_indirect),
-            std::mem::size_of::<MarchingCubesIndirectCall>() as u64,
-            1u32,
-            std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
-        );
+        for drawable in &transparent_drawables {
+            let mut model_matrix = drawable.transform.into();
+            let lod_scale = (1u32 << drawable.texture_lod) as f32;
+            model_matrix *= Matrix4::from_scale(Vec3::new(lod_scale, lod_scale, lod_scale));
+
+            let volume_texture = assets.get_texture(drawable.volume_texture);
+            let volume_texture_base_opt = volume_texture.view.texture();
+            if volume_texture_base_opt.is_none() {
+                continue;
+            }
+            let volume_texture_base = volume_texture_base_opt.unwrap();
+            let volume_texture_info = volume_texture_base.info();
+            let volume_texture_lod_extents = Vec3UI::new(
+                volume_texture_info.width >> drawable.texture_lod,
+                volume_texture_info.height >> drawable.texture_lod,
+                volume_texture_info.depth >> drawable.texture_lod,
+            );
+            cmd_buffer.bind_sampling_view_and_sampler(
+                BindingFrequency::Frequent,
+                0u32,
+                &volume_texture.view,
+                resources.linear_sampler(),
+            );
+
+            let transfer_function = assets.get_texture(drawable.transfer_function_texture);
+            cmd_buffer.bind_sampling_view_and_sampler(
+                BindingFrequency::Frequent,
+                1u32,
+                &transfer_function.view,
+                resources.linear_sampler(),
+            );
+
+            cmd_buffer.set_pipeline(PipelineBinding::Graphics(pipeline_transparent));
+            cmd_buffer.set_push_constant_data(
+                &[PushConstantData {
+                    model_matrix,
+                    threshold: drawable.min_threshold,
+                    lod_extents: volume_texture_lod_extents,
+                    lod: drawable.texture_lod,
+                    ..Zeroable::zeroed()
+                }],
+                ShaderType::VertexShader,
+            );
+            cmd_buffer.set_push_constant_data(
+                &[MaterialData {
+                    roughness: 0.6f32,
+                    metalness: 0.3f32,
+                    //roughness: 0.1f32,
+                    //metalness: 0.9f32,
+                    f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
+                    inv_model_matrix: Matrix4::inverse(&model_matrix),
+                    lod: drawable.texture_lod,
+                    width: color_tex_extent.x as f32,
+                    height: color_tex_extent.y as f32,
+                    threshold: drawable.min_threshold,
+                    ..Zeroable::zeroed()
+                }],
+                ShaderType::FragmentShader,
+            );
+
+            let key = MarchingCubesKey::new(
+                drawable.volume_texture,
+                drawable.texture_lod,
+                drawable.min_threshold,
+                drawable.max_threshold,
+            );
+            let buffer_info = marching_cubes_map.get(&key).unwrap();
+            let ibo = resources.access_buffer(
+                cmd_buffer,
+                &buffer_info.buffer_name,
+                BarrierSync::INDEX_INPUT,
+                BarrierAccess::INDEX_READ,
+                HistoryResourceEntry::Current,
+            );
+            cmd_buffer.set_index_buffer(BufferRef::Regular(&*ibo), 0u64, IndexFormat::U32);
+            cmd_buffer.finish_binding();
+            cmd_buffer.draw_indexed_indirect(
+                BufferRef::Regular(&*marchingcubes_indirect),
+                buffer_info.indirect_buffer_offset as u64,
+                1u32,
+                std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
+            );
+        }
 
         cmd_buffer.end_render_pass();
 

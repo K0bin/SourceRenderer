@@ -279,19 +279,6 @@ impl Plugin for SpinningCubePlugin {
             },*/
         ));
 
-        let camera = app
-            .world_mut()
-            .spawn((
-                Camera {
-                    fov: f32::consts::PI / 2f32,
-                    interpolate_rotation: false,
-                },
-                Transform::from_translation(Vec3::new(0.0f32, 1.0f32, -1.0f32)),
-                FPSCameraComponent::default(),
-            ))
-            .flush();
-
-        app.insert_resource(ActiveCamera(camera));
         info!("Added spinning cube");
     }
 }

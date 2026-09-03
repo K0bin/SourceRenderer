@@ -8,8 +8,10 @@ use sourcerenderer_core::console::Console;
 use web_time::{Duration, Instant};
 
 use super::asset::RendererAssets;
-use super::drawable::{RendererStaticDrawable, make_camera_proj, make_camera_view};
-use super::ecs::{DirectionalLightComponent, PointLightComponent};
+use super::drawable::{
+    RendererStaticDrawable, RendererVolumeDrawable, make_camera_proj, make_camera_view,
+};
+use super::ecs::{DirectionalLightComponent, PointLightComponent, VolumeMeshInstance};
 use super::light::DirectionalLight;
 #[cfg(not(target_arch = "wasm32"))]
 use super::passes::modern::ModernRenderer;
@@ -19,7 +21,7 @@ use super::render_path::{FrameInfo, RenderPath, SceneInfo};
 use super::renderer_culling::update_visibility;
 use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
-use super::{PointLight, StaticRenderableComponent};
+use super::{PointLight, RendererType, StaticRenderableComponent};
 use crate::asset::{AssetManager, AssetType};
 use crate::engine::{EngineLoopFuncResult, WindowState};
 use crate::graphics::*;
@@ -97,6 +99,7 @@ impl Renderer {
         receiver: RendererReceiver,
         asset_manager: &Arc<AssetManager>,
         _console: &Arc<Console>,
+        renderer_type: RendererType,
     ) -> Self {
         log::info!(
             "Initializing renderer with {} backend",
@@ -111,31 +114,40 @@ impl Renderer {
 
         log::trace!("Initializing render path");
         let render_path: Box<dyn RenderPath>;
-        #[cfg(target_arch = "wasm32")]
-        let render_path = Box::new(WebRenderer::new(
-            device,
-            &swapchain,
-            &mut context,
-            &mut resources,
-            &assets,
-        ));
-
-        #[cfg(not(target_arch = "wasm32"))]
-        /*let render_path = Box::new(ModernRenderer::new(
-            device,
-            &swapchain,
-            &mut context,
-            &mut resources,
-            &assets,
-        ));*/
-        //let render_path: Box<dyn RenderPath> = Box::new(NoOpRenderPath);
-        let render_path = Box::new(VolumeRenderer::new(
-            device,
-            &swapchain,
-            &mut context,
-            &mut resources,
-            &assets,
-        ));
+        render_path = if cfg!(target_arch = "wasm32") {
+            assert_eq!(renderer_type, RendererType::Compat);
+            Box::new(WebRenderer::new(
+                device,
+                &swapchain,
+                &mut context,
+                &mut resources,
+                &assets,
+            ))
+        } else {
+            match renderer_type {
+                RendererType::Regular => Box::new(ModernRenderer::new(
+                    device,
+                    &swapchain,
+                    &mut context,
+                    &mut resources,
+                    &assets,
+                )) as Box<dyn RenderPath>,
+                RendererType::Compat => Box::new(WebRenderer::new(
+                    device,
+                    &swapchain,
+                    &mut context,
+                    &mut resources,
+                    &assets,
+                )) as Box<dyn RenderPath>,
+                RendererType::VolumeUniProject => Box::new(VolumeRenderer::new(
+                    device,
+                    &swapchain,
+                    &mut context,
+                    &mut resources,
+                    &assets,
+                )) as Box<dyn RenderPath>,
+            }
+        };
 
         let mut scene = RendererScene::new();
         scene.main_view_mut().aspect_ratio =
@@ -404,6 +416,42 @@ impl Renderer {
                 RendererCommand::UnregisterDirectionalLight(entity) => {
                     self.scene.remove_directional_light(&entity);
                 }
+                RendererCommand::RegisterVolume {
+                    entity,
+                    transform,
+                    texture_path,
+                    transfer_function_texture_path,
+                    texture_lod,
+                    min_threshold,
+                    max_threshold,
+                    transparent,
+                } => {
+                    let volume_texture_handle = self
+                        .assets
+                        .asset_manager()
+                        .get_or_reserve_handle(&texture_path, AssetType::Texture);
+                    let transfer_function_texture_handle = self
+                        .assets
+                        .asset_manager()
+                        .get_or_reserve_handle(&transfer_function_texture_path, AssetType::Texture);
+                    self.scene.add_volume_drawable(
+                        entity,
+                        RendererVolumeDrawable {
+                            entity,
+                            transform,
+                            old_transform: transform,
+                            max_threshold,
+                            min_threshold,
+                            transparent,
+                            texture_lod,
+                            volume_texture: volume_texture_handle.into(),
+                            transfer_function_texture: transfer_function_texture_handle.into(),
+                        },
+                    );
+                }
+                RendererCommand::UnregisterVolume(entity) => {
+                    self.scene.remove_volume_drawable(&entity);
+                }
                 RendererCommand::SetLightmap(path) => {
                     let handle = self
                         .assets
@@ -550,6 +598,44 @@ impl RendererSender {
 
         sender
             .send(RendererCommand::UnregisterDirectionalLight(entity))
+            .map_err(|_| SendError(()))
+    }
+
+    pub fn register_volume_renderable(
+        &self,
+        entity: Entity,
+        transform: &InterpolatedTransform,
+        renderable: &VolumeMeshInstance,
+    ) -> Result<(), SendError<()>> {
+        let sender = if let Some(sender) = self.sender.as_ref() {
+            sender
+        } else {
+            return Err(SendError(()));
+        };
+
+        sender
+            .send(RendererCommand::RegisterVolume {
+                entity,
+                transform: transform.0,
+                min_threshold: renderable.threshold_min,
+                max_threshold: renderable.threshold_max,
+                transparent: renderable.transparent,
+                texture_path: renderable.volume_texture_path.clone(),
+                texture_lod: renderable.volume_texture_lod,
+                transfer_function_texture_path: renderable.transfer_function_texture_path.clone(),
+            })
+            .map_err(|_| SendError(()))
+    }
+
+    pub fn unregister_volume_renderable(&self, entity: Entity) -> Result<(), SendError<()>> {
+        let sender = if let Some(sender) = self.sender.as_ref() {
+            sender
+        } else {
+            return Err(SendError(()));
+        };
+
+        sender
+            .send(RendererCommand::UnregisterVolume(entity))
             .map_err(|_| SendError(()))
     }
 

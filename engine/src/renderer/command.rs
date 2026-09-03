@@ -25,6 +25,17 @@ pub enum RendererCommand {
         intensity: f32,
     },
     UnregisterDirectionalLight(Entity),
+    RegisterVolume {
+        entity: Entity,
+        transform: Affine3A,
+        texture_path: String,
+        transfer_function_texture_path: String,
+        texture_lod: u32,
+        min_threshold: f32,
+        max_threshold: f32,
+        transparent: bool,
+    },
+    UnregisterVolume(Entity),
     UpdateTransform {
         entity: Entity,
         transform: Affine3A,

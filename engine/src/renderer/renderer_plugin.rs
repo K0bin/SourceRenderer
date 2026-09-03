@@ -29,13 +29,19 @@ use super::{DirectionalLightComponent, PointLightComponent, Renderer, StaticRend
 use crate::asset::{AssetManager, AssetManagerECSResource};
 use crate::engine::{ConsoleResource, TICK_RATE, WindowState};
 use crate::graphics::{
-    APIInstance, ActiveBackend, Adapter, AdapterType,
-    Instance, Surface, Swapchain,
+    APIInstance, ActiveBackend, Adapter, AdapterType, Instance, Surface, Swapchain,
 };
 use crate::transform::InterpolatedTransform;
 #[cfg(all(feature = "render_thread", target_arch = "wasm32"))]
 use crate::wasm::thread::JoinHandle;
 use crate::{ActiveCamera, Camera, EngineLoopFuncResult};
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum RendererType {
+    VolumeUniProject,
+    Regular,
+    Compat,
+}
 
 #[allow(unused)]
 #[derive(Message)]
@@ -109,6 +115,7 @@ pub fn install_systems(app: &mut App) {
         (
             extract_camera,
             extract_static_renderables,
+            extract_volume_renderables,
             extract_point_lights,
             extract_directional_lights,
         )
@@ -131,6 +138,7 @@ type RendererResourceAccessorMut<'a> = NonSendMut<'a, RendererResourceWrapper>;
 pub fn insert_resources<P: GraphicsPlatform<ActiveBackend>>(
     app: &mut App,
     window: &impl Window<ActiveBackend>,
+    renderer_type: RendererType,
 ) {
     let console_resource = app.world().resource::<ConsoleResource>();
     let asset_manager_resource = app.world().resource::<AssetManagerECSResource>();
@@ -148,6 +156,7 @@ pub fn insert_resources<P: GraphicsPlatform<ActiveBackend>>(
         receiver,
         &asset_manager_resource.0,
         &console_resource.0,
+        renderer_type,
     );
 
     #[cfg(not(feature = "render_thread"))]
@@ -162,6 +171,7 @@ pub fn insert_resources<P: GraphicsPlatform<ActiveBackend>>(
             window.height(),
             &asset_manager_resource.0,
             &console_resource.0,
+            renderer_type,
         )
     };
 
@@ -187,6 +197,7 @@ fn start_render_thread<P: GraphicsPlatform<ActiveBackend>>(
     receiver: RendererReceiver,
     asset_manager: &Arc<AssetManager>,
     console: &Arc<Console>,
+    renderer_type: RendererType,
 ) -> std::thread::JoinHandle<()> {
     let c_asset_manager = asset_manager.clone();
     let c_console = console.clone();
@@ -209,6 +220,7 @@ fn start_render_thread<P: GraphicsPlatform<ActiveBackend>>(
                 height,
                 &c_asset_manager,
                 &c_console,
+                renderer_type,
             );
 
             'renderer_loop: loop {
@@ -385,6 +397,47 @@ fn extract_directional_lights(
     }
 }
 
+fn extract_volume_renderables(
+    mut events: MessageWriter<AppExit>,
+    renderer: RendererResourceAccessor,
+    static_renderables: Query<(Entity, Ref<VolumeMeshInstance>, Ref<InterpolatedTransform>)>,
+    mut removed_static_renderables: RemovedComponents<VolumeMeshInstance>,
+) {
+    for (entity, renderable, transform) in static_renderables.iter() {
+        if renderable.is_added() || transform.is_added() {
+            let result = renderer.sender.register_volume_renderable(
+                entity,
+                transform.as_ref(),
+                renderable.as_ref(),
+            );
+
+            if result.is_err() {
+                let _ = events.write(AppExit::from_code(1));
+            }
+        } else if !renderer.is_saturated {
+            let result = renderer.sender.update_transform(entity, transform.0);
+
+            if result.is_err() {
+                let _ = events.write(AppExit::from_code(1));
+            }
+        }
+    }
+
+    if !removed_static_renderables.is_empty() {
+        log::debug!(
+            "Removing {} static renderables",
+            removed_static_renderables.len()
+        );
+    }
+    for entity in removed_static_renderables.read() {
+        let result = renderer.sender.unregister_static_renderable(entity);
+
+        if result.is_err() {
+            let _ = events.write(AppExit::from_code(1));
+        }
+    }
+}
+
 #[allow(unused_mut)]
 fn end_frame(mut events: MessageWriter<AppExit>, mut renderer: RendererResourceAccessorMut) {
     #[cfg(feature = "render_thread")]
@@ -430,6 +483,7 @@ fn create_renderer(
     swapchain_height: u32,
     asset_manager: &Arc<AssetManager>,
     console: &Arc<Console>,
+    renderer_type: RendererType,
 ) -> Renderer {
     let instance = Instance::new(instance);
     let adapter = pick_adapter(instance.list_adapters());
@@ -442,7 +496,14 @@ fn create_renderer(
     };
     let swapchain = Swapchain::new(core_swapchain, &device);
 
-    Renderer::new(&device, swapchain, receiver, asset_manager, console)
+    Renderer::new(
+        &device,
+        swapchain,
+        receiver,
+        asset_manager,
+        console,
+        renderer_type,
+    )
 }
 
 fn pick_adapter(adapters: &[Adapter]) -> &Adapter {
@@ -478,6 +539,7 @@ mod wasm {
         receiver: RendererReceiver,
         asset_manager: &Arc<AssetManager>,
         console: &Arc<Console>,
+        renderer_type: RendererType,
     ) -> crate::wasm::thread::JoinHandle<()> {
         log::info!("Using WASM render thread");
         let c_asset_manager = asset_manager.clone();
@@ -507,6 +569,7 @@ mod wasm {
                     height,
                     &c_asset_manager,
                     &c_console,
+                    renderer_type,
                 );
 
                 let c_counter = counter.clone();
@@ -552,5 +615,6 @@ mod wasm {
     }
 }
 
+use crate::renderer::ecs::VolumeMeshInstance;
 #[cfg(all(target_arch = "wasm32", feature = "render_thread"))]
 use wasm::start_render_thread;

@@ -1,7 +1,6 @@
 use crate::asset::{AssetLoadPriority, AssetLoaderProgress, AssetType, TextureHandle};
 use crate::graphics::{GraphicsContext, *};
 use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
-use crate::renderer::passes::marching_cubes::MarchingCubesPass;
 use crate::renderer::passes::volume::background::BackgroundPass;
 use crate::renderer::passes::volume::compositing::CompositingPass;
 use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
@@ -12,6 +11,7 @@ use crate::renderer::render_path::{
 };
 use crate::renderer::renderer_resources::RendererResources;
 use bytemuck::{Pod, Zeroable};
+use marching_cubes::MarchingCubesPass;
 use sourcerenderer_core::{Matrix4, Vec2UI, Vec3, Vec3UI, Vec4};
 use std::sync::Arc;
 
@@ -19,6 +19,7 @@ mod background;
 mod compositing;
 mod geometry;
 mod ibl;
+mod marching_cubes;
 mod ssao;
 mod subsurfacescattering;
 
@@ -47,10 +48,7 @@ pub struct VolumeRenderer {
     ssao: SsaoPass,
     sss_pass: SSSPass,
     ibl_pass: ImageBasedLightingPreparation,
-    texture_handle: TextureHandle,
     texture_progress: Arc<AssetLoaderProgress>,
-    threshold: f32,
-    lod: f32,
     compositing: CompositingPass,
     background: BackgroundPass,
 }
@@ -133,11 +131,7 @@ impl VolumeRenderer {
             ssao,
             sss_pass: sss,
             ibl_pass: ibl_prep,
-            texture_handle: TextureHandle::from(texture_handle),
             texture_progress: progress,
-            //threshold: 0.0505f32,
-            threshold: 0.0f32,
-            lod: 0.0f32,
             compositing: comp,
             background,
         }
@@ -174,41 +168,21 @@ impl RenderPath for VolumeRenderer {
         _frame_info: &FrameInfo,
         resources: &mut RendererResources,
         assets: &RendererAssetsReadOnly<'_>,
-    ) -> Result<RenderPathResult, sourcerenderer_core::gpu::SwapchainError> {
-        //self.threshold += 0.0000005f32;
-        //self.threshold += 0.00005f32;
-        //self.threshold += 0.001f32;
-        //self.threshold = 0.0288;
-        //self.threshold = 0.22f32;
-        //self.threshold = self.threshold % 0.10f32;
-        self.threshold = self.threshold % 1.0f32;
-        //self.lod += 0.0001f32 / self.lod.max(1.0f32);
-        //self.lod = 3f32;
-        self.lod = self.lod % 6.9f32;
-        //self.threshold += 50.00005f32;
-        //self.threshold = self.threshold % 1.0f32;
-
-        //self.threshold = 0.00005f32 * 150.0f32;
-
-        let geometry_lod = 3u32;
-        //let transparency_threshold = 0.0288;
-        //let opaque_threshold = self.threshold % 0.8f32 + 0.4f32;
-        let opaque_threshold = 0.55f32;
-        //let transparency_threshold = (self.threshold - 0.5f32).max(0.01f32);
-        let transparency_threshold = 0.0288;
-        //let geometry_lod = self.lod as u32;
-
-        let marching_cube_scale = Vec3::new(0.488281f32, 0.488281f32, 0.700012f32) * 8f32 * 0.01f32;
-        let lod_scale = (1u32 << geometry_lod) as f32;
-
-        let model_matrix = Matrix4::from_rotation_x(-1.57f32)
-            * Matrix4::from_rotation_z(3.14)
-            * Matrix4::from_scale(marching_cube_scale)
-            * Matrix4::from_scale(Vec3::new(lod_scale, lod_scale, lod_scale));
-
+    ) -> Result<RenderPathResult, SwapchainError> {
         let backbuffer = swapchain.next_backbuffer()?;
 
         let mut cmd_buffer = context.get_command_buffer(QueueType::Graphics);
+
+        let mut all_done = true;
+        for d in scene.scene.volume_mesh_instances() {
+            all_done = all_done && assets.get_texture_opt(d.volume_texture).is_some();
+        }
+        if !all_done {
+            return Ok(RenderPathResult {
+                cmd_buffer: cmd_buffer.finish(),
+                backbuffer: Some(backbuffer),
+            });
+        }
 
         let mut params = RenderPassParameters {
             device: self.device.as_ref(),
@@ -218,67 +192,9 @@ impl RenderPath for VolumeRenderer {
         };
 
         let main_view = &scene.scene.views()[scene.active_view_index];
-
-        let inv_view_proj = (main_view.proj_matrix * main_view.view_matrix).inverse();
-        let inv_model = model_matrix.inverse();
-        let mut start = Vec3::new(f32::MAX, f32::MAX, f32::MAX);
-        let mut end = Vec3::new(f32::MIN, f32::MIN, f32::MIN);
-        for x in 0..2 {
-            for y in 0..2 {
-                for z in 0..2 {
-                    let ndc_pos =
-                        Vec4::new((x * 2 - 1) as f32, (y * 2 - 1) as f32, z as f32, 1.0f32);
-                    let mut world_space_pos = inv_view_proj * ndc_pos;
-                    world_space_pos.x /= world_space_pos.w;
-                    world_space_pos.y /= world_space_pos.w;
-                    world_space_pos.z /= world_space_pos.w;
-                    world_space_pos.w = 1.0;
-                    let model_space_pos = inv_model * world_space_pos;
-                    start = Vec3::new(
-                        start.x.min(model_space_pos.x),
-                        start.y.min(model_space_pos.y),
-                        start.z.min(model_space_pos.z),
-                    );
-                    end = Vec3::new(
-                        end.x.max(model_space_pos.x),
-                        end.y.max(model_space_pos.y),
-                        end.z.max(model_space_pos.z),
-                    );
-                }
-            }
-        }
-
-        let volume_texture_info = {
-            assets
-                .get_texture(self.texture_handle)
-                .view
-                .texture()
-                .unwrap()
-                .info()
-                .clone()
-        };
-
-        self.marching_cubes_pass.execute(
-            &mut cmd_buffer,
-            &params,
-            self.texture_handle,
-            opaque_threshold,
-            transparency_threshold,
-            geometry_lod,
-            Vec3UI::new(
-                (start.x.max(0.0f32) as u32).min(volume_texture_info.width >> geometry_lod),
-                (start.y.max(0.0f32) as u32).min(volume_texture_info.height >> geometry_lod),
-                (start.z.max(0.0f32) as u32).min(volume_texture_info.depth >> geometry_lod),
-            ),
-            Vec3UI::new(
-                ((end.x.max(0.0f32) + 0.5f32) as u32)
-                    .min(volume_texture_info.width >> geometry_lod),
-                ((end.y.max(0.0f32) + 0.5f32) as u32)
-                    .min(volume_texture_info.height >> geometry_lod),
-                ((end.z.max(0.0f32) + 0.5f32) as u32)
-                    .min(volume_texture_info.depth >> geometry_lod),
-            ),
-        );
+        let marching_cubes_map = self
+            .marching_cubes_pass
+            .execute(&mut cmd_buffer, &mut params);
 
         self.ibl_pass.execute(&mut cmd_buffer, &mut params);
 
@@ -317,16 +233,10 @@ impl RenderPath for VolumeRenderer {
 
         self.geometry.execute(
             &mut cmd_buffer,
-            scene.scene,
-            main_view,
             &camera_buffer,
             &params,
             assets,
-            self.texture_handle,
-            model_matrix,
-            opaque_threshold,
-            transparency_threshold,
-            geometry_lod,
+            &marching_cubes_map,
         );
 
         self.ssao.execute(
@@ -360,14 +270,13 @@ impl RenderPath for VolumeRenderer {
             backbuffer_handle,
             &params,
             GeometryPass::COLOR_TEXTURE_NAME,
-            //GeometryPass::COLOR_TEXTURE_NAME,
             SsaoPass::SSAO_TEXTURE_NAME,
         );
 
-        return Ok(RenderPathResult {
+        Ok(RenderPathResult {
             cmd_buffer: cmd_buffer.finish(),
             backbuffer: Some(backbuffer),
-        });
+        })
     }
 
     fn recreate_swapchain(

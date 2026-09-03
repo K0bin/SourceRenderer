@@ -20,6 +20,7 @@ use crate::asset::{AssetManager, AssetManagerECSResource, AssetManagerPlugin};
 use crate::convenience_inputs::ConvenienceInputs;
 use crate::graphics::*;
 use crate::renderer;
+use crate::renderer::RendererType;
 use crate::transform::InterpolationPlugin;
 
 #[derive(Resource)]
@@ -67,6 +68,7 @@ impl Engine {
     pub fn run<M, IO: PlatformIO, G: GraphicsPlatform<ActiveBackend>>(
         window: &impl Window<ActiveBackend>,
         game_plugins: impl Plugins<M>,
+        renderer_type: RendererType,
     ) -> Self {
         let console = Arc::new(Console::new());
         let console_resource = ConsoleResource(console);
@@ -98,7 +100,7 @@ impl Engine {
             .add_plugins(AssetManagerPlugin::<IO>::default())
             .insert_resource(console_resource);
 
-        renderer::insert_resources::<G>(&mut app, window);
+        renderer::insert_resources::<G>(&mut app, window, renderer_type);
         renderer::install_systems(&mut app);
 
         app.add_plugins(game_plugins);

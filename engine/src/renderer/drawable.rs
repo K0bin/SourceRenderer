@@ -4,8 +4,9 @@ use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;
 use sourcerenderer_core::{Matrix4, Quaternion, Vec3};
 
-use crate::asset::ModelHandle;
+use crate::asset::{ModelHandle, TextureHandle};
 
+#[derive(Clone, Debug)]
 pub struct RendererStaticDrawable {
     pub entity: Entity,
     pub transform: Affine3A,
@@ -14,6 +15,19 @@ pub struct RendererStaticDrawable {
     pub receive_shadows: bool,
     pub cast_shadows: bool,
     pub can_move: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct RendererVolumeDrawable {
+    pub entity: Entity,
+    pub transform: Affine3A,
+    pub old_transform: Affine3A,
+    pub volume_texture: TextureHandle,
+    pub transfer_function_texture: TextureHandle,
+    pub texture_lod: u32,
+    pub transparent: bool,
+    pub min_threshold: f32,
+    pub max_threshold: f32,
 }
 
 #[derive(Clone)]

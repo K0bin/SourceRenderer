@@ -31,5 +31,4 @@ use modern::rt_shadows;
 pub(crate) mod ui;
 pub(crate) mod web;
 
-mod marching_cubes;
 pub(crate) mod volume;

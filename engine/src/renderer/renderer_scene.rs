@@ -6,16 +6,9 @@ use bevy_math::Affine3A;
 use log::warn;
 use sourcerenderer_core::Vec3;
 
-use super::drawable::View;
-use super::light::{
-    DirectionalLight,
-    RendererDirectionalLight,
-    RendererPointLight,
-};
-use super::{
-    PointLight,
-    RendererStaticDrawable,
-};
+use super::drawable::{RendererVolumeDrawable, View};
+use super::light::{DirectionalLight, RendererDirectionalLight, RendererPointLight};
+use super::{PointLight, RendererStaticDrawable};
 use crate::asset::TextureHandle;
 
 pub struct RendererScene {
@@ -23,9 +16,11 @@ pub struct RendererScene {
     static_meshes: Vec<RendererStaticDrawable>,
     point_lights: Vec<RendererPointLight>,
     directional_lights: Vec<RendererDirectionalLight>,
+    volume_meshes: Vec<RendererVolumeDrawable>,
     drawable_entity_map: HashMap<Entity, usize>,
     point_light_entity_map: HashMap<Entity, usize>,
     directional_light_entity_map: HashMap<Entity, usize>,
+    volume_mesh_entity_map: HashMap<Entity, usize>,
     lightmap: Option<TextureHandle>,
 }
 
@@ -35,10 +30,12 @@ impl RendererScene {
             views: vec![View::default()],
             static_meshes: Vec::new(),
             point_lights: Vec::new(),
+            volume_meshes: Vec::new(),
             directional_lights: Vec::new(),
             drawable_entity_map: HashMap::new(),
             point_light_entity_map: HashMap::new(),
             directional_light_entity_map: HashMap::new(),
+            volume_mesh_entity_map: HashMap::new(),
             lightmap: None,
         }
     }
@@ -76,6 +73,11 @@ impl RendererScene {
     #[inline(always)]
     pub fn directional_lights(&self) -> &[RendererDirectionalLight] {
         &self.directional_lights
+    }
+
+    #[inline(always)]
+    pub fn volume_mesh_instances(&self) -> &[RendererVolumeDrawable] {
+        &self.volume_meshes
     }
 
     #[inline(always)]
@@ -139,6 +141,13 @@ impl RendererScene {
         if let Some(index) = index {
             let point_light = &mut self.directional_lights[*index];
             point_light.direction = transform.transform_vector3(Vec3::new(0f32, 0f32, 1f32));
+            return;
+        }
+
+        let index = self.volume_mesh_entity_map.get(entity);
+        if let Some(index) = index {
+            let volume_mesh = &mut self.volume_meshes[*index];
+            volume_mesh.transform = transform;
             return;
         }
 
@@ -207,6 +216,31 @@ impl RendererScene {
             self.directional_light_entity_map.len(),
             self.directional_lights.len()
         );
+    }
+
+    pub fn add_volume_drawable(&mut self, entity: Entity, volume_drawable: RendererVolumeDrawable) {
+        debug_assert!(self.volume_mesh_entity_map.get(&entity).is_none());
+        if cfg!(debug_assertions) {
+            for (_entity, index) in &self.volume_mesh_entity_map {
+                debug_assert_ne!(*index, self.volume_meshes.len());
+            }
+        }
+        debug_assert_eq!(self.volume_mesh_entity_map.len(), self.volume_meshes.len());
+
+        self.volume_mesh_entity_map
+            .insert(entity, self.volume_meshes.len());
+        self.volume_meshes.push(volume_drawable);
+    }
+
+    pub fn remove_volume_drawable(&mut self, entity: &Entity) {
+        let index = self.volume_mesh_entity_map.remove(entity);
+        debug_assert!(index.is_some());
+        if index.is_none() {
+            return;
+        }
+        let index = index.unwrap();
+        self.volume_meshes.remove(index);
+        debug_assert_eq!(self.volume_mesh_entity_map.len(), self.volume_meshes.len());
     }
 
     #[inline(always)]

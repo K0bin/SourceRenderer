@@ -6,17 +6,55 @@ use crate::renderer::asset::{
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use bytemuck::{Pod, Zeroable};
+use smallvec::SmallVec;
 use sourcerenderer_core::Vec3UI;
+use std::cell::Ref;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Zeroable, Pod)]
 struct MarchingCubesConfig {
     pub extent: Vec3UI,
-    pub threshold: f32,
-    pub min: Vec3UI,
     pub lod: u32,
-    pub transparent_threshold: f32,
+    pub min: Vec3UI,
+    pub thresholds_count: u32,
+}
+
+#[derive(Clone, Hash, Eq, PartialEq)]
+pub struct MarchingCubesKey {
+    texture_handle: TextureHandle,
+    lod: u32,
+    min_threshold: u32,
+    max_threshold: u32,
+}
+
+impl MarchingCubesKey {
+    pub fn new(
+        texture_handle: TextureHandle,
+        lod: u32,
+        min_threshold: f32,
+        max_threshold: f32,
+    ) -> Self {
+        Self {
+            texture_handle,
+            lod,
+            min_threshold: (min_threshold * 10000.0) as u32,
+            max_threshold: (max_threshold * 10000.0) as u32,
+        }
+    }
+
+    fn buffer_name(&self) -> String {
+        format!(
+            "MarchingCubes IBO for {:?}_{}_{}_{}",
+            self.texture_handle, self.lod, self.min_threshold, self.max_threshold,
+        )
+    }
+}
+
+pub struct MarchingCubesInfo {
+    pub buffer_name: String,
+    pub indirect_buffer_offset: usize,
 }
 
 #[repr(C)]
@@ -37,10 +75,15 @@ pub struct MarchingCubesPass {
     executed_count: u32,
 }
 
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Zeroable, Pod)]
+pub struct MarchingCubesThresholds {
+    min_threshold: f32,
+    max_threshold: f32,
+}
+
 impl MarchingCubesPass {
     pub const ATOMICS_BUFFER_NAME: &'static str = "marchingcubes_atomics";
-    pub const INDICES_BUFFER_NAME: &'static str = "marchingcubes_indices";
-    pub const TRANSPARENT_INDICES_BUFFER_NAME: &'static str = "marchingcubes_transparent_indices";
 
     #[allow(unused)]
     pub fn new(
@@ -52,41 +95,12 @@ impl MarchingCubesPass {
             "shaders/marching_cubes.comp.json",
         ));
 
+        // Allocate enough room for 16 draws
         resources.create_buffer(
             Self::ATOMICS_BUFFER_NAME,
             &BufferInfo {
-                size: std::mem::size_of::<MarchingCubesIndirectCall>() as u64 * 2u64,
+                size: std::mem::size_of::<MarchingCubesIndirectCall>() as u64 * 16u64,
                 usage: BufferUsage::STORAGE | BufferUsage::CONSTANT | BufferUsage::INDIRECT,
-                sharing_mode: QueueSharingMode::Exclusive,
-            },
-            MemoryUsage::GPUMemory,
-            false,
-        );
-
-        let mut resolution_multiplied = 512 * 512 * 512;
-
-        // Assume there's a lot of empty space/fully filled space and voxels with fewer triangles
-        // to avoid huge buffers.
-        // In case of the manix, the theoretical space is 148x larger than the actually necessary one.
-        resolution_multiplied /= 100;
-
-        // The theoretical maximum is that every voxel adds 5 triangles, so 15 indices.
-        resources.create_buffer(
-            Self::INDICES_BUFFER_NAME,
-            &BufferInfo {
-                size: (std::mem::size_of::<u32>() * 15 * resolution_multiplied) as u64,
-                usage: BufferUsage::STORAGE | BufferUsage::INDEX,
-                sharing_mode: QueueSharingMode::Exclusive,
-            },
-            MemoryUsage::GPUMemory,
-            false,
-        );
-
-        resources.create_buffer(
-            Self::TRANSPARENT_INDICES_BUFFER_NAME,
-            &BufferInfo {
-                size: (std::mem::size_of::<u32>() * 15 * resolution_multiplied) as u64,
-                usage: BufferUsage::STORAGE | BufferUsage::INDEX,
                 sharing_mode: QueueSharingMode::Exclusive,
             },
             MemoryUsage::GPUMemory,
@@ -479,22 +493,83 @@ impl MarchingCubesPass {
         }
     }
 
+    fn buffer_key(
+        texture_handle: TextureHandle,
+        lod: u32,
+        min_threshold: f32,
+        max_threshold: f32,
+    ) -> String {
+        format!(
+            "{:?}_{}_{:.3}_{:.3}",
+            texture_handle, lod, min_threshold, max_threshold,
+        )
+    }
+
+    fn create_buffers(resources: &mut RendererResources, name: &str) {
+        // The texture might not be loaded yet, it might not be loaded yet.
+        let mut resolution_multiplied = 512 * 512 * 512;
+
+        // Assume there's a lot of empty space/fully filled space and voxels with fewer triangles
+        // to avoid huge buffers.
+        // In case of the manix, the theoretical space is 148x larger than the actually necessary one.
+        resolution_multiplied /= 100;
+
+        // The theoretical maximum is that every voxel adds 5 triangles, so 15 indices.
+        resources.create_buffer(
+            name,
+            &BufferInfo {
+                size: (std::mem::size_of::<u32>() * 15 * resolution_multiplied) as u64,
+                usage: BufferUsage::STORAGE | BufferUsage::INDEX,
+                sharing_mode: QueueSharingMode::Exclusive,
+            },
+            MemoryUsage::GPUMemory,
+            false,
+        );
+    }
+
     #[inline(always)]
-    pub(super) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
+    pub(in crate::renderer::passes) fn is_ready(
+        &self,
+        assets: &RendererAssetsReadOnly<'_>,
+    ) -> bool {
         assets.get_compute_pipeline(self.pipeline).is_some()
     }
 
     pub fn execute(
         &mut self,
         command_buffer: &mut CommandBuffer,
-        pass_params: &RenderPassParameters<'_>,
-        volume_texture: TextureHandle,
-        threshold: f32,
-        threshold_transparency: f32,
-        lod: u32,
-        min: Vec3UI,
-        max: Vec3UI,
-    ) {
+        pass_params: &mut RenderPassParameters<'_>,
+    ) -> HashMap<MarchingCubesKey, MarchingCubesInfo> {
+        let mut map = HashMap::<MarchingCubesKey, MarchingCubesInfo>::new();
+        let mut textures_with_lod: SmallVec<[(TextureHandle, u32); 2]> = SmallVec::new();
+
+        let mut indirect_buffer_offset = 0;
+        for d in pass_params.scene.scene.volume_mesh_instances() {
+            if !textures_with_lod
+                .iter()
+                .any(|&e| e == (d.volume_texture, d.texture_lod))
+            {
+                textures_with_lod.push((d.volume_texture, d.texture_lod));
+            }
+
+            let key = MarchingCubesKey::new(
+                d.volume_texture,
+                d.texture_lod,
+                d.min_threshold,
+                d.max_threshold,
+            );
+            let buffer_name = key.buffer_name();
+            Self::create_buffers(pass_params.resources, &buffer_name);
+            map.insert(
+                key,
+                MarchingCubesInfo {
+                    buffer_name,
+                    indirect_buffer_offset,
+                },
+            );
+            indirect_buffer_offset += std::mem::size_of::<MarchingCubesIndirectCall>();
+        }
+
         let resources = &pass_params.resources;
         if self.executed_count > 0u32 {
             //return;
@@ -503,25 +578,30 @@ impl MarchingCubesPass {
 
         command_buffer.begin_label("Marching Cubes pass");
 
-        let volume_texture = pass_params.assets.get_texture(volume_texture);
+        // Access all of them here to batch barriers
+        let mut buffer_slices: SmallVec<[Ref<Arc<BufferSlice>>; 2]> =
+            SmallVec::with_capacity(pass_params.scene.scene.volume_mesh_instances().len());
+        for d in pass_params.scene.scene.volume_mesh_instances() {
+            let key = MarchingCubesKey::new(
+                d.volume_texture,
+                d.texture_lod,
+                d.min_threshold,
+                d.max_threshold,
+            );
+            let entry = map.get(&key).unwrap();
+
+            buffer_slices.push(pass_params.resources.access_buffer(
+                command_buffer,
+                &entry.buffer_name,
+                BarrierSync::COMPUTE_SHADER,
+                BarrierAccess::STORAGE_WRITE,
+                HistoryResourceEntry::Current,
+            ));
+        }
 
         let atomics_slice = pass_params.resources.access_buffer(
             command_buffer,
             Self::ATOMICS_BUFFER_NAME,
-            BarrierSync::COMPUTE_SHADER,
-            BarrierAccess::STORAGE_WRITE,
-            HistoryResourceEntry::Current,
-        );
-        let indices_slice = pass_params.resources.access_buffer(
-            command_buffer,
-            Self::INDICES_BUFFER_NAME,
-            BarrierSync::COMPUTE_SHADER,
-            BarrierAccess::STORAGE_WRITE,
-            HistoryResourceEntry::Current,
-        );
-        let transparent_indices_slice = pass_params.resources.access_buffer(
-            command_buffer,
-            Self::TRANSPARENT_INDICES_BUFFER_NAME,
             BarrierSync::COMPUTE_SHADER,
             BarrierAccess::STORAGE_WRITE,
             HistoryResourceEntry::Current,
@@ -537,26 +617,17 @@ impl MarchingCubesPass {
                 / 4,
             0u32,
         );
-        command_buffer.clear_storage_buffer(
-            BufferRef::Regular(&indices_slice),
-            0u64,
-            pass_params
-                .resources
-                .buffer_range(Self::INDICES_BUFFER_NAME)
-                .length
-                / 4,
-            0u32,
-        );
-        command_buffer.clear_storage_buffer(
-            BufferRef::Regular(&transparent_indices_slice),
-            0u64,
-            pass_params
-                .resources
-                .buffer_range(Self::TRANSPARENT_INDICES_BUFFER_NAME)
-                .length
-                / 4,
-            0u32,
-        );
+
+        for slice in buffer_slices.iter() {
+            command_buffer.clear_storage_buffer(
+                BufferRef::Regular(&slice),
+                0u64,
+                slice.length() / 4,
+                0u32,
+            );
+        }
+        buffer_slices.clear();
+
         let atomics_slice = pass_params.resources.access_buffer(
             command_buffer,
             Self::ATOMICS_BUFFER_NAME,
@@ -564,22 +635,26 @@ impl MarchingCubesPass {
             BarrierAccess::STORAGE_WRITE | BarrierAccess::STORAGE_READ,
             HistoryResourceEntry::Current,
         );
-        let indices_slice = pass_params.resources.access_buffer(
-            command_buffer,
-            Self::INDICES_BUFFER_NAME,
-            BarrierSync::COMPUTE_SHADER,
-            BarrierAccess::STORAGE_WRITE,
-            HistoryResourceEntry::Current,
-        );
-        let transparent_indices_slice = pass_params.resources.access_buffer(
-            command_buffer,
-            Self::TRANSPARENT_INDICES_BUFFER_NAME,
-            BarrierSync::COMPUTE_SHADER,
-            BarrierAccess::STORAGE_WRITE,
-            HistoryResourceEntry::Current,
-        );
+        for d in pass_params.scene.scene.volume_mesh_instances() {
+            let key = MarchingCubesKey::new(
+                d.volume_texture,
+                d.texture_lod,
+                d.min_threshold,
+                d.max_threshold,
+            );
+            let entry = map.get(&key).unwrap();
+
+            buffer_slices.push(pass_params.resources.access_buffer(
+                command_buffer,
+                &entry.buffer_name,
+                BarrierSync::COMPUTE_SHADER,
+                BarrierAccess::STORAGE_WRITE,
+                HistoryResourceEntry::Current,
+            ));
+        }
 
         command_buffer.flush_barriers();
+        std::mem::drop(buffer_slices);
 
         let pipeline = pass_params
             .assets
@@ -600,55 +675,118 @@ impl MarchingCubesPass {
             0,
             WHOLE_BUFFER,
         );
-        command_buffer.bind_sampling_view(BindingFrequency::Frequent, 2, &volume_texture.view);
-        command_buffer.bind_storage_buffer(
-            BindingFrequency::Frequent,
-            4,
-            BufferRef::Regular(&indices_slice),
-            0,
-            WHOLE_BUFFER,
-        );
-        command_buffer.bind_storage_buffer(
-            BindingFrequency::Frequent,
-            5,
-            BufferRef::Regular(&atomics_slice),
-            0,
-            WHOLE_BUFFER,
-        );
-        command_buffer.bind_storage_buffer(
-            BindingFrequency::Frequent,
-            6,
-            BufferRef::Regular(&transparent_indices_slice),
-            0,
-            WHOLE_BUFFER,
-        );
 
-        command_buffer.bind_sampler(BindingFrequency::Frequent, 7, resources.linear_sampler());
-        command_buffer.bind_sampler(BindingFrequency::Frequent, 8, resources.nearest_sampler());
+        command_buffer.bind_sampler(BindingFrequency::Frequent, 6, resources.linear_sampler());
+        command_buffer.bind_sampler(BindingFrequency::Frequent, 7, resources.nearest_sampler());
 
-        let extent = max - min;
+        for (texture, lod) in textures_with_lod {
+            let mut buffer_slices = SmallVec::<[Ref<Arc<BufferSlice>>; 4]>::new();
+            let mut thresholds = SmallVec::<[MarchingCubesThresholds; 4]>::new();
+            let mut min_atomics_offset = usize::MAX;
+            for (index, d) in pass_params
+                .scene
+                .scene
+                .volume_mesh_instances()
+                .iter()
+                .filter(|d| d.volume_texture == texture && d.texture_lod == lod)
+                .enumerate()
+            {
+                let key = MarchingCubesKey::new(texture, lod, d.min_threshold, d.max_threshold);
+                let map_entry = map.get(&key).unwrap();
+                assert_eq!(
+                    index * std::mem::size_of::<MarchingCubesIndirectCall>(),
+                    map_entry.indirect_buffer_offset
+                );
+                min_atomics_offset = min_atomics_offset.min(map_entry.indirect_buffer_offset);
 
-        command_buffer.set_push_constant_data(
-            &[MarchingCubesConfig {
-                threshold,
-                lod,
-                min,
-                extent,
-                transparent_threshold: threshold_transparency,
-            }],
-            ShaderType::ComputeShader,
-        );
+                let slice = pass_params.resources.access_buffer(
+                    command_buffer,
+                    &map_entry.buffer_name,
+                    BarrierSync::COMPUTE_SHADER,
+                    BarrierAccess::STORAGE_WRITE,
+                    HistoryResourceEntry::Current,
+                );
+                buffer_slices.push(slice);
+                thresholds.push(MarchingCubesThresholds {
+                    min_threshold: d.min_threshold,
+                    max_threshold: d.max_threshold,
+                });
+            }
+            assert_ne!(min_atomics_offset, usize::MAX);
+            assert!(buffer_slices.len() <= 16);
+            assert_ne!(buffer_slices.len(), 0);
 
-        command_buffer.finish_binding();
+            command_buffer.begin_label(&format!(
+                "Marching Cube Texture: {:?} with lod: {}",
+                texture, lod
+            ));
 
-        if extent.x > 0 && extent.y > 0 && extent.z > 0 {
-            command_buffer.dispatch(
-                (extent.x + 3u32) / 4u32,
-                (extent.y + 3u32) / 4u32,
-                (extent.z + 3u32) / 4u32,
+            let entries: SmallVec<[BufferArrayEntry; 2]> = buffer_slices
+                .iter()
+                .map(|slice| BufferArrayEntry {
+                    buffer: BufferRef::Regular(slice),
+                    offset: 0,
+                    length: WHOLE_BUFFER,
+                })
+                .collect();
+            command_buffer.bind_storage_buffer_array(BindingFrequency::Frequent, 3, &entries);
+
+            let volume_texture = pass_params.assets.get_texture(texture);
+            command_buffer.bind_sampling_view(BindingFrequency::Frequent, 2, &volume_texture.view);
+
+            let mut extent = Vec3UI::new(512, 512, 512);
+            let texture_view = &volume_texture.view;
+            if let Some(texture) = texture_view.texture().as_ref() {
+                let texture_info = texture.info();
+                extent.x = texture_info.width >> lod;
+                extent.y = texture_info.height >> lod;
+                extent.z = texture_info.depth >> lod;
+            }
+
+            let thresholds_buffer = command_buffer
+                .upload_dynamic_data(&thresholds, BufferUsage::CONSTANT)
+                .unwrap();
+
+            command_buffer.bind_uniform_buffer(
+                BindingFrequency::Frequent,
+                4,
+                BufferRef::Transient(&thresholds_buffer),
+                0,
+                WHOLE_BUFFER,
             );
+
+            command_buffer.set_push_constant_data(
+                &[MarchingCubesConfig {
+                    lod,
+                    min: Vec3UI::new(0, 0, 0),
+                    extent,
+                    thresholds_count: thresholds.len() as u32,
+                }],
+                ShaderType::ComputeShader,
+            );
+
+            command_buffer.bind_storage_buffer(
+                BindingFrequency::Frequent,
+                5,
+                BufferRef::Regular(&atomics_slice),
+                min_atomics_offset as u64,
+                WHOLE_BUFFER,
+            );
+
+            command_buffer.finish_binding();
+
+            if extent.x > 0 && extent.y > 0 && extent.z > 0 {
+                command_buffer.dispatch(
+                    (extent.x + 3u32) / 4u32,
+                    (extent.y + 3u32) / 4u32,
+                    (extent.z + 3u32) / 4u32,
+                );
+            }
+
+            command_buffer.end_label();
         }
 
         command_buffer.end_label();
+        map
     }
 }

@@ -10,6 +10,7 @@
 #extension GL_KHR_shader_subgroup_ballot : enable
 #extension GL_KHR_shader_subgroup_shuffle : enable
 #extension GL_EXT_maximal_reconvergence : enable
+#extension GL_EXT_nonuniform_qualifier : enable
 
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
@@ -24,8 +25,17 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 1, std430) buffer readonly TriTa
 };
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform texture3D densityImage;
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 4, std430) buffer indicesBuffer {
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 3, std430) buffer indicesBuffer {
     uint[] indices;
+} indicesBuffers[16u];
+
+struct MarchingCubesThresholdInstance {
+    float minThreshold;
+    float maxThreshold;
+};
+
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 4, scalar) uniform thresholds {
+    MarchingCubesThresholdInstance[16u] thresholdInstances;
 };
 
 struct IndirectCommand {
@@ -37,24 +47,19 @@ struct IndirectCommand {
     uint vertexCount;
 };
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 5, scalar) buffer bufferatomics {
-    IndirectCommand opaque;
-    IndirectCommand transparent;
+    IndirectCommand[] commands;
 };
 
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 6, std430) buffer indicesTransparentBuffer {
-    uint[] indicesTransparent;
-};
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 6) uniform sampler linearSampler;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 7) uniform sampler nearestSampler;
 
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 7) uniform sampler linearSampler;
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 8) uniform sampler nearestSampler;
-
-layout(push_constant) uniform Config {
+layout(push_constant, std430) uniform Config {
     uvec3 extent;
-    float threshold;
-    uvec3 minBox;
     uint lod;
-    float thresholdTransparency;
+    uvec3 minBox;
+    uint thresholdsCount; // TODO: Optimize with spec constant
 };
+
 
 uvec3 indexOffset(uint idx) {
     return uvec3(
@@ -129,8 +134,13 @@ void main() {
     if (subgroupAll(any(greaterThanEqual(unshiftedBase + uvec3(1u), extent))))
         return;
 
-    uint voxelKey = 0u;
-    uint voxelKeyTransparent = 0u;
+    uint[16u] voxelKeys;
+    for (uint i = 0u; i < thresholdsCount; i++) {
+        voxelKeys[i] = 0u;
+    }
+    bool empty = true;
+    bool full = true;
+
     for (uint z = 0u; z < 2u; z++) {
         for (uint y = 0u; y < 2u; y++) {
             for (uint x = 0u; x < 2u; x++) {
@@ -140,8 +150,13 @@ void main() {
                 float density = texelFetch(sampler3D(densityImage, nearestSampler), ivec3(pos), int(lod)).x;
 
                 uint index = ((x + z) & 1u) + z * 2u + y * 4u;
-                voxelKey |= uint(density >= threshold) << index;
-                voxelKeyTransparent |= uint(density >= thresholdTransparency) << index;
+
+                for (uint i = 0u; i < thresholdsCount; i++) {
+                    bool passes = density >= thresholdInstances[i].minThreshold && density < thresholdInstances[i].maxThreshold;
+                    empty = empty && !passes;
+                    full = full && passes;
+                    voxelKeys[i] |= uint(passes) << index;
+                }
             }
         }
     }
@@ -149,39 +164,29 @@ void main() {
     if (any(greaterThanEqual(unshiftedBase + uvec3(1u), extent)))
         return;
 
-    if ((voxelKey == 0u || voxelKey == 255u) && (voxelKeyTransparent == 0u || voxelKeyTransparent == 255u))
+    if (empty || full)
         return;
 
-    transparent.instanceCount = 1u;
-    opaque.instanceCount = 1u;
 
-    uint indexCount = voxelKey != 0u || voxelKey != 255u
-        ? tris[voxelKey][0u] : 0u;
-    uint transparentIndexCount = voxelKeyTransparent != 0u || voxelKeyTransparent != 255u
-        ? tris[voxelKeyTransparent][0u] : 0u;
+    for (uint j = 0u; j < thresholdsCount; j++) {
+        uint voxelKey = voxelKeys[j];
+        if (voxelKey == 0u || voxelKey == 255u)
+            continue;
 
-    indexCount = min(indexCount, 16u);
-    transparentIndexCount = min(transparentIndexCount, 16u);
+        uint indexCount = tris[voxelKey][0u];
+        indexCount = min(indexCount, 16u);
+        if (indexCount == 0u)
+            continue;
 
-    if (indexCount != 0u) {
+        commands[j].instanceCount = 1u;
+
         uint[12u] vertexKeys = buildVertexKeys(voxelKey);
-        uint firstIndex = atomicAdd(opaque.indexCount, indexCount);
+        uint firstIndex = atomicAdd(commands[j].indexCount, indexCount);
 
         for (uint i = 0u; i < indexCount; i += 3u) {
-            indices[firstIndex + i + 0u] = vertexKeys[tris[voxelKey][1u + i + 0u]];
-            indices[firstIndex + i + 1u] = vertexKeys[tris[voxelKey][1u + i + 1u]];
-            indices[firstIndex + i + 2u] = vertexKeys[tris[voxelKey][1u + i + 2u]];
-        }
-    }
-
-    if (transparentIndexCount != 0u) {
-        uint[12u] vertexKeysTransparent = buildVertexKeys(voxelKeyTransparent);
-        uint firstIndex = atomicAdd(transparent.indexCount, transparentIndexCount);
-
-        for (uint i = 0u; i < transparentIndexCount; i += 3u) {
-            indicesTransparent[firstIndex + i + 0u] = vertexKeysTransparent[tris[voxelKeyTransparent][1u + i + 0u]];
-            indicesTransparent[firstIndex + i + 1u] = vertexKeysTransparent[tris[voxelKeyTransparent][1u + i + 1u]];
-            indicesTransparent[firstIndex + i + 2u] = vertexKeysTransparent[tris[voxelKeyTransparent][1u + i + 2u]];
+            indicesBuffers[j].indices[firstIndex + i + 0u] = vertexKeys[tris[voxelKey][1u + i + 0u]];
+            indicesBuffers[j].indices[firstIndex + i + 1u] = vertexKeys[tris[voxelKey][1u + i + 1u]];
+            indicesBuffers[j].indices[firstIndex + i + 2u] = vertexKeys[tris[voxelKey][1u + i + 2u]];
         }
     }
 }
