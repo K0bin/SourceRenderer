@@ -204,8 +204,7 @@ impl TransientBufferAllocator {
         {
             let actual_index = index + matching_buffers.first_free_index;
             let aligned_offset = align_up_64(sliced_buffer.offset, alignment);
-            let alignment_diff = aligned_offset - sliced_buffer.offset;
-            if sliced_buffer.size < info.size + alignment_diff {
+            if sliced_buffer.size < aligned_offset + info.size {
                 continue;
             }
 
@@ -235,7 +234,7 @@ impl TransientBufferAllocator {
         let BufferAndAllocation { buffer, allocation } = BufferAllocator::create_buffer(
             &self.device,
             &self.allocator,
-            info,
+            &new_buffer_info,
             memory_usage,
             None,
         )?;
