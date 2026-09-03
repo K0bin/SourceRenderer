@@ -350,6 +350,7 @@ impl GeometryPass {
                 store_op: StoreOp::Store,
             }),
             query_range: None,
+            resume_suspend: RenderPassResumeSuspend::empty(),
         });
 
         let rtv_info = rtv.texture().unwrap().info();

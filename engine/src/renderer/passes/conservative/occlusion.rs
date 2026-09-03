@@ -236,7 +236,7 @@ impl OcclusionPass {
 
         command_buffer.begin_label("Occlusion query tests");
         let query_range = command_buffer.create_query_range(QUERY_COUNT as u32);
-        command_buffer.begin_render_pass(&RenderPassBeginInfo {
+        /*command_buffer.begin_render_pass(&RenderPassBeginInfo {
             attachments: &[RenderPassAttachment {
                 view: RenderPassAttachmentView::DepthStencil(&*history_depth_buffer),
                 load_op: LoadOp::Load,
@@ -355,7 +355,7 @@ impl OcclusionPass {
             .collect();
 
         command_buffer.execute_inner(inner_cmd_buffers);
-        command_buffer.end_render_pass();
+        command_buffer.end_render_pass();*/
 
         let final_query_count = query_count.load(Ordering::SeqCst);
         if final_query_count != 0 {

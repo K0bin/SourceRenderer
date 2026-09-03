@@ -142,6 +142,7 @@ impl BackgroundPass {
             }],
             depth_stencil: None,
             query_range: None,
+            resume_suspend: RenderPassResumeSuspend::empty(),
         });
 
         let pipeline: &Arc<GraphicsPipeline> = assets

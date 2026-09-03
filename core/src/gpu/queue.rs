@@ -15,11 +15,7 @@ pub struct Submission<'a, B: GPUBackend> {
 }
 
 pub trait Queue<B: GPUBackend> {
-    unsafe fn create_command_pool(
-        &self,
-        command_pool_type: CommandPoolType,
-        flags: CommandPoolFlags,
-    ) -> B::CommandPool;
+    unsafe fn create_command_pool(&self, flags: CommandPoolFlags) -> B::CommandPool;
     unsafe fn submit(&self, submissions: &[Submission<B>]);
     unsafe fn present(
         &self,

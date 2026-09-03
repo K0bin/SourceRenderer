@@ -265,7 +265,7 @@ impl GeometryPass {
         let assets = &pass_params.assets;
         let lightmap = pass_params.scene.lightmap;
 
-        const CHUNK_SIZE: u32 = 128;
+        /*const CHUNK_SIZE: u32 = 128;
         let chunk_size = (view.drawable_parts.len() as u32 / 15).max(CHUNK_SIZE);
         let pipeline = pass_params
             .assets
@@ -274,7 +274,7 @@ impl GeometryPass {
 
         let owned_cmd_buffer =
             std::mem::replace(cmd_buffer, context.get_command_buffer(QueueType::Graphics));
-        *cmd_buffer = owned_cmd_buffer.split_render_pass_with_chunks(
+        cmd_buffer = owned_cmd_buffer.split_render_pass_with_chunks(
             &RenderPassBeginInfo {
                 render_targets: &[RenderTarget {
                     view: &rtv,
@@ -514,7 +514,7 @@ impl GeometryPass {
                     }
                 })
             },
-        );
+        );*/
         cmd_buffer.end_label();
     }
 }

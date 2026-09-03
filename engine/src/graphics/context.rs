@@ -37,7 +37,6 @@ pub struct ThreadContext {
 pub struct FrameContext {
     device: Arc<active_gpu_backend::Device>,
     command_pool: FrameContextCommandPool,
-    secondary_command_pool: FrameContextCommandPool,
     transient_buffer_allocator: TransientBufferAllocator,
     global_buffer_allocator: Arc<BufferAllocator>,
     destroyer: Arc<DeferredDestroyer>,
@@ -116,9 +115,6 @@ impl GraphicsContext {
             unsafe {
                 frame_context.command_pool.command_pool.reset();
             }
-            unsafe {
-                frame_context.secondary_command_pool.command_pool.reset();
-            }
             frame_context.transient_buffer_allocator.reset();
 
             frame_context.query_allocator.reset();
@@ -129,17 +125,6 @@ impl GraphicsContext {
                 }
                 frame_context
                     .command_pool
-                    .existing_cmd_buffer_handles
-                    .push_back(existing_cmd_buffer);
-            }
-            while let Ok(mut existing_cmd_buffer) =
-                frame_context.secondary_command_pool.receiver.try_recv()
-            {
-                unsafe {
-                    existing_cmd_buffer.reset(self.current_frame);
-                }
-                frame_context
-                    .secondary_command_pool
                     .existing_cmd_buffer_handles
                     .push_back(existing_cmd_buffer);
             }
@@ -176,39 +161,8 @@ impl GraphicsContext {
         counter.fetch_add(1, Ordering::SeqCst);
         let frame_context_entry = FrameContextCommandBufferEntry(counter);
 
-        let mut recorder =
-            CommandBuffer::new(self, frame_context, cmd_buffer, frame_context_entry, false);
-        recorder.begin(self.current_frame, None);
-        recorder
-    }
-
-    pub(super) fn get_inner_command_buffer(
-        &self,
-        inheritance: &<active_gpu_backend::CommandBuffer as gpu::CommandBuffer<
-            active_gpu_backend::Backend,
-        >>::CommandBufferInheritance,
-    ) -> CommandBuffer<'_> {
-        let thread_context = self.get_thread_context();
-        let mut frame_context = thread_context.get_frame(self.current_frame);
-
-        let existing_cmd_buffer_handle = frame_context
-            .secondary_command_pool
-            .existing_cmd_buffer_handles
-            .pop_front();
-        let cmd_buffer = existing_cmd_buffer_handle.unwrap_or_else(|| unsafe {
-            frame_context
-                .secondary_command_pool
-                .command_pool
-                .create_command_buffer()
-        });
-
-        let counter = frame_context.remaining_command_buffers.clone();
-        counter.fetch_add(1, Ordering::SeqCst);
-        let frame_context_entry = FrameContextCommandBufferEntry(counter);
-
-        let mut recorder =
-            CommandBuffer::new(self, frame_context, cmd_buffer, frame_context_entry, true);
-        recorder.begin(self.current_frame, Some(inheritance));
+        let mut recorder = CommandBuffer::new(self, frame_context, cmd_buffer, frame_context_entry);
+        recorder.begin(self.current_frame);
         recorder
     }
 
@@ -301,16 +255,9 @@ impl FrameContext {
         destroyer: &Arc<DeferredDestroyer>,
     ) -> Self {
         let command_pool = unsafe {
-            device.graphics_queue().create_command_pool(
-                gpu::CommandPoolType::CommandBuffers,
-                gpu::CommandPoolFlags::empty(),
-            )
-        };
-        let secondary_command_pool = unsafe {
-            device.graphics_queue().create_command_pool(
-                gpu::CommandPoolType::InnerCommandBuffers,
-                gpu::CommandPoolFlags::empty(),
-            )
+            device
+                .graphics_queue()
+                .create_command_pool(gpu::CommandPoolFlags::empty())
         };
         let (sender, receiver) =
             crossbeam_channel::unbounded::<active_gpu_backend::CommandBuffer>();
@@ -328,12 +275,6 @@ impl FrameContext {
                 command_pool,
                 sender,
                 receiver,
-                existing_cmd_buffer_handles: VecDeque::new(),
-            },
-            secondary_command_pool: FrameContextCommandPool {
-                command_pool: secondary_command_pool,
-                sender: secondary_sender,
-                receiver: secondary_receiver,
                 existing_cmd_buffer_handles: VecDeque::new(),
             },
             transient_buffer_allocator: transient_buffer_allocator,
@@ -378,11 +319,7 @@ impl FrameContext {
     }
 
     #[inline(always)]
-    pub(super) fn sender(&self, is_secondary: bool) -> &Sender<active_gpu_backend::CommandBuffer> {
-        if !is_secondary {
-            &self.command_pool.sender
-        } else {
-            &self.secondary_command_pool.sender
-        }
+    pub(super) fn sender(&self) -> &Sender<active_gpu_backend::CommandBuffer> {
+        &self.command_pool.sender
     }
 }

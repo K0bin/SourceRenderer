@@ -1,8 +1,8 @@
+use super::*;
 use ash::vk;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu;
-
-use super::*;
+use sourcerenderer_core::gpu::RenderPassResumeSuspend;
 
 fn load_op_color_to_vk(load_op: gpu::LoadOpColor) -> vk::AttachmentLoadOp {
     match load_op {
@@ -50,7 +50,6 @@ pub(crate) fn begin_render_pass(
     device: &RawVkDevice,
     command_buffer: vk::CommandBuffer,
     render_pass: &gpu::RenderPassBeginInfo<VkBackend>,
-    recording_mode: gpu::RenderpassRecordingMode,
 ) {
     let color_attachments: SmallVec<[vk::RenderingAttachmentInfo; 8]> = render_pass
         .render_targets
@@ -118,12 +117,22 @@ pub(crate) fn begin_render_pass(
         }
     }
 
+    let mut flags = vk::RenderingFlags::empty();
+    if render_pass
+        .resume_suspend
+        .contains(RenderPassResumeSuspend::RESUME)
+    {
+        flags |= vk::RenderingFlags::RESUMING;
+    }
+    if render_pass
+        .resume_suspend
+        .contains(RenderPassResumeSuspend::SUSPEND)
+    {
+        flags |= vk::RenderingFlags::SUSPENDING;
+    }
+
     let info = vk::RenderingInfo {
-        flags: if let gpu::RenderpassRecordingMode::CommandBuffers(_) = recording_mode {
-            vk::RenderingFlags::CONTENTS_SECONDARY_COMMAND_BUFFERS
-        } else {
-            vk::RenderingFlags::empty()
-        },
+        flags,
         color_attachment_count: color_attachments.len() as u32,
         p_color_attachments: color_attachments.as_ptr(),
         view_mask: 0u32,

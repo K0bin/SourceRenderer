@@ -185,17 +185,12 @@ impl gpu::Queue<VkBackend> for VkQueue {
         swapchain.present(*guard, backbuffer_indices);
     }
 
-    unsafe fn create_command_pool(
-        &self,
-        command_pool_type: gpu::CommandPoolType,
-        flags: gpu::CommandPoolFlags,
-    ) -> VkCommandPool {
+    unsafe fn create_command_pool(&self, flags: gpu::CommandPoolFlags) -> VkCommandPool {
         VkCommandPool::new(
             &self.device,
             self.info.queue_family_index as u32,
             flags,
             &self.shared,
-            command_pool_type,
         )
     }
 }

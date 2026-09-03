@@ -178,7 +178,7 @@ impl Prepass {
 
         let owned_cmd_buffer =
             std::mem::replace(cmd_buffer, context.get_command_buffer(QueueType::Graphics));
-        *cmd_buffer = owned_cmd_buffer.split_render_pass_with_chunks(
+        /**cmd_buffer = owned_cmd_buffer.split_render_pass_with_chunks(
             &RenderPassBeginInfo {
                 render_targets: &[],
                 depth_stencil: Some(&DepthStencilAttachment {
@@ -187,6 +187,7 @@ impl Prepass {
                     store_op: StoreOp::Store,
                 }),
                 query_range: None,
+                resume_suspend: RenderPassResumeSuspend::empty(),
             },
             &view.drawable_parts,
             chunk_size,
@@ -289,7 +290,7 @@ impl Prepass {
                     }
                 }
             },
-        );
+        );*/
         cmd_buffer.end_label();
     }
 }

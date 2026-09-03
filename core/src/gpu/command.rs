@@ -23,12 +23,6 @@ pub struct Scissor {
     pub extent: Vec2UI,
 }
 
-#[derive(Clone, Debug, Copy, PartialEq, Hash)]
-pub enum CommandBufferType {
-    Primary,
-    Secondary,
-}
-
 #[derive(Clone)]
 pub enum PipelineBinding<'a, B: GPUBackend> {
     Graphics(&'a B::GraphicsPipeline),
@@ -41,12 +35,6 @@ pub enum PipelineBinding<'a, B: GPUBackend> {
 pub enum IndexFormat {
     U16,
     U32,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub enum CommandPoolType {
-    CommandBuffers,
-    InnerCommandBuffers,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -80,12 +68,6 @@ pub enum ImageLayout {
     CopySrcOptimal,
     CopyDstOptimal,
     Present,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum RenderpassRecordingMode {
-    Commands,
-    CommandBuffers(u32),
 }
 
 #[derive(Debug)]
@@ -287,7 +269,7 @@ pub trait CommandBuffer<B: GPUBackend> {
     );
     unsafe fn set_stencil_reference(&mut self, reference: u32);
 
-    unsafe fn begin(&mut self, frame: u64, inheritance: Option<&Self::CommandBufferInheritance>);
+    unsafe fn begin(&mut self, frame: u64);
     unsafe fn finish(&mut self);
 
     unsafe fn copy_buffer_to_texture(
@@ -313,11 +295,7 @@ pub trait CommandBuffer<B: GPUBackend> {
         value: u32,
     );
 
-    unsafe fn begin_render_pass(
-        &mut self,
-        renderpass_info: &RenderPassBeginInfo<B>,
-        recording_mode: RenderpassRecordingMode,
-    ) -> Option<Self::CommandBufferInheritance>;
+    unsafe fn begin_render_pass(&mut self, renderpass_info: &RenderPassBeginInfo<B>);
     unsafe fn end_render_pass(&mut self);
     unsafe fn barrier(&mut self, barriers: &[Barrier<B>]);
 
@@ -330,18 +308,6 @@ pub trait CommandBuffer<B: GPUBackend> {
         count: u32,
         buffer: &B::Buffer,
         buffer_offset: u64,
-    );
-
-    #[cfg(not(feature = "non_send_gpu"))]
-    type CommandBufferInheritance: Send + Sync;
-
-    #[cfg(feature = "non_send_gpu")]
-    type CommandBufferInheritance;
-
-    unsafe fn execute_inner(
-        &mut self,
-        submission: &[&B::CommandBuffer],
-        inheritance: Self::CommandBufferInheritance,
     );
 
     unsafe fn reset(&mut self, frame: u64);
@@ -472,9 +438,18 @@ pub struct DepthStencilAttachment<'a, B: GPUBackend> {
     pub store_op: StoreOp<'a, B>,
 }
 
+bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub struct RenderPassResumeSuspend: u32 {
+        const SUSPEND = 0b1;
+        const RESUME  = 0b10;
+    }
+}
+
 pub struct RenderPassBeginInfo<'a, B: GPUBackend> {
     pub render_targets: &'a [RenderTarget<'a, B>],
     pub depth_stencil: Option<&'a DepthStencilAttachment<'a, B>>,
+    pub resume_suspend: RenderPassResumeSuspend,
     pub query_pool: Option<&'a B::QueryPool>,
 }
 

@@ -85,19 +85,15 @@ impl Transfer {
     ) -> Self {
         let graphics_fence = Arc::new(super::Fence::new(device.as_ref(), destroyer));
         let graphics_pool = unsafe {
-            device.graphics_queue().create_command_pool(
-                gpu::CommandPoolType::CommandBuffers,
-                gpu::CommandPoolFlags::INDIVIDUAL_RESET,
-            )
+            device
+                .graphics_queue()
+                .create_command_pool(gpu::CommandPoolFlags::INDIVIDUAL_RESET)
         };
 
         let transfer_commands = device.transfer_queue().map(|transfer_queue| {
             let transfer_fence = Arc::new(super::Fence::new(device.as_ref(), destroyer));
             let transfer_pool = unsafe {
-                transfer_queue.create_command_pool(
-                    gpu::CommandPoolType::CommandBuffers,
-                    gpu::CommandPoolFlags::INDIVIDUAL_RESET,
-                )
+                transfer_queue.create_command_pool(gpu::CommandPoolFlags::INDIVIDUAL_RESET)
             };
             TransferCommands {
                 pre_barriers: Vec::new(),
@@ -616,7 +612,7 @@ impl Transfer {
             .extend(commands.used_textures.drain(..));
 
         unsafe {
-            cmd_buffer.cmd_buffer.begin(0u64, None);
+            cmd_buffer.cmd_buffer.begin(0u64);
         }
 
         if DEBUG_FORCE_FAT_BARRIER {

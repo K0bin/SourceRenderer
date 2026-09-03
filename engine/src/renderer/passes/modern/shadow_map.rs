@@ -323,6 +323,7 @@ impl ShadowMapPass {
                     store_op: StoreOp::Store,
                 }),
                 query_range: None,
+                resume_suspend: RenderPassResumeSuspend::empty(),
             });
 
             let dsv_info = shadow_map.texture().unwrap().info();

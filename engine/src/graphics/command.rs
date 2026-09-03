@@ -7,6 +7,7 @@ use atomic_refcell::AtomicRefMut;
 use bytemuck::{Pod, cast_slice};
 use crossbeam_channel::Sender;
 use smallvec::SmallVec;
+use sourcerenderer_core::gpu::RenderPassResumeSuspend;
 
 const DEBUG_FORCE_FAT_BARRIER: bool = false;
 
@@ -61,7 +62,6 @@ pub struct CommandBuffer<'a> {
     global_context: &'a GraphicsContext,
     cmd_buffer_handle: active_gpu_backend::CommandBuffer,
     active_query_range: Option<QueryRange>,
-    is_secondary: bool,
     frame_context_entry: FrameContextCommandBufferEntry,
     no_send_sync: PhantomData<*mut u8>,
 }
@@ -124,13 +124,11 @@ impl<'a> CommandBuffer<'a> {
         context: AtomicRefMut<'a, FrameContext>,
         handle: active_gpu_backend::CommandBuffer,
         frame_context_entry: FrameContextCommandBufferEntry,
-        is_secondary: bool,
     ) -> Self {
         Self {
             global_context,
             context,
             cmd_buffer_handle: handle,
-            is_secondary,
             active_query_range: None,
             frame_context_entry,
             no_send_sync: PhantomData,
@@ -625,12 +623,8 @@ impl<'a> CommandBuffer<'a> {
         }
     }
 
-    pub fn begin(
-        &mut self,
-        frame: u64,
-        inheritance: Option<&active_gpu_backend::CommandBufferInheritance>,
-    ) {
-        unsafe { self.cmd_buffer_handle.begin(frame, inheritance) }
+    pub fn begin(&mut self, frame: u64) {
+        unsafe { self.cmd_buffer_handle.begin(frame) }
     }
 
     pub fn finish(mut self) -> FinishedCommandBuffer {
@@ -642,14 +636,13 @@ impl<'a> CommandBuffer<'a> {
             context,
             global_context: _,
             cmd_buffer_handle,
-            is_secondary,
             active_query_range: _,
             frame_context_entry,
             no_send_sync: _,
         } = self;
         FinishedCommandBuffer {
             handle: cmd_buffer_handle,
-            sender: context.sender(is_secondary).clone(),
+            sender: context.sender().clone(),
             frame_context_entry,
         }
     }
@@ -852,10 +845,6 @@ impl<'a> CommandBuffer<'a> {
     }
 
     pub fn begin_render_pass(&mut self, renderpass_info: &RenderPassBeginInfo) {
-        let _ = self.begin_render_pass_impl(renderpass_info, RenderpassRecordingMode::Commands);
-    }
-
-    fn begin_render_pass_impl(&mut self, renderpass_info: &RenderPassBeginInfo, recording_mode: RenderpassRecordingMode) -> Option<<active_gpu_backend::CommandBuffer as gpu::CommandBuffer<active_gpu_backend::Backend>>::CommandBufferInheritance>{
         if DEBUG_FORCE_FAT_BARRIER {
             self.fat_barrier();
         }
@@ -900,17 +889,16 @@ impl<'a> CommandBuffer<'a> {
 
         self.active_query_range = renderpass_info.query_range.clone();
         unsafe {
-            self.cmd_buffer_handle.begin_render_pass(
-                &gpu::RenderPassBeginInfo {
+            self.cmd_buffer_handle
+                .begin_render_pass(&gpu::RenderPassBeginInfo {
                     render_targets: &attachments,
                     depth_stencil: depth_stencil.as_ref(),
+                    resume_suspend: renderpass_info.resume_suspend,
                     query_pool: renderpass_info
                         .query_range
                         .as_ref()
                         .map(|q| q.pool_handle(self.frame())),
-                },
-                recording_mode,
-            )
+                });
         }
     }
 
@@ -1259,170 +1247,6 @@ impl<'a> CommandBuffer<'a> {
         }
     }
 
-    #[cfg(target_arch = "wasm32")]
-    pub fn split_render_pass_with_chunks<F, T>(
-        self,
-        renderpass_info: &RenderPassBeginInfo,
-        elements: &[T],
-        chunk_size_hint: u32,
-        thread_func: F,
-    ) -> Self
-    where
-        F: for<'secondary_lt> Fn(&mut CommandBuffer<'a>, u32, u32, &[T]),
-    {
-        self.split_render_pass(
-            renderpass_info,
-            1,
-            |cmd_buffer, thread_index, threads_count| {
-                let chunk_index = thread_index;
-                let chunk_size = ((elements.len() as u32) + (threads_count - 1)) / threads_count;
-                let element_index = thread_index * chunk_size;
-                if element_index >= elements.len() as u32 {
-                    return;
-                }
-                let element_count = chunk_size.min((elements.len() as u32) - element_index);
-                let chunk =
-                    &elements[(element_index as usize)..((element_index + element_count) as usize)];
-                thread_func(cmd_buffer, chunk_index, chunk_size, chunk)
-            },
-        )
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    pub fn split_render_pass<F>(
-        mut self,
-        renderpass_info: &RenderPassBeginInfo,
-        thread_count_hint: u32,
-        thread_func: F,
-    ) -> Self
-    where
-        F: for<'secondary_lt> Fn(&mut CommandBuffer<'a>, u32, u32),
-    {
-        // WebGPU does not support multithreading.
-        // The bevy_tasks implementation runs tasks in a Web Microtask
-        // which is executed once the canvas frame callback is done.
-        // That's too late. Besides that, WebGPU bundles just add
-        // unnecessary work when we cannot use multithreading.
-        self.begin_render_pass_impl(renderpass_info, RenderpassRecordingMode::Commands);
-        thread_func(&mut self, 0, 1);
-        self
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn split_render_pass_with_chunks<F, T>(
-        self,
-        renderpass_info: &RenderPassBeginInfo,
-        elements: &[T],
-        chunk_size_hint: u32,
-        thread_func: F,
-    ) -> Self
-    where
-        F: for<'secondary_lt> Fn(&mut CommandBuffer<'a>, u32, u32, &[T]) + Send + Sync,
-        T: Sync,
-    {
-        let thread_count_hint = if chunk_size_hint == 0 {
-            0
-        } else {
-            ((elements.len() as u32) + (chunk_size_hint - 1)) / chunk_size_hint
-        };
-        self.split_render_pass(
-            renderpass_info,
-            thread_count_hint,
-            |cmd_buffer, thread_index, threads_count| {
-                let chunk_index = thread_index;
-                let chunk_size = ((elements.len() as u32) + (threads_count - 1)) / threads_count;
-                let element_index = thread_index * chunk_size;
-                if element_index >= elements.len() as u32 {
-                    return;
-                }
-                let element_count = chunk_size.min((elements.len() as u32) - element_index);
-                let chunk =
-                    &elements[(element_index as usize)..((element_index + element_count) as usize)];
-                thread_func(cmd_buffer, chunk_index, chunk_size, chunk)
-            },
-        )
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn split_render_pass<F>(
-        mut self,
-        renderpass_info: &RenderPassBeginInfo,
-        thread_count_hint: u32,
-        thread_func: F,
-    ) -> Self
-    where
-        F: for<'secondary_lt> Fn(&mut CommandBuffer<'a>, u32, u32) + Send + Sync,
-    {
-        assert!(!self.is_secondary);
-
-        // We need to dissolve the command buffer wrapper here, so we can drop the frame context reference.
-        // The frame context reference is a mutable atomic refcell reference, so keeping that would
-        // potentially explode when bevy_tasks runs one of the tasks on the thread this function gets
-        // called on.
-        let task_pool = bevy_tasks::ComputeTaskPool::get();
-        let task_count = if thread_count_hint == 0 {
-            task_pool.thread_num() as u32
-        } else {
-            thread_count_hint.max(task_pool.thread_num() as u32)
-        };
-        let inheritance = self
-            .begin_render_pass_impl(
-                renderpass_info,
-                RenderpassRecordingMode::CommandBuffers(task_count),
-            )
-            .unwrap();
-        let CommandBuffer {
-            global_context,
-            context,
-            mut cmd_buffer_handle,
-            is_secondary: _,
-            active_query_range,
-            frame_context_entry,
-            no_send_sync: _,
-        } = self;
-        let secondary_recycle_sender = context.sender(true).clone();
-        let frame = context.frame();
-        std::mem::drop(context);
-        let cmd_buffers: Vec<active_gpu_backend::CommandBuffer> = task_pool.scope(|scope| {
-            for i in 0..task_count {
-                let c_inheritance_ref = &inheritance;
-                let c_func_ref = &thread_func;
-                scope.spawn(async move {
-                    crate::autoreleasepool(|| {
-                        let mut inner_cmd_buffer =
-                            global_context.get_inner_command_buffer(c_inheritance_ref);
-                        c_func_ref(&mut inner_cmd_buffer, i, task_count);
-                        let finished_inner_cmd_buffer = inner_cmd_buffer.finish();
-                        finished_inner_cmd_buffer.handle
-                    })
-                });
-            }
-        });
-        {
-            let cmd_buffer_refs: Vec<&active_gpu_backend::CommandBuffer> =
-                cmd_buffers.iter().map(|cmd_buffer| cmd_buffer).collect();
-            unsafe {
-                cmd_buffer_handle.execute_inner(&cmd_buffer_refs, inheritance);
-            }
-        }
-        for cmd_buffer in cmd_buffers {
-            secondary_recycle_sender.send(cmd_buffer).unwrap();
-        }
-
-        let new_frame_context = global_context.get_thread_frame_context(frame);
-        let mut new_self = CommandBuffer::<'a> {
-            context: new_frame_context,
-            global_context,
-            cmd_buffer_handle,
-            is_secondary: false,
-            active_query_range: active_query_range,
-            frame_context_entry,
-            no_send_sync: PhantomData,
-        };
-        new_self.end_render_pass();
-        new_self
-    }
-
     pub fn begin_query(&mut self, query_index: u32) {
         let query_range = self.active_query_range.as_ref().unwrap();
         unsafe {
@@ -1475,8 +1299,10 @@ pub struct DepthStencilAttachment<'a> {
     pub store_op: StoreOp<'a>,
 }
 
+#[derive(Clone)]
 pub struct RenderPassBeginInfo<'a> {
     pub render_targets: &'a [RenderTarget<'a>],
     pub depth_stencil: Option<&'a DepthStencilAttachment<'a>>,
+    pub resume_suspend: RenderPassResumeSuspend,
     pub query_range: Option<QueryRange>,
 }

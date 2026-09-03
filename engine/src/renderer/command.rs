@@ -45,7 +45,6 @@ pub enum RendererCommand {
         fov: f32,
     },
     SetLightmap(String),
-    //RenderUI(UIDrawData),
     EndFrame,
     WindowChanged(WindowState),
 }

@@ -74,6 +74,7 @@ impl BlitPass {
             }],
             depth_stencil: None,
             query_range: None,
+            resume_suspend: RenderPassResumeSuspend::empty(),
         });
 
         let pipeline = assets.get_graphics_pipeline(self.pipeline_handle).unwrap();

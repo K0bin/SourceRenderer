@@ -1,7 +1,9 @@
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::{WebGPUBackbuffer, WebGPUBackend, WebGPUCommandPool, WebGPULimits, swapchain::WebGPUSwapchain};
+use crate::{
+    WebGPUBackbuffer, WebGPUBackend, WebGPUCommandPool, WebGPULimits, swapchain::WebGPUSwapchain,
+};
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu;
 use web_sys::{GpuCommandBuffer, GpuDevice, GpuQueue};
@@ -10,7 +12,7 @@ pub struct WebGPUQueue {
     device: GpuDevice,
     queue: GpuQueue,
     limits: WebGPULimits,
-    _p: PhantomData<*const std::ffi::c_void>
+    _p: PhantomData<*const std::ffi::c_void>,
 }
 
 impl WebGPUQueue {
@@ -20,7 +22,7 @@ impl WebGPUQueue {
             device: device.clone(),
             queue,
             limits: limits.clone(),
-            _p: PhantomData
+            _p: PhantomData,
         }
     }
 
@@ -30,12 +32,8 @@ impl WebGPUQueue {
 }
 
 impl gpu::Queue<WebGPUBackend> for WebGPUQueue {
-    unsafe fn create_command_pool(
-        &self,
-        command_pool_type: gpu::CommandPoolType,
-        _flags: gpu::CommandPoolFlags,
-    ) -> WebGPUCommandPool {
-        WebGPUCommandPool::new(&self.device, command_pool_type, &self.limits)
+    unsafe fn create_command_pool(&self, _flags: gpu::CommandPoolFlags) -> WebGPUCommandPool {
+        WebGPUCommandPool::new(&self.device, &self.limits)
     }
 
     unsafe fn submit(&self, submissions: &[gpu::Submission<WebGPUBackend>]) {
@@ -46,7 +44,8 @@ impl gpu::Queue<WebGPUBackend> for WebGPUQueue {
                 .all(|pair| pair.fence.value.load(Ordering::Acquire) >= pair.value);
             assert!(is_ready);
 
-            let mut array = SmallVec::<[GpuCommandBuffer; 1]>::with_capacity(submission.command_buffers.len());
+            let mut array =
+                SmallVec::<[GpuCommandBuffer; 1]>::with_capacity(submission.command_buffers.len());
             for cmd_buffer in submission.command_buffers.iter() {
                 // Unmap all readback buffers that get used in this command buffer to make them accessible on the GPU
                 for sync in cmd_buffer.readback_syncs() {

@@ -471,6 +471,7 @@ impl GeometryPass {
                 store_op: StoreOp::Store,
             }),
             query_range: None,
+            resume_suspend: RenderPassResumeSuspend::empty(),
         });
 
         let pipeline: &Arc<GraphicsPipeline> = assets
