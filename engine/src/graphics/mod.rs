@@ -61,9 +61,8 @@ mod active_gpu_backend {
         VkInstance as Instance, VkMemoryHeap as Heap, VkPipeline as GraphicsPipeline,
         VkPipeline as MeshGraphicsPipeline, VkPipeline as ComputePipeline,
         VkPipeline as RayTracingPipeline, VkQueryPool as QueryPool, VkQueue as Queue,
-        VkSampler as Sampler, VkSecondaryCommandBufferInheritance as CommandBufferInheritance,
-        VkShader as Shader, VkSurface as Surface, VkSwapchain as Swapchain, VkTexture as Texture,
-        VkTextureView as TextureView, VkTimelineSemaphore as Fence,
+        VkSampler as Sampler, VkShader as Shader, VkSurface as Surface, VkSwapchain as Swapchain,
+        VkTexture as Texture, VkTextureView as TextureView, VkTimelineSemaphore as Fence,
     };
     pub type Barrier<'a> = super::gpu::Barrier<'a, self::Backend>;
     pub type RenderTarget<'a> = super::gpu::RenderTarget<'a, self::Backend>;

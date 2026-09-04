@@ -1,4 +1,4 @@
-use std::ffi::{CString, c_void};
+use std::ffi::CString;
 use std::hash::Hash;
 use std::sync::Arc;
 
@@ -80,14 +80,6 @@ pub(crate) enum VkCommandBufferState {
     Recording,
     Finished,
     Submitted,
-}
-
-pub struct VkSecondaryCommandBufferInheritance {
-    pub(crate) rt_formats: SmallVec<[vk::Format; 8]>,
-    pub(crate) depth_format: vk::Format,
-    pub(crate) stencil_format: vk::Format,
-    pub(crate) sample_count: vk::SampleCountFlags,
-    pub(crate) query_pool: Option<vk::QueryPool>,
 }
 
 enum VkBoundPipeline {

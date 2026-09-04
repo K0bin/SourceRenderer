@@ -59,7 +59,7 @@ pub enum PipelineBinding<'a> {
 
 pub struct CommandBuffer<'a> {
     context: AtomicRefMut<'a, FrameContext>,
-    global_context: &'a GraphicsContext,
+    _global_context: &'a GraphicsContext,
     cmd_buffer_handle: active_gpu_backend::CommandBuffer,
     active_query_range: Option<QueryRange>,
     frame_context_entry: FrameContextCommandBufferEntry,
@@ -126,7 +126,7 @@ impl<'a> CommandBuffer<'a> {
         frame_context_entry: FrameContextCommandBufferEntry,
     ) -> Self {
         Self {
-            global_context,
+            _global_context: global_context,
             context,
             cmd_buffer_handle: handle,
             active_query_range: None,
@@ -658,7 +658,7 @@ impl<'a> CommandBuffer<'a> {
 
         let CommandBuffer {
             context,
-            global_context: _,
+            _global_context: _,
             cmd_buffer_handle,
             active_query_range: _,
             frame_context_entry,

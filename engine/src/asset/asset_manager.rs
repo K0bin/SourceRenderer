@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::hash::Hash;
 use std::io::{Result as IOResult, SeekFrom};
-use std::pin::{Pin, pin};
+use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use strum::VariantArray as _;

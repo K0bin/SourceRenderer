@@ -277,22 +277,6 @@ impl Drop for VkDescriptorPool {
     }
 }
 
-#[repr(C)]
-union VkDescriptorEntry {
-    image: vk::DescriptorImageInfo,
-    buffer: vk::DescriptorBufferInfo,
-    buffer_view: vk::BufferView,
-    acceleration_structure: vk::AccelerationStructureKHR,
-}
-
-impl Default for VkDescriptorEntry {
-    fn default() -> Self {
-        Self {
-            buffer: vk::DescriptorBufferInfo::default(),
-        }
-    }
-}
-
 pub(crate) struct VkDescriptorSet {
     descriptor_set: vk::DescriptorSet,
     pool: Arc<VkDescriptorPool>,

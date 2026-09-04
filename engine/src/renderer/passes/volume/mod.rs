@@ -49,7 +49,6 @@ pub struct VolumeRenderer {
     ssao: SsaoPass,
     sss_pass: SSSPass,
     ibl_pass: ImageBasedLightingPreparation,
-    texture_progress: Arc<AssetLoaderProgress>,
     compositing: CompositingPass,
     background: BackgroundPass,
     ui_pass: DearImguiRenderer,
@@ -63,13 +62,6 @@ impl VolumeRenderer {
         resources: &mut RendererResources,
         assets: &RendererAssets,
     ) -> Self {
-        let (texture_handle, progress) = assets.asset_manager().request_asset(
-            //"ct_head_256.raw.txt",
-            "assets/manix.raw.txt",
-            AssetType::Texture,
-            AssetLoadPriority::High,
-        );
-
         let mut init_cmd_buffer = context.get_command_buffer(QueueType::Graphics);
 
         let marching_cubes_pass = MarchingCubesPass::new(device, resources, assets);
@@ -135,7 +127,6 @@ impl VolumeRenderer {
             ssao,
             sss_pass: sss,
             ibl_pass: ibl_prep,
-            texture_progress: progress,
             compositing: comp,
             background,
             ui_pass: ui,
@@ -157,7 +148,6 @@ impl RenderPath for VolumeRenderer {
     fn is_ready(&self, assets: &RendererAssetsReadOnly) -> bool {
         self.marching_cubes_pass.is_ready(assets)
             && self.geometry.is_ready(assets)
-            && self.texture_progress.is_done()
             && self.compositing.is_ready(assets)
             && self.background.is_ready(assets)
             && self.ibl_pass.is_ready(assets)

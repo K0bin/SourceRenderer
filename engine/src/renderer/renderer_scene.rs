@@ -1,6 +1,5 @@
 use std::cell::Cell;
 use std::collections::HashMap;
-use std::usize;
 
 use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;

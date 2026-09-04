@@ -1,10 +1,9 @@
-use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
 #[cfg(all(feature = "render_thread", not(target_arch = "wasm32")))]
 use std::thread::JoinHandle;
 
-use bevy_app::{App, AppExit, Last, Plugin};
+use bevy_app::{App, AppExit, Last};
 use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::RemovedComponents;

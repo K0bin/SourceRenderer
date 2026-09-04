@@ -117,7 +117,7 @@ fn begin_frame_system(mut imgui: NonSendMut<DearImgui>) {
     imgui.begin_frame();
 }
 
-fn test_ui_system(mut imgui: NonSendMut<DearImgui>) {
+fn test_ui_system(imgui: NonSendMut<DearImgui>) {
     let ui = imgui.ui();
     ui.window("Hello World")
         .size([300.0, 100.0], Condition::FirstUseEver)

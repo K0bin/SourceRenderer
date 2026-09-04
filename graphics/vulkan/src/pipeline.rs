@@ -9,7 +9,7 @@ use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{
     self, Buffer as _, PipelineShaderStage, Shader as _, SpecConstValue,
 };
-use sourcerenderer_core::{align_up, align_up_32, align_up_64};
+use sourcerenderer_core::{align_up_32, align_up_64};
 
 use super::*;
 

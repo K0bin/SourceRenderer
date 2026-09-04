@@ -1,6 +1,5 @@
 use std::io::{Cursor, Read as _, Seek as _, SeekFrom};
 use std::sync::Arc;
-use std::{slice, usize};
 
 use bevy_math::{EulerRot, Quat};
 use bevy_tasks::futures_lite::AsyncReadExt;

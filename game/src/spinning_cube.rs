@@ -1,4 +1,3 @@
-use std::f32;
 use std::sync::Arc;
 
 use bevy_app::{App, Plugin, SpawnScene};
@@ -14,10 +13,8 @@ use sourcerenderer_core::{Quaternion, Vec2, Vec3};
 use sourcerenderer_engine::Engine;
 use sourcerenderer_engine::graphics::*;
 
-use crate::fps_camera::FPSCameraComponent;
 use sourcerenderer_engine::Camera;
 use sourcerenderer_engine::asset::{AssetManager, MeshRange, Vertex};
-use sourcerenderer_engine::camera::ActiveCamera;
 use sourcerenderer_engine::math::BoundingBox;
 use sourcerenderer_engine::renderer::{PointLightComponent, StaticRenderableComponent};
 

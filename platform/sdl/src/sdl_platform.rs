@@ -12,7 +12,7 @@ use sdl3::keyboard::Scancode;
 use sdl3::video::FullscreenType;
 use sdl3::{EventPump, Sdl, VideoSubsystem};
 use sourcerenderer_core::platform::{FileWatcher, PlatformIO, Window};
-use sourcerenderer_core::{Vec2, Vec2I, Vec2UI, gpu};
+use sourcerenderer_core::{Vec2, Vec2I, gpu};
 use sourcerenderer_engine::{Engine, WindowState};
 
 use crate::sdl_gpu::{self, SDLGPUBackend};

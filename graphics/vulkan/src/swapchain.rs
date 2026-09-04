@@ -523,7 +523,7 @@ impl Swapchain<VkBackend> for VkSwapchain {
         let result = unsafe {
             self.swapchain_device.acquire_next_image(
                 self.swapchain,
-                std::u64::MAX,
+                u64::MAX,
                 acquire_semaphore.handle(),
                 vk::Fence::null(),
             )

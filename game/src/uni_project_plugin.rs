@@ -1,15 +1,10 @@
-use std::sync::Arc;
-
 use crate::{RendererPicker, fps_camera};
 use bevy_app::{App, Plugin};
 use bevy_math::Affine3A;
 use sourcerenderer_core::{Matrix4, Vec3};
+use sourcerenderer_engine::asset::{AssetLoadPriority, AssetManager, AssetType};
 use sourcerenderer_engine::renderer::{RendererType, VolumeMeshInstance};
 use sourcerenderer_engine::transform::InterpolatedTransform;
-use sourcerenderer_engine::{
-    Engine,
-    asset::{AssetLoadPriority, AssetManager, AssetType},
-};
 
 #[derive(Default)]
 pub struct UniProjectPlugin;

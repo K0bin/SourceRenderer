@@ -54,7 +54,7 @@ impl VkTimelineSemaphore {
                         p_values: &[value] as *const u64,
                         ..Default::default()
                     },
-                    std::u64::MAX,
+                    u64::MAX,
                 )
                 .unwrap();
         }
@@ -87,9 +87,7 @@ impl gpu::Fence for VkTimelineSemaphore {
                 p_values: &value as *const u64,
                 ..Default::default()
             };
-            self.device
-                .wait_semaphores(&wait_info, std::u64::MAX)
-                .unwrap();
+            self.device.wait_semaphores(&wait_info, u64::MAX).unwrap();
         }
     }
 }
