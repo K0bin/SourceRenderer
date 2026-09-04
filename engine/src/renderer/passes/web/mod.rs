@@ -95,7 +95,7 @@ impl RenderPath for WebRenderer {
         scene: &SceneInfo,
         _frame_info: &FrameInfo,
         resources: &mut RendererResources,
-        assets: &RendererAssetsReadOnly<'_>,
+        assets: &RendererAssets,
     ) -> Result<RenderPathResult, sourcerenderer_core::gpu::SwapchainError> {
         let backbuffer = swapchain.next_backbuffer()?;
 
@@ -124,6 +124,7 @@ impl RenderPath for WebRenderer {
             )
             .unwrap();
 
+        let assets_read = assets.read();
         let backbuffer_view = swapchain.backbuffer_view(&backbuffer);
         let backbuffer_handle = swapchain.backbuffer_handle(&backbuffer);
         self.geometry.execute(
@@ -136,7 +137,7 @@ impl RenderPath for WebRenderer {
             backbuffer_handle,
             swapchain.width(),
             swapchain.height(),
-            assets,
+            &assets_read,
         );
 
         return Ok(RenderPathResult {
@@ -145,10 +146,11 @@ impl RenderPath for WebRenderer {
         });
     }
 
-    fn recreate_swapchain(&mut self, new_swapchain: &mut Swapchain,
-                          resources: &mut RendererResources,) {
+    fn recreate_swapchain(
+        &mut self,
+        new_swapchain: &mut Swapchain,
+        resources: &mut RendererResources,
+    ) {
         self.geometry.recreate_swapchain(new_swapchain, resources);
     }
-
-    fn set_ui_data(&mut self, _data: crate::ui::UIDrawData) {}
 }

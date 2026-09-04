@@ -67,8 +67,8 @@ impl VkInstance {
         let supported_extensions =
             unsafe { entry.enumerate_instance_extension_properties(None) }.unwrap();
         let surface_extensions = [
-            SURFACE_WAYLAND_EXT_NAME, // Comment out to make renderdoc work on Linux.
-            SURFACE_XCB_EXT_NAME,     // Comment out to make renderdoc work on Linux.
+            //SURFACE_WAYLAND_EXT_NAME, // Comment out to make renderdoc work on Linux.
+            //SURFACE_XCB_EXT_NAME,     // Comment out to make renderdoc work on Linux.
             SURFACE_XLIB_EXT_NAME,
             SURFACE_ANDROID_EXT_NAME,
             SURFACE_WIN32_EXT_NAME,

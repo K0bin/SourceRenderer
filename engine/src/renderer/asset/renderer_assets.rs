@@ -90,7 +90,7 @@ impl RendererAssets {
     }
 
     #[inline(always)]
-    pub(crate) fn integrate<T: Into<AssetHandle>>(
+    fn integrate_with_handle<T: Into<AssetHandle>>(
         &self,
         handle: T,
         asset_data: AssetData,
@@ -102,12 +102,25 @@ impl RendererAssets {
                 .integrate(&assets, &self.shader_manager, handle, asset_data, priority)
         };
         if let Some(asset) = asset {
-            self.add_asset(asset);
+            self.add_final_asset_with_handle(asset);
         }
     }
 
     #[inline(always)]
-    pub(crate) fn add_asset(&self, asset: RendererAssetWithHandle) -> bool {
+    pub(crate) fn integrate(
+        &self,
+        asset_data: AssetData,
+        priority: AssetLoadPriority,
+    ) -> AssetHandle {
+        let handle = self
+            .asset_manager
+            .reserve_handle_without_path(asset_data.asset_type());
+        self.integrate_with_handle(handle, asset_data, priority);
+        handle
+    }
+
+    #[inline(always)]
+    fn add_final_asset_with_handle(&self, asset: RendererAssetWithHandle) -> bool {
         let mut assets = self.assets.write();
         self.asset_manager.notify_ready(asset.handle());
         match asset {
@@ -208,7 +221,7 @@ impl RendererAssets {
     pub(crate) fn flush(&self) {
         let ready_delayed_assets = self.integrator.flush(&self.shader_manager);
         for asset in ready_delayed_assets {
-            self.add_asset(asset);
+            self.add_final_asset_with_handle(asset);
         }
     }
 
@@ -242,13 +255,52 @@ impl RendererAssets {
             priority,
         }) = asset_opt
         {
-            self.integrate(handle, data, priority);
+            self.integrate_with_handle(handle, data, priority);
             asset_opt = self
                 .asset_manager
                 .receive_asset_data(AssetTypeGroup::Rendering);
         }
 
         self.flush();
+    }
+
+    pub(crate) fn remove_asset(&self, handle: AssetHandle) {
+        {
+            let mut assets = self.assets.write();
+            match handle.asset_type() {
+                AssetType::Texture => {
+                    assets.textures.remove(&handle.into());
+                }
+                AssetType::Model => {
+                    assets.models.remove(&handle.into());
+                }
+                AssetType::Mesh => {
+                    assets.meshes.remove(&handle.into());
+                }
+                AssetType::Material => {
+                    assets.materials.remove(&handle.into());
+                }
+                AssetType::Shader => {
+                    assets.shaders.remove(&handle.into());
+                }
+                AssetType::GraphicsPipeline => {
+                    assets.graphics_pipelines.remove(&handle.into());
+                }
+                AssetType::MeshGraphicsPipeline => {
+                    assets.mesh_graphics_pipelines.remove(&handle.into());
+                }
+                AssetType::ComputePipeline => {
+                    assets.compute_pipelines.remove(&handle.into());
+                }
+                AssetType::RayTracingPipeline => {
+                    assets.ray_tracing_pipelines.remove(&handle.into());
+                }
+                _ => {
+                    panic!("Not a renderer asset")
+                }
+            }
+        }
+        self.asset_manager.notify_unloaded(handle);
     }
 }
 

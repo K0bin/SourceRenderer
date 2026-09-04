@@ -14,7 +14,6 @@ use crate::renderer::render_path::{
     FrameInfo, RenderPassParameters, RenderPath, RenderPathResult, SceneInfo,
 };
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
-use crate::ui::UIDrawData;
 use bytemuck::{Pod, Zeroable};
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::TexturePlane;
@@ -23,7 +22,6 @@ use std::sync::Arc;
 
 pub struct PathTracingRenderer {
     device: Arc<Device>,
-    ui_data: UIDrawData,
     blue_noise: BlueNoise,
     acceleration_structure_update: AccelerationStructureUpdatePass,
     blit_pass: crate::renderer::passes::blit::BlitPass,
@@ -77,7 +75,6 @@ impl PathTracingRenderer {
             .detach();
         Self {
             device: device.clone(),
-            ui_data: UIDrawData::default(),
             blue_noise,
             acceleration_structure_update,
             blit_pass,
@@ -311,7 +308,7 @@ impl RenderPath for PathTracingRenderer {
         scene: &SceneInfo,
         frame_info: &FrameInfo,
         resources: &mut RendererResources,
-        assets: &RendererAssetsReadOnly<'_>,
+        assets: &RendererAssets,
     ) -> Result<RenderPathResult, SwapchainError> {
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
@@ -334,11 +331,12 @@ impl RenderPath for PathTracingRenderer {
             )
             .unwrap();
 
+        let assets_read = assets.read();
         let scene_buffers = crate::renderer::passes::modern::gpu_scene::upload(
             &mut cmd_buf,
             scene.scene,
             0, /* TODO */
-            &assets,
+            &assets_read,
         );
 
         self.setup_frame(
@@ -356,7 +354,7 @@ impl RenderPath for PathTracingRenderer {
             device: self.device.as_ref(),
             scene,
             resources,
-            assets,
+            assets: &assets_read,
         };
 
         self.acceleration_structure_update
@@ -438,9 +436,5 @@ impl RenderPath for PathTracingRenderer {
         _resources: &mut RendererResources,
     ) {
         todo!()
-    }
-
-    fn set_ui_data(&mut self, data: crate::ui::UIDrawData) {
-        self.ui_data = data;
     }
 }

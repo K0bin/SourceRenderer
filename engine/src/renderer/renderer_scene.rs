@@ -1,8 +1,10 @@
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::usize;
 
 use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;
+use dear_imgui_rs::FrameSnapshot;
 use log::warn;
 use sourcerenderer_core::Vec3;
 
@@ -21,6 +23,7 @@ pub struct RendererScene {
     point_light_entity_map: HashMap<Entity, usize>,
     directional_light_entity_map: HashMap<Entity, usize>,
     volume_mesh_entity_map: HashMap<Entity, usize>,
+    latest_imgui: Cell<Option<FrameSnapshot>>,
     lightmap: Option<TextureHandle>,
 }
 
@@ -37,6 +40,7 @@ impl RendererScene {
             directional_light_entity_map: HashMap::new(),
             volume_mesh_entity_map: HashMap::new(),
             lightmap: None,
+            latest_imgui: Default::default(),
         }
     }
 
@@ -241,6 +245,14 @@ impl RendererScene {
         let index = index.unwrap();
         self.volume_meshes.remove(index);
         debug_assert_eq!(self.volume_mesh_entity_map.len(), self.volume_meshes.len());
+    }
+
+    pub fn set_ui_data(&self, data: FrameSnapshot) {
+        self.latest_imgui.replace(Some(data));
+    }
+
+    pub fn take_ui_data(&self) -> Option<FrameSnapshot> {
+        self.latest_imgui.take()
     }
 
     #[inline(always)]

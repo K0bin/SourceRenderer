@@ -623,11 +623,35 @@ impl<'a> CommandBuffer<'a> {
         }
     }
 
+    pub fn copy_buffer_to_texture(
+        &mut self,
+        src_buffer: BufferRef,
+        texture: &Texture,
+        region: &BufferTextureCopyRegion,
+    ) {
+        let BufferHandleRef {
+            handle: buffer_handle,
+            offset: buffer_offset,
+            length: _,
+        } = src_buffer.deconstruct(self.frame());
+        unsafe {
+            self.cmd_buffer_handle.copy_buffer_to_texture(
+                buffer_handle,
+                texture.handle(),
+                &BufferTextureCopyRegion {
+                    buffer_offset: region.buffer_offset + buffer_offset,
+                    ..region.clone()
+                },
+            );
+        }
+    }
+
     pub fn begin(&mut self, frame: u64) {
         unsafe { self.cmd_buffer_handle.begin(frame) }
     }
 
     pub fn finish(mut self) -> FinishedCommandBuffer {
+        self.flush_barriers();
         unsafe {
             self.cmd_buffer_handle.finish();
         }

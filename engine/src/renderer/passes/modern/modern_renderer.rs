@@ -23,11 +23,9 @@ use crate::renderer::render_path::{
     FrameInfo, RenderPassParameters, RenderPath, RenderPathResult, SceneInfo,
 };
 use crate::renderer::renderer_resources::RendererResources;
-use crate::ui::UIDrawData;
 
 pub struct ModernRenderer {
     device: Arc<Device>,
-    ui_data: UIDrawData,
     clustering_pass: ClusteringPass,
     light_binning_pass: LightBinningPass,
     geometry_draw_prep: DrawPrepPass,
@@ -127,7 +125,6 @@ impl ModernRenderer {
 
         Self {
             device: device.clone(),
-            ui_data: UIDrawData::default(),
             clustering_pass: clustering,
             light_binning_pass: light_binning,
             geometry_draw_prep: draw_prep,
@@ -372,8 +369,9 @@ impl RenderPath for ModernRenderer {
         scene: &SceneInfo,
         frame_info: &FrameInfo,
         resources: &mut RendererResources,
-        assets: &RendererAssetsReadOnly<'_>,
+        assets: &RendererAssets,
     ) -> Result<RenderPathResult, SwapchainError> {
+        let assets_read = assets.read();
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
         let main_view = &scene.scene.views()[scene.active_view_index];
@@ -405,7 +403,7 @@ impl RenderPath for ModernRenderer {
         let camera_history_buffer = &camera_buffer;
 
         let scene_buffers =
-            super::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, &assets);
+            super::gpu_scene::upload(&mut cmd_buf, scene.scene, 0 /* TODO */, &assets_read);
 
         //self.shadow_map_pass.calculate_cascades(scene);
 
@@ -430,7 +428,7 @@ impl RenderPath for ModernRenderer {
             device: self.device.as_ref(),
             scene,
             resources,
-            assets,
+            assets: &assets_read,
         };
 
         /*if let Some(rt_passes) = self.rt_passes.as_mut() {
@@ -561,7 +559,7 @@ impl RenderPath for ModernRenderer {
             backbuffer_handle,
             swapchain.width(),
             swapchain.height(),
-            assets,
+            &assets_read,
         );
 
         return Ok(RenderPathResult {
@@ -576,9 +574,5 @@ impl RenderPath for ModernRenderer {
         _resources: &mut RendererResources,
     ) {
         todo!()
-    }
-
-    fn set_ui_data(&mut self, data: crate::ui::UIDrawData) {
-        self.ui_data = data;
     }
 }

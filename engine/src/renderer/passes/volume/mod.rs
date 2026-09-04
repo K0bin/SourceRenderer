@@ -1,6 +1,7 @@
-use crate::asset::{AssetLoadPriority, AssetLoaderProgress, AssetType, TextureHandle};
+use crate::asset::{AssetLoadPriority, AssetLoaderProgress, AssetType};
 use crate::graphics::{GraphicsContext, *};
 use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
+use crate::renderer::passes::dear_imgui_renderer::DearImguiRenderer;
 use crate::renderer::passes::volume::background::BackgroundPass;
 use crate::renderer::passes::volume::compositing::CompositingPass;
 use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
@@ -12,7 +13,7 @@ use crate::renderer::render_path::{
 use crate::renderer::renderer_resources::RendererResources;
 use bytemuck::{Pod, Zeroable};
 use marching_cubes::MarchingCubesPass;
-use sourcerenderer_core::{Matrix4, Vec2UI, Vec3, Vec3UI, Vec4};
+use sourcerenderer_core::{Matrix4, Vec2UI, Vec4};
 use std::sync::Arc;
 
 mod background;
@@ -51,6 +52,7 @@ pub struct VolumeRenderer {
     texture_progress: Arc<AssetLoaderProgress>,
     compositing: CompositingPass,
     background: BackgroundPass,
+    ui_pass: DearImguiRenderer,
 }
 
 impl VolumeRenderer {
@@ -101,6 +103,8 @@ impl VolumeRenderer {
 
         let background = BackgroundPass::new(device, assets, &mut init_cmd_buffer, resources);
 
+        let ui = DearImguiRenderer::new(device, resources, assets, swapchain.format());
+
         init_cmd_buffer.flush_barriers();
         device.flush_transfers();
 
@@ -134,6 +138,7 @@ impl VolumeRenderer {
             texture_progress: progress,
             compositing: comp,
             background,
+            ui_pass: ui,
         }
     }
 }
@@ -158,6 +163,7 @@ impl RenderPath for VolumeRenderer {
             && self.ibl_pass.is_ready(assets)
             && self.ssao.is_ready(assets)
             && self.sss_pass.is_ready(assets)
+            && self.ui_pass.is_ready(assets)
     }
 
     fn render(
@@ -167,15 +173,17 @@ impl RenderPath for VolumeRenderer {
         scene: &SceneInfo,
         _frame_info: &FrameInfo,
         resources: &mut RendererResources,
-        assets: &RendererAssetsReadOnly<'_>,
+        assets: &RendererAssets,
     ) -> Result<RenderPathResult, SwapchainError> {
         let backbuffer = swapchain.next_backbuffer()?;
 
         let mut cmd_buffer = context.get_command_buffer(QueueType::Graphics);
 
+        let read_assets = assets.read();
+
         let mut all_done = true;
         for d in scene.scene.volume_mesh_instances() {
-            all_done = all_done && assets.get_texture_opt(d.volume_texture).is_some();
+            all_done = all_done && read_assets.get_texture_opt(d.volume_texture).is_some();
         }
         if !all_done {
             return Ok(RenderPathResult {
@@ -188,7 +196,7 @@ impl RenderPath for VolumeRenderer {
             device: self.device.as_ref(),
             scene,
             resources,
-            assets,
+            assets: &read_assets,
         };
 
         let main_view = &scene.scene.views()[scene.active_view_index];
@@ -228,14 +236,12 @@ impl RenderPath for VolumeRenderer {
             main_view,
             &camera_buffer,
             &params,
-            assets,
         );
 
         self.geometry.execute(
             &mut cmd_buffer,
             &camera_buffer,
             &params,
-            assets,
             &marching_cubes_map,
         );
 
@@ -264,6 +270,18 @@ impl RenderPath for VolumeRenderer {
         let backbuffer_view = swapchain.backbuffer_view(&backbuffer);
         let backbuffer_handle = swapchain.backbuffer_handle(&backbuffer);
 
+        cmd_buffer.barrier(&[Barrier::RawTextureBarrier {
+            old_sync: BarrierSync::empty(),
+            new_sync: BarrierSync::RENDER_TARGET,
+            old_access: BarrierAccess::empty(),
+            new_access: BarrierAccess::RENDER_TARGET_WRITE | BarrierAccess::RENDER_TARGET_READ,
+            old_layout: TextureLayout::Undefined,
+            new_layout: TextureLayout::RenderTarget,
+            texture: backbuffer_handle,
+            range: BarrierTextureRange::default(),
+            queue_ownership: None,
+        }]);
+
         self.compositing.execute(
             &mut cmd_buffer,
             &backbuffer_view,
@@ -272,6 +290,47 @@ impl RenderPath for VolumeRenderer {
             GeometryPass::COLOR_TEXTURE_NAME,
             SsaoPass::SSAO_TEXTURE_NAME,
         );
+
+        std::mem::drop(params);
+        std::mem::drop(read_assets);
+        if let Some(ui_data) = scene.scene.take_ui_data() {
+            cmd_buffer.barrier(&[Barrier::RawTextureBarrier {
+                old_sync: BarrierSync::RENDER_TARGET,
+                new_sync: BarrierSync::RENDER_TARGET,
+                old_access: BarrierAccess::RENDER_TARGET_WRITE,
+                new_access: BarrierAccess::RENDER_TARGET_READ | BarrierAccess::RENDER_TARGET_WRITE,
+                old_layout: TextureLayout::RenderTarget,
+                new_layout: TextureLayout::RenderTarget,
+                texture: backbuffer_handle,
+                queue_ownership: None,
+                range: BarrierTextureRange::default(),
+            }]);
+
+            self.ui_pass.execute(
+                &mut cmd_buffer,
+                assets,
+                resources,
+                ui_data,
+                &backbuffer_view,
+                backbuffer_handle,
+            );
+        } else {
+            println!("no ui data");
+        }
+
+        cmd_buffer.barrier(&[Barrier::RawTextureBarrier {
+            old_sync: BarrierSync::RENDER_TARGET,
+            new_sync: BarrierSync::empty(),
+            old_access: BarrierAccess::RENDER_TARGET_WRITE,
+            new_access: BarrierAccess::empty(),
+            old_layout: TextureLayout::RenderTarget,
+            new_layout: TextureLayout::Present,
+            texture: backbuffer_handle,
+            queue_ownership: None,
+            range: BarrierTextureRange::default(),
+        }]);
+
+        cmd_buffer.flush_barriers();
 
         Ok(RenderPathResult {
             cmd_buffer: cmd_buffer.finish(),
@@ -289,6 +348,4 @@ impl RenderPath for VolumeRenderer {
         GeometryPass::create_textures(resources, resolution);
         SsaoPass::create_textures(resources, resolution);
     }
-
-    fn set_ui_data(&mut self, _data: crate::ui::UIDrawData) {}
 }

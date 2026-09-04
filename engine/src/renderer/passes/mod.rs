@@ -28,7 +28,7 @@ pub(crate) mod modern;
 #[cfg(not(target_arch = "wasm32"))]
 use modern::rt_shadows;
 
-pub(crate) mod ui;
+pub(crate) mod dear_imgui_renderer;
 pub(crate) mod web;
 
 pub(crate) mod volume;

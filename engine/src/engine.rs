@@ -18,6 +18,7 @@ use sourcerenderer_core::platform::{GraphicsPlatform, PlatformIO, Window};
 
 use crate::asset::{AssetManager, AssetManagerECSResource, AssetManagerPlugin};
 use crate::convenience_inputs::ConvenienceInputs;
+use crate::dear_imgui::DearImgui;
 use crate::graphics::*;
 use crate::renderer;
 use crate::renderer::RendererType;
@@ -26,6 +27,7 @@ use crate::transform::InterpolationPlugin;
 #[derive(Resource)]
 pub struct ConsoleResource(pub Arc<Console>);
 
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum WindowState {
     Minimized,
     Window(u32, u32),
@@ -99,6 +101,8 @@ impl Engine {
             .add_plugins(InputPlugin::default())
             .add_plugins(AssetManagerPlugin::<IO>::default())
             .insert_resource(console_resource);
+
+        crate::dear_imgui::install(&mut app, window);
 
         renderer::insert_resources::<G>(&mut app, window, renderer_type);
         renderer::install_systems(&mut app);
@@ -198,6 +202,11 @@ impl Engine {
         &mut self,
         window_state: WindowState,
     ) {
+        self.app
+            .world_mut()
+            .non_send_mut::<DearImgui>()
+            .window_changed(window_state);
+
         renderer::window_changed(&self.app, window_state);
     }
 

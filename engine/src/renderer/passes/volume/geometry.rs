@@ -324,7 +324,6 @@ impl GeometryPass {
         cmd_buffer: &mut CommandBuffer,
         camera_buffer: &TransientBufferSlice,
         params: &RenderPassParameters,
-        assets: &RendererAssetsReadOnly<'_>,
         marching_cubes_map: &HashMap<MarchingCubesKey, MarchingCubesInfo>,
     ) {
         let resources = &params.resources;
@@ -474,16 +473,20 @@ impl GeometryPass {
             resume_suspend: RenderPassResumeSuspend::empty(),
         });
 
-        let pipeline: &Arc<GraphicsPipeline> = assets
+        let pipeline: &Arc<GraphicsPipeline> = params
+            .assets
             .get_graphics_pipeline(self.pipeline)
             .expect("Pipeline is not compiled yet");
-        let pipeline_transparent: &Arc<GraphicsPipeline> = assets
+        let pipeline_transparent: &Arc<GraphicsPipeline> = params
+            .assets
             .get_graphics_pipeline(self.pipeline_transparent)
             .expect("Pipeline is not compiled yet");
-        let pipeline_non_overlapping: &Arc<GraphicsPipeline> = assets
+        let pipeline_non_overlapping: &Arc<GraphicsPipeline> = params
+            .assets
             .get_graphics_pipeline(self.pipeline_non_overlapping)
             .expect("Pipeline is not compiled yet");
-        let pipeline_transparent_prepass: &Arc<GraphicsPipeline> = assets
+        let pipeline_transparent_prepass: &Arc<GraphicsPipeline> = params
+            .assets
             .get_graphics_pipeline(self.pipeline_transparent_prepass)
             .expect("Pipeline is not compiled yet");
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
@@ -543,7 +546,7 @@ impl GeometryPass {
             let lod_scale = (1u32 << drawable.texture_lod) as f32;
             model_matrix *= Matrix4::from_scale(Vec3::new(lod_scale, lod_scale, lod_scale));
 
-            let volume_texture = assets.get_texture(drawable.volume_texture);
+            let volume_texture = params.assets.get_texture(drawable.volume_texture);
             let volume_texture_base_opt = volume_texture.view.texture();
             if volume_texture_base_opt.is_none() {
                 continue;
@@ -562,7 +565,9 @@ impl GeometryPass {
                 resources.linear_sampler(),
             );
 
-            let transfer_function = assets.get_texture(drawable.transfer_function_texture);
+            let transfer_function = params
+                .assets
+                .get_texture(drawable.transfer_function_texture);
             cmd_buffer.bind_sampling_view_and_sampler(
                 BindingFrequency::Frequent,
                 1u32,
@@ -642,7 +647,7 @@ impl GeometryPass {
             let lod_scale = (1u32 << drawable.texture_lod) as f32;
             model_matrix *= Matrix4::from_scale(Vec3::new(lod_scale, lod_scale, lod_scale));
 
-            let volume_texture = assets.get_texture(drawable.volume_texture);
+            let volume_texture = params.assets.get_texture(drawable.volume_texture);
             let volume_texture_base_opt = volume_texture.view.texture();
             if volume_texture_base_opt.is_none() {
                 continue;
@@ -661,7 +666,9 @@ impl GeometryPass {
                 resources.linear_sampler(),
             );
 
-            let transfer_function = assets.get_texture(drawable.transfer_function_texture);
+            let transfer_function = params
+                .assets
+                .get_texture(drawable.transfer_function_texture);
             cmd_buffer.bind_sampling_view_and_sampler(
                 BindingFrequency::Frequent,
                 1u32,
@@ -728,7 +735,7 @@ impl GeometryPass {
             let lod_scale = (1u32 << drawable.texture_lod) as f32;
             model_matrix *= Matrix4::from_scale(Vec3::new(lod_scale, lod_scale, lod_scale));
 
-            let volume_texture = assets.get_texture(drawable.volume_texture);
+            let volume_texture = params.assets.get_texture(drawable.volume_texture);
             let volume_texture_base_opt = volume_texture.view.texture();
             if volume_texture_base_opt.is_none() {
                 continue;
@@ -784,7 +791,7 @@ impl GeometryPass {
             let lod_scale = (1u32 << drawable.texture_lod) as f32;
             model_matrix *= Matrix4::from_scale(Vec3::new(lod_scale, lod_scale, lod_scale));
 
-            let volume_texture = assets.get_texture(drawable.volume_texture);
+            let volume_texture = params.assets.get_texture(drawable.volume_texture);
             let volume_texture_base_opt = volume_texture.view.texture();
             if volume_texture_base_opt.is_none() {
                 continue;
@@ -803,7 +810,9 @@ impl GeometryPass {
                 resources.linear_sampler(),
             );
 
-            let transfer_function = assets.get_texture(drawable.transfer_function_texture);
+            let transfer_function = params
+                .assets
+                .get_texture(drawable.transfer_function_texture);
             cmd_buffer.bind_sampling_view_and_sampler(
                 BindingFrequency::Frequent,
                 1u32,
