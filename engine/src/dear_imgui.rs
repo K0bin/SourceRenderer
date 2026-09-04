@@ -1,6 +1,6 @@
 use crate::WindowState;
 use crate::graphics::ActiveBackend;
-use bevy_app::{App, Plugin, PreUpdate, Update};
+use bevy_app::{App, PreUpdate, Update};
 use bevy_ecs::system::NonSendMut;
 use dear_imgui_rs::{BackendFlags, Condition, FrameSnapshot, FrameToken};
 use sourcerenderer_core::platform::Window;
@@ -15,8 +15,9 @@ pub fn install(app: &mut App, window: &impl Window<ActiveBackend>) {
 }
 
 struct FrameWithRef {
-    _context_borrow: RefMut<'static, dear_imgui_rs::Context>,
+    // Context borrow must be below the frame so it gets dropped after the frame.
     frame: FrameToken<'static>,
+    _context_borrow: RefMut<'static, dear_imgui_rs::Context>,
 }
 
 impl<'a> AsRef<dear_imgui_rs::FrameToken<'a>> for FrameWithRef {
@@ -31,6 +32,7 @@ struct NoUnpinContext {
 }
 
 pub struct DearImgui {
+    // Context must be below the frame opt so it gets dropped after the frame opt.
     frame: Option<FrameWithRef>,
     context_wrapper: Pin<Box<NoUnpinContext>>,
     consumer: dear_imgui_rs::DetachedRendererConsumer,
@@ -93,7 +95,11 @@ impl DearImgui {
 
     pub fn draw_data(&mut self) -> Option<FrameSnapshot> {
         let snapshot = {
-            let frame = self.frame.take()?.frame;
+            let FrameWithRef {
+                // Context borrow must be above the frame when destructuring, so it gets dropped last.
+                _context_borrow,
+                frame,
+            } = self.frame.take()?;
             frame.render_snapshot(&self.consumer).ok()
         };
         self.context_wrapper.context.borrow_mut().end_frame();
