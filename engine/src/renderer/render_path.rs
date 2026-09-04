@@ -2,19 +2,10 @@ use std::sync::Arc;
 
 use web_time::Duration;
 
-use super::asset::{
-    RendererAssetsReadOnly,
-    RendererTexture,
-};
+use super::asset::{RendererAssets, RendererAssetsReadOnly, RendererTexture};
 use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
-use crate::graphics::{
-    Backbuffer,
-    BufferRef,
-    GraphicsContext,
-    *,
-};
-use crate::ui::UIDrawData;
+use crate::graphics::{Backbuffer, BufferRef, GraphicsContext, *};
 
 pub struct SceneInfo<'a> {
     pub scene: &'a RendererScene,
@@ -45,7 +36,6 @@ pub trait RenderPath {
     fn is_gpu_driven(&self) -> bool;
     fn write_occlusion_culling_results(&self, frame: u64, bitset: &mut Vec<u32>);
     fn on_swapchain_changed(&mut self, swapchain: &Swapchain);
-    fn set_ui_data(&mut self, data: UIDrawData);
     fn is_ready(&self, assets: &RendererAssetsReadOnly) -> bool;
     fn render(
         &mut self,
@@ -54,10 +44,14 @@ pub trait RenderPath {
         scene: &SceneInfo,
         frame_info: &FrameInfo,
         resources: &mut RendererResources,
-        assets: &RendererAssetsReadOnly<'_>,
+        assets: &RendererAssets,
     ) -> Result<RenderPathResult, SwapchainError>;
 
-    fn recreate_swapchain(&mut self, new_swapchain: &mut Swapchain, resources: &mut RendererResources);
+    fn recreate_swapchain(
+        &mut self,
+        new_swapchain: &mut Swapchain,
+        resources: &mut RendererResources,
+    );
 }
 
 pub struct NoOpRenderPath;
@@ -68,7 +62,6 @@ impl RenderPath for NoOpRenderPath {
     }
     fn write_occlusion_culling_results(&self, _frame: u64, _bitset: &mut Vec<u32>) {}
     fn on_swapchain_changed(&mut self, _swapchain: &Swapchain) {}
-    fn set_ui_data(&mut self, _data: UIDrawData) {}
     fn is_ready(&self, _asset_manager: &RendererAssetsReadOnly) -> bool {
         true
     }
@@ -79,7 +72,7 @@ impl RenderPath for NoOpRenderPath {
         _scene: &SceneInfo,
         _frame_info: &FrameInfo,
         _resources: &mut RendererResources,
-        _assets: &RendererAssetsReadOnly<'_>,
+        _assets: &RendererAssets,
     ) -> Result<RenderPathResult, SwapchainError> {
         let backbuffer = swapchain.next_backbuffer()?;
         let mut cmd_buffer = context.get_command_buffer(QueueType::Graphics);
@@ -100,5 +93,10 @@ impl RenderPath for NoOpRenderPath {
         })
     }
 
-    fn recreate_swapchain(&mut self, _new_swapchain: &mut Swapchain, _resources: &mut RendererResources) {}
+    fn recreate_swapchain(
+        &mut self,
+        _new_swapchain: &mut Swapchain,
+        _resources: &mut RendererResources,
+    ) {
+    }
 }

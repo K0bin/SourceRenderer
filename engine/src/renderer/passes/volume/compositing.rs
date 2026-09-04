@@ -93,18 +93,6 @@ impl CompositingPass {
         color_name: &str,
         ssao_name: &str,
     ) {
-        cmd_buffer.barrier(&[Barrier::RawTextureBarrier {
-            old_sync: BarrierSync::empty(),
-            new_sync: BarrierSync::RENDER_TARGET,
-            old_access: BarrierAccess::empty(),
-            new_access: BarrierAccess::RENDER_TARGET_WRITE | BarrierAccess::RENDER_TARGET_READ,
-            old_layout: TextureLayout::Undefined,
-            new_layout: TextureLayout::RenderTarget,
-            texture: backbuffer_handle,
-            range: BarrierTextureRange::default(),
-            queue_ownership: None,
-        }]);
-
         let resources = &params.resources;
 
         let color_view = resources.access_view(
@@ -199,17 +187,5 @@ impl CompositingPass {
         cmd_buffer.end_render_pass();
 
         cmd_buffer.end_label();
-
-        cmd_buffer.barrier(&[Barrier::RawTextureBarrier {
-            old_sync: BarrierSync::RENDER_TARGET,
-            new_sync: BarrierSync::empty(),
-            old_access: BarrierAccess::RENDER_TARGET_WRITE,
-            new_access: BarrierAccess::empty(),
-            old_layout: TextureLayout::RenderTarget,
-            new_layout: TextureLayout::Present,
-            texture: backbuffer_handle,
-            queue_ownership: None,
-            range: BarrierTextureRange::default(),
-        }]);
     }
 }

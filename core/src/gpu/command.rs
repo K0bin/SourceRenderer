@@ -70,7 +70,7 @@ pub enum ImageLayout {
     Present,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BufferTextureCopyRegion {
     pub buffer_offset: u64,
     pub buffer_row_pitch: u64,

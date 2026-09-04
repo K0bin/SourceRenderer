@@ -6,11 +6,7 @@ use sourcerenderer_core::Vec4;
 
 use super::*;
 use crate::asset::*;
-use crate::graphics::{
-    BindlessSlot,
-    Shader,
-    TextureView,
-};
+use crate::graphics::{BindlessSlot, Shader, Texture, TextureView};
 use crate::math::BoundingBox;
 
 pub struct RendererTexture {
@@ -24,6 +20,12 @@ impl PartialEq for RendererTexture {
     }
 }
 impl Eq for RendererTexture {}
+
+impl RendererTexture {
+    pub(crate) fn texture(&self) -> &Texture {
+        self.view.texture().unwrap().as_ref()
+    }
+}
 
 pub struct RendererMaterial {
     pub(super) properties: HashMap<String, RendererMaterialValue>,

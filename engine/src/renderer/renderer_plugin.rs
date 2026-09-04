@@ -118,6 +118,7 @@ pub fn install_systems(app: &mut App) {
             extract_volume_renderables,
             extract_point_lights,
             extract_directional_lights,
+            extract_ui_data,
         )
             .in_set(ExtractSet)
             .after(SyncSet),
@@ -438,6 +439,23 @@ fn extract_volume_renderables(
     }
 }
 
+fn extract_ui_data(
+    mut events: MessageWriter<AppExit>,
+    renderer: RendererResourceAccessor,
+    mut res: NonSendMut<DearImgui>,
+) {
+    let snapshot_opt = res.draw_data();
+    if snapshot_opt.is_none() {
+        return;
+    }
+    let snapshot = snapshot_opt.unwrap();
+    let result = renderer.sender.update_ui_data(snapshot);
+
+    if result.is_err() {
+        let _ = events.write(AppExit::from_code(1));
+    }
+}
+
 #[allow(unused_mut)]
 fn end_frame(mut events: MessageWriter<AppExit>, mut renderer: RendererResourceAccessorMut) {
     #[cfg(feature = "render_thread")]
@@ -615,6 +633,7 @@ mod wasm {
     }
 }
 
+use crate::dear_imgui::DearImgui;
 use crate::renderer::ecs::VolumeMeshInstance;
 #[cfg(all(target_arch = "wasm32", feature = "render_thread"))]
 use wasm::start_render_thread;
