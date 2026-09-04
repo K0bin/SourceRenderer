@@ -89,7 +89,6 @@ impl BackgroundPass {
         view: &View,
         camera_buffer: &TransientBufferSlice,
         params: &RenderPassParameters,
-        assets: &RendererAssetsReadOnly<'_>,
     ) {
         let resources = &params.resources;
 
@@ -145,7 +144,8 @@ impl BackgroundPass {
             resume_suspend: RenderPassResumeSuspend::empty(),
         });
 
-        let pipeline: &Arc<GraphicsPipeline> = assets
+        let pipeline: &Arc<GraphicsPipeline> = params
+            .assets
             .get_graphics_pipeline(self.pipeline)
             .expect("Pipeline is not compiled yet");
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));

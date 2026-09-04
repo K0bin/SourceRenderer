@@ -174,6 +174,11 @@ impl AssetHandle {
     pub fn new(index: u64, asset_type: AssetType) -> Self {
         Self { index, asset_type }
     }
+
+    #[inline]
+    pub fn index(self) -> u64 {
+        self.index
+    }
 }
 
 impl PartialEq<AssetHandle> for AssetHandle {

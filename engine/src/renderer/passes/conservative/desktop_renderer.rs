@@ -285,8 +285,9 @@ impl RenderPath for ConservativeRenderer {
         scene: &SceneInfo,
         frame_info: &FrameInfo,
         resources: &mut RendererResources,
-        assets: &RendererAssetsReadOnly<'_>,
+        assets: &RendererAssets,
     ) -> Result<RenderPathResult, SwapchainError> {
+        let assets_read = assets.read();
         let mut cmd_buf = context.get_command_buffer(QueueType::Graphics);
 
         let main_view = &scene.scene.views()[scene.active_view_index];
@@ -375,7 +376,7 @@ impl RenderPath for ConservativeRenderer {
             device: self.device.as_ref(),
             scene,
             resources,
-            assets,
+            assets: &assets_read,
         };
 
         if let Some(rt_passes) = self.rt_passes.as_mut() {
@@ -533,8 +534,6 @@ impl RenderPath for ConservativeRenderer {
     ) {
         todo!()
     }
-
-    fn set_ui_data(&mut self, _data: crate::ui::UIDrawData) {}
 }
 
 pub fn setup_frame(cmd_buf: &mut CommandBuffer, frame_bindings: &FrameBindings) {

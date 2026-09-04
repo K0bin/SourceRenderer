@@ -1,7 +1,7 @@
+use crate::engine::WindowState;
 use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;
-
-use crate::engine::WindowState;
+use dear_imgui_rs::FrameSnapshot;
 
 pub enum RendererCommand {
     RegisterStatic {
@@ -47,4 +47,5 @@ pub enum RendererCommand {
     SetLightmap(String),
     EndFrame,
     WindowChanged(WindowState),
+    UpdateUIData(FrameSnapshot),
 }

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;
 use crossbeam_channel::{Receiver, SendError, Sender, TryRecvError, unbounded};
+use dear_imgui_rs::FrameSnapshot;
 use sourcerenderer_core::Vec3;
 use sourcerenderer_core::console::Console;
 use web_time::{Duration, Instant};
@@ -28,7 +29,6 @@ use crate::graphics::*;
 use crate::renderer::command::RendererCommand;
 use crate::renderer::passes::volume::VolumeRenderer;
 use crate::transform::InterpolatedTransform;
-use crate::ui::UIDrawData;
 use crate::{Condvar, Mutex};
 
 struct RendererState {
@@ -221,8 +221,10 @@ impl Renderer {
         // Flush all submissions from the last frame in case this hasn't happened yet.
         self.device.flush_all();
 
-        let read_assets = self.assets.read();
-        update_visibility(&mut self.scene, &read_assets);
+        {
+            let read_assets = self.assets.read();
+            update_visibility(&mut self.scene, &read_assets);
+        }
 
         let scene_info = SceneInfo {
             scene: &self.scene,
@@ -242,7 +244,7 @@ impl Renderer {
             &scene_info,
             &frame_info,
             &mut self.resources,
-            &read_assets,
+            &self.assets,
         );
         let frame_end_signal = self.context.end_frame();
 
@@ -278,8 +280,6 @@ impl Renderer {
         std::mem::drop(swapchain_guard);
 
         let c_device = self.device.clone();
-        std::mem::drop(read_assets); // TODO: The asset manager needs a bit of an overhaul to avoid this dead lock scenario. (Spawning on a task pool in single thread mode while holding the RW lock)
-
         bevy_tasks::ComputeTaskPool::get()
             .spawn(async move {
                 crate::autoreleasepool(|| {
@@ -459,7 +459,6 @@ impl Renderer {
                         .get_or_reserve_handle(&path, AssetType::Texture);
                     self.scene.set_lightmap(Some(handle.into()));
                 }
-                //RendererCommand::RenderUI(data) => { self.render_path.set_ui_data(data); },
                 RendererCommand::WindowChanged(window_state) => match window_state {
                     WindowState::Fullscreen(width, height) => {
                         let mut swapchain = self.swapchain.lock().unwrap();
@@ -473,6 +472,9 @@ impl Renderer {
                     }
                     WindowState::Minimized => {}
                 },
+                RendererCommand::UpdateUIData(snapshot) => {
+                    self.scene.set_ui_data(snapshot);
+                }
             }
 
             let message_res = self.receiver.receiver.try_recv();
@@ -677,6 +679,17 @@ impl RendererSender {
             .map_err(|_| SendError(()))
     }
 
+    pub fn update_ui_data(&self, snapshot: FrameSnapshot) -> Result<(), SendError<()>> {
+        let sender = if let Some(sender) = self.sender.as_ref() {
+            sender
+        } else {
+            return Err(SendError(()));
+        };
+        sender
+            .send(RendererCommand::UpdateUIData(snapshot))
+            .map_err(|_| SendError(()))
+    }
+
     pub fn end_frame(&self) -> Result<(), SendError<()>> {
         let sender = if let Some(sender) = self.sender.as_ref() {
             sender
@@ -719,18 +732,6 @@ impl RendererSender {
     pub fn is_saturated(&self) -> bool {
         let queued_guard: crate::MutexGuard<u32> = self.state.queued_frames_counter.lock().unwrap();
         *queued_guard > 1
-    }
-
-    pub fn update_ui(&self, _ui_data: UIDrawData) -> Result<(), SendError<()>> {
-        let _sender = if let Some(sender) = self.sender.as_ref() {
-            sender
-        } else {
-            return Err(SendError(()));
-        };
-
-        /*sender.send(RendererCommand::RenderUI(ui_data))
-        .map_err(|_| SendError(()))*/
-        unimplemented!()
     }
 
     pub fn unblock_game_thread(&self) {
