@@ -176,6 +176,18 @@ impl RenderPath for VolumeRenderer {
             all_done = all_done && read_assets.get_texture_opt(d.volume_texture).is_some();
         }
         if !all_done {
+            let backbuffer_handle = swapchain.backbuffer_handle(&backbuffer);
+            cmd_buffer.barrier(&[Barrier::RawTextureBarrier {
+                old_sync: BarrierSync::empty(),
+                new_sync: BarrierSync::empty(),
+                old_access: BarrierAccess::empty(),
+                new_access: BarrierAccess::empty(),
+                old_layout: TextureLayout::Undefined,
+                new_layout: TextureLayout::Present,
+                texture: backbuffer_handle,
+                queue_ownership: None,
+                range: BarrierTextureRange::default(),
+            }]);
             return Ok(RenderPathResult {
                 cmd_buffer: cmd_buffer.finish(),
                 backbuffer: Some(backbuffer),
@@ -304,8 +316,6 @@ impl RenderPath for VolumeRenderer {
                 &backbuffer_view,
                 backbuffer_handle,
             );
-        } else {
-            println!("no ui data");
         }
 
         cmd_buffer.barrier(&[Barrier::RawTextureBarrier {

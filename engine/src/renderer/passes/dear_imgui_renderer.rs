@@ -295,6 +295,7 @@ impl DearImguiRenderer {
             }
         }
 
+        command_buffer.flush_barriers();
         command_buffer.begin_render_pass(&RenderPassBeginInfo {
             render_targets: &[RenderTarget {
                 view: backbuffer_view,
