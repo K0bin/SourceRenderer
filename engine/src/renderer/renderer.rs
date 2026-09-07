@@ -23,7 +23,7 @@ use super::renderer_culling::update_visibility;
 use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
 use super::{PointLight, RendererType, StaticRenderableComponent};
-use crate::asset::{AssetManager, AssetType};
+use crate::asset::{AssetLoadPriority, AssetManager, AssetType};
 use crate::engine::{EngineLoopFuncResult, WindowState};
 use crate::graphics::*;
 use crate::renderer::command::RendererCommand;
@@ -426,14 +426,17 @@ impl Renderer {
                     max_threshold,
                     transparent,
                 } => {
-                    let volume_texture_handle = self
-                        .assets
-                        .asset_manager()
-                        .get_or_reserve_handle(&texture_path, AssetType::Texture);
-                    let transfer_function_texture_handle = self
-                        .assets
-                        .asset_manager()
-                        .get_or_reserve_handle(&transfer_function_texture_path, AssetType::Texture);
+                    let (volume_texture_handle, _) = self.assets.asset_manager().request_asset(
+                        &texture_path,
+                        AssetType::Texture,
+                        AssetLoadPriority::Normal,
+                    );
+                    let (transfer_function_texture_handle, _) =
+                        self.assets.asset_manager().request_asset(
+                            &transfer_function_texture_path,
+                            AssetType::Texture,
+                            AssetLoadPriority::Normal,
+                        );
                     self.scene.add_volume_drawable(
                         entity,
                         RendererVolumeDrawable {
