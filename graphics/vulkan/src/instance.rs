@@ -67,15 +67,15 @@ impl VkInstance {
         let supported_extensions =
             unsafe { entry.enumerate_instance_extension_properties(None) }.unwrap();
         let surface_extensions = [
-            SURFACE_WAYLAND_EXT_NAME, // Comment out to make renderdoc work on Linux.
-            SURFACE_XCB_EXT_NAME,     // Comment out to make renderdoc work on Linux.
+            SURFACE_WAYLAND_EXT_NAME,
+            SURFACE_XCB_EXT_NAME,
             SURFACE_XLIB_EXT_NAME,
             SURFACE_ANDROID_EXT_NAME,
             SURFACE_WIN32_EXT_NAME,
             SURFACE_MACOS_EXT_NAME,
         ];
+        let mut active_surface_extension = Option::<&str>::None;
         let mut supports_surface_extension = false;
-        let mut supports_platform_surface_extension = false;
         let mut supports_debug_utils = false;
         let mut enabled_extensions = Vec::<&str>::new();
 
@@ -101,18 +101,20 @@ impl VkInstance {
                 _ => {}
             }
 
-            if !supports_platform_surface_extension {
+            if active_surface_extension.map_or(true, |s| s == SURFACE_XCB_EXT_NAME) {
+                // Also enable XLib when the XCB extension is enabled.
+
                 'surface_ext_loop: for surface_extension in surface_extensions {
                     if surface_extension == name {
                         enabled_extensions.push(surface_extension);
-                        supports_platform_surface_extension = true;
+                        active_surface_extension = Some(surface_extension);
                         break 'surface_ext_loop;
                     }
                 }
             }
         }
 
-        if !supports_surface_extension || !supports_platform_surface_extension {
+        if !supports_surface_extension || active_surface_extension.is_none() {
             panic!(
                 "The Vulkan instance doesn't support the surface or swapchain or the required platform surface extension."
             )
@@ -194,6 +196,35 @@ impl VkInstance {
 
             VkInstance { raw, adapters }
         }
+    }
+
+    pub fn supports_wayland() -> bool {
+        if cfg!(any(
+            target_os = "windows",
+            target_os = "android",
+            target_os = "macos",
+            target_os = "ios"
+        )) {
+            return false;
+        }
+
+        let entry: ash::Entry = unsafe { ash::Entry::load().unwrap() };
+        let supported_extensions =
+            unsafe { entry.enumerate_instance_extension_properties(None) }.unwrap();
+
+        for extension in &supported_extensions {
+            let name_c = unsafe { CStr::from_ptr(&extension.extension_name as *const c_char) };
+            let name_res = name_c.to_str();
+            if name_res.is_err() {
+                continue;
+            }
+            let name = name_res.unwrap();
+
+            if name == SURFACE_WAYLAND_EXT_NAME {
+                return true;
+            }
+        }
+        false
     }
 
     pub fn raw(&self) -> &Arc<RawVkInstance> {

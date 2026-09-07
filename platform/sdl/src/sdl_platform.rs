@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::io::Result as IOResult;
 use std::path::{Path, PathBuf};
 
+use crate::sdl_gpu::{self, SDLGPUBackend};
 use bevy_input::ButtonState;
 use bevy_input::keyboard::{Key, KeyCode, KeyboardInput};
 use bevy_input::mouse::MouseMotion;
@@ -14,8 +15,7 @@ use sdl3::{EventPump, Sdl, VideoSubsystem};
 use sourcerenderer_core::platform::{FileWatcher, PlatformIO, Window};
 use sourcerenderer_core::{Vec2, Vec2I, gpu};
 use sourcerenderer_engine::{Engine, WindowState};
-
-use crate::sdl_gpu::{self, SDLGPUBackend};
+use sourcerenderer_vulkan::VkInstance;
 
 lazy_static! {
     pub static ref SCANCODE_TO_KEY: HashMap<Scancode, KeyCode> = {
@@ -51,7 +51,33 @@ pub struct SDLWindow {
 impl SDLPlatform {
     pub fn new() -> Box<SDLPlatform> {
         let sdl_context = sdl3::init().unwrap();
-        let video_subsystem = sdl_context.video().unwrap();
+
+        let video_subsystem: VideoSubsystem;
+        if cfg!(not(any(
+            target_os = "windows",
+            target_os = "android",
+            target_os = "macos",
+            target_os = "ios"
+        ))) {
+            // Renderdoc blocks the VK_KHR_wayland_surface extension but SDL tries to use wayland
+            // regardless (because it's running on Wayland).
+            if !VkInstance::supports_wayland() {
+                log::warn!("Vulkan implementation doesn't support Wayland, falling back to XCB.");
+                sdl3::hint::set(sdl3::hint::names::VIDEO_DRIVER, "xcb");
+
+                let video_subsystem_opt = sdl_context.video();
+                video_subsystem = video_subsystem_opt.unwrap_or_else(|e| {
+                    log::warn!("Using XCB failed, falling back to XLib: {:?}", e);
+                    sdl3::hint::set(sdl3::hint::names::VIDEO_DRIVER, "x11");
+                    sdl_context.video().unwrap()
+                });
+            } else {
+                video_subsystem = sdl_context.video().unwrap();
+            }
+        } else {
+            video_subsystem = sdl_context.video().unwrap();
+        }
+
         let event_pump = sdl_context.event_pump().unwrap();
 
         Box::new(SDLPlatform {
