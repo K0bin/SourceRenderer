@@ -501,18 +501,6 @@ impl MarchingCubesPass {
         }
     }
 
-    fn buffer_key(
-        texture_handle: TextureHandle,
-        lod: u32,
-        min_threshold: f32,
-        max_threshold: f32,
-    ) -> String {
-        format!(
-            "{:?}_{}_{:.3}_{:.3}",
-            texture_handle, lod, min_threshold, max_threshold,
-        )
-    }
-
     fn create_buffers(resources: &mut RendererResources, name: &str) {
         // The texture might not be loaded yet, it might not be loaded yet.
         let mut resolution_multiplied = 512 * 512 * 512;
