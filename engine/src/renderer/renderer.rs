@@ -246,6 +246,7 @@ impl Renderer {
             &mut self.resources,
             &self.assets,
         );
+        std::mem::drop(swapchain_guard);
         let frame_end_signal = self.context.end_frame();
 
         match render_path_result {
@@ -272,12 +273,12 @@ impl Renderer {
                 }
             }
             Err(_swapchain_err) => {
+                let mut swapchain_guard = self.swapchain.lock().unwrap();
                 swapchain_guard.recreate();
                 self.render_path
                     .recreate_swapchain(&mut swapchain_guard, &mut self.resources);
             }
         }
-        std::mem::drop(swapchain_guard);
 
         let c_device = self.device.clone();
         bevy_tasks::ComputeTaskPool::get()
