@@ -56,8 +56,6 @@ pub struct GeometryPass {
     pipeline_non_overlapping: GraphicsPipelineHandle,
     pipeline_transparent: GraphicsPipelineHandle,
     pipeline_transparent_prepass: GraphicsPipelineHandle,
-    sampler: Arc<crate::graphics::Sampler>,
-    transfer_function_handle: TextureHandle,
 }
 
 impl GeometryPass {
@@ -238,19 +236,10 @@ impl GeometryPass {
         };
         let pipeline_transparent = assets.request_graphics_pipeline(&pipeline_transparency_info);
 
-        let (transfer_function_handle, _) = assets.asset_manager().request_asset(
-            //"assets/transferfunction_colorful.png",
-            "assets/transferfunction.png",
-            AssetType::Texture,
-            AssetLoadPriority::Normal,
-        );
-
         Self {
             pipeline,
             pipeline_transparent,
             pipeline_non_overlapping,
-            sampler: Arc::new(sampler),
-            transfer_function_handle: TextureHandle::from(transfer_function_handle),
             pipeline_transparent_prepass,
         }
     }
