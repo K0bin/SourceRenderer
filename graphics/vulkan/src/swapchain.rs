@@ -39,7 +39,6 @@ pub struct VkSwapchainInner {}
 pub struct VkSwapchain {
     textures: SmallVec<[VkTexture; 5]>,
     acquire_semaphore_counter: u64,
-    present_semaphore_counter: u64,
     state: VkSwapchainState,
     swapchain: vk::SwapchainKHR,
     transform_matrix: Matrix4,
@@ -279,7 +278,6 @@ impl VkSwapchain {
         Ok(VkSwapchain {
             textures,
             acquire_semaphore_counter: 0u64,
-            present_semaphore_counter: 0u64,
             state: VkSwapchainState::Okay,
             swapchain,
             transform_matrix: matrix,
@@ -395,7 +393,6 @@ impl VkSwapchain {
                 ..Default::default()
             };
             let result = unsafe { self.swapchain_device.queue_present(queue, &present_info) };
-            self.present_semaphore_counter += 1;
 
             match result {
                 Ok(optimal) => {
@@ -500,11 +497,6 @@ impl Swapchain<VkBackend> for VkSwapchain {
     }
 
     unsafe fn next_backbuffer(&mut self) -> Result<VkBackbufferIndices, SwapchainError> {
-        let max_distance = self.textures.len();
-        assert!(
-            self.acquire_semaphore_counter - self.present_semaphore_counter < max_distance as u64
-        );
-
         let needs_recreate = match self.state {
             VkSwapchainState::OutOfDate => true,
             VkSwapchainState::Okay | VkSwapchainState::Suboptimal => false,
@@ -529,9 +521,6 @@ impl Swapchain<VkBackend> for VkSwapchain {
             )
         };
 
-        let present_semaphore_index =
-            (self.present_semaphore_counter % self.present_semaphores.len() as u64) as usize;
-
         if let Ok((image_index, is_optimal)) = result {
             if !is_optimal {
                 self.state = VkSwapchainState::Suboptimal;
@@ -539,7 +528,7 @@ impl Swapchain<VkBackend> for VkSwapchain {
             Ok(VkBackbufferIndices {
                 texture_index: image_index,
                 acquire_semaphore_index: acquire_semaphore_index as u32,
-                present_semaphore_index: present_semaphore_index as u32,
+                present_semaphore_index: image_index,
             })
         } else {
             // The semaphores are unaffected in the error case.

@@ -87,7 +87,14 @@ impl Swapchain {
     pub fn next_backbuffer(
         &mut self,
     ) -> Result<Arc<active_gpu_backend::Backbuffer>, SwapchainError> {
-        let backbuffer = unsafe { self.swapchain.next_backbuffer()? };
+        let backbuffer_res = unsafe { self.swapchain.next_backbuffer() };
+        let backbuffer = match backbuffer_res {
+            Ok(b) => b,
+            Err(e) => {
+                log::warn!("Swapchain needs to be recreated: {:?}", e);
+                return Err(e);
+            }
+        };
         if self.swapchain.will_reuse_backbuffers() {
             self.ensure_backbuffer_view(&backbuffer);
         }
