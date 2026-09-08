@@ -53,6 +53,7 @@ pub enum Barrier<'a> {
 #[derive(Clone)]
 pub enum PipelineBinding<'a> {
     Graphics(&'a super::GraphicsPipeline),
+    MeshGraphics(&'a super::MeshGraphicsPipeline),
     Compute(&'a super::ComputePipeline),
     RayTracing(&'a super::RayTracingPipeline),
 }
@@ -165,6 +166,7 @@ impl<'a> CommandBuffer<'a> {
                 PipelineBinding::Graphics(p) => gpu::PipelineBinding::Graphics(p.handle()),
                 PipelineBinding::Compute(p) => gpu::PipelineBinding::Compute(p.handle()),
                 PipelineBinding::RayTracing(p) => gpu::PipelineBinding::RayTracing(p.handle()),
+                PipelineBinding::MeshGraphics(p) => gpu::PipelineBinding::MeshGraphics(p.handle()),
             };
             self.cmd_buffer_handle.set_pipeline(gpu_pipeline_binding);
         }
@@ -234,13 +236,13 @@ impl<'a> CommandBuffer<'a> {
     ) {
         let BufferHandleRef {
             handle: draw_buffer_handle,
-            offset: _,
+            offset: draw_buffer_buffer_offset,
             length: _,
         } = draw_buffer.deconstruct(self.frame());
         unsafe {
             self.cmd_buffer_handle.draw_indexed_indirect(
                 draw_buffer_handle,
-                draw_buffer_offset,
+                draw_buffer_buffer_offset + draw_buffer_offset,
                 draw_count,
                 stride,
             );
@@ -256,13 +258,13 @@ impl<'a> CommandBuffer<'a> {
     ) {
         let BufferHandleRef {
             handle: draw_buffer_handle,
-            offset: _,
+            offset: draw_buffer_buffer_offset,
             length: _,
         } = draw_buffer.deconstruct(self.frame());
         unsafe {
             self.cmd_buffer_handle.draw_indirect(
                 draw_buffer_handle,
-                draw_buffer_offset,
+                draw_buffer_buffer_offset + draw_buffer_offset,
                 draw_count,
                 stride,
             );
@@ -280,20 +282,20 @@ impl<'a> CommandBuffer<'a> {
     ) {
         let BufferHandleRef {
             handle: draw_buffer_handle,
-            offset: _,
+            offset: draw_buffer_buffer_offset,
             length: _,
         } = draw_buffer.deconstruct(self.frame());
         let BufferHandleRef {
             handle: count_buffer_handle,
-            offset: _,
+            offset: count_buffer_buffer_offset,
             length: _,
         } = count_buffer.deconstruct(self.frame());
         unsafe {
             self.cmd_buffer_handle.draw_indexed_indirect_count(
                 draw_buffer_handle,
-                draw_buffer_offset,
+                draw_buffer_buffer_offset + draw_buffer_offset,
                 count_buffer_handle,
-                count_buffer_offset,
+                count_buffer_buffer_offset + count_buffer_offset,
                 max_draw_count,
                 stride,
             );
@@ -311,20 +313,80 @@ impl<'a> CommandBuffer<'a> {
     ) {
         let BufferHandleRef {
             handle: draw_buffer_handle,
-            offset: _,
+            offset: draw_buffer_buffer_offset,
             length: _,
         } = draw_buffer.deconstruct(self.frame());
         let BufferHandleRef {
             handle: count_buffer_handle,
-            offset: _,
+            offset: count_buffer_buffer_offset,
             length: _,
         } = count_buffer.deconstruct(self.frame());
         unsafe {
             self.cmd_buffer_handle.draw_indirect_count(
                 draw_buffer_handle,
-                draw_buffer_offset,
+                draw_buffer_buffer_offset + draw_buffer_offset,
                 count_buffer_handle,
-                count_buffer_offset,
+                count_buffer_buffer_offset + count_buffer_offset,
+                max_draw_count,
+                stride,
+            );
+        }
+    }
+
+    pub fn draw_mesh_tasks(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
+        unsafe {
+            self.cmd_buffer_handle
+                .draw_mesh_tasks(group_count_x, group_count_y, group_count_z);
+        }
+    }
+
+    pub fn draw_mesh_tasks_indirect(
+        &mut self,
+        draw_buffer: BufferRef,
+        draw_buffer_offset: u64,
+        draw_count: u32,
+        stride: u32,
+    ) {
+        let BufferHandleRef {
+            handle: draw_buffer_handle,
+            offset: draw_buffer_buffer_offset,
+            length: _,
+        } = draw_buffer.deconstruct(self.frame());
+        unsafe {
+            self.cmd_buffer_handle.draw_mesh_tasks_indirect(
+                draw_buffer_handle,
+                draw_buffer_buffer_offset + draw_buffer_offset,
+                draw_count,
+                stride,
+            );
+        }
+    }
+
+    pub fn draw_mesh_tasks_indirect_count(
+        &mut self,
+        draw_buffer: BufferRef,
+        draw_buffer_offset: u64,
+        count_buffer: BufferRef,
+        count_buffer_offset: u64,
+        max_draw_count: u32,
+        stride: u32,
+    ) {
+        let BufferHandleRef {
+            handle: draw_buffer_handle,
+            offset: draw_buffer_buffer_offset,
+            length: _,
+        } = draw_buffer.deconstruct(self.frame());
+        let BufferHandleRef {
+            handle: count_buffer_handle,
+            offset: count_buffer_buffer_offset,
+            length: _,
+        } = count_buffer.deconstruct(self.frame());
+        unsafe {
+            self.cmd_buffer_handle.draw_mesh_tasks_indirect_count(
+                draw_buffer_handle,
+                draw_buffer_buffer_offset + draw_buffer_offset,
+                count_buffer_handle,
+                count_buffer_buffer_offset + count_buffer_offset,
                 max_draw_count,
                 stride,
             );
