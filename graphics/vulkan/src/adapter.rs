@@ -21,7 +21,7 @@ const RAY_QUERY_EXT_NAME: &str = "VK_KHR_ray_query";
 const PIPELINE_LIBRARY_EXT_NAME: &str = "VK_KHR_pipeline_library";
 const HOST_IMAGE_COPY_EXT_NAME: &str = "VK_EXT_host_image_copy";
 const BARYCENTRICS_EXT_NAME: &str = "VK_KHR_fragment_shader_barycentric";
-const MESH_SHADER_EXT_NAME: &str = "VK_EXT_msh_shader";
+const MESH_SHADER_EXT_NAME: &str = "VK_EXT_mesh_shader";
 const SHADER_ATOMIC_FLOAT_EXT_NAME: &str = "VK_EXT_shader_atomic_float";
 
 bitflags! {
@@ -351,41 +351,6 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             );
         }
 
-        unsafe {
-            self.instance
-                .get_physical_device_features2(self.physical_device, &mut supported_features);
-            self.instance
-                .get_physical_device_properties2(self.physical_device, &mut properties);
-        }
-
-        if supported_features
-            .features
-            .shader_storage_image_write_without_format
-            == vk::FALSE
-        {
-            panic!(
-                "Your Vulkan driver is not capable of running this application. ShaderStorageImageWriteWithoutFormat is a required feature!"
-            );
-        }
-
-        if supported_features_13.dynamic_rendering == vk::FALSE {
-            panic!(
-                "Your Vulkan driver is not capable of running this application. Dynamic rendering is a required feature!"
-            );
-        }
-
-        if supported_features_12.host_query_reset == vk::FALSE {
-            panic!(
-                "Your Vulkan driver is not capable of running this application. Host query reset is a required feature!"
-            );
-        }
-
-        if supported_features.features.independent_blend == vk::FALSE {
-            panic!(
-                "Your Vulkan driver is not capable of running this application. Independent blend is a required feature!"
-            );
-        }
-
         if extensions.intersects(VkAdapterExtensionSupport::BARYCENTRICS) {
             supported_features_barycentrics.p_next = std::mem::replace(
                 &mut supported_features.p_next,
@@ -419,6 +384,41 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                 &mut properties.p_next,
                 &mut properties_mesh_shader as *mut vk::PhysicalDeviceMeshShaderPropertiesEXT
                     as *mut c_void,
+            );
+        }
+
+        unsafe {
+            self.instance
+                .get_physical_device_features2(self.physical_device, &mut supported_features);
+            self.instance
+                .get_physical_device_properties2(self.physical_device, &mut properties);
+        }
+
+        if supported_features
+            .features
+            .shader_storage_image_write_without_format
+            == vk::FALSE
+        {
+            panic!(
+                "Your Vulkan driver is not capable of running this application. ShaderStorageImageWriteWithoutFormat is a required feature!"
+            );
+        }
+
+        if supported_features_13.dynamic_rendering == vk::FALSE {
+            panic!(
+                "Your Vulkan driver is not capable of running this application. Dynamic rendering is a required feature!"
+            );
+        }
+
+        if supported_features_12.host_query_reset == vk::FALSE {
+            panic!(
+                "Your Vulkan driver is not capable of running this application. Host query reset is a required feature!"
+            );
+        }
+
+        if supported_features.features.independent_blend == vk::FALSE {
+            panic!(
+                "Your Vulkan driver is not capable of running this application. Independent blend is a required feature!"
             );
         }
 
