@@ -604,6 +604,18 @@ impl<'a> CommandBuffer<'a> {
         }
     }
 
+    pub fn clear_binding(&mut self, frequency: BindingFrequency, binding: u32) {
+        unsafe {
+            self.cmd_buffer_handle.clear_binding(frequency, binding);
+        }
+    }
+
+    pub fn clear_all_bindings(&mut self, frequency: BindingFrequency) {
+        unsafe {
+            self.cmd_buffer_handle.clear_all_bindings(frequency);
+        }
+    }
+
     pub fn finish_binding(&mut self) {
         unsafe {
             self.cmd_buffer_handle.finish_binding();

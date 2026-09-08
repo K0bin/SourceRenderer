@@ -1,9 +1,14 @@
-use std::{cell::RefCell, collections::HashMap, hash::Hash, ops::Deref, sync::Arc};
-use std::marker::PhantomData;
+use crate::{
+    WebGPULimits,
+    sampler::WebGPUSampler,
+    texture::{WebGPUTextureView, format_to_webgpu, texture_dimension_to_webgpu_view},
+};
 use bitflags::bitflags;
-use js_sys::{Uint8Array, JsNullable};
+use js_sys::{JsNullable, Uint8Array};
 use smallvec::SmallVec;
 use sourcerenderer_core::{align_up_64, gpu};
+use std::marker::PhantomData;
+use std::{cell::RefCell, collections::HashMap, hash::Hash, ops::Deref, sync::Arc};
 use web_sys::{
     GpuBindGroup, GpuBindGroupDescriptor, GpuBindGroupEntry, GpuBindGroupLayout,
     GpuBindGroupLayoutDescriptor, GpuBindGroupLayoutEntry, GpuBuffer, GpuBufferBinding,
@@ -11,11 +16,6 @@ use web_sys::{
     GpuPipelineLayout, GpuPipelineLayoutDescriptor, GpuSampler, GpuSamplerBindingLayout,
     GpuSamplerBindingType, GpuStorageTextureAccess, GpuStorageTextureBindingLayout,
     GpuTextureBindingLayout, GpuTextureSampleType, GpuTextureView,
-};
-use crate::{
-    sampler::WebGPUSampler,
-    texture::{format_to_webgpu, texture_dimension_to_webgpu_view, WebGPUTextureView},
-    WebGPULimits,
 };
 
 pub(crate) const WEBGPU_BIND_COUNT_PER_SET: u32 = gpu::PER_SET_BINDINGS * 2 + 2;
@@ -154,7 +154,7 @@ impl WebGPUBindGroupLayout {
             binding_infos,
             is_empty: bindings.is_empty(),
             max_used_binding,
-            _p: PhantomData
+            _p: PhantomData,
         })
     }
 
@@ -219,7 +219,8 @@ impl WebGPUPipelineLayout {
     ) -> Self {
         let mut owned_bind_group_layouts: [Option<Arc<WebGPUBindGroupLayout>>;
             gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
-        let mut bind_group_layouts_js: [JsNullable<GpuBindGroupLayout>; gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
+        let mut bind_group_layouts_js: [JsNullable<GpuBindGroupLayout>;
+            gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
         for (index, bind_group_layout_opt) in bind_group_layouts.iter().enumerate() {
             if let Some(bind_group_layout) = bind_group_layout_opt {
                 bind_group_layouts_js[index] = JsNullable::wrap(bind_group_layout.handle().clone());
@@ -231,7 +232,7 @@ impl WebGPUPipelineLayout {
         Self {
             layout: handle,
             bind_group_layouts: owned_bind_group_layouts,
-            _p: PhantomData
+            _p: PhantomData,
         }
     }
 
@@ -273,7 +274,10 @@ impl WebGPUBindGroup {
                 WebGPUBoundResource::None => continue,
                 WebGPUBoundResource::SampledTexture(texture)
                 | WebGPUBoundResource::StorageTexture(texture) => {
-                    entry = GpuBindGroupEntry::new_with_gpu_texture_view(index as u32, texture as &GpuTextureView);
+                    entry = GpuBindGroupEntry::new_with_gpu_texture_view(
+                        index as u32,
+                        texture as &GpuTextureView,
+                    );
                 }
                 WebGPUBoundResource::Sampler(sampler) => {
                     entry = GpuBindGroupEntry::new(index as u32, sampler as &GpuSampler);
@@ -285,7 +289,8 @@ impl WebGPUBindGroup {
                     if !layout.is_dynamic_binding(index as u32) {
                         buffer_info.set_offset(binding_info.offset as u32);
                     }
-                    entry = GpuBindGroupEntry::new_with_gpu_buffer_binding(index as u32, &buffer_info);
+                    entry =
+                        GpuBindGroupEntry::new_with_gpu_buffer_binding(index as u32, &buffer_info);
                 }
                 WebGPUBoundResource::UniformBufferArray(_buffers) => {
                     panic!("Descriptor arrays are not supported on WebGPU")
@@ -311,7 +316,7 @@ impl WebGPUBindGroup {
             layout: layout.clone(),
             is_transient,
             bindings: stored_bindings,
-            _p: PhantomData
+            _p: PhantomData,
         })
     }
 
@@ -370,7 +375,8 @@ pub(crate) struct WebGPUHashableTextureView {
 
 impl Hash for WebGPUHashableTextureView {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        let val: usize = unsafe { std::mem::transmute(self.view.as_ref() as *const GpuTextureView) };
+        let val: usize =
+            unsafe { std::mem::transmute(self.view.as_ref() as *const GpuTextureView) };
         val.hash(state);
     }
 }
@@ -379,20 +385,26 @@ impl From<GpuTextureView> for WebGPUHashableTextureView {
     fn from(value: GpuTextureView) -> Self {
         Self {
             view: value,
-            _p: PhantomData
+            _p: PhantomData,
         }
     }
 }
 
 impl From<&GpuTextureView> for WebGPUHashableTextureView {
     fn from(value: &GpuTextureView) -> Self {
-        Self { view: value.clone(), _p: PhantomData }
+        Self {
+            view: value.clone(),
+            _p: PhantomData,
+        }
     }
 }
 
 impl From<&WebGPUTextureView> for WebGPUHashableTextureView {
     fn from(value: &WebGPUTextureView) -> Self {
-        Self { view: value.handle().clone(), _p: PhantomData }
+        Self {
+            view: value.handle().clone(),
+            _p: PhantomData,
+        }
     }
 }
 
@@ -968,6 +980,12 @@ impl WebGPUBindingManager {
         identical
     }
 
+    pub(crate) fn clear_all_bindings(&mut self, frequency: gpu::BindingFrequency) {
+        let bindings_table = &mut self.bindings[frequency as usize];
+        *bindings_table = Default::default();
+        self.dirty.insert(DirtyBindGroups::from(frequency));
+    }
+
     fn create_push_const_buffer(
         device: &GpuDevice,
         size: u64,
@@ -1025,7 +1043,7 @@ impl WebGPUBindingManager {
                     buffer: buffer,
                     offset: 0,
                     length: aligned_len as u64,
-                    _p: PhantomData
+                    _p: PhantomData,
                 });
         } else {
             let allocator = &mut self.bump_allocator;
@@ -1061,7 +1079,7 @@ impl WebGPUBindingManager {
                     buffer: allocator.buffer.clone(),
                     offset: allocator.offset,
                     length: data_as_bytes.len() as u64,
-                    _p: PhantomData
+                    _p: PhantomData,
                 });
 
             allocator.offset = align_up_64(

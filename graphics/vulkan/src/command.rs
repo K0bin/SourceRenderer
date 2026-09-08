@@ -630,6 +630,17 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         );
     }
 
+    unsafe fn clear_binding(&mut self, frequency: gpu::BindingFrequency, binding: u32) {
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
+        self.descriptor_manager
+            .bind(frequency, binding, VkBoundResourceRef::None);
+    }
+
+    unsafe fn clear_all_bindings(&mut self, frequency: BindingFrequency) {
+        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
+        self.descriptor_manager.clear_all_bindings(frequency);
+    }
+
     unsafe fn finish_binding(&mut self) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
 

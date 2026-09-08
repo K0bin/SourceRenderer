@@ -1127,6 +1127,13 @@ impl VkBindingManager {
         permanent_pools_mut.next_non_full_pool_index = 0u32;
     }
 
+    pub(crate) fn clear_all_bindings(&mut self, frequency: gpu::BindingFrequency) {
+        let bindings_table = &mut self.bindings[frequency as usize];
+        *bindings_table = Default::default();
+        self.current_sets = Default::default();
+        self.dirty.insert(DirtyDescriptorSets::from(frequency));
+    }
+
     pub(crate) fn bind(
         &mut self,
         frequency: gpu::BindingFrequency,

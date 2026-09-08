@@ -654,6 +654,16 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         panic!("WebGPU does not support ray tracing");
     }
 
+    unsafe fn clear_binding(&mut self, frequency: BindingFrequency, binding: u32) {
+        let binding_manager = &mut self.get_recording_mut().binding_manager;
+        binding_manager.bind(frequency, binding, WebGPUBoundResourceRef::None);
+    }
+
+    unsafe fn clear_all_bindings(&mut self, frequency: BindingFrequency) {
+        let binding_manager = &mut self.get_recording_mut().binding_manager;
+        binding_manager.clear_all_bindings(frequency);
+    }
+
     unsafe fn finish_binding(&mut self) {
         let frame = self.frame;
         let pipeline_layout = match &self.get_recording().bound_pipeline {
