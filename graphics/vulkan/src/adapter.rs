@@ -23,6 +23,7 @@ const HOST_IMAGE_COPY_EXT_NAME: &str = "VK_EXT_host_image_copy";
 const BARYCENTRICS_EXT_NAME: &str = "VK_KHR_fragment_shader_barycentric";
 const MESH_SHADER_EXT_NAME: &str = "VK_EXT_mesh_shader";
 const SHADER_ATOMIC_FLOAT_EXT_NAME: &str = "VK_EXT_shader_atomic_float";
+const MAXIMAL_RECONVERGENCE_EXT_NAME: &str = "VK_KHR_shader_maximal_reconvergence";
 
 bitflags! {
   #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -38,6 +39,7 @@ bitflags! {
     const HOST_IMAGE_COPY            = 0b1000000000000;
     const MESH_SHADER                = 0b10000000000000;
     const SHADER_ATOMIC_FLOAT        = 0b100000000000000;
+    const MAXIMAL_RECONVERGENCE      = 0b1000000000000000;
     const BARYCENTRICS               = 0b1000000000000000000;
   }
 }
@@ -128,6 +130,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                 MESH_SHADER_EXT_NAME => VkAdapterExtensionSupport::MESH_SHADER,
                 HOST_IMAGE_COPY_EXT_NAME => VkAdapterExtensionSupport::HOST_IMAGE_COPY,
                 SHADER_ATOMIC_FLOAT_EXT_NAME => VkAdapterExtensionSupport::SHADER_ATOMIC_FLOAT,
+                MAXIMAL_RECONVERGENCE_EXT_NAME => VkAdapterExtensionSupport::MAXIMAL_RECONVERGENCE,
                 _ => VkAdapterExtensionSupport::NONE,
             };
         }
@@ -486,6 +489,10 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                     as *mut vk::PhysicalDeviceShaderAtomicFloatFeaturesEXT
                     as *mut c_void,
             );
+        }
+
+        if extensions.contains(VkAdapterExtensionSupport::MAXIMAL_RECONVERGENCE) {
+            enabled_extensions.push(MAXIMAL_RECONVERGENCE_EXT_NAME);
         }
 
         let supports_descriptor_indexing = supported_features_12
