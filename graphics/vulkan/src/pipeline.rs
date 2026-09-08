@@ -1645,11 +1645,13 @@ impl VkPipelineLayout {
     pub(super) fn push_constant_range_index(shader_type: gpu::ShaderType) -> Option<usize> {
         match shader_type {
             gpu::ShaderType::VertexShader => Some(0),
-            gpu::ShaderType::FragmentShader => Some(1),
+            gpu::ShaderType::FragmentShader => Some(2),
             gpu::ShaderType::ComputeShader => Some(0),
             gpu::ShaderType::RayGen => Some(0),
             gpu::ShaderType::RayClosestHit => Some(1),
             gpu::ShaderType::RayMiss => Some(2),
+            gpu::ShaderType::MeshShader => Some(1),
+            gpu::ShaderType::TaskShader => Some(0),
             _ => None,
         }
     }
