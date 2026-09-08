@@ -93,7 +93,7 @@ uint vertexKeyFromIndexOffsets(uint idx1, uint idx2) {
     return vtxKey;
 }
 
-uint buildVertexKey(uint voxelKey, uint index) {
+uint buildVertexKey(uint index) {
     // Naming of those two is confusing because I named them when I translated the loop and built the array index
     // from the loop index.
     // This function goes the other way around (array index -> loop index).
@@ -103,10 +103,6 @@ uint buildVertexKey(uint voxelKey, uint index) {
     // uint index = iDiv3 + iMod3 * 4u;
     uint iMod3 = index / 4u;
     uint iDiv3 = index % 4u;
-
-    if ((edges[voxelKey] & (1u << index)) == 0u) {
-        return ~0u;
-    }
 
     uint idx1 = iDiv3 + uint(iMod3 == 1u) * 4u;
     uint idx2 = (iDiv3 + uint(iMod3 != 2u)) % 4u + uint(iMod3 != 0u) * 4u;
@@ -175,9 +171,9 @@ void main() {
         uint firstIndex = atomicAdd(commands[j].indexCount, indexCount);
 
         for (uint i = 0u; i < indexCount; i += 3u) {
-            indicesBuffers[j].indices[firstIndex + i + 0u] = buildVertexKey(voxelKey, tris[voxelKey][1u + i + 0u]);
-            indicesBuffers[j].indices[firstIndex + i + 1u] = buildVertexKey(voxelKey, tris[voxelKey][1u + i + 1u]);
-            indicesBuffers[j].indices[firstIndex + i + 2u] = buildVertexKey(voxelKey, tris[voxelKey][1u + i + 2u]);
+            indicesBuffers[j].indices[firstIndex + i + 0u] = buildVertexKey(tris[voxelKey][1u + i + 0u]);
+            indicesBuffers[j].indices[firstIndex + i + 1u] = buildVertexKey(tris[voxelKey][1u + i + 1u]);
+            indicesBuffers[j].indices[firstIndex + i + 2u] = buildVertexKey(tris[voxelKey][1u + i + 2u]);
         }
     }
 }
