@@ -157,13 +157,15 @@ fn compile_shader_glsl(
     match &output_res {
         Err(e) => {
             error!("Failed to compile shader: {}", file_path.to_str().unwrap());
-            error!("{}", e.to_string());
+            error!("Error: {:?}", e);
             return Err(());
         }
         Ok(output) => {
             if !output.status.success() {
                 error!("Failed to compile shader: {}", file_path.to_str().unwrap());
-                error!("{}", std::str::from_utf8(&output.stdout).unwrap());
+                error!("Status: {:?}", output.status);
+                error!("Stdout: {}", std::str::from_utf8(&output.stdout).unwrap());
+                error!("Stderr: {}", std::str::from_utf8(&output.stderr).unwrap());
                 return Err(());
             }
         }
@@ -1276,6 +1278,16 @@ pub fn compile_shader(
             gpu::ShaderType::FragmentShader
         } else if path.contains(".vert") {
             gpu::ShaderType::VertexShader
+        } else if path.contains(".mesh") {
+            gpu::ShaderType::MeshShader
+        } else if path.contains(".task") {
+            gpu::ShaderType::TaskShader
+        } else if path.contains(".tesc") {
+            gpu::ShaderType::TessellationControlShader
+        } else if path.contains(".tese") {
+            gpu::ShaderType::TessellationEvaluationShader
+        } else if path.contains(".geo") {
+            gpu::ShaderType::GeometryShader
         } else {
             gpu::ShaderType::ComputeShader
         }
