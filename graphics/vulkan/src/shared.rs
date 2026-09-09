@@ -1,9 +1,6 @@
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::sync::{
-    Arc,
-    RwLock,
-};
+use std::sync::{Arc, RwLock};
 
 use ash::vk;
 use smallvec::SmallVec;
@@ -79,8 +76,7 @@ impl VkShared {
 
         let mut largest_index = 0;
         for binding in &layout_key.bindings {
-            assert!(binding.index > largest_index || largest_index == 0);
-            largest_index = binding.index;
+            largest_index = largest_index.max(binding.index);
         }
 
         let layout = Arc::new(VkDescriptorSetLayout::new(

@@ -1,9 +1,9 @@
+use smallvec::SmallVec;
+use std::marker::PhantomData;
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
 };
-use std::marker::PhantomData;
-use smallvec::SmallVec;
 use web_sys::GpuDevice;
 
 use crate::binding::{WebGPUBindGroupEntryInfo, WebGPUBindGroupLayout, WebGPUPipelineLayout};
@@ -18,7 +18,7 @@ pub struct WebGPUShared {
     device: GpuDevice,
     bind_group_layouts: RwLock<HashMap<WebGPUBindGroupLayoutKey, Arc<WebGPUBindGroupLayout>>>,
     pipeline_layouts: RwLock<HashMap<WebGPUPipelineLayoutKey, Arc<WebGPUPipelineLayout>>>,
-    _p: PhantomData<*const std::ffi::c_void>
+    _p: PhantomData<*const std::ffi::c_void>,
 }
 
 impl WebGPUShared {
@@ -27,7 +27,7 @@ impl WebGPUShared {
             device: device.clone(),
             bind_group_layouts: RwLock::new(HashMap::new()),
             pipeline_layouts: RwLock::new(HashMap::new()),
-            _p: PhantomData
+            _p: PhantomData,
         }
     }
 
@@ -45,8 +45,7 @@ impl WebGPUShared {
 
         let mut largest_index = 0;
         for binding in layout_key {
-            assert!(binding.index > largest_index || largest_index == 0);
-            largest_index = binding.index;
+            largest_index = largest_index.max(binding.index);
         }
 
         let bind_group_layout =
