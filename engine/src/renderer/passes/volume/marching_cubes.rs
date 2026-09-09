@@ -718,14 +718,14 @@ impl MarchingCubesPass {
                 .get_compute_pipeline(self.pipelines[pipeline_index])
                 .unwrap();
             command_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
-            command_buffer.bind_storage_buffer(
+            command_buffer.bind_uniform_buffer(
                 BindingFrequency::Frequent,
                 0,
                 BufferRef::Regular(&self.edges_buffer),
                 0,
                 WHOLE_BUFFER,
             );
-            command_buffer.bind_storage_buffer(
+            command_buffer.bind_uniform_buffer(
                 BindingFrequency::Frequent,
                 1,
                 BufferRef::Regular(&self.tris_buffer),

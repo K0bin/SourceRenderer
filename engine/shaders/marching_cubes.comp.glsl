@@ -18,11 +18,11 @@ layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
 #include "descriptor_sets.inc.glsl"
 
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0, std430) buffer readonly EdgeTable {
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0, std430) uniform EdgeTable {
   uint[256u] edges;
 };
 
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 1, std430) buffer readonly TriTable {
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 1, std430) uniform TriTable {
   int[256u][17u] tris;
 };
 
@@ -56,7 +56,7 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 6) uniform sampler linearSampler
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 7) uniform sampler nearestSampler;
 
 layout(push_constant, std430) uniform Config {
-    uvec3 extent;
+    uvec3 lodExtents;
     uint lod;
     uvec3 minBox;
     uint thresholdsCount;
@@ -117,7 +117,7 @@ void main() {
     uvec3 base = workgroupBase + gl_LocalInvocationID;
     uvec3 unshiftedBase = base - minBox;
 
-    if (subgroupAll(any(greaterThanEqual(unshiftedBase + uvec3(1u), extent))))
+    if (subgroupAll(any(greaterThanEqual(unshiftedBase + uvec3(1u), lodExtents))))
         return;
 
     uint finalThresholdsCount = thresholdsCountConst == 0 ? thresholdsCount : thresholdsCountConst;
@@ -149,7 +149,7 @@ void main() {
         }
     }
 
-    if (any(greaterThanEqual(unshiftedBase + uvec3(1u), extent)))
+    if (any(greaterThanEqual(unshiftedBase + uvec3(1u), lodExtents)))
         return;
 
     if (empty || full)
