@@ -5,6 +5,7 @@ use crate::renderer::passes::dear_imgui_renderer::DearImguiRenderer;
 use crate::renderer::passes::volume::background::BackgroundPass;
 use crate::renderer::passes::volume::compositing::CompositingPass;
 use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
+use crate::renderer::passes::volume::marching_cubes::{MarchingCubesInfo, MarchingCubesKey};
 use crate::renderer::passes::volume::ssao::SsaoPass;
 use crate::renderer::passes::volume::subsurfacescattering::SSSPass;
 use crate::renderer::render_path::{
@@ -14,6 +15,7 @@ use crate::renderer::renderer_resources::RendererResources;
 use bytemuck::{Pod, Zeroable};
 use marching_cubes::MarchingCubesPass;
 use sourcerenderer_core::{Matrix4, Vec2UI, Vec4};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 mod background;
@@ -202,9 +204,10 @@ impl RenderPath for VolumeRenderer {
         };
 
         let main_view = &scene.scene.views()[scene.active_view_index];
-        let marching_cubes_map = self
+        let marching_cubes_map = HashMap::<MarchingCubesKey, MarchingCubesInfo>::new();
+        /*let marching_cubes_map = self
             .marching_cubes_pass
-            .execute(&mut cmd_buffer, &mut params);
+            .execute(&mut cmd_buffer, &mut params);*/
 
         self.ibl_pass.execute(&mut cmd_buffer, &mut params);
 
@@ -245,6 +248,8 @@ impl RenderPath for VolumeRenderer {
             &camera_buffer,
             &params,
             &marching_cubes_map,
+            self.marching_cubes_pass.edges_buffer(),
+            self.marching_cubes_pass.tris_buffer(),
         );
 
         self.ssao.execute(

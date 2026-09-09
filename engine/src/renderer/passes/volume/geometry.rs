@@ -1,8 +1,8 @@
 use crate::asset::{AssetLoadPriority, AssetType, TextureHandle};
 use crate::graphics::*;
 use crate::renderer::asset::{
-    GraphicsPipelineHandle, GraphicsPipelineInfo, PathPipelineShaderStage, RendererAssets,
-    RendererAssetsReadOnly,
+    GraphicsPipelineHandle, GraphicsPipelineInfo, MeshGraphicsPipelineHandle,
+    MeshGraphicsPipelineInfo, PathPipelineShaderStage, RendererAssets, RendererAssetsReadOnly,
 };
 use crate::renderer::drawable::{RendererVolumeDrawable, View, VolumeDrawableTransparencyMode};
 use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
@@ -54,6 +54,7 @@ pub struct GeometryPass {
     pipeline_non_overlapping: GraphicsPipelineHandle,
     pipeline_transparent: GraphicsPipelineHandle,
     pipeline_transparent_prepass: GraphicsPipelineHandle,
+    mesh_pipeline: MeshGraphicsPipelineHandle,
 }
 
 impl GeometryPass {
@@ -68,20 +69,6 @@ impl GeometryPass {
         resolution: Vec2UI,
     ) -> Self {
         Self::create_textures(resources, resolution);
-
-        let sampler = device.create_sampler(&SamplerInfo {
-            mag_filter: Filter::Linear,
-            min_filter: Filter::Linear,
-            mip_filter: Filter::Linear,
-            address_mode_u: AddressMode::Repeat,
-            address_mode_v: AddressMode::Repeat,
-            address_mode_w: AddressMode::ClampToEdge,
-            mip_bias: 0.0f32,
-            max_anisotropy: 1f32,
-            compare_op: None,
-            min_lod: 0.0f32,
-            max_lod: None,
-        });
 
         let shader_file_extension = "json";
 
@@ -148,6 +135,19 @@ impl GeometryPass {
             depth_stencil_format: Format::D32S8, // I'd prefer D24S8 but AMD & Apple don't support that.
         };
         let pipeline = assets.request_graphics_pipeline(&pipeline_info);
+
+        let ms_path = format!("shaders/volume_geometry.mesh.{}", shader_file_extension);
+        let mesh_pipeline_info = MeshGraphicsPipelineInfo {
+            ts: None,
+            ms: PathPipelineShaderStage::empty_spec_consts(&ms_path),
+            fs: Some(PathPipelineShaderStage::empty_spec_consts(&fs_path)),
+            rasterizer: pipeline_info.rasterizer.clone(),
+            depth_stencil: pipeline_info.depth_stencil.clone(),
+            blend: pipeline_info.blend.clone(),
+            render_target_formats: pipeline_info.render_target_formats.clone(),
+            depth_stencil_format: pipeline_info.depth_stencil_format,
+        };
+        let mesh_pipeline = assets.request_mesh_graphics_pipeline(&mesh_pipeline_info);
 
         let mut pipeline_transparency_non_overlapping_info: GraphicsPipelineInfo =
             pipeline_info.clone();
@@ -239,6 +239,7 @@ impl GeometryPass {
             pipeline_transparent,
             pipeline_non_overlapping,
             pipeline_transparent_prepass,
+            mesh_pipeline,
         }
     }
 
@@ -304,6 +305,9 @@ impl GeometryPass {
             && assets
                 .get_graphics_pipeline(self.pipeline_transparent_prepass)
                 .is_some()
+            && assets
+                .get_mesh_graphics_pipeline(self.mesh_pipeline)
+                .is_some()
     }
 
     pub(crate) fn execute(
@@ -312,6 +316,8 @@ impl GeometryPass {
         camera_buffer: &TransientBufferSlice,
         params: &RenderPassParameters,
         marching_cubes_map: &HashMap<MarchingCubesKey, MarchingCubesInfo>,
+        marching_cubes_edges_buffer: &Arc<BufferSlice>,
+        marching_cubes_tris_buffer: &Arc<BufferSlice>,
     ) {
         cmd_buffer.clear_all_bindings(BindingFrequency::Frequent);
         cmd_buffer.clear_all_bindings(BindingFrequency::VeryFrequent);
@@ -422,14 +428,15 @@ impl GeometryPass {
                 drawable.texture_lod,
                 drawable.entity,
             );
-            let buffer_info = marching_cubes_map.get(&key).unwrap();
-            slices.push(resources.access_buffer(
-                cmd_buffer,
-                &buffer_info.buffer_name,
-                BarrierSync::INDEX_INPUT,
-                BarrierAccess::INDEX_READ,
-                HistoryResourceEntry::Current,
-            ));
+            if let Some(buffer_info) = marching_cubes_map.get(&key) {
+                slices.push(resources.access_buffer(
+                    cmd_buffer,
+                    &buffer_info.buffer_name,
+                    BarrierSync::INDEX_INPUT,
+                    BarrierAccess::INDEX_READ,
+                    HistoryResourceEntry::Current,
+                ));
+            }
         }
 
         cmd_buffer.flush_barriers();
@@ -485,6 +492,10 @@ impl GeometryPass {
             .assets
             .get_graphics_pipeline(self.pipeline_transparent_prepass)
             .expect("Pipeline is not compiled yet");
+        let mesh_pipeline: &Arc<MeshGraphicsPipeline> = params
+            .assets
+            .get_mesh_graphics_pipeline(self.mesh_pipeline)
+            .expect("Pipeline is not compiled yet");
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         cmd_buffer.set_viewports(&[Viewport {
             position: Vec2::new(0.0f32, 0.0f32),
@@ -505,7 +516,6 @@ impl GeometryPass {
             0,
             WHOLE_BUFFER,
         );
-
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::Frequent,
             2u32,
@@ -524,12 +534,15 @@ impl GeometryPass {
             &integration_lut,
             resources.linear_sampler(),
         );
-        cmd_buffer.bind_uniform_buffer(
-            BindingFrequency::Frame,
-            0,
-            BufferRef::Transient(camera_buffer),
-            0,
-            WHOLE_BUFFER,
+        cmd_buffer.bind_sampler(
+            BindingFrequency::Frequent,
+            5u32,
+            params.resources.linear_sampler(),
+        );
+        cmd_buffer.bind_sampler(
+            BindingFrequency::Frequent,
+            6u32,
+            params.resources.nearest_sampler(),
         );
 
         for drawable in params.scene.scene.volume_mesh_instances() {
@@ -557,12 +570,7 @@ impl GeometryPass {
                 volume_texture_info.height >> drawable.texture_lod,
                 volume_texture_info.depth >> drawable.texture_lod,
             );
-            cmd_buffer.bind_sampling_view_and_sampler(
-                BindingFrequency::Frequent,
-                0u32,
-                &volume_texture.view,
-                resources.linear_sampler(),
-            );
+            cmd_buffer.bind_sampling_view(BindingFrequency::Frequent, 0u32, &volume_texture.view);
 
             let transfer_function = params
                 .assets
@@ -624,6 +632,108 @@ impl GeometryPass {
             );
         }
 
+        cmd_buffer.set_pipeline(PipelineBinding::MeshGraphics(mesh_pipeline));
+        cmd_buffer.bind_uniform_buffer(
+            BindingFrequency::Frequent,
+            7,
+            BufferRef::Regular(marching_cubes_edges_buffer),
+            0,
+            WHOLE_BUFFER,
+        );
+        cmd_buffer.bind_uniform_buffer(
+            BindingFrequency::Frequent,
+            8,
+            BufferRef::Regular(marching_cubes_tris_buffer),
+            0,
+            WHOLE_BUFFER,
+        );
+        for drawable in params.scene.scene.volume_mesh_instances() {
+            if drawable.transparent != VolumeDrawableTransparencyMode::Opaque
+                && !(!has_opaque
+                    && drawable.transparent
+                        == VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque)
+            {
+                continue;
+            }
+            //break;
+
+            let mut model_matrix = drawable.transform.into();
+            let lod_scale = (1u32 << drawable.texture_lod) as f32;
+            model_matrix *= Matrix4::from_scale(Vec3::new(lod_scale, lod_scale, lod_scale));
+
+            let volume_texture = params.assets.get_texture(drawable.volume_texture);
+            let volume_texture_base_opt = volume_texture.view.texture();
+            if volume_texture_base_opt.is_none() {
+                continue;
+            }
+            let volume_texture_base = volume_texture_base_opt.unwrap();
+            let volume_texture_info = volume_texture_base.info();
+            let volume_texture_lod_extents = Vec3UI::new(
+                volume_texture_info.width >> drawable.texture_lod,
+                volume_texture_info.height >> drawable.texture_lod,
+                volume_texture_info.depth >> drawable.texture_lod,
+            );
+            cmd_buffer.bind_sampling_view(BindingFrequency::Frequent, 0u32, &volume_texture.view);
+
+            let transfer_function = params
+                .assets
+                .get_texture(drawable.transfer_function_texture);
+            cmd_buffer.bind_sampling_view_and_sampler(
+                BindingFrequency::Frequent,
+                1u32,
+                &transfer_function.view,
+                resources.linear_sampler(),
+            );
+
+            cmd_buffer.set_push_constant_data(
+                &[PushConstantData {
+                    model_matrix,
+                    lod_extents: volume_texture_lod_extents,
+                    threshold: drawable.min_threshold,
+                    lod: drawable.texture_lod,
+                    ..Zeroable::zeroed()
+                }],
+                ShaderType::VertexShader,
+            );
+            cmd_buffer.set_push_constant_data(
+                &[MaterialData {
+                    roughness: 0.6f32,
+                    metalness: 0.3f32,
+                    //roughness: 0.1f32,
+                    //metalness: 0.9f32,
+                    f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
+                    inv_model_matrix: Matrix4::inverse(&model_matrix),
+                    lod: drawable.texture_lod,
+                    width: color_tex_extent.x as f32,
+                    height: color_tex_extent.y as f32,
+                    threshold: drawable.min_threshold,
+                    ..Zeroable::zeroed()
+                }],
+                ShaderType::FragmentShader,
+            );
+            let key = MarchingCubesKey::new(
+                drawable.volume_texture,
+                drawable.texture_lod,
+                drawable.entity,
+            );
+            let buffer_info = marching_cubes_map.get(&key).unwrap();
+            let ibo = resources.access_buffer(
+                cmd_buffer,
+                &buffer_info.buffer_name,
+                BarrierSync::INDEX_INPUT,
+                BarrierAccess::INDEX_READ,
+                HistoryResourceEntry::Current,
+            );
+
+            cmd_buffer.set_index_buffer(BufferRef::Regular(&*ibo), 0u64, IndexFormat::U32);
+            cmd_buffer.finish_binding();
+            cmd_buffer.draw_mesh_tasks(
+                (volume_texture_lod_extents.x + 3) / 4,
+                (volume_texture_lod_extents.y + 3) / 4,
+                (volume_texture_lod_extents.z + 1) / 2,
+            );
+        }
+
         // Geometry 2 - Non overlapping
 
         let mut transparent_drawables: SmallVec<[RendererVolumeDrawable; 2]> = params
@@ -660,12 +770,7 @@ impl GeometryPass {
                 volume_texture_info.height >> drawable.texture_lod,
                 volume_texture_info.depth >> drawable.texture_lod,
             );
-            cmd_buffer.bind_sampling_view_and_sampler(
-                BindingFrequency::Frequent,
-                0u32,
-                &volume_texture.view,
-                resources.linear_sampler(),
-            );
+            cmd_buffer.bind_sampling_view(BindingFrequency::Frequent, 0u32, &volume_texture.view);
 
             let transfer_function = params
                 .assets
@@ -820,12 +925,7 @@ impl GeometryPass {
                 volume_texture_info.height >> drawable.texture_lod,
                 volume_texture_info.depth >> drawable.texture_lod,
             );
-            cmd_buffer.bind_sampling_view_and_sampler(
-                BindingFrequency::Frequent,
-                0u32,
-                &volume_texture.view,
-                resources.linear_sampler(),
-            );
+            cmd_buffer.bind_sampling_view(BindingFrequency::Frequent, 0u32, &volume_texture.view);
 
             let transfer_function = params
                 .assets

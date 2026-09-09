@@ -803,4 +803,12 @@ impl MarchingCubesPass {
         command_buffer.end_label();
         map
     }
+
+    pub(super) fn tris_buffer(&self) -> &Arc<BufferSlice> {
+        &self.tris_buffer
+    }
+
+    pub(super) fn edges_buffer(&self) -> &Arc<BufferSlice> {
+        &self.edges_buffer
+    }
 }
