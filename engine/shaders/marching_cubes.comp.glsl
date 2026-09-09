@@ -74,8 +74,8 @@ uvec3 indexOffset(uint idx) {
 uint vertexKey(uvec3 pos1, uvec3 pos2) {
     uvec3 pos = pos1 + pos2;
 
-    uvec3 sizes = uvec3(512 * 2);
-    pos = min(sizes, pos);
+    uvec3 sizes = uvec3(512u * 2u + 1u);
+    pos = min(sizes - uvec3(1u), pos);
 
     uint key = pos.z * sizes.x * sizes.y +
          pos.y * sizes.x +

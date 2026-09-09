@@ -40,7 +40,7 @@ vec4 interpolateVertices(uvec3 pos1, uvec3 pos2) {
 
 
 vec4 vertexPosFromKey(uint vertexKey) {
-    uvec3 sizes = uvec3(512 * 2);
+    uvec3 sizes = uvec3(512u * 2u + 1u);
 
     uvec3 pos = uvec3(vertexKey % sizes.x,
         (vertexKey / sizes.x) % sizes.y,
