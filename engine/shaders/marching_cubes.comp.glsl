@@ -162,7 +162,7 @@ void main() {
             continue;
 
         uint indexCount = tris[voxelKey][0u];
-        indexCount = min(indexCount, 16u);
+        indexCount = min(indexCount, 15u);
         if (indexCount == 0u)
             continue;
 
