@@ -322,8 +322,8 @@ impl DearImguiRenderer {
             -2.0f32 / draw.display_size[1],
             1.0f32,
         )) * Matrix4::from_translation(Vec3::new(
-            draw.display_pos[0],
-            draw.display_pos[1],
+            draw.display_pos[0] - draw.display_size[0] / 2.0f32,
+            draw.display_pos[1] - draw.display_size[1] / 2.0f32,
             0.0f32,
         ));
 
