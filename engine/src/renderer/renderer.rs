@@ -354,18 +354,12 @@ impl Renderer {
 
                 RendererCommand::UpdateVolumeMeshData {
                     entity,
-                    max_threshold,
                     min_threshold,
                     transparent,
                     texture_lod: lod,
                 } => {
-                    self.scene.update_volume_mesh_data(
-                        &entity,
-                        min_threshold,
-                        max_threshold,
-                        lod,
-                        transparent,
-                    );
+                    self.scene
+                        .update_volume_mesh_data(&entity, min_threshold, lod, transparent);
                 }
 
                 RendererCommand::RegisterStatic {
@@ -440,7 +434,6 @@ impl Renderer {
                     transfer_function_texture_path,
                     texture_lod,
                     min_threshold,
-                    max_threshold,
                     transparent,
                 } => {
                     let (volume_texture_handle, _) = self.assets.asset_manager().request_asset(
@@ -460,7 +453,6 @@ impl Renderer {
                             entity,
                             transform,
                             old_transform: transform,
-                            max_threshold,
                             min_threshold,
                             transparent,
                             texture_lod,
@@ -640,7 +632,6 @@ impl RendererSender {
                 entity,
                 transform: transform.0,
                 min_threshold: renderable.threshold_min,
-                max_threshold: renderable.threshold_max,
                 transparent: renderable.transparent,
                 texture_path: renderable.volume_texture_path.clone(),
                 texture_lod: renderable.volume_texture_lod,
@@ -700,7 +691,6 @@ impl RendererSender {
         &self,
         entity: Entity,
         min_threshold: f32,
-        max_threshold: f32,
         texture_lod: u32,
         transparent: bool,
     ) -> Result<(), SendError<()>> {
@@ -714,7 +704,6 @@ impl RendererSender {
             .send(RendererCommand::UpdateVolumeMeshData {
                 entity,
                 min_threshold,
-                max_threshold,
                 texture_lod,
                 transparent,
             })

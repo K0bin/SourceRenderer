@@ -418,7 +418,6 @@ fn extract_volume_renderables(
             let result = renderer.sender.update_volume_thresholds(
                 entity,
                 renderable.threshold_min,
-                renderable.threshold_max,
                 renderable.volume_texture_lod,
                 renderable.transparent,
             );

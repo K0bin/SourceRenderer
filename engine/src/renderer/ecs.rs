@@ -29,6 +29,5 @@ pub struct VolumeMeshInstance {
     pub volume_texture_lod: u32,
     pub transfer_function_texture_path: String,
     pub threshold_min: f32,
-    pub threshold_max: f32,
     pub transparent: bool,
 }

@@ -32,7 +32,6 @@ pub enum RendererCommand {
         transfer_function_texture_path: String,
         texture_lod: u32,
         min_threshold: f32,
-        max_threshold: f32,
         transparent: bool,
     },
     UnregisterVolume(Entity),
@@ -47,7 +46,6 @@ pub enum RendererCommand {
     UpdateVolumeMeshData {
         entity: Entity,
         min_threshold: f32,
-        max_threshold: f32,
         texture_lod: u32,
         transparent: bool,
     },

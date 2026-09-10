@@ -66,15 +66,6 @@ fn volume_meshes_ui_system(
                         &mut mesh.threshold_min,
                     );
 
-                    ui.text("Max Threshold:");
-                    ui.set_next_item_width(ui.content_region_avail_width());
-                    ui.slider(
-                        format!("##maxthreshold{:?}", entity),
-                        0.01f32,
-                        1.0f32,
-                        &mut mesh.threshold_max,
-                    );
-
                     ui.text("Transparent:");
                     ui.same_line();
                     ui.checkbox(format!("##transparent{:?}", entity), &mut mesh.transparent);

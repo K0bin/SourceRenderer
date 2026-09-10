@@ -31,13 +31,8 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 3, std430) buffer indicesBuffer 
     uint[] indices;
 } indicesBuffers[16u];
 
-struct MarchingCubesThresholdInstance {
-    float minThreshold;
-    float maxThreshold;
-};
-
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 4, scalar) uniform thresholds {
-    MarchingCubesThresholdInstance[16u] thresholdInstances;
+    float[16u] minThresholds;
 };
 
 struct IndirectCommand {
@@ -140,7 +135,7 @@ void main() {
                 uint index = ((x + z) & 1u) + z * 2u + y * 4u;
 
                 for (uint i = 0u; i < finalThresholdsCount; i++) {
-                    bool passes = density >= thresholdInstances[i].minThreshold && density < thresholdInstances[i].maxThreshold;
+                    bool passes = density >= minThresholds[i];
                     empty = empty && !passes;
                     full = full && passes;
                     voxelKeys[i] |= uint(passes) << index;

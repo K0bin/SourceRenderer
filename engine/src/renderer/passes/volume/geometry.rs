@@ -420,7 +420,6 @@ impl GeometryPass {
                 drawable.volume_texture,
                 drawable.texture_lod,
                 drawable.min_threshold,
-                drawable.max_threshold,
             );
             let buffer_info = marching_cubes_map.get(&key).unwrap();
             slices.push(resources.access_buffer(
@@ -594,7 +593,6 @@ impl GeometryPass {
                 drawable.volume_texture,
                 drawable.texture_lod,
                 drawable.min_threshold,
-                drawable.max_threshold,
             );
             let buffer_info = marching_cubes_map.get(&key).unwrap();
             let ibo = resources.access_buffer(
@@ -697,7 +695,6 @@ impl GeometryPass {
                 drawable.volume_texture,
                 drawable.texture_lod,
                 drawable.min_threshold,
-                drawable.max_threshold,
             );
             let buffer_info = marching_cubes_map.get(&key).unwrap();
             let ibo = resources.access_buffer(
@@ -753,7 +750,6 @@ impl GeometryPass {
                 drawable.volume_texture,
                 drawable.texture_lod,
                 drawable.min_threshold,
-                drawable.max_threshold,
             );
             let buffer_info = marching_cubes_map.get(&key).unwrap();
             let ibo = resources.access_buffer(
@@ -841,7 +837,6 @@ impl GeometryPass {
                 drawable.volume_texture,
                 drawable.texture_lod,
                 drawable.min_threshold,
-                drawable.max_threshold,
             );
             let buffer_info = marching_cubes_map.get(&key).unwrap();
             let ibo = resources.access_buffer(

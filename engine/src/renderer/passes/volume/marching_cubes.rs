@@ -29,28 +29,21 @@ pub struct MarchingCubesKey {
     texture_handle: TextureHandle,
     lod: u32,
     min_threshold: u32,
-    max_threshold: u32,
 }
 
 impl MarchingCubesKey {
-    pub fn new(
-        texture_handle: TextureHandle,
-        lod: u32,
-        min_threshold: f32,
-        max_threshold: f32,
-    ) -> Self {
+    pub fn new(texture_handle: TextureHandle, lod: u32, min_threshold: f32) -> Self {
         Self {
             texture_handle,
             lod,
             min_threshold: (min_threshold * 10000.0) as u32,
-            max_threshold: (max_threshold * 10000.0) as u32,
         }
     }
 
     fn buffer_name(&self) -> String {
         format!(
-            "MarchingCubes IBO for {:?}_{}_{}_{}",
-            self.texture_handle, self.lod, self.min_threshold, self.max_threshold,
+            "MarchingCubes IBO for {:?}_{}_{}",
+            self.texture_handle, self.lod, self.min_threshold,
         )
     }
 }
@@ -77,13 +70,6 @@ pub struct MarchingCubesPass {
     edges_buffer: Arc<BufferSlice>,
     tris_buffer: Arc<BufferSlice>,
     executed_count: u32,
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Zeroable, Pod)]
-pub struct MarchingCubesThresholds {
-    min_threshold: f32,
-    max_threshold: f32,
 }
 
 impl MarchingCubesPass {
@@ -561,12 +547,7 @@ impl MarchingCubesPass {
             let mut volume_meshes =
                 SmallVec::<[&RendererVolumeDrawable; 1]>::with_capacity(chunk.size_hint().0);
             for (index, d) in chunk.enumerate() {
-                let key = MarchingCubesKey::new(
-                    d.volume_texture,
-                    d.texture_lod,
-                    d.min_threshold,
-                    d.max_threshold,
-                );
+                let key = MarchingCubesKey::new(d.volume_texture, d.texture_lod, d.min_threshold);
                 if map.contains_key(&key) {
                     // Skip duplicates. (Can happen with the sliders.)
                     continue;
@@ -601,12 +582,7 @@ impl MarchingCubesPass {
         let mut buffer_slices: SmallVec<[Ref<Arc<BufferSlice>>; 2]> =
             SmallVec::with_capacity(pass_params.scene.scene.volume_mesh_instances().len());
         for d in pass_params.scene.scene.volume_mesh_instances() {
-            let key = MarchingCubesKey::new(
-                d.volume_texture,
-                d.texture_lod,
-                d.min_threshold,
-                d.max_threshold,
-            );
+            let key = MarchingCubesKey::new(d.volume_texture, d.texture_lod, d.min_threshold);
             let entry = map.get(&key).unwrap();
 
             buffer_slices.push(pass_params.resources.access_buffer(
@@ -655,12 +631,7 @@ impl MarchingCubesPass {
             HistoryResourceEntry::Current,
         );
         for d in pass_params.scene.scene.volume_mesh_instances() {
-            let key = MarchingCubesKey::new(
-                d.volume_texture,
-                d.texture_lod,
-                d.min_threshold,
-                d.max_threshold,
-            );
+            let key = MarchingCubesKey::new(d.volume_texture, d.texture_lod, d.min_threshold);
             let entry = map.get(&key).unwrap();
 
             buffer_slices.push(pass_params.resources.access_buffer(
@@ -678,10 +649,10 @@ impl MarchingCubesPass {
         let mut chunk_first_element_atomics_offset = 0usize;
         for ((texture, lod), chunk) in &meshes_grouped_by_dispatch {
             let mut buffer_slices = SmallVec::<[Ref<Arc<BufferSlice>>; 4]>::new();
-            let mut thresholds = SmallVec::<[MarchingCubesThresholds; 4]>::new();
+            let mut thresholds = SmallVec::<[f32; 4]>::new();
             assert!(!chunk.is_empty());
             for (index, d) in chunk.iter().enumerate() {
-                let key = MarchingCubesKey::new(*texture, *lod, d.min_threshold, d.max_threshold);
+                let key = MarchingCubesKey::new(*texture, *lod, d.min_threshold);
                 let map_entry = map.get(&key).unwrap();
                 assert_eq!(
                     chunk_first_element_atomics_offset
@@ -697,10 +668,7 @@ impl MarchingCubesPass {
                     HistoryResourceEntry::Current,
                 );
                 buffer_slices.push(slice);
-                thresholds.push(MarchingCubesThresholds {
-                    min_threshold: d.min_threshold,
-                    max_threshold: d.max_threshold,
-                });
+                thresholds.push(d.min_threshold);
             }
             assert!(buffer_slices.len() <= 16);
             assert_ne!(buffer_slices.len(), 0);

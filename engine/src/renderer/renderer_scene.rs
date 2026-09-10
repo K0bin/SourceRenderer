@@ -166,7 +166,6 @@ impl RendererScene {
         &mut self,
         entity: &Entity,
         min_threshold: f32,
-        max_threshold: f32,
         texture_lod: u32,
         transparent: bool,
     ) {
@@ -174,7 +173,6 @@ impl RendererScene {
         if let Some(index) = index {
             let volume_mesh = &mut self.volume_meshes[*index];
             volume_mesh.min_threshold = min_threshold;
-            volume_mesh.max_threshold = max_threshold;
             volume_mesh.texture_lod = texture_lod;
             volume_mesh.transparent = transparent;
             return;

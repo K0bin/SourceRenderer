@@ -27,7 +27,6 @@ pub struct RendererVolumeDrawable {
     pub texture_lod: u32,
     pub transparent: bool,
     pub min_threshold: f32,
-    pub max_threshold: f32,
 }
 
 #[derive(Clone)]
