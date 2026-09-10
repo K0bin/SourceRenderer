@@ -2,20 +2,6 @@ use std::sync::Arc;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 
-use bevy_app::*;
-use bevy_diagnostic::FrameCountPlugin;
-use bevy_ecs::entity::Entity;
-use bevy_ecs::message::Messages;
-use bevy_ecs::resource::Resource;
-use bevy_input::InputPlugin;
-use bevy_input::keyboard::KeyboardInput;
-use bevy_input::mouse::MouseMotion;
-use bevy_log::LogPlugin;
-use bevy_time::{Fixed, Time, TimePlugin};
-use bevy_transform::TransformPlugin;
-use sourcerenderer_core::console::Console;
-use sourcerenderer_core::platform::{GraphicsPlatform, PlatformIO, Window};
-
 use crate::asset::{AssetManager, AssetManagerECSResource, AssetManagerPlugin};
 use crate::convenience_inputs::ConvenienceInputs;
 use crate::dear_imgui::DearImgui;
@@ -23,6 +9,20 @@ use crate::graphics::*;
 use crate::renderer;
 use crate::renderer::RendererType;
 use crate::transform::InterpolationPlugin;
+use bevy_app::*;
+use bevy_diagnostic::FrameCountPlugin;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::message::Messages;
+use bevy_ecs::resource::Resource;
+use bevy_input::InputPlugin;
+use bevy_input::keyboard::KeyboardInput;
+use bevy_input::mouse::{MouseButtonInput, MouseMotion};
+use bevy_log::LogPlugin;
+use bevy_time::{Fixed, Time, TimePlugin};
+use bevy_transform::TransformPlugin;
+use sourcerenderer_core::Vec2;
+use sourcerenderer_core::console::Console;
+use sourcerenderer_core::platform::{GraphicsPlatform, PlatformIO, Window};
 
 #[derive(Resource)]
 pub struct ConsoleResource(pub Arc<Console>);
@@ -52,6 +52,11 @@ pub(crate) struct MouseLockPreference {
     pub(crate) request_lock: bool,
 }
 
+#[derive(Resource, Default)]
+pub(crate) struct MousePosition {
+    pub(crate) position: Vec2,
+}
+
 #[cfg(all(feature = "threading", target_arch = "wasm32"))]
 compile_error!("Threads are not supported on WebAssembly.");
 
@@ -78,6 +83,8 @@ impl Engine {
         let mut app = App::new();
         app.init_resource::<Messages<MouseMotion>>();
         app.init_resource::<Messages<KeyboardInput>>();
+        app.init_resource::<Messages<MouseButtonInput>>();
+        app.init_resource::<MousePosition>();
 
         app.insert_resource(MouseLockPreference::default());
         app.insert_resource(FullscreenPreference::default());
@@ -196,6 +203,19 @@ impl Engine {
             .get_resource_mut::<Messages<MouseMotion>>()
             .unwrap()
             .write(motion);
+    }
+
+    pub fn set_mouse_position(&mut self, position: Vec2) {
+        let world = self.app.world_mut();
+        world.get_resource_mut::<MousePosition>().unwrap().position = position;
+    }
+
+    pub fn dispatch_mouse_button_input(&mut self, input: MouseButtonInput) {
+        let world = self.app.world_mut();
+        world
+            .get_resource_mut::<Messages<MouseButtonInput>>()
+            .unwrap()
+            .write(input);
     }
 
     pub fn window_changed<P: GraphicsPlatform<ActiveBackend>>(

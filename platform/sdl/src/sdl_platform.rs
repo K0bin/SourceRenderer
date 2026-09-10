@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::sdl_gpu::{self, SDLGPUBackend};
 use bevy_input::ButtonState;
 use bevy_input::keyboard::{Key, KeyCode, KeyboardInput};
-use bevy_input::mouse::MouseMotion;
+use bevy_input::mouse::{MouseButton, MouseButtonInput, MouseMotion};
 use crossbeam_channel::Sender;
 use notify::{RecommendedWatcher, Watcher, recommended_watcher};
 use sdl3::event::{Event as SDLEvent, WindowEvent};
@@ -13,7 +13,7 @@ use sdl3::keyboard::Scancode;
 use sdl3::video::FullscreenType;
 use sdl3::{EventPump, Sdl, VideoSubsystem};
 use sourcerenderer_core::platform::{FileWatcher, PlatformIO, Window};
-use sourcerenderer_core::{Vec2, Vec2I, gpu};
+use sourcerenderer_core::{Vec2, Vec2I, Vec2UI, gpu};
 use sourcerenderer_engine::{Engine, WindowState};
 use sourcerenderer_vulkan::VkInstance;
 
@@ -132,16 +132,64 @@ impl SDLPlatform {
                     }
                 }
                 SDLEvent::MouseMotion {
-                    x: _x,
-                    y: _y,
-                    xrel,
-                    yrel,
-                    ..
+                    x, y, xrel, yrel, ..
                 } => {
+                    engine.set_mouse_position(Vec2::new(x, y));
                     engine.dispatch_mouse_motion(MouseMotion {
                         delta: Vec2::new(xrel as f32, yrel as f32),
                     });
                 }
+
+                SDLEvent::MouseButtonDown {
+                    timestamp: _,
+                    window_id: _,
+                    which: _,
+                    mouse_btn,
+                    clicks: _,
+                    x: _,
+                    y: _,
+                } => {
+                    if mouse_btn != sdl3::mouse::MouseButton::Unknown {
+                        engine.dispatch_mouse_button_input(MouseButtonInput {
+                            button: match mouse_btn {
+                                sdl3::mouse::MouseButton::Left => MouseButton::Left,
+                                sdl3::mouse::MouseButton::Middle => MouseButton::Middle,
+                                sdl3::mouse::MouseButton::Right => MouseButton::Right,
+                                sdl3::mouse::MouseButton::X1 => MouseButton::Back,
+                                sdl3::mouse::MouseButton::X2 => MouseButton::Forward,
+                                _ => unreachable!(),
+                            },
+                            state: ButtonState::Pressed,
+                            window: engine.get_window_dummy_entity(),
+                        });
+                    }
+                }
+
+                SDLEvent::MouseButtonUp {
+                    timestamp: _,
+                    window_id: _,
+                    which: _,
+                    mouse_btn,
+                    clicks: _,
+                    x: _,
+                    y: _,
+                } => {
+                    if mouse_btn != sdl3::mouse::MouseButton::Unknown {
+                        engine.dispatch_mouse_button_input(MouseButtonInput {
+                            button: match mouse_btn {
+                                sdl3::mouse::MouseButton::Left => MouseButton::Left,
+                                sdl3::mouse::MouseButton::Middle => MouseButton::Middle,
+                                sdl3::mouse::MouseButton::Right => MouseButton::Right,
+                                sdl3::mouse::MouseButton::X1 => MouseButton::Back,
+                                sdl3::mouse::MouseButton::X2 => MouseButton::Forward,
+                                _ => unreachable!(),
+                            },
+                            state: ButtonState::Released,
+                            window: engine.get_window_dummy_entity(),
+                        });
+                    }
+                }
+
                 SDLEvent::Window {
                     window_id: _,
                     timestamp: _,
