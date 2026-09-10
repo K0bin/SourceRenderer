@@ -415,8 +415,18 @@ fn extract_volume_renderables(
                 let _ = events.write(AppExit::from_code(1));
             }
         } else if !renderer.is_saturated {
-            let result = renderer.sender.update_transform(entity, transform.0);
+            let result = renderer.sender.update_volume_thresholds(
+                entity,
+                renderable.threshold_min,
+                renderable.threshold_max,
+                renderable.volume_texture_lod,
+                renderable.transparent,
+            );
+            if result.is_err() {
+                let _ = events.write(AppExit::from_code(1));
+            }
 
+            let result = renderer.sender.update_transform(entity, transform.0);
             if result.is_err() {
                 let _ = events.write(AppExit::from_code(1));
             }
@@ -508,7 +518,7 @@ fn create_renderer(
 
     let core_swapchain = unsafe {
         surface
-            .create_swapchain(swapchain_width, swapchain_height, true, device.handle())
+            .create_swapchain(swapchain_width, swapchain_height, false, device.handle())
             .unwrap()
     };
     let swapchain = Swapchain::new(core_swapchain, &device);

@@ -352,6 +352,22 @@ impl Renderer {
                     self.scene.update_transform(&entity, transform);
                 }
 
+                RendererCommand::UpdateVolumeMeshData {
+                    entity,
+                    max_threshold,
+                    min_threshold,
+                    transparent,
+                    texture_lod: lod,
+                } => {
+                    self.scene.update_volume_mesh_data(
+                        &entity,
+                        min_threshold,
+                        max_threshold,
+                        lod,
+                        transparent,
+                    );
+                }
+
                 RendererCommand::RegisterStatic {
                     model_path,
                     entity,
@@ -676,9 +692,31 @@ impl RendererSender {
         };
 
         sender
-            .send(RendererCommand::UpdateTransform {
+            .send(RendererCommand::UpdateTransform { entity, transform })
+            .map_err(|_| SendError(()))
+    }
+
+    pub fn update_volume_thresholds(
+        &self,
+        entity: Entity,
+        min_threshold: f32,
+        max_threshold: f32,
+        texture_lod: u32,
+        transparent: bool,
+    ) -> Result<(), SendError<()>> {
+        let sender = if let Some(sender) = self.sender.as_ref() {
+            sender
+        } else {
+            return Err(SendError(()));
+        };
+
+        sender
+            .send(RendererCommand::UpdateVolumeMeshData {
                 entity,
-                transform: transform,
+                min_threshold,
+                max_threshold,
+                texture_lod,
+                transparent,
             })
             .map_err(|_| SendError(()))
     }

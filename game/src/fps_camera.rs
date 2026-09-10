@@ -11,7 +11,7 @@ use bevy_time::{Fixed, Time};
 use bevy_transform::components::Transform;
 use sourcerenderer_core::{Quaternion, Vec3};
 
-use sourcerenderer_engine::{ActiveCamera, Camera};
+use sourcerenderer_engine::{ActiveCamera, Camera, MouseLockPreference};
 
 pub fn install(app: &mut App) {
     let camera = app
@@ -89,7 +89,11 @@ fn fps_camera_rotation(mouse: &MouseMotion, fps_camera: &mut FPSCamera) -> Quate
 pub(crate) fn retrieve_fps_camera_rotation(
     mut mouse_motion: MessageReader<MouseMotion>,
     mut query: Query<(&mut Transform, &mut FPSCameraComponent), With<Camera>>,
+    locked: Res<MouseLockPreference>,
 ) {
+    if !locked.request_lock {
+        return;
+    }
     for (mut transform, mut fps_camera) in query.iter_mut() {
         for event in mouse_motion.read() {
             transform.rotation = fps_camera_rotation(event, &mut fps_camera.fps_camera);

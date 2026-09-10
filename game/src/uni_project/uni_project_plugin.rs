@@ -1,10 +1,10 @@
+use crate::uni_project::ui::UIPlugin;
 use crate::{RendererPicker, fps_camera};
 use bevy_app::{App, Plugin};
 use bevy_math::Affine3A;
 use sourcerenderer_core::{Matrix4, Vec3};
 use sourcerenderer_engine::renderer::{RendererType, VolumeMeshInstance};
 use sourcerenderer_engine::transform::InterpolatedTransform;
-
 /* TODO:
  * - DLSS/FSR/XeSS/MetalFX
  * - DearImgui controls
@@ -49,6 +49,8 @@ impl Plugin for UniProjectPlugin {
                 },
                 InterpolatedTransform(Affine3A::from_mat4(model_matrix)),
             ));
+
+            app.add_plugins(UIPlugin);
         }
 
         fps_camera::install(app);

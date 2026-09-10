@@ -48,8 +48,8 @@ pub(crate) struct FullscreenPreference {
 }
 
 #[derive(Resource, Default)]
-pub(crate) struct MouseLockPreference {
-    pub(crate) request_lock: bool,
+pub struct MouseLockPreference {
+    pub request_lock: bool,
 }
 
 #[derive(Resource, Default)]

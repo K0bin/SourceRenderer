@@ -15,8 +15,12 @@ pub mod math;
 pub mod transform;
 
 mod input;
+pub use engine::MouseLockPreference;
 //mod physics;
 mod dear_imgui;
+pub use dear_imgui::DearImgui;
+pub use dear_imgui_rs;
+
 pub mod graphics;
 pub mod renderer;
 

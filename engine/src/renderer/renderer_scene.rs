@@ -162,6 +162,32 @@ impl RendererScene {
         debug_assert!(false); // debug unreachable
     }
 
+    pub fn update_volume_mesh_data(
+        &mut self,
+        entity: &Entity,
+        min_threshold: f32,
+        max_threshold: f32,
+        texture_lod: u32,
+        transparent: bool,
+    ) {
+        let index = self.volume_mesh_entity_map.get(entity);
+        if let Some(index) = index {
+            let volume_mesh = &mut self.volume_meshes[*index];
+            volume_mesh.min_threshold = min_threshold;
+            volume_mesh.max_threshold = max_threshold;
+            volume_mesh.texture_lod = texture_lod;
+            volume_mesh.transparent = transparent;
+            return;
+        }
+
+        warn!(
+            "Found no entity on the renderer for ecs entity: {:?}",
+            entity
+        );
+
+        debug_assert!(false); // debug unreachable
+    }
+
     pub fn add_point_light(&mut self, entity: Entity, light: PointLight) {
         debug_assert!(self.point_light_entity_map.get(&entity).is_none());
         if cfg!(debug_assertions) {

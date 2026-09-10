@@ -44,6 +44,13 @@ pub enum RendererCommand {
         camera_transform: Affine3A,
         fov: f32,
     },
+    UpdateVolumeMeshData {
+        entity: Entity,
+        min_threshold: f32,
+        max_threshold: f32,
+        texture_lod: u32,
+        transparent: bool,
+    },
     SetLightmap(String),
     EndFrame,
     WindowChanged(WindowState),
