@@ -1,7 +1,10 @@
 use crate::WindowState;
+use crate::engine::MousePosition;
 use crate::graphics::ActiveBackend;
 use bevy_app::{App, PreUpdate, Update};
-use bevy_ecs::system::NonSendMut;
+use bevy_ecs::system::{NonSendMut, Res};
+use bevy_input::ButtonInput;
+use bevy_input::mouse::MouseButton;
 use dear_imgui_rs::{BackendFlags, Condition, FrameSnapshot, FrameToken};
 use sourcerenderer_core::platform::Window;
 use std::cell::{RefCell, RefMut};
@@ -10,6 +13,7 @@ use std::pin::Pin;
 
 pub fn install(app: &mut App, window: &impl Window<ActiveBackend>) {
     app.insert_non_send(DearImgui::new(window.width(), window.height()));
+    app.add_systems(PreUpdate, (update_input,));
     app.add_systems(PreUpdate, (begin_frame_system,));
     app.add_systems(Update, (test_ui_system,));
 }
@@ -119,6 +123,37 @@ impl DearImgui {
     }
 }
 
+fn update_input(
+    imgui: NonSendMut<DearImgui>,
+    mouse_pos: Res<MousePosition>,
+    mouse_buttons: Res<ButtonInput<MouseButton>>,
+) {
+    let mut context = imgui.context_wrapper.context.borrow_mut();
+    let io = context.io_mut();
+    io.set_mouse_pos([mouse_pos.position.x, mouse_pos.position.y]);
+    io.set_mouse_down_button(
+        dear_imgui_rs::MouseButton::Left,
+        mouse_buttons.pressed(MouseButton::Left),
+    );
+    io.set_mouse_down_button(
+        dear_imgui_rs::MouseButton::Right,
+        mouse_buttons.pressed(MouseButton::Right),
+    );
+    io.set_mouse_down_button(
+        dear_imgui_rs::MouseButton::Middle,
+        mouse_buttons.pressed(MouseButton::Middle),
+    );
+    io.set_mouse_down_button(
+        dear_imgui_rs::MouseButton::Extra1,
+        mouse_buttons.pressed(MouseButton::Back),
+    );
+    io.set_mouse_down_button(
+        dear_imgui_rs::MouseButton::Extra2,
+        mouse_buttons.pressed(MouseButton::Forward),
+    );
+    // TODO: mouse wheel
+}
+
 fn begin_frame_system(mut imgui: NonSendMut<DearImgui>) {
     imgui.begin_frame();
 }
@@ -126,6 +161,7 @@ fn begin_frame_system(mut imgui: NonSendMut<DearImgui>) {
 fn test_ui_system(imgui: NonSendMut<DearImgui>) {
     let ui = imgui.ui();
     ui.window("Hello World")
+        .position([0.0, 0.0], Condition::FirstUseEver)
         .size([300.0, 100.0], Condition::FirstUseEver)
         .build(|| {
             ui.text("Hello, world!");
