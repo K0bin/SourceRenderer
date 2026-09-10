@@ -27,7 +27,6 @@ struct PushConstantData {
     model_matrix: Matrix4,
     lod_extents: Vec3UI,
     threshold: f32,
-    // TODO: max threshold
     lod: u32,
     _padding0: u32,
     _padding1: u32,
@@ -43,7 +42,6 @@ struct MaterialData {
     metalness: f32,
     lod: u32,
     threshold: f32,
-    // TODO: max threshold
     width: f32,
     height: f32,
     _padding0: u32,
