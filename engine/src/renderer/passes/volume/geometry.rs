@@ -419,7 +419,7 @@ impl GeometryPass {
             let key = MarchingCubesKey::new(
                 drawable.volume_texture,
                 drawable.texture_lod,
-                drawable.min_threshold,
+                drawable.entity,
             );
             let buffer_info = marching_cubes_map.get(&key).unwrap();
             slices.push(resources.access_buffer(
@@ -592,7 +592,7 @@ impl GeometryPass {
             let key = MarchingCubesKey::new(
                 drawable.volume_texture,
                 drawable.texture_lod,
-                drawable.min_threshold,
+                drawable.entity,
             );
             let buffer_info = marching_cubes_map.get(&key).unwrap();
             let ibo = resources.access_buffer(
@@ -694,7 +694,7 @@ impl GeometryPass {
             let key = MarchingCubesKey::new(
                 drawable.volume_texture,
                 drawable.texture_lod,
-                drawable.min_threshold,
+                drawable.entity,
             );
             let buffer_info = marching_cubes_map.get(&key).unwrap();
             let ibo = resources.access_buffer(
@@ -749,7 +749,7 @@ impl GeometryPass {
             let key = MarchingCubesKey::new(
                 drawable.volume_texture,
                 drawable.texture_lod,
-                drawable.min_threshold,
+                drawable.entity,
             );
             let buffer_info = marching_cubes_map.get(&key).unwrap();
             let ibo = resources.access_buffer(
@@ -836,7 +836,7 @@ impl GeometryPass {
             let key = MarchingCubesKey::new(
                 drawable.volume_texture,
                 drawable.texture_lod,
-                drawable.min_threshold,
+                drawable.entity,
             );
             let buffer_info = marching_cubes_map.get(&key).unwrap();
             let ibo = resources.access_buffer(

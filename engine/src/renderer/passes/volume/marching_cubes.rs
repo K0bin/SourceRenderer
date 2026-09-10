@@ -6,6 +6,7 @@ use crate::renderer::asset::{
 use crate::renderer::drawable::RendererVolumeDrawable;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
+use bevy_ecs::entity::Entity;
 use bytemuck::{Pod, Zeroable};
 use itertools::Itertools;
 use smallvec::SmallVec;
@@ -28,22 +29,29 @@ struct MarchingCubesConfig {
 pub struct MarchingCubesKey {
     texture_handle: TextureHandle,
     lod: u32,
-    min_threshold: u32,
+    entity: Entity,
 }
 
 impl MarchingCubesKey {
-    pub fn new(texture_handle: TextureHandle, lod: u32, min_threshold: f32) -> Self {
+    pub fn new(texture_handle: TextureHandle, lod: u32, entity: Entity) -> Self {
         Self {
             texture_handle,
             lod,
-            min_threshold: (min_threshold * 10000.0) as u32,
+            entity,
         }
+    }
+
+    fn prefix() -> &'static str {
+        "MarchingCubes IBO for "
     }
 
     fn buffer_name(&self) -> String {
         format!(
-            "MarchingCubes IBO for {:?}_{}_{}",
-            self.texture_handle, self.lod, self.min_threshold,
+            "{} {:?}_{}_{}",
+            Self::prefix(),
+            self.texture_handle,
+            self.lod,
+            self.entity,
         )
     }
 }
@@ -547,7 +555,7 @@ impl MarchingCubesPass {
             let mut volume_meshes =
                 SmallVec::<[&RendererVolumeDrawable; 1]>::with_capacity(chunk.size_hint().0);
             for (index, d) in chunk.enumerate() {
-                let key = MarchingCubesKey::new(d.volume_texture, d.texture_lod, d.min_threshold);
+                let key = MarchingCubesKey::new(d.volume_texture, d.texture_lod, d.entity);
                 if map.contains_key(&key) {
                     // Skip duplicates. (Can happen with the sliders.)
                     continue;
@@ -570,6 +578,18 @@ impl MarchingCubesPass {
             meshes_grouped_by_dispatch.push(((volume_texture, texture_lod), volume_meshes));
         }
 
+        let mut keys_to_destroy = SmallVec::<[String; 2]>::new();
+        for buffer_key in pass_params.resources.buffer_keys() {
+            if buffer_key.starts_with(MarchingCubesKey::prefix()) {
+                if !map.keys().any(|k| k.buffer_name() == buffer_key) {
+                    keys_to_destroy.push(buffer_key.to_string());
+                }
+            }
+        }
+        for buffer_key in keys_to_destroy {
+            pass_params.resources.destroy_buffer(&buffer_key);
+        }
+
         let resources = &pass_params.resources;
         if self.executed_count > 0u32 {
             //return;
@@ -582,7 +602,7 @@ impl MarchingCubesPass {
         let mut buffer_slices: SmallVec<[Ref<Arc<BufferSlice>>; 2]> =
             SmallVec::with_capacity(pass_params.scene.scene.volume_mesh_instances().len());
         for d in pass_params.scene.scene.volume_mesh_instances() {
-            let key = MarchingCubesKey::new(d.volume_texture, d.texture_lod, d.min_threshold);
+            let key = MarchingCubesKey::new(d.volume_texture, d.texture_lod, d.entity);
             let entry = map.get(&key).unwrap();
 
             buffer_slices.push(pass_params.resources.access_buffer(
@@ -631,7 +651,7 @@ impl MarchingCubesPass {
             HistoryResourceEntry::Current,
         );
         for d in pass_params.scene.scene.volume_mesh_instances() {
-            let key = MarchingCubesKey::new(d.volume_texture, d.texture_lod, d.min_threshold);
+            let key = MarchingCubesKey::new(d.volume_texture, d.texture_lod, d.entity);
             let entry = map.get(&key).unwrap();
 
             buffer_slices.push(pass_params.resources.access_buffer(
@@ -652,7 +672,7 @@ impl MarchingCubesPass {
             let mut thresholds = SmallVec::<[f32; 4]>::new();
             assert!(!chunk.is_empty());
             for (index, d) in chunk.iter().enumerate() {
-                let key = MarchingCubesKey::new(*texture, *lod, d.min_threshold);
+                let key = MarchingCubesKey::new(*texture, *lod, d.entity);
                 let map_entry = map.get(&key).unwrap();
                 assert_eq!(
                     chunk_first_element_atomics_offset

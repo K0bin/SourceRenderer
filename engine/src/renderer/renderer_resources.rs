@@ -231,6 +231,22 @@ impl RendererResources {
         buffer_ref.buffer.range()
     }
 
+    pub fn destroy_buffer(&mut self, name: &str) {
+        self.buffers.remove(name);
+    }
+
+    pub fn destroy_texture(&mut self, name: &str) {
+        self.textures.remove(name);
+    }
+
+    pub fn buffer_keys(&self) -> Vec<&str> {
+        self.buffers.keys().map(|k| k.as_str()).collect()
+    }
+
+    pub fn texture_keys(&self) -> Vec<&str> {
+        self.textures.keys().map(|k| k.as_str()).collect()
+    }
+
     fn access_texture_internal(
         &self,
         cmd_buffer: &mut CommandBuffer,
