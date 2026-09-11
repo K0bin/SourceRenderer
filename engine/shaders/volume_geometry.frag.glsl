@@ -97,8 +97,8 @@ vec3 rayMarchPositionInMip(vec3 startPosNormalized, uint targetLod) {
 
     vec3 bbMin = min(pos1, pos2);
     vec3 bbMax = max(pos1, pos2);
-	bbMin *= -sign(bbMin) * 1.5;
-	bbMax *= 1.5;
+    bbMin *= -sign(bbMin) * 1.5;
+    bbMax *= 1.5;
 
     vec3 t1 = (bbMin - origin) * invRay;
     vec3 t2 = (bbMax - origin) * invRay;
@@ -110,7 +110,7 @@ vec3 rayMarchPositionInMip(vec3 startPosNormalized, uint targetLod) {
     float tExit = min(tMax.x, min(tMax.y, tMax.z));
 
     // Calculate intersections with texture box
-	vec3 tTex1 = (vec3(0) - origin) * invRay;
+    vec3 tTex1 = (vec3(0) - origin) * invRay;
     vec3 tTex2 = (targetTexSize - origin) * invRay;
 
     vec3 tTexMin = min(tTex1, tTex2);
@@ -119,8 +119,8 @@ vec3 rayMarchPositionInMip(vec3 startPosNormalized, uint targetLod) {
     float tTexEnter = max(tTexMin.x, max(tTexMin.y, tTexMin.z));
     float tTexExit = min(tTexMax.x, min(tTexMax.y, tTexMax.z));
 
-	tEnter = max(tEnter, tTexEnter);
-	tExit = min(tExit, tTexExit);
+    tEnter = max(tEnter, tTexEnter);
+    tExit = min(tExit, tTexExit);
 
     // tEnter must be <= tExit
     // tExit must be >= 0
@@ -145,13 +145,19 @@ vec3 rayMarchPositionInMip(vec3 startPosNormalized, uint targetLod) {
 #include "volume_shading.inc.glsl"
 
 void main(void) {
-    uint normalLod = 0;
-    vec3 normalLookUpNormalized = rayMarchPositionInMip(in_densityMapUV, normalLod);
+    uint normalLod = 0u;
+
     vec3 normal;
     float density;
-    if (dot(normalLookUpNormalized, normalLookUpNormalized) > 0.001) {
-        normal = calculateNormal(normalLookUpNormalized, normalLod);
-        density = textureLod(densityMap, normalLookUpNormalized, int(normalLod)).x;
+    if (normalLod != lod) {
+        vec3 normalLookUpNormalized = rayMarchPositionInMip(in_densityMapUV, normalLod);
+        if (dot(normalLookUpNormalized, normalLookUpNormalized) > 0.001) {
+            normal = calculateNormal(normalLookUpNormalized, normalLod);
+            density = textureLod(densityMap, normalLookUpNormalized, int(normalLod)).x;
+        } else {
+            normal = calculateNormal(in_densityMapUV, lod);
+            density = in_density;
+        }
     } else {
         normal = calculateNormal(in_densityMapUV, lod);
         density = in_density;
