@@ -743,7 +743,23 @@ impl MarchingCubesPass {
             command_buffer.bind_storage_buffer_array(BindingFrequency::Frequent, 3, &entries);
 
             let volume_texture = pass_params.assets.get_texture(*texture);
+            let volume_texture_min = pass_params
+                .assets
+                .get_texture(chunk.first().unwrap().volume_texture_min);
+            let volume_texture_max = pass_params
+                .assets
+                .get_texture(chunk.first().unwrap().volume_texture_max);
             command_buffer.bind_sampling_view(BindingFrequency::Frequent, 2, &volume_texture.view);
+            command_buffer.bind_sampling_view(
+                BindingFrequency::Frequent,
+                8,
+                &volume_texture_min.view,
+            );
+            command_buffer.bind_sampling_view(
+                BindingFrequency::Frequent,
+                9,
+                &volume_texture_max.view,
+            );
 
             let mut extent = Vec3UI::new(512, 512, 512);
             let texture_view = &volume_texture.view;

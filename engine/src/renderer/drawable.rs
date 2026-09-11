@@ -30,6 +30,8 @@ pub struct RendererVolumeDrawable {
     pub transform: Affine3A,
     pub old_transform: Affine3A,
     pub volume_texture: TextureHandle,
+    pub volume_texture_min: TextureHandle,
+    pub volume_texture_max: TextureHandle,
     pub transfer_function_texture: TextureHandle,
     pub texture_lod: u32,
     pub transparent: VolumeDrawableTransparencyMode,

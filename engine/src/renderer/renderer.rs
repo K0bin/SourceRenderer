@@ -442,6 +442,16 @@ impl Renderer {
                         AssetType::Texture,
                         AssetLoadPriority::Normal,
                     );
+                    let volume_texture_handle_min =
+                        self.assets.asset_manager().get_or_reserve_handle(
+                            &(texture_path.to_string() + "_min"),
+                            AssetType::Texture,
+                        );
+                    let volume_texture_handle_max =
+                        self.assets.asset_manager().get_or_reserve_handle(
+                            &(texture_path.to_string() + "_max"),
+                            AssetType::Texture,
+                        );
                     let (transfer_function_texture_handle, _) =
                         self.assets.asset_manager().request_asset(
                             &transfer_function_texture_path,
@@ -458,6 +468,8 @@ impl Renderer {
                             transparent,
                             texture_lod,
                             volume_texture: volume_texture_handle.into(),
+                            volume_texture_min: volume_texture_handle_min.into(),
+                            volume_texture_max: volume_texture_handle_max.into(),
                             transfer_function_texture: transfer_function_texture_handle.into(),
                         },
                     );

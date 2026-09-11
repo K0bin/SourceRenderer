@@ -52,6 +52,9 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 5, scalar) buffer bufferatomics 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 6) uniform sampler linearSampler;
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 7) uniform sampler nearestSampler;
 
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 8) uniform texture3D densityImageMin;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 9) uniform texture3D densityImageMax;
+
 layout(push_constant, std430) uniform Config {
     uvec3 lodExtents;
     uint lod;
@@ -108,6 +111,8 @@ uint buildVertexKey(uint index) {
     return vtxKey;
 }
 
+const uint maxIndices = (512u * 512u * 512u) / 100u * 15u;
+
 const bool renderDebugCube = false;
 const uvec3 cubePositions[8] = uvec3[8](
         uvec3(0, 0, 0), uvec3(1, 0, 0),
@@ -116,23 +121,39 @@ const uvec3 cubePositions[8] = uvec3[8](
         uvec3(1, 1, 1), uvec3(0, 1, 1)
 );
 const uvec3 cubeIndices[12] = uvec3[12](
-        uvec3(0, 1, 2), uvec3(2, 3, 0), // Front
-        uvec3(1, 5, 6), uvec3(6, 2, 1), // Right
-        uvec3(5, 4, 7), uvec3(7, 6, 5), // Back
-        uvec3(4, 0, 3), uvec3(3, 7, 4), // Left
-        uvec3(3, 2, 6), uvec3(6, 7, 3), // Top
-        uvec3(4, 5, 1), uvec3(1, 0, 4)  // Bottom
+        uvec3(2, 1, 0), uvec3(0, 3, 2), // Front
+        uvec3(6, 5, 1), uvec3(1, 2, 6), // Right
+        uvec3(7, 4, 5), uvec3(5, 6, 7), // Back
+        uvec3(3, 0, 4), uvec3(4, 7, 3), // Left
+        uvec3(6, 2, 3), uvec3(3, 7, 6), // Top
+        uvec3(1, 5, 4), uvec3(4, 0, 1)  // Bottom
 );
 
 void main() {
     uvec3 workgroupBase = gl_WorkGroupID * gl_WorkGroupSize + minBox;
     uvec3 base = workgroupBase + gl_LocalInvocationID;
-    uvec3 unshiftedBase = base - minBox;
 
-    if (subgroupAll(any(greaterThanEqual(unshiftedBase + uvec3(1u), lodExtents))))
+    if (subgroupAll(any(greaterThanEqual(base + uvec3(1u), lodExtents))))
+    return;
+
+    if (any(greaterThanEqual(base + uvec3(1u), lodExtents)))
     return;
 
     uint finalThresholdsCount = thresholdsCountConst == 0 ? thresholdsCount : thresholdsCountConst;
+
+    if (!any(greaterThanEqual(gl_LocalInvocationID, gl_WorkGroupSize - uvec3(1u)))) {
+        uvec3 lowResPos = workgroupBase / uvec3(4u);
+        // Workgroup 4x4x4 => +2 mip levels but min/max textures don't have the top mip level, so +1
+        float densityMax = texelFetch(sampler3D(densityImageMax, nearestSampler), ivec3(lowResPos), int(lod + 1u)).x;
+        bool empty = true;
+        bool full = true;
+        for (uint i = 0u; i < finalThresholdsCount; i++) {
+            float threshold = minThresholds[i];
+            empty = empty && (densityMax < threshold);
+        }
+        if (empty)
+        return;
+    }
 
     uint[16u] voxelKeys;
     for (uint i = 0u; i < finalThresholdsCount; i++) {
@@ -161,9 +182,6 @@ void main() {
         }
     }
 
-    if (any(greaterThanEqual(unshiftedBase + uvec3(1u), lodExtents)))
-    return;
-
     if (empty || full)
     return;
 
@@ -182,14 +200,14 @@ void main() {
 
         if (!renderDebugCube) {
             uint firstIndex = atomicAdd(commands[j].indexCount, indexCount);
-            for (uint i = 0u; i < indexCount; i += 3u) {
+            for (uint i = 0u; i < indexCount && firstIndex + indexCount < maxIndices; i += 3u) {
                 indicesBuffers[j].indices[firstIndex + i + 0u] = buildVertexKey(tris[voxelKey][1u + i + 0u]);
                 indicesBuffers[j].indices[firstIndex + i + 1u] = buildVertexKey(tris[voxelKey][1u + i + 1u]);
                 indicesBuffers[j].indices[firstIndex + i + 2u] = buildVertexKey(tris[voxelKey][1u + i + 2u]);
             }
         } else {
             uint firstIndex = atomicAdd(commands[j].indexCount, 12u * 3u);
-            for (uint i = 0u; i < 12u * 3u; i++) {
+            for (uint i = 0u; i < 12u * 3u && firstIndex + indexCount < maxIndices; i++) {
                 uvec3 vtx = cubePositions[cubeIndices[i / 3u][i % 3u]] + gl_GlobalInvocationID;
                 indicesBuffers[j].indices[firstIndex + i] = vertexKey(vtx, vtx);
             }
