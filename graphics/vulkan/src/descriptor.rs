@@ -401,7 +401,11 @@ impl VkDescriptorSet {
                         binding_info.descriptor_type == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
                             || binding_info.descriptor_type == vk::DescriptorType::STORAGE_BUFFER
                     );
-
+                    assert_eq!(
+                        *offset
+                            % (device.properties.limits.min_storage_buffer_offset_alignment as u64),
+                        0u64
+                    );
                     let buffer_info = vk::DescriptorBufferInfo {
                         buffer: *buffer,
                         offset: if binding_info.descriptor_type
@@ -434,6 +438,12 @@ impl VkDescriptorSet {
                         length,
                     } in buffers
                     {
+                        assert_eq!(
+                            *offset
+                                % (device.properties.limits.min_storage_buffer_offset_alignment
+                                    as u64),
+                            0u64
+                        );
                         let buffer_info = vk::DescriptorBufferInfo {
                             buffer: *buffer,
                             offset: *offset as vk::DeviceSize,
@@ -492,7 +502,11 @@ impl VkDescriptorSet {
                         binding_info.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
                             || binding_info.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER
                     );
-
+                    assert_eq!(
+                        *offset
+                            % (device.properties.limits.min_uniform_buffer_offset_alignment as u64),
+                        0u64
+                    );
                     let buffer_info = vk::DescriptorBufferInfo {
                         buffer: *buffer,
                         offset: if binding_info.descriptor_type
@@ -525,6 +539,12 @@ impl VkDescriptorSet {
                         length,
                     } in buffers
                     {
+                        assert_eq!(
+                            *offset
+                                % (device.properties.limits.min_uniform_buffer_offset_alignment
+                                    as u64),
+                            0u64
+                        );
                         let buffer_info = vk::DescriptorBufferInfo {
                             buffer: *buffer,
                             offset: *offset as vk::DeviceSize,
