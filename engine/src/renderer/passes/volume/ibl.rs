@@ -325,6 +325,9 @@ impl ImageBasedLightingPreparation {
         cmd_buffer: &mut CommandBuffer,
         pass_params: &mut RenderPassParameters<'_>,
     ) {
+        cmd_buffer.clear_all_bindings(BindingFrequency::Frequent);
+        cmd_buffer.clear_all_bindings(BindingFrequency::VeryFrequent);
+
         let texture = pass_params.assets.get_texture_opt(self.handle);
         if texture.is_none() || self.prepared {
             return;

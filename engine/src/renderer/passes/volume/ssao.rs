@@ -213,6 +213,9 @@ impl SsaoPass {
         depth_name: &str,
         camera: &TransientBufferSlice,
     ) {
+        cmd_buffer.clear_all_bindings(BindingFrequency::Frequent);
+        cmd_buffer.clear_all_bindings(BindingFrequency::VeryFrequent);
+
         let ssao_uav = pass_params.resources.access_view(
             cmd_buffer,
             Self::SSAO_INTERNAL_TEXTURE_NAME,

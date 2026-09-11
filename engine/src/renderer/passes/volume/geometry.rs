@@ -313,6 +313,9 @@ impl GeometryPass {
         params: &RenderPassParameters,
         marching_cubes_map: &HashMap<MarchingCubesKey, MarchingCubesInfo>,
     ) {
+        cmd_buffer.clear_all_bindings(BindingFrequency::Frequent);
+        cmd_buffer.clear_all_bindings(BindingFrequency::VeryFrequent);
+
         let resources = &params.resources;
 
         if !resources.has_resource(

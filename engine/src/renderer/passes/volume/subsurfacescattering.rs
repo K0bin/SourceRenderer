@@ -89,6 +89,9 @@ impl SSSPass {
         camera: &TransientBufferSlice,
         sss_width: f32,
     ) {
+        cmd_buffer.clear_all_bindings(BindingFrequency::Frequent);
+        cmd_buffer.clear_all_bindings(BindingFrequency::VeryFrequent);
+
         // Horizonal pass
 
         let sss_temp_uav = pass_params.resources.access_view(

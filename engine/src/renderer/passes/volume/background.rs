@@ -90,6 +90,9 @@ impl BackgroundPass {
         camera_buffer: &TransientBufferSlice,
         params: &RenderPassParameters,
     ) {
+        cmd_buffer.clear_all_bindings(BindingFrequency::Frequent);
+        cmd_buffer.clear_all_bindings(BindingFrequency::VeryFrequent);
+
         let resources = &params.resources;
 
         if !resources.has_resource(

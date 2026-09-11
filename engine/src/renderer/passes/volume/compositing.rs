@@ -92,6 +92,9 @@ impl CompositingPass {
         color_name: &str,
         ssao_name: &str,
     ) {
+        cmd_buffer.clear_all_bindings(BindingFrequency::Frequent);
+        cmd_buffer.clear_all_bindings(BindingFrequency::VeryFrequent);
+
         let resources = &params.resources;
 
         let color_view = resources.access_view(

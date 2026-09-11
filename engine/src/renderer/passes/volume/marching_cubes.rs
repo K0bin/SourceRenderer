@@ -538,6 +538,9 @@ impl MarchingCubesPass {
         command_buffer: &mut CommandBuffer,
         pass_params: &mut RenderPassParameters<'_>,
     ) -> HashMap<MarchingCubesKey, MarchingCubesInfo> {
+        command_buffer.clear_all_bindings(BindingFrequency::Frequent);
+        command_buffer.clear_all_bindings(BindingFrequency::VeryFrequent);
+
         let mut map = HashMap::<MarchingCubesKey, MarchingCubesInfo>::new();
 
         let mut chunk_first_element_atomics_offset = 0;
