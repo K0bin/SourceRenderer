@@ -14,13 +14,16 @@ use super::gpu::{self, CommandBuffer as _, CommandPool as _, Queue as _};
 use super::{CommandBuffer, *};
 
 const QUERY_COUNT: u32 = 1024;
+const FRAME_COUNT: usize = 5;
 
 pub struct GraphicsContext {
     device: Arc<active_gpu_backend::Device>,
     memory_allocator: Arc<MemoryAllocator>,
     fence: Arc<super::Fence>,
+    current_unsubmitted_fence_value: u64,
     current_frame: u64,
     completed_frame: u64,
+    frame_finished_counter_values: [u64; FRAME_COUNT],
     thread_contexts: ManuallyDrop<ThreadLocal<ThreadContext>>,
     prerendered_frames: u32,
     destroyer: ManuallyDrop<Arc<DeferredDestroyer>>,
@@ -31,7 +34,7 @@ pub struct GraphicsContext {
 }
 
 pub struct ThreadContext {
-    frames: AtomicRefCell<SmallVec<[FrameContext; 5]>>,
+    frames: AtomicRefCell<SmallVec<[FrameContext; FRAME_COUNT]>>,
 }
 
 pub struct FrameContext {
@@ -70,13 +73,16 @@ impl GraphicsContext {
         destroyer: &Arc<DeferredDestroyer>,
         prerendered_frames: u32,
     ) -> Self {
+        assert!(prerendered_frames <= FRAME_COUNT as u32);
         Self {
             device: device.clone(),
             memory_allocator: memory_allocator.clone(),
             destroyer: ManuallyDrop::new(destroyer.clone()),
             fence: Arc::new(super::Fence::new(device, destroyer)),
-            current_frame: 1u64, // Fences (Timeline semaphores) start at value 0, so waiting for 0 would be pointless.
-            completed_frame: 1u64,
+            current_unsubmitted_fence_value: 1u64,
+            current_frame: 0u64,
+            completed_frame: 0u64,
+            frame_finished_counter_values: [1u64; 5],
             thread_contexts: ManuallyDrop::new(ThreadLocal::new()),
             prerendered_frames,
             global_buffer_allocator: buffer_allocator.clone(),
@@ -89,12 +95,17 @@ impl GraphicsContext {
     pub fn begin_frame(&mut self) -> u64 {
         self.current_frame += 1;
         let new_frame = self.current_frame;
-        self.destroyer.set_counter(new_frame);
 
-        if new_frame >= self.prerendered_frames as u64 {
-            let recycled_frame = new_frame - self.prerendered_frames as u64;
-            self.fence.await_value(recycled_frame);
-            self.destroyer.destroy_unused(recycled_frame);
+        if new_frame >= self.frame_finished_counter_values.len() as u64 {
+            let counter = self.frame_finished_counter_values
+                [(new_frame as usize) % self.frame_finished_counter_values.len()];
+            log::warn!(
+                "Waiting for semaphore: {:?}, current frame: {:?}",
+                counter,
+                new_frame
+            );
+            self.fence.await_value(counter);
+            self.destroyer.destroy_unused(counter);
             self.global_buffer_allocator.cleanup_unused();
             self.memory_allocator.cleanup_unused();
         }
@@ -132,12 +143,40 @@ impl GraphicsContext {
         new_frame
     }
 
-    pub fn end_frame(&mut self) -> SharedFenceValuePairRef<'_> {
-        assert_eq!(self.current_frame, self.completed_frame + 1);
-        self.completed_frame += 1;
+    // After calling this, it must be submitted!
+    // TODO: Consider moving submission into the context.
+    pub fn increment_timeline(&mut self) -> SharedFenceValuePairRef<'_> {
+        let unsubmitted_fence_value = self.current_unsubmitted_fence_value;
+        self.current_unsubmitted_fence_value += 1;
+        self.destroyer
+            .set_counter(self.current_unsubmitted_fence_value);
+        self.destroyer.destroy_unused(self.fence.value());
         SharedFenceValuePairRef {
             fence: &self.fence,
-            value: self.current_frame,
+            value: unsubmitted_fence_value,
+            sync_before: BarrierSync::all(),
+        }
+    }
+
+    pub fn end_frame(&mut self) -> SharedFenceValuePairRef<'_> {
+        assert_eq!(self.current_frame, self.completed_frame + 1);
+        let frame_completed_fence_value = self.current_unsubmitted_fence_value;
+        self.frame_finished_counter_values
+            [(self.current_frame as usize) % self.frame_finished_counter_values.len()] =
+            frame_completed_fence_value;
+        self.completed_frame += 1;
+        self.current_unsubmitted_fence_value += 1;
+        self.destroyer
+            .set_counter(self.current_unsubmitted_fence_value);
+        self.destroyer.destroy_unused(self.fence.value());
+        log::warn!(
+            "Ending frame: {}, with counter value: {}",
+            self.current_frame,
+            self.current_unsubmitted_fence_value - 1
+        );
+        SharedFenceValuePairRef {
+            fence: &self.fence,
+            value: frame_completed_fence_value,
             sync_before: BarrierSync::all(),
         }
     }
@@ -192,8 +231,10 @@ impl GraphicsContext {
 impl Drop for GraphicsContext {
     fn drop(&mut self) {
         if self.current_frame > 0 {
-            self.fence.await_value(self.completed_frame);
-            self.destroyer.destroy_unused(self.completed_frame);
+            let counter = self.current_unsubmitted_fence_value - 1;
+            self.fence.await_value(counter);
+            self.destroyer
+                .destroy_unused(counter.max(self.fence.value()));
         }
 
         unsafe { ManuallyDrop::drop(&mut self.thread_contexts) };
@@ -261,8 +302,6 @@ impl FrameContext {
         };
         let (sender, receiver) =
             crossbeam_channel::unbounded::<active_gpu_backend::CommandBuffer>();
-        let (secondary_sender, secondary_receiver) =
-            crossbeam_channel::unbounded::<active_gpu_backend::CommandBuffer>();
         let transient_buffer_allocator = TransientBufferAllocator::new(
             device,
             memory_allocator,
@@ -277,7 +316,7 @@ impl FrameContext {
                 receiver,
                 existing_cmd_buffer_handles: VecDeque::new(),
             },
-            transient_buffer_allocator: transient_buffer_allocator,
+            transient_buffer_allocator,
             global_buffer_allocator: buffer_allocator.clone(),
             destroyer: destroyer.clone(),
             acceleration_structure_scratch: None,
