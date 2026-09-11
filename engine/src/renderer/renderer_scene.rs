@@ -12,16 +12,76 @@ use super::light::{DirectionalLight, RendererDirectionalLight, RendererPointLigh
 use super::{PointLight, RendererStaticDrawable};
 use crate::asset::TextureHandle;
 
+struct RendererEntityType<T> {
+    entries: Vec<T>,
+    map: HashMap<Entity, usize>,
+}
+
+impl<T> RendererEntityType<T> {
+    fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+            map: HashMap::new(),
+        }
+    }
+
+    fn add(&mut self, entity: Entity, data: T) {
+        debug_assert!(self.map.get(&entity).is_none());
+        if cfg!(debug_assertions) {
+            for (_entity, index) in &self.map {
+                debug_assert_ne!(*index, self.entries.len());
+                debug_assert!(*index < self.entries.len());
+            }
+        }
+        debug_assert_eq!(self.map.len(), self.entries.len());
+
+        self.map.insert(entity, self.entries.len());
+        self.entries.push(data);
+    }
+
+    fn remove(&mut self, entity: Entity) {
+        // TODO: Revamp how we store all of it so this isn't necessary.
+
+        let removed_index_opt = self.map.remove(&entity);
+        debug_assert!(removed_index_opt.is_some());
+        if removed_index_opt.is_none() {
+            return;
+        }
+        let removed_index = removed_index_opt.unwrap();
+        self.entries.remove(removed_index);
+
+        for (_, entry_index) in &mut self.map {
+            debug_assert_ne!(*entry_index, removed_index);
+            if *entry_index > removed_index {
+                *entry_index -= 1;
+            }
+            debug_assert!(*entry_index < self.entries.len());
+        }
+        debug_assert_eq!(self.map.len(), self.entries.len());
+    }
+
+    #[allow(dead_code)]
+    fn get(&self, entity: Entity) -> Option<&T> {
+        let index = self.map.get(&entity)?;
+        Some(&self.entries[*index])
+    }
+
+    fn get_mut(&mut self, entity: Entity) -> Option<&mut T> {
+        let index = self.map.get(&entity)?;
+        Some(&mut self.entries[*index])
+    }
+
+    fn entries(&self) -> &[T] {
+        &self.entries
+    }
+}
+
 pub struct RendererScene {
     views: Vec<View>,
-    static_meshes: Vec<RendererStaticDrawable>,
-    point_lights: Vec<RendererPointLight>,
-    directional_lights: Vec<RendererDirectionalLight>,
-    volume_meshes: Vec<RendererVolumeDrawable>,
-    drawable_entity_map: HashMap<Entity, usize>,
-    point_light_entity_map: HashMap<Entity, usize>,
-    directional_light_entity_map: HashMap<Entity, usize>,
-    volume_mesh_entity_map: HashMap<Entity, usize>,
+    static_meshes: RendererEntityType<RendererStaticDrawable>,
+    point_lights: RendererEntityType<RendererPointLight>,
+    directional_lights: RendererEntityType<RendererDirectionalLight>,
+    volume_meshes: RendererEntityType<RendererVolumeDrawable>,
     latest_imgui: Cell<Option<FrameSnapshot>>,
     lightmap: Option<TextureHandle>,
 }
@@ -30,14 +90,10 @@ impl RendererScene {
     pub fn new() -> Self {
         Self {
             views: vec![View::default()],
-            static_meshes: Vec::new(),
-            point_lights: Vec::new(),
-            volume_meshes: Vec::new(),
-            directional_lights: Vec::new(),
-            drawable_entity_map: HashMap::new(),
-            point_light_entity_map: HashMap::new(),
-            directional_light_entity_map: HashMap::new(),
-            volume_mesh_entity_map: HashMap::new(),
+            static_meshes: RendererEntityType::new(),
+            point_lights: RendererEntityType::new(),
+            volume_meshes: RendererEntityType::new(),
+            directional_lights: RendererEntityType::new(),
             lightmap: None,
             latest_imgui: Default::default(),
         }
@@ -65,22 +121,22 @@ impl RendererScene {
 
     #[inline(always)]
     pub fn static_drawables(&self) -> &[RendererStaticDrawable] {
-        &self.static_meshes[..]
+        self.static_meshes.entries()
     }
 
     #[inline(always)]
     pub fn point_lights(&self) -> &[RendererPointLight] {
-        &self.point_lights
+        self.point_lights.entries()
     }
 
     #[inline(always)]
     pub fn directional_lights(&self) -> &[RendererDirectionalLight] {
-        &self.directional_lights
+        self.directional_lights.entries()
     }
 
     #[inline(always)]
     pub fn volume_mesh_instances(&self) -> &[RendererVolumeDrawable] {
-        &self.volume_meshes
+        self.volume_meshes.entries()
     }
 
     #[inline(always)]
@@ -94,63 +150,48 @@ impl RendererScene {
     ) {
         (
             &mut self.views,
-            &self.static_meshes,
-            &self.point_lights,
-            &self.directional_lights,
+            self.static_meshes.entries(),
+            self.point_lights.entries(),
+            self.directional_lights.entries(),
         )
     }
 
     pub fn add_static_drawable(&mut self, entity: Entity, static_drawable: RendererStaticDrawable) {
-        debug_assert!(self.drawable_entity_map.get(&entity).is_none());
-        if cfg!(debug_assertions) {
-            for (_entity, index) in &self.drawable_entity_map {
-                debug_assert_ne!(*index, self.static_meshes.len());
-            }
-        }
-        debug_assert_eq!(self.drawable_entity_map.len(), self.static_meshes.len());
-
-        self.drawable_entity_map
-            .insert(entity, self.static_meshes.len());
-        self.static_meshes.push(static_drawable);
+        self.static_meshes.add(entity, static_drawable);
     }
 
     pub fn remove_static_drawable(&mut self, entity: Entity) {
-        let index = Self::remove_from_indices_map(&mut self.drawable_entity_map, entity);
-        debug_assert!(index.is_some());
-        if index.is_none() {
-            return;
-        }
-        let index = index.unwrap();
-        self.static_meshes.remove(index);
-        debug_assert_eq!(self.drawable_entity_map.len(), self.static_meshes.len());
+        self.static_meshes.remove(entity);
     }
 
     pub fn update_transform(&mut self, entity: Entity, transform: Affine3A) {
-        let index = self.drawable_entity_map.get(&entity);
-        if let Some(index) = index {
-            let static_drawable = &mut self.static_meshes[*index];
+        let entry_opt = self.static_meshes.get_mut(entity);
+        if let Some(entry) = entry_opt {
+            entry.transform = transform;
+            return;
+        }
+
+        let entry_opt = self.point_lights.get_mut(entity);
+        if let Some(entry) = entry_opt {
+            entry.position = transform.transform_point3(Vec3::new(0f32, 0f32, 0f32));
+            return;
+        }
+
+        let entry_opt = self.directional_lights.get_mut(entity);
+        if let Some(entry) = entry_opt {
+            entry.direction = transform.transform_vector3(Vec3::new(0f32, 0f32, 1f32));
+            return;
+        }
+
+        let entry_opt = self.volume_meshes.get_mut(entity);
+        if let Some(entry) = entry_opt {
+            entry.transform = transform;
+            return;
+        }
+
+        let static_drawable = self.static_meshes.get_mut(entity);
+        if let Some(static_drawable) = static_drawable {
             static_drawable.transform = transform;
-            return;
-        }
-
-        let index = self.point_light_entity_map.get(&entity);
-        if let Some(index) = index {
-            let point_light = &mut self.point_lights[*index];
-            point_light.position = transform.transform_point3(Vec3::new(0f32, 0f32, 0f32));
-            return;
-        }
-
-        let index = self.directional_light_entity_map.get(&entity);
-        if let Some(index) = index {
-            let point_light = &mut self.directional_lights[*index];
-            point_light.direction = transform.transform_vector3(Vec3::new(0f32, 0f32, 1f32));
-            return;
-        }
-
-        let index = self.volume_mesh_entity_map.get(&entity);
-        if let Some(index) = index {
-            let volume_mesh = &mut self.volume_meshes[*index];
-            volume_mesh.transform = transform;
             return;
         }
 
@@ -169,9 +210,8 @@ impl RendererScene {
         texture_lod: u32,
         transparent: bool,
     ) {
-        let index = self.volume_mesh_entity_map.get(&entity);
-        if let Some(index) = index {
-            let volume_mesh = &mut self.volume_meshes[*index];
+        let volume_mesh_opt = self.volume_meshes.get_mut(entity);
+        if let Some(volume_mesh) = volume_mesh_opt {
             volume_mesh.min_threshold = min_threshold;
             volume_mesh.texture_lod = texture_lod;
             volume_mesh.transparent = transparent;
@@ -187,100 +227,33 @@ impl RendererScene {
     }
 
     pub fn add_point_light(&mut self, entity: Entity, light: PointLight) {
-        debug_assert!(self.point_light_entity_map.get(&entity).is_none());
-        if cfg!(debug_assertions) {
-            for (_entity, index) in &self.point_light_entity_map {
-                debug_assert_ne!(*index, self.point_lights.len());
-            }
-        }
-        debug_assert_eq!(self.point_light_entity_map.len(), self.point_lights.len());
-
-        self.point_light_entity_map
-            .insert(entity, self.point_lights.len());
-        let renderer_point_light = RendererPointLight::new(light.position, light.intensity);
-        self.point_lights.push(renderer_point_light);
+        self.point_lights.add(
+            entity,
+            RendererPointLight::new(light.position, light.intensity),
+        );
     }
 
     pub fn remove_point_light(&mut self, entity: Entity) {
-        let index = Self::remove_from_indices_map(&mut self.point_light_entity_map, entity);
-        debug_assert!(index.is_some());
-        if index.is_none() {
-            return;
-        }
-        let index = index.unwrap();
-        self.point_lights.remove(index);
-        debug_assert_eq!(self.point_light_entity_map.len(), self.point_lights.len());
+        self.point_lights.remove(entity);
     }
 
     pub fn add_directional_light(&mut self, entity: Entity, light: DirectionalLight) {
-        debug_assert!(self.directional_light_entity_map.get(&entity).is_none());
-        if cfg!(debug_assertions) {
-            for (_entity, index) in &self.directional_light_entity_map {
-                debug_assert_ne!(*index, self.directional_lights.len());
-            }
-        }
-        debug_assert_eq!(
-            self.directional_light_entity_map.len(),
-            self.directional_lights.len()
+        self.directional_lights.add(
+            entity,
+            RendererDirectionalLight::new(light.direction, light.intensity),
         );
-
-        self.directional_light_entity_map
-            .insert(entity, self.point_lights.len());
-        let renderer_directional_light =
-            RendererDirectionalLight::new(light.direction, light.intensity);
-        self.directional_lights.push(renderer_directional_light);
     }
 
     pub fn remove_directional_light(&mut self, entity: Entity) {
-        let index = Self::remove_from_indices_map(&mut self.directional_light_entity_map, entity);
-        debug_assert!(index.is_some());
-        if index.is_none() {
-            return;
-        }
-        let index = index.unwrap();
-        self.point_lights.remove(index);
-        debug_assert_eq!(
-            self.directional_light_entity_map.len(),
-            self.directional_lights.len()
-        );
+        self.directional_lights.remove(entity);
     }
 
     pub fn add_volume_drawable(&mut self, entity: Entity, volume_drawable: RendererVolumeDrawable) {
-        debug_assert!(self.volume_mesh_entity_map.get(&entity).is_none());
-        if cfg!(debug_assertions) {
-            for (_entity, index) in &self.volume_mesh_entity_map {
-                debug_assert_ne!(*index, self.volume_meshes.len());
-            }
-        }
-        debug_assert_eq!(self.volume_mesh_entity_map.len(), self.volume_meshes.len());
-
-        self.volume_mesh_entity_map
-            .insert(entity, self.volume_meshes.len());
-        self.volume_meshes.push(volume_drawable);
+        self.volume_meshes.add(entity, volume_drawable);
     }
 
     pub fn remove_volume_drawable(&mut self, entity: Entity) {
-        let index = Self::remove_from_indices_map(&mut self.volume_mesh_entity_map, entity);
-        debug_assert!(index.is_some());
-        if index.is_none() {
-            return;
-        }
-        let index = index.unwrap();
-        self.volume_meshes.remove(index);
-        debug_assert_eq!(self.volume_mesh_entity_map.len(), self.volume_meshes.len());
-    }
-
-    fn remove_from_indices_map(map: &mut HashMap<Entity, usize>, entity: Entity) -> Option<usize> {
-        // TODO: Revamp how we store all of it so this isn't necessary.
-
-        let removed_index = map.remove(&entity)?;
-        for (_, entry_index) in map {
-            assert_ne!(*entry_index, removed_index);
-            if *entry_index > removed_index {
-                *entry_index -= 1;
-            }
-        }
-        Some(removed_index)
+        self.volume_meshes.remove(entity);
     }
 
     pub fn set_ui_data(&self, data: FrameSnapshot) {
