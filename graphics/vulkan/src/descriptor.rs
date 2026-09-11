@@ -310,35 +310,71 @@ impl VkDescriptorSet {
 
         let mut stored_bindings =
             SmallVec::<[VkBoundResource; DEFAULT_PER_SET_PREALLOCATED_SIZE]>::default();
+        let mut image_write_count = 0usize;
+        let mut buffer_write_count = 0usize;
         for binding in bindings {
-            stored_bindings.push(binding.into());
+            let stored: VkBoundResource = binding.into();
+            match &stored {
+                VkBoundResource::SampledTexture(_)
+                | VkBoundResource::StorageTexture(_)
+                | VkBoundResource::SampledTextureAndSampler(_, _) => {
+                    image_write_count += 1;
+                }
+                VkBoundResource::SampledTextureAndSamplerArray(entries) => {
+                    image_write_count += entries.len();
+                }
+                VkBoundResource::SampledTextureArray(entries) => {
+                    image_write_count += entries.len();
+                }
+                VkBoundResource::StorageTextureArray(entries) => {
+                    image_write_count += entries.len();
+                }
+                VkBoundResource::UniformBufferArray(entries) => {
+                    buffer_write_count += entries.len();
+                }
+                VkBoundResource::StorageBufferArray(entries) => {
+                    buffer_write_count += entries.len();
+                }
+                VkBoundResource::UniformBuffer(_) | VkBoundResource::StorageBuffer(_) => {
+                    buffer_write_count += 1;
+                }
+                _ => {}
+            }
+            stored_bindings.push(stored);
         }
 
         let mut writes: SmallVec<[vk::WriteDescriptorSet; DEFAULT_PER_SET_PREALLOCATED_SIZE]> =
             SmallVec::with_capacity(bindings.len());
         let mut image_writes: SmallVec<
             [vk::DescriptorImageInfo; DEFAULT_PER_SET_PREALLOCATED_SIZE],
-        > = SmallVec::with_capacity(bindings.len());
+        > = SmallVec::with_capacity(image_write_count);
         let mut buffer_writes: SmallVec<
             [vk::DescriptorBufferInfo; DEFAULT_PER_SET_PREALLOCATED_SIZE],
-        > = SmallVec::with_capacity(bindings.len());
+        > = SmallVec::with_capacity(buffer_write_count);
         let mut acceleration_structures: SmallVec<[vk::AccelerationStructureKHR; 2]> =
             Default::default();
         let mut acceleration_structure_writes: SmallVec<
             [vk::WriteDescriptorSetAccelerationStructureKHR; 2],
         > = Default::default();
+
+        let initial_writes_ptr = writes.as_ptr();
+        let initial_image_writes_ptr = image_writes.as_ptr();
+        let initial_buffer_writes_ptr = buffer_writes.as_ptr();
+        let initial_acceleration_structures_ptr = acceleration_structures.as_ptr();
+        let initial_acceleration_structures_writes_ptr = acceleration_structure_writes.as_ptr();
+
         for (binding, resource) in stored_bindings.iter().enumerate() {
             // We're using pointers to elements in those vecs, so we cant relocate
-            assert_ne!(writes.len(), writes.capacity());
-            assert_ne!(image_writes.len(), image_writes.capacity());
-            assert_ne!(buffer_writes.len(), buffer_writes.capacity());
-            assert_ne!(
-                acceleration_structures.len(),
-                acceleration_structures.capacity()
+            assert_eq!(initial_writes_ptr, writes.as_ptr());
+            assert_eq!(initial_image_writes_ptr, image_writes.as_ptr());
+            assert_eq!(initial_buffer_writes_ptr, buffer_writes.as_ptr());
+            assert_eq!(
+                initial_acceleration_structures_ptr,
+                acceleration_structures.as_ptr()
             );
-            assert_ne!(
-                acceleration_structure_writes.len(),
-                acceleration_structure_writes.capacity()
+            assert_eq!(
+                initial_acceleration_structures_writes_ptr,
+                acceleration_structure_writes.as_ptr()
             );
 
             let binding_info = layout.binding(binding as u32);
@@ -680,14 +716,14 @@ impl Drop for VkDescriptorSet {
     }
 }
 
-#[derive(Hash, Eq, PartialEq, Clone)]
+#[derive(Hash, Eq, PartialEq, Clone, Debug)]
 pub(crate) struct VkBufferBindingInfo {
     pub(crate) buffer: vk::Buffer,
     pub(crate) offset: u64,
     pub(crate) length: u64,
 }
 
-#[derive(Hash, Eq, PartialEq, Clone)]
+#[derive(Hash, Eq, PartialEq, Clone, Debug)]
 pub(crate) enum VkBoundResource {
     None,
     UniformBuffer(VkBufferBindingInfo),
