@@ -1,4 +1,5 @@
 use crate::uni_project::ui::UIPlugin;
+use crate::uni_project::{MANIX_PATH, TRANSFER_FUNCTION_PATH, manix_transform};
 use crate::{RendererPicker, fps_camera};
 use bevy_app::{App, Plugin};
 use bevy_math::Affine3A;
@@ -21,16 +22,12 @@ impl Plugin for UniProjectPlugin {
     fn build(&self, app: &mut App) {
         {
             log::info!("Initializing university project plugin");
-            let marching_cube_scale =
-                Vec3::new(0.488281f32, 0.488281f32, 0.700012f32) * 8f32 * 0.01f32;
-            let model_matrix = Matrix4::from_rotation_x(-1.57f32)
-                * Matrix4::from_rotation_z(3.14)
-                * Matrix4::from_scale(marching_cube_scale);
+            let model_matrix = manix_transform();
 
             app.world_mut().spawn((
                 VolumeMeshInstance {
-                    volume_texture_path: "assets/manix.raw.txt".to_string(),
-                    transfer_function_texture_path: "assets/transferfunction.png".to_string(),
+                    volume_texture_path: MANIX_PATH.to_string(),
+                    transfer_function_texture_path: TRANSFER_FUNCTION_PATH.to_string(),
                     volume_texture_lod: 3,
                     threshold_min: 0.0288f32,
                     transparent: true,
@@ -39,8 +36,8 @@ impl Plugin for UniProjectPlugin {
             ));
             app.world_mut().spawn((
                 VolumeMeshInstance {
-                    volume_texture_path: "assets/manix.raw.txt".to_string(),
-                    transfer_function_texture_path: "assets/transferfunction.png".to_string(),
+                    volume_texture_path: MANIX_PATH.to_string(),
+                    transfer_function_texture_path: TRANSFER_FUNCTION_PATH.to_string(),
                     volume_texture_lod: 3,
                     threshold_min: 0.55f32,
                     transparent: false,

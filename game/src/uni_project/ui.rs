@@ -1,11 +1,15 @@
+use crate::uni_project::{MANIX_PATH, TRANSFER_FUNCTION_PATH, manix_transform};
 use bevy_app::{App, Plugin, Update};
-use bevy_ecs::change_detection::{NonSendMut, Ref, ResMut};
+use bevy_ecs::change_detection::{NonSendMut, ResMut};
 use bevy_ecs::entity::Entity;
+use bevy_ecs::prelude::Commands;
 use bevy_ecs::resource::Resource;
-use bevy_ecs::system::{Query, Res};
+use bevy_ecs::system::Query;
+use bevy_math::Affine3A;
 use sourcerenderer_engine::DearImgui;
 use sourcerenderer_engine::dear_imgui_rs::{ChildWindow, Condition, ListBox};
 use sourcerenderer_engine::renderer::VolumeMeshInstance;
+use sourcerenderer_engine::transform::InterpolatedTransform;
 
 pub(super) struct UIPlugin;
 
@@ -25,6 +29,7 @@ fn volume_meshes_ui_system(
     imgui: NonSendMut<DearImgui>,
     mut instances: Query<(Entity, &mut VolumeMeshInstance)>,
     mut state: ResMut<UIState>,
+    mut commands: Commands,
 ) {
     let ui = imgui.ui();
     let window_size = [500.0f32, 400.0f32];
@@ -38,7 +43,10 @@ fn volume_meshes_ui_system(
                 .size([128.0f32.min(size[0]), size[1]])
                 .build(ui, || {
                     ListBox::new("##meshlistbox")
-                        .size(ui.content_region_avail())
+                        .size([
+                            ui.content_region_avail()[0],
+                            ui.content_region_avail()[1] - 64.0f32,
+                        ])
                         .build(ui, || {
                             for (entity, mesh) in &instances {
                                 let text = format!("Mesh {:?}", mesh.threshold_min);
@@ -51,24 +59,55 @@ fn volume_meshes_ui_system(
                                 }
                             }
                         });
+                    if ui.button("Add mesh##addmeshbutton") {
+                        let new_entity = commands
+                            .spawn((
+                                VolumeMeshInstance {
+                                    volume_texture_path: MANIX_PATH.to_string(),
+                                    volume_texture_lod: 3,
+                                    transfer_function_texture_path: TRANSFER_FUNCTION_PATH
+                                        .to_string(),
+                                    threshold_min: 0.95f32,
+                                    transparent: false,
+                                },
+                                InterpolatedTransform(Affine3A::from_mat4(manix_transform())),
+                            ))
+                            .id();
+                        state.selected = Some(new_entity);
+                    }
                 });
 
             ui.same_line();
             ChildWindow::new("##meshproperties").build(ui, || {
                 if let Some(entity) = state.selected {
-                    let (_, mut mesh) = instances.get_mut(entity).unwrap();
-                    ui.text("Min Threshold:");
-                    ui.set_next_item_width(ui.content_region_avail_width());
-                    ui.slider(
-                        format!("##minthreshold{:?}", entity),
-                        0.01f32,
-                        1.0f32,
-                        &mut mesh.threshold_min,
-                    );
+                    if let Ok((_, mut mesh)) = instances.get_mut(entity) {
+                        ui.text("Min Threshold:");
+                        ui.set_next_item_width(ui.content_region_avail_width());
+                        ui.slider(
+                            format!("##minthreshold{:?}", entity),
+                            0.01f32,
+                            1.0f32,
+                            &mut mesh.threshold_min,
+                        );
 
-                    ui.text("Transparent:");
-                    ui.same_line();
-                    ui.checkbox(format!("##transparent{:?}", entity), &mut mesh.transparent);
+                        ui.text("Transparent:");
+                        ui.same_line();
+                        ui.checkbox(format!("##transparent{:?}", entity), &mut mesh.transparent);
+
+                        ui.text("LOD:");
+                        ui.set_next_item_width(ui.content_region_avail_width());
+                        ui.slider(
+                            format!("##lod{:?}", entity),
+                            0u32,
+                            4u32,
+                            &mut mesh.volume_texture_lod,
+                        );
+
+                        if ui.button("Delete mesh##addmeshbutton") {
+                            commands.entity(entity).despawn();
+                            state.selected = None;
+                        }
+                    }
                 }
             });
         });
