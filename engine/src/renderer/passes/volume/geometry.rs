@@ -631,7 +631,8 @@ impl GeometryPass {
             .filter(|d| d.transparent)
             .cloned()
             .collect();
-        transparent_drawables.sort_by_key(|d| (d.min_threshold * 1000.0f32) as u32); // good enough
+        transparent_drawables
+            .sort_by_key(|d| ((1.0f32 - d.min_threshold).max(0.0f32) * 1000.0f32) as u32); // good enough
 
         for drawable in &transparent_drawables {
             if !has_opaque {
