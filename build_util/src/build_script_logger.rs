@@ -30,7 +30,11 @@ impl log::Log for BuildScriptLogger {
             return;
         }
 
-        println!("cargo::warning=\"{}\"", record.args());
+        if record.level() == log::Level::Error {
+            println!("cargo::error=\"{}\"", record.args());
+        } else {
+            println!("cargo::warning=\"{}\"", record.args());
+        }
 
         let do_flush = {
             let mut file = self.file.lock().unwrap();
