@@ -309,6 +309,7 @@ impl RenderPath for VolumeRenderer {
             }]);
 
             self.ui_pass.execute(
+                &self.device,
                 &mut cmd_buffer,
                 assets,
                 resources,
