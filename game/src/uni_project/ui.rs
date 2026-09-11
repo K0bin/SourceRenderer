@@ -49,7 +49,10 @@ fn volume_meshes_ui_system(
                         ])
                         .build(ui, || {
                             for (entity, mesh) in &instances {
-                                let text = format!("Mesh {:?}", mesh.threshold_min);
+                                let text = format!(
+                                    "Mesh {:?}##meshlistentry{:?}",
+                                    mesh.threshold_min, entity
+                                );
                                 if ui
                                     .selectable_config(&text)
                                     .selected(state.selected == Some(entity))
