@@ -19,11 +19,11 @@ layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 #include "descriptor_sets.inc.glsl"
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0, std430) uniform EdgeTable {
-  uint[256u] edges;
+    uint[256u] edges;
 };
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 1, std430) uniform TriTable {
-  int[256u][17u] tris;
+    int[256u][17u] tris;
 };
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform texture3D densityImage;
@@ -42,6 +42,8 @@ struct IndirectCommand {
     int vertexOffset;
     uint firstInstance;
     uint vertexCount;
+    uint _pad_to_16_0;
+    uint _pad_to_16_1;
 };
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 5, scalar) buffer bufferatomics {
     IndirectCommand[] commands;
@@ -60,9 +62,9 @@ layout(push_constant, std430) uniform Config {
 
 uvec3 indexOffset(uint idx) {
     return uvec3(
-         ((idx >> 1u) ^ idx) & 1u,
-         (idx >> 2u) & 1u,
-         (idx >> 1u) & 1u
+            ((idx >> 1u) ^ idx) & 1u,
+            (idx >> 2u) & 1u,
+            (idx >> 1u) & 1u
     );
 }
 
@@ -73,8 +75,8 @@ uint vertexKey(uvec3 pos1, uvec3 pos2) {
     pos = min(sizes - uvec3(1u), pos);
 
     uint key = pos.z * sizes.x * sizes.y +
-         pos.y * sizes.x +
-         pos.x;
+    pos.y * sizes.x +
+    pos.x;
 
     return key;
 }
@@ -113,7 +115,7 @@ void main() {
     uvec3 unshiftedBase = base - minBox;
 
     if (subgroupAll(any(greaterThanEqual(unshiftedBase + uvec3(1u), lodExtents))))
-        return;
+    return;
 
     uint finalThresholdsCount = thresholdsCountConst == 0 ? thresholdsCount : thresholdsCountConst;
 
@@ -145,21 +147,21 @@ void main() {
     }
 
     if (any(greaterThanEqual(unshiftedBase + uvec3(1u), lodExtents)))
-        return;
+    return;
 
     if (empty || full)
-        return;
+    return;
 
 
     for (uint j = 0u; j < finalThresholdsCount; j++) {
         uint voxelKey = voxelKeys[j];
         if (voxelKey == 0u || voxelKey == 255u)
-            continue;
+        continue;
 
         uint indexCount = tris[voxelKey][0u];
         indexCount = min(indexCount, 15u);
         if (indexCount == 0u)
-            continue;
+        continue;
 
         commands[j].instanceCount = 1u;
 

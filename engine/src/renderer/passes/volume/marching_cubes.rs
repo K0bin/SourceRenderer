@@ -71,6 +71,8 @@ pub struct MarchingCubesIndirectCall {
     vertex_offset: i32,
     first_instance: u32,
     vertex_count: u32,
+    _pad_to_16_0: u32,
+    _pad_to_16_1: u32,
 }
 
 pub struct MarchingCubesPass {
