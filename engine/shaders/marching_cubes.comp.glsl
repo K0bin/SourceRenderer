@@ -108,6 +108,21 @@ uint buildVertexKey(uint index) {
     return vtxKey;
 }
 
+const bool renderDebugCube = false;
+const uvec3 cubePositions[8] = uvec3[8](
+        uvec3(0, 0, 0), uvec3(1, 0, 0),
+        uvec3(1, 1, 0), uvec3(0, 1, 0),
+        uvec3(0, 0, 1), uvec3(1, 0, 1),
+        uvec3(1, 1, 1), uvec3(0, 1, 1)
+);
+const uvec3 cubeIndices[12] = uvec3[12](
+        uvec3(0, 1, 2), uvec3(2, 3, 0), // Front
+        uvec3(1, 5, 6), uvec3(6, 2, 1), // Right
+        uvec3(5, 4, 7), uvec3(7, 6, 5), // Back
+        uvec3(4, 0, 3), uvec3(3, 7, 4), // Left
+        uvec3(3, 2, 6), uvec3(6, 7, 3), // Top
+        uvec3(4, 5, 1), uvec3(1, 0, 4)  // Bottom
+);
 
 void main() {
     uvec3 workgroupBase = gl_WorkGroupID * gl_WorkGroupSize + minBox;
@@ -165,12 +180,19 @@ void main() {
 
         commands[j].instanceCount = 1u;
 
-        uint firstIndex = atomicAdd(commands[j].indexCount, indexCount);
-
-        for (uint i = 0u; i < indexCount; i += 3u) {
-            indicesBuffers[j].indices[firstIndex + i + 0u] = buildVertexKey(tris[voxelKey][1u + i + 0u]);
-            indicesBuffers[j].indices[firstIndex + i + 1u] = buildVertexKey(tris[voxelKey][1u + i + 1u]);
-            indicesBuffers[j].indices[firstIndex + i + 2u] = buildVertexKey(tris[voxelKey][1u + i + 2u]);
+        if (!renderDebugCube) {
+            uint firstIndex = atomicAdd(commands[j].indexCount, indexCount);
+            for (uint i = 0u; i < indexCount; i += 3u) {
+                indicesBuffers[j].indices[firstIndex + i + 0u] = buildVertexKey(tris[voxelKey][1u + i + 0u]);
+                indicesBuffers[j].indices[firstIndex + i + 1u] = buildVertexKey(tris[voxelKey][1u + i + 1u]);
+                indicesBuffers[j].indices[firstIndex + i + 2u] = buildVertexKey(tris[voxelKey][1u + i + 2u]);
+            }
+        } else {
+            uint firstIndex = atomicAdd(commands[j].indexCount, 12u * 3u);
+            for (uint i = 0u; i < 12u * 3u; i++) {
+                uvec3 vtx = cubePositions[cubeIndices[i / 3u][i % 3u]] + gl_GlobalInvocationID;
+                indicesBuffers[j].indices[firstIndex + i] = vertexKey(vtx, vtx);
+            }
         }
     }
 }
