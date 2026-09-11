@@ -10,7 +10,8 @@ use web_time::{Duration, Instant};
 
 use super::asset::RendererAssets;
 use super::drawable::{
-    RendererStaticDrawable, RendererVolumeDrawable, make_camera_proj, make_camera_view,
+    RendererStaticDrawable, RendererVolumeDrawable, VolumeDrawableTransparencyMode,
+    make_camera_proj, make_camera_view,
 };
 use super::ecs::{DirectionalLightComponent, PointLightComponent, VolumeMeshInstance};
 use super::light::DirectionalLight;
@@ -692,7 +693,7 @@ impl RendererSender {
         entity: Entity,
         min_threshold: f32,
         texture_lod: u32,
-        transparent: bool,
+        transparent: VolumeDrawableTransparencyMode,
     ) -> Result<(), SendError<()>> {
         let sender = if let Some(sender) = self.sender.as_ref() {
             sender

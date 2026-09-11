@@ -21,6 +21,8 @@ mod dear_imgui;
 pub use dear_imgui::DearImgui;
 pub use dear_imgui_rs;
 
+pub use renderer::VolumeDrawableTransparencyMode;
+
 pub mod graphics;
 pub mod renderer;
 

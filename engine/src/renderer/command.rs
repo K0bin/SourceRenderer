@@ -1,4 +1,5 @@
 use crate::engine::WindowState;
+use crate::renderer::drawable::VolumeDrawableTransparencyMode;
 use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;
 use dear_imgui_rs::FrameSnapshot;
@@ -32,7 +33,7 @@ pub enum RendererCommand {
         transfer_function_texture_path: String,
         texture_lod: u32,
         min_threshold: f32,
-        transparent: bool,
+        transparent: VolumeDrawableTransparencyMode,
     },
     UnregisterVolume(Entity),
     UpdateTransform {
@@ -47,7 +48,7 @@ pub enum RendererCommand {
         entity: Entity,
         min_threshold: f32,
         texture_lod: u32,
-        transparent: bool,
+        transparent: VolumeDrawableTransparencyMode,
     },
     SetLightmap(String),
     EndFrame,

@@ -7,7 +7,7 @@ use dear_imgui_rs::FrameSnapshot;
 use log::warn;
 use sourcerenderer_core::Vec3;
 
-use super::drawable::{RendererVolumeDrawable, View};
+use super::drawable::{RendererVolumeDrawable, View, VolumeDrawableTransparencyMode};
 use super::light::{DirectionalLight, RendererDirectionalLight, RendererPointLight};
 use super::{PointLight, RendererStaticDrawable};
 use crate::asset::TextureHandle;
@@ -208,7 +208,7 @@ impl RendererScene {
         entity: Entity,
         min_threshold: f32,
         texture_lod: u32,
-        transparent: bool,
+        transparent: VolumeDrawableTransparencyMode,
     ) {
         let volume_mesh_opt = self.volume_meshes.get_mut(entity);
         if let Some(volume_mesh) = volume_mesh_opt {

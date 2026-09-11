@@ -23,7 +23,6 @@ fn lerp(a: f32, b: f32, f: f32) -> f32 {
 impl SsaoPass {
     const SSAO_INTERNAL_TEXTURE_NAME: &'static str = "SSAO";
     pub const SSAO_TEXTURE_NAME: &'static str = "SSAOBlurred";
-    pub const SSAO_NOISE_TEXTURE_NAME: &'static str = "SSAONoise";
 
     #[allow(unused)]
     pub fn new(

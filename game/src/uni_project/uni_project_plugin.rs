@@ -3,7 +3,7 @@ use crate::uni_project::{MANIX_PATH, TRANSFER_FUNCTION_PATH, manix_transform};
 use crate::{RendererPicker, fps_camera};
 use bevy_app::{App, Plugin};
 use bevy_math::Affine3A;
-use sourcerenderer_core::{Matrix4, Vec3};
+use sourcerenderer_engine::VolumeDrawableTransparencyMode;
 use sourcerenderer_engine::renderer::{RendererType, VolumeMeshInstance};
 use sourcerenderer_engine::transform::InterpolatedTransform;
 /* TODO:
@@ -30,7 +30,7 @@ impl Plugin for UniProjectPlugin {
                     transfer_function_texture_path: TRANSFER_FUNCTION_PATH.to_string(),
                     volume_texture_lod: 3,
                     threshold_min: 0.0288f32,
-                    transparent: true,
+                    transparent: VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque,
                 },
                 InterpolatedTransform(Affine3A::from_mat4(model_matrix)),
             ));
@@ -40,7 +40,7 @@ impl Plugin for UniProjectPlugin {
                     transfer_function_texture_path: TRANSFER_FUNCTION_PATH.to_string(),
                     volume_texture_lod: 3,
                     threshold_min: 0.55f32,
-                    transparent: false,
+                    transparent: VolumeDrawableTransparencyMode::Opaque,
                 },
                 InterpolatedTransform(Affine3A::from_mat4(model_matrix)),
             ));

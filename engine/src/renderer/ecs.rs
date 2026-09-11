@@ -1,3 +1,4 @@
+use crate::renderer::drawable::VolumeDrawableTransparencyMode;
 use bevy_ecs::component::Component;
 
 #[derive(Clone, Debug, PartialEq, Component)]
@@ -29,5 +30,5 @@ pub struct VolumeMeshInstance {
     pub volume_texture_lod: u32,
     pub transfer_function_texture_path: String,
     pub threshold_min: f32,
-    pub transparent: bool,
+    pub transparent: VolumeDrawableTransparencyMode,
 }

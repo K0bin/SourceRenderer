@@ -13,7 +13,6 @@ use sourcerenderer_core::{Quaternion, Vec2, Vec3};
 use sourcerenderer_engine::Engine;
 use sourcerenderer_engine::graphics::*;
 
-use sourcerenderer_engine::Camera;
 use sourcerenderer_engine::asset::{AssetManager, MeshRange, Vertex};
 use sourcerenderer_engine::math::BoundingBox;
 use sourcerenderer_engine::renderer::{PointLightComponent, StaticRenderableComponent};

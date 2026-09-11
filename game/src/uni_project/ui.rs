@@ -6,10 +6,10 @@ use bevy_ecs::prelude::Commands;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::Query;
 use bevy_math::Affine3A;
-use sourcerenderer_engine::DearImgui;
 use sourcerenderer_engine::dear_imgui_rs::{ChildWindow, Condition, ListBox};
 use sourcerenderer_engine::renderer::VolumeMeshInstance;
 use sourcerenderer_engine::transform::InterpolatedTransform;
+use sourcerenderer_engine::{DearImgui, VolumeDrawableTransparencyMode};
 
 pub(super) struct UIPlugin;
 
@@ -71,7 +71,7 @@ fn volume_meshes_ui_system(
                                     transfer_function_texture_path: TRANSFER_FUNCTION_PATH
                                         .to_string(),
                                     threshold_min: 0.95f32,
-                                    transparent: false,
+                                    transparent: VolumeDrawableTransparencyMode::Opaque,
                                 },
                                 InterpolatedTransform(Affine3A::from_mat4(manix_transform())),
                             ))
@@ -93,9 +93,27 @@ fn volume_meshes_ui_system(
                             &mut mesh.threshold_min,
                         );
 
-                        ui.text("Transparent:");
-                        ui.same_line();
-                        ui.checkbox(format!("##transparent{:?}", entity), &mut mesh.transparent);
+                        ui.text("Transparency:");
+                        if ui.radio_button(
+                            "Opaque##transparency0",
+                            mesh.transparent == VolumeDrawableTransparencyMode::Opaque,
+                        ) {
+                            mesh.transparent = VolumeDrawableTransparencyMode::Opaque;
+                        }
+                        if ui.radio_button(
+                            "Transparent##transparency1",
+                            mesh.transparent == VolumeDrawableTransparencyMode::Transparent,
+                        ) {
+                            mesh.transparent = VolumeDrawableTransparencyMode::Transparent;
+                        }
+                        if ui.radio_button(
+                            "Transparent in front of opaque##transparency1",
+                            mesh.transparent
+                                == VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque,
+                        ) {
+                            mesh.transparent =
+                                VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque;
+                        }
 
                         ui.text("LOD:");
                         ui.set_next_item_width(ui.content_region_avail_width());

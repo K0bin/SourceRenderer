@@ -17,6 +17,13 @@ pub struct RendererStaticDrawable {
     pub can_move: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum VolumeDrawableTransparencyMode {
+    Opaque,
+    TransparentInFrontOfOpaque,
+    Transparent,
+}
+
 #[derive(Clone, Debug)]
 pub struct RendererVolumeDrawable {
     pub entity: Entity,
@@ -25,7 +32,7 @@ pub struct RendererVolumeDrawable {
     pub volume_texture: TextureHandle,
     pub transfer_function_texture: TextureHandle,
     pub texture_lod: u32,
-    pub transparent: bool,
+    pub transparent: VolumeDrawableTransparencyMode,
     pub min_threshold: f32,
 }
 

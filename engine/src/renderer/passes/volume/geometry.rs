@@ -4,7 +4,7 @@ use crate::renderer::asset::{
     GraphicsPipelineHandle, GraphicsPipelineInfo, PathPipelineShaderStage, RendererAssets,
     RendererAssetsReadOnly,
 };
-use crate::renderer::drawable::{RendererVolumeDrawable, View};
+use crate::renderer::drawable::{RendererVolumeDrawable, View, VolumeDrawableTransparencyMode};
 use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
 use crate::renderer::passes::volume::marching_cubes::{
     MarchingCubesIndirectCall, MarchingCubesInfo, MarchingCubesKey, MarchingCubesPass,
@@ -156,7 +156,7 @@ impl GeometryPass {
             .stencil_front = StencilInfo {
             pass_op: StencilOp::Keep,
             fail_op: StencilOp::Keep,
-            func: CompareFunc::NotEqual,
+            func: CompareFunc::Greater,
             depth_fail_op: StencilOp::Keep,
         };
         let pipeline_non_overlapping =
@@ -188,7 +188,7 @@ impl GeometryPass {
             .stencil_front = StencilInfo {
             pass_op: StencilOp::Keep,
             fail_op: StencilOp::Keep,
-            func: CompareFunc::Equal,
+            func: CompareFunc::LessEqual,
             depth_fail_op: StencilOp::Keep,
         };
         let pipeline_transparent_prepass =
@@ -200,7 +200,7 @@ impl GeometryPass {
         pipeline_transparency_info.depth_stencil.stencil_front = StencilInfo {
             pass_op: StencilOp::Keep,
             fail_op: StencilOp::Keep,
-            func: CompareFunc::Equal,
+            func: CompareFunc::LessEqual,
             depth_fail_op: StencilOp::Keep,
         };
         let blend_attachments = [
@@ -442,7 +442,7 @@ impl GeometryPass {
             .scene
             .volume_mesh_instances()
             .iter()
-            .any(|d| !d.transparent);
+            .any(|d| d.transparent == VolumeDrawableTransparencyMode::Opaque);
 
         cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
             render_targets: &[
@@ -461,7 +461,7 @@ impl GeometryPass {
                 view: &dsv,
                 load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue {
                     depth: 1.0f32,
-                    stencil: if has_opaque { 0u32 } else { 1u32 },
+                    stencil: 0u32,
                 }),
                 store_op: StoreOp::Store,
             }),
@@ -498,7 +498,6 @@ impl GeometryPass {
         }]);
         cmd_buffer.set_stencil_reference(1u32);
 
-        //let camera_buffer = cmd_buffer.upload_dynamic_data(&[view.proj_matrix * view.view_matrix], BufferUsage::CONSTANT);
         cmd_buffer.bind_uniform_buffer(
             BindingFrequency::Frame,
             0,
@@ -534,7 +533,11 @@ impl GeometryPass {
         );
 
         for drawable in params.scene.scene.volume_mesh_instances() {
-            if drawable.transparent {
+            if drawable.transparent != VolumeDrawableTransparencyMode::Opaque
+                && !(!has_opaque
+                    && drawable.transparent
+                        == VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque)
+            {
                 continue;
             }
 
@@ -628,7 +631,7 @@ impl GeometryPass {
             .scene
             .volume_mesh_instances()
             .iter()
-            .filter(|d| d.transparent)
+            .filter(|d| d.transparent != VolumeDrawableTransparencyMode::Opaque)
             .cloned()
             .collect();
         transparent_drawables.sort_by_key(|d| (d.min_threshold * 1000.0f32) as u32); // good enough
@@ -636,6 +639,9 @@ impl GeometryPass {
         for drawable in &transparent_drawables {
             if !has_opaque {
                 break;
+            }
+            if drawable.transparent != VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque {
+                continue;
             }
 
             let mut model_matrix = drawable.transform.into();
@@ -725,6 +731,12 @@ impl GeometryPass {
         // Geometry 2 - Depth prepass
 
         for drawable in &transparent_drawables {
+            if drawable.transparent == VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque {
+                cmd_buffer.set_stencil_reference(1u32);
+            } else if drawable.transparent == VolumeDrawableTransparencyMode::Transparent {
+                cmd_buffer.set_stencil_reference(0u32);
+            }
+
             let mut model_matrix = drawable.transform.into();
             let lod_scale = (1u32 << drawable.texture_lod) as f32;
             model_matrix *= Matrix4::from_scale(Vec3::new(lod_scale, lod_scale, lod_scale));
@@ -753,6 +765,12 @@ impl GeometryPass {
                 }],
                 ShaderType::VertexShader,
             );
+            cmd_buffer.bind_sampling_view_and_sampler(
+                BindingFrequency::Frequent,
+                0u32,
+                &volume_texture.view,
+                resources.linear_sampler(),
+            );
 
             let key = MarchingCubesKey::new(
                 drawable.volume_texture,
@@ -780,6 +798,12 @@ impl GeometryPass {
         // Geometry 2 - Transparent
 
         for drawable in &transparent_drawables {
+            if drawable.transparent == VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque {
+                cmd_buffer.set_stencil_reference(1u32);
+            } else if drawable.transparent == VolumeDrawableTransparencyMode::Transparent {
+                cmd_buffer.set_stencil_reference(0u32);
+            }
+
             let mut model_matrix = drawable.transform.into();
             let lod_scale = (1u32 << drawable.texture_lod) as f32;
             model_matrix *= Matrix4::from_scale(Vec3::new(lod_scale, lod_scale, lod_scale));

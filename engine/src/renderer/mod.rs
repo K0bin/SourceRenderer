@@ -15,8 +15,7 @@ pub(crate) mod passes;
 mod vertex;
 
 pub use self::command::RendererCommand;
-pub use self::drawable::DrawablePart;
-use self::drawable::RendererStaticDrawable;
+pub use self::drawable::{DrawablePart, RendererStaticDrawable, VolumeDrawableTransparencyMode};
 pub use self::ecs::{
     DirectionalLightComponent, Lightmap, PointLightComponent, StaticRenderableComponent,
     VolumeMeshInstance,
