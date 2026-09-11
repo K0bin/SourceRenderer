@@ -437,6 +437,13 @@ impl GeometryPass {
 
         cmd_buffer.begin_label("Geometry");
 
+        let has_opaque = params
+            .scene
+            .scene
+            .volume_mesh_instances()
+            .iter()
+            .any(|d| !d.transparent);
+
         cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
             render_targets: &[
                 RenderTarget {
@@ -454,7 +461,7 @@ impl GeometryPass {
                 view: &dsv,
                 load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue {
                     depth: 1.0f32,
-                    stencil: 0u32,
+                    stencil: if has_opaque { 0u32 } else { 1u32 },
                 }),
                 store_op: StoreOp::Store,
             }),
@@ -627,8 +634,8 @@ impl GeometryPass {
         transparent_drawables.sort_by_key(|d| (d.min_threshold * 1000.0f32) as u32); // good enough
 
         for drawable in &transparent_drawables {
-            if !drawable.transparent {
-                continue;
+            if !has_opaque {
+                break;
             }
 
             let mut model_matrix = drawable.transform.into();
