@@ -114,8 +114,8 @@ impl RendererScene {
         self.static_meshes.push(static_drawable);
     }
 
-    pub fn remove_static_drawable(&mut self, entity: &Entity) {
-        let index = self.drawable_entity_map.remove(entity);
+    pub fn remove_static_drawable(&mut self, entity: Entity) {
+        let index = Self::remove_from_indices_map(&mut self.drawable_entity_map, entity);
         debug_assert!(index.is_some());
         if index.is_none() {
             return;
@@ -125,29 +125,29 @@ impl RendererScene {
         debug_assert_eq!(self.drawable_entity_map.len(), self.static_meshes.len());
     }
 
-    pub fn update_transform(&mut self, entity: &Entity, transform: Affine3A) {
-        let index = self.drawable_entity_map.get(entity);
+    pub fn update_transform(&mut self, entity: Entity, transform: Affine3A) {
+        let index = self.drawable_entity_map.get(&entity);
         if let Some(index) = index {
             let static_drawable = &mut self.static_meshes[*index];
             static_drawable.transform = transform;
             return;
         }
 
-        let index = self.point_light_entity_map.get(entity);
+        let index = self.point_light_entity_map.get(&entity);
         if let Some(index) = index {
             let point_light = &mut self.point_lights[*index];
             point_light.position = transform.transform_point3(Vec3::new(0f32, 0f32, 0f32));
             return;
         }
 
-        let index = self.directional_light_entity_map.get(entity);
+        let index = self.directional_light_entity_map.get(&entity);
         if let Some(index) = index {
             let point_light = &mut self.directional_lights[*index];
             point_light.direction = transform.transform_vector3(Vec3::new(0f32, 0f32, 1f32));
             return;
         }
 
-        let index = self.volume_mesh_entity_map.get(entity);
+        let index = self.volume_mesh_entity_map.get(&entity);
         if let Some(index) = index {
             let volume_mesh = &mut self.volume_meshes[*index];
             volume_mesh.transform = transform;
@@ -164,12 +164,12 @@ impl RendererScene {
 
     pub fn update_volume_mesh_data(
         &mut self,
-        entity: &Entity,
+        entity: Entity,
         min_threshold: f32,
         texture_lod: u32,
         transparent: bool,
     ) {
-        let index = self.volume_mesh_entity_map.get(entity);
+        let index = self.volume_mesh_entity_map.get(&entity);
         if let Some(index) = index {
             let volume_mesh = &mut self.volume_meshes[*index];
             volume_mesh.min_threshold = min_threshold;
@@ -201,8 +201,8 @@ impl RendererScene {
         self.point_lights.push(renderer_point_light);
     }
 
-    pub fn remove_point_light(&mut self, entity: &Entity) {
-        let index = self.point_light_entity_map.remove(entity);
+    pub fn remove_point_light(&mut self, entity: Entity) {
+        let index = Self::remove_from_indices_map(&mut self.point_light_entity_map, entity);
         debug_assert!(index.is_some());
         if index.is_none() {
             return;
@@ -231,8 +231,8 @@ impl RendererScene {
         self.directional_lights.push(renderer_directional_light);
     }
 
-    pub fn remove_directional_light(&mut self, entity: &Entity) {
-        let index = self.directional_light_entity_map.remove(entity);
+    pub fn remove_directional_light(&mut self, entity: Entity) {
+        let index = Self::remove_from_indices_map(&mut self.directional_light_entity_map, entity);
         debug_assert!(index.is_some());
         if index.is_none() {
             return;
@@ -259,8 +259,8 @@ impl RendererScene {
         self.volume_meshes.push(volume_drawable);
     }
 
-    pub fn remove_volume_drawable(&mut self, entity: &Entity) {
-        let index = self.volume_mesh_entity_map.remove(entity);
+    pub fn remove_volume_drawable(&mut self, entity: Entity) {
+        let index = Self::remove_from_indices_map(&mut self.volume_mesh_entity_map, entity);
         debug_assert!(index.is_some());
         if index.is_none() {
             return;
@@ -268,6 +268,19 @@ impl RendererScene {
         let index = index.unwrap();
         self.volume_meshes.remove(index);
         debug_assert_eq!(self.volume_mesh_entity_map.len(), self.volume_meshes.len());
+    }
+
+    fn remove_from_indices_map(map: &mut HashMap<Entity, usize>, entity: Entity) -> Option<usize> {
+        // TODO: Revamp how we store all of it so this isn't necessary.
+
+        let removed_index = map.remove(&entity)?;
+        for (_, entry_index) in map {
+            assert_ne!(*entry_index, removed_index);
+            if *entry_index > removed_index {
+                *entry_index -= 1;
+            }
+        }
+        Some(removed_index)
     }
 
     pub fn set_ui_data(&self, data: FrameSnapshot) {

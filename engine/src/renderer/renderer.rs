@@ -349,7 +349,7 @@ impl Renderer {
                 }
 
                 RendererCommand::UpdateTransform { entity, transform } => {
-                    self.scene.update_transform(&entity, transform);
+                    self.scene.update_transform(entity, transform);
                 }
 
                 RendererCommand::UpdateVolumeMeshData {
@@ -359,7 +359,7 @@ impl Renderer {
                     texture_lod: lod,
                 } => {
                     self.scene
-                        .update_volume_mesh_data(&entity, min_threshold, lod, transparent);
+                        .update_volume_mesh_data(entity, min_threshold, lod, transparent);
                 }
 
                 RendererCommand::RegisterStatic {
@@ -388,7 +388,7 @@ impl Renderer {
                     );
                 }
                 RendererCommand::UnregisterStatic(entity) => {
-                    self.scene.remove_static_drawable(&entity);
+                    self.scene.remove_static_drawable(entity);
                 }
 
                 RendererCommand::RegisterPointLight {
@@ -405,7 +405,7 @@ impl Renderer {
                     );
                 }
                 RendererCommand::UnregisterPointLight(entity) => {
-                    self.scene.remove_point_light(&entity);
+                    self.scene.remove_point_light(entity);
                 }
 
                 RendererCommand::RegisterDirectionalLight {
@@ -425,7 +425,7 @@ impl Renderer {
                     );
                 }
                 RendererCommand::UnregisterDirectionalLight(entity) => {
-                    self.scene.remove_directional_light(&entity);
+                    self.scene.remove_directional_light(entity);
                 }
                 RendererCommand::RegisterVolume {
                     entity,
@@ -462,7 +462,7 @@ impl Renderer {
                     );
                 }
                 RendererCommand::UnregisterVolume(entity) => {
-                    self.scene.remove_volume_drawable(&entity);
+                    self.scene.remove_volume_drawable(entity);
                 }
                 RendererCommand::SetLightmap(path) => {
                     let handle = self
