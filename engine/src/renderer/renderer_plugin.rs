@@ -439,7 +439,7 @@ fn extract_volume_renderables(
         );
     }
     for entity in removed_static_renderables.read() {
-        let result = renderer.sender.unregister_static_renderable(entity);
+        let result = renderer.sender.unregister_volume_renderable(entity);
 
         if result.is_err() {
             let _ = events.write(AppExit::from_code(1));
