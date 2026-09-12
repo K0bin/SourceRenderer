@@ -1,25 +1,40 @@
+use crossbeam_channel::Sender;
+use smallvec::{SmallVec, smallvec};
 use std::collections::VecDeque;
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use crossbeam_channel::Sender;
-use smallvec::{smallvec, SmallVec};
 
-use super::gpu::{
-    self,
-    Queue as GPUQueue,
-};
+use super::gpu::{self, Queue as GPUQueue};
 use super::*;
-use crate::{
-    Condvar,
-    Mutex,
-    MutexGuard,
-};
+use crate::{Condvar, Mutex, MutexGuard};
 
 type SharedSwapchain = Arc<Mutex<super::Swapchain>>;
 type SharedSwapchainPtr = *const Mutex<super::Swapchain>;
 type GPUSwapchainPtr = *const active_gpu_backend::Swapchain;
 type Backbuffer = active_gpu_backend::Backbuffer;
+
+#[derive(Clone, Default)]
+pub struct CommandPoolCounter(Arc<AtomicU64>);
+impl CommandPoolCounter {
+    pub fn value(&self) -> u64 {
+        self.0.load(Ordering::SeqCst)
+    }
+    pub(super) fn increment(&self) -> u64 {
+        self.0.fetch_add(1, Ordering::SeqCst) + 1
+    }
+}
+impl Drop for CommandPoolCounter {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+pub struct FinishedCommandBuffer {
+    pub(super) handle: active_gpu_backend::CommandBuffer,
+    pub(super) sender: Sender<active_gpu_backend::CommandBuffer>,
+    pub(super) command_pool_counter: CommandPoolCounter,
+}
 
 enum StoredQueueSubmission {
     CommandBuffer {
@@ -29,6 +44,7 @@ enum StoredQueueSubmission {
         wait_swapchain: Option<(Arc<Mutex<super::Swapchain>>, Arc<Backbuffer>)>,
         signal_fences: SmallVec<[SharedFenceValuePair; 4]>,
         wait_fences: SmallVec<[SharedFenceValuePair; 4]>,
+        command_pool_counter: CommandPoolCounter,
     },
     Sync {
         signal_swapchain: Option<(Arc<Mutex<super::Swapchain>>, Arc<Backbuffer>)>,
@@ -78,6 +94,19 @@ impl Queue {
         }
     }
 
+    fn all_barrier_syncs(queue_type: QueueType) -> BarrierSync {
+        match queue_type {
+            QueueType::Graphics => BarrierSync::all(),
+            QueueType::Compute => {
+                BarrierSync::COMPUTE_SHADER
+                    | BarrierSync::ACCELERATION_STRUCTURE_BUILD
+                    | BarrierSync::RAY_TRACING_SHADER
+                    | BarrierSync::COPY
+            }
+            QueueType::Transfer => BarrierSync::COPY,
+        }
+    }
+
     pub(super) fn submit(&self, submission: QueueSubmission) {
         let mut guard = self.inner.lock().unwrap();
         guard.is_idle = false;
@@ -94,30 +123,30 @@ impl Queue {
             .map(|fence_ref| SharedFenceValuePair::from(fence_ref))
             .collect();
 
-        let signal_swapchain =  release_swapchain
-            .map(|(swapchain, key)| (swapchain.clone(), key.clone()));
-        let wait_swapchain = acquire_swapchain
-            .map(|(swapchain, key)| (swapchain.clone(), key.clone()));
+        let signal_swapchain =
+            release_swapchain.map(|(swapchain, key)| (swapchain.clone(), key.clone()));
+        let wait_swapchain =
+            acquire_swapchain.map(|(swapchain, key)| (swapchain.clone(), key.clone()));
 
         let FinishedCommandBuffer {
             handle,
             sender,
+            command_pool_counter,
         } = finished_cmd_buffer;
         guard
             .virtual_queue
             .push_back(StoredQueueSubmission::CommandBuffer {
                 command_buffer: handle,
                 return_sender: sender,
-                signal_fences: smallvec![
-                    SharedFenceValuePair {
-                        fence: self.fence.clone(),
-                        sync_before: BarrierSync::all(),
-                        value
-                    }
-                ],
+                signal_fences: smallvec![SharedFenceValuePair {
+                    fence: self.fence.clone(),
+                    sync_before: Self::all_barrier_syncs(self.queue_type),
+                    value
+                }],
                 wait_fences,
                 signal_swapchain,
                 wait_swapchain,
+                command_pool_counter,
             });
     }
 
@@ -125,20 +154,16 @@ impl Queue {
         let mut guard = self.inner.lock().unwrap();
         guard.is_idle = false;
         let value = self.next_counter.fetch_add(1u64, Ordering::SeqCst);
-        guard
-            .virtual_queue
-            .push_back(StoredQueueSubmission::Sync {
-                signal_fences: smallvec![
-                    SharedFenceValuePair {
-                        fence: self.fence.clone(),
-                        sync_before: BarrierSync::all(),
-                        value
-                    }
-                ],
-                wait_fences: smallvec![],
-                signal_swapchain: None,
-                wait_swapchain: None,
-            });
+        guard.virtual_queue.push_back(StoredQueueSubmission::Sync {
+            signal_fences: smallvec![SharedFenceValuePair {
+                fence: self.fence.clone(),
+                sync_before: Self::all_barrier_syncs(self.queue_type),
+                value
+            }],
+            wait_fences: smallvec![],
+            signal_swapchain: None,
+            wait_swapchain: None,
+        });
     }
 
     pub(super) fn next_counter(&self) -> u64 {
@@ -182,13 +207,11 @@ impl Queue {
 
         struct SubmissionHolder<'a> {
             queue: &'a active_gpu_backend::Queue,
-            command_buffers:
-                SmallVec<[&'a active_gpu_backend::CommandBuffer; 2]>,
+            command_buffers: SmallVec<[&'a active_gpu_backend::CommandBuffer; 2]>,
             cmd_buffer_range: Range<usize>,
             submissions: SmallVec<[active_gpu_backend::Submission<'a>; 2]>,
             fences: SmallVec<[active_gpu_backend::FenceValuePairRef<'a>; 2]>,
-            swapchain_guards:
-                SmallVec<[(SharedSwapchainPtr, SwapchainGuard<'a>); 2]>,
+            swapchain_guards: SmallVec<[(SharedSwapchainPtr, SwapchainGuard<'a>); 2]>,
         }
 
         fn flush_command_buffers<'a>(holder: &mut SubmissionHolder<'a>) {
@@ -366,6 +389,7 @@ impl Queue {
                     signal_swapchain,
                     wait_fences,
                     wait_swapchain,
+                    command_pool_counter: _,
                 } => {
                     if wait_fences.is_empty()
                         && signal_fences.is_empty()
@@ -455,7 +479,8 @@ impl Queue {
     pub(super) fn wait_for_idle(&self) -> u64 {
         let guard = self.inner.lock().unwrap();
         let _new_guard = self.idle_condvar.wait_while(guard, |g| !g.is_idle).unwrap();
-        self.fence.await_value(self.next_counter.load(Ordering::SeqCst) - 1);
+        self.fence
+            .await_value(self.next_counter.load(Ordering::SeqCst) - 1);
         self.fence.value()
     }
 }

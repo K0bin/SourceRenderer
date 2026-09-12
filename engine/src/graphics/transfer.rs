@@ -831,6 +831,7 @@ impl Transfer {
             let cmd_buffer_opt: Option<Box<TransferCommandBuffer>> = self.flush_commands(transfer);
             if let Some(mut cmd_buffer) = cmd_buffer_opt {
                 unsafe {
+                    log::warn!("Submitting transfer");
                     self.device
                         .transfer_queue()
                         .as_ref()
@@ -842,6 +843,7 @@ impl Transfer {
                             acquire_swapchain: None,
                             release_swapchain: None,
                         }]);
+                    log::warn!("Submitting transfer done");
                 }
                 transfer.used_cmd_buffers.push_back(cmd_buffer);
             }
@@ -850,6 +852,7 @@ impl Transfer {
         let cmd_buffer_opt = self.flush_commands(&mut guard.graphics);
         if let Some(mut cmd_buffer) = cmd_buffer_opt {
             unsafe {
+                log::warn!("Submitting transfer graphics");
                 self.device.graphics_queue().submit(&mut [gpu::Submission {
                     command_buffers: &mut [&mut cmd_buffer.cmd_buffer],
                     signal_fences: &[cmd_buffer.fence_value.as_handle_ref()],
@@ -857,6 +860,7 @@ impl Transfer {
                     acquire_swapchain: None,
                     release_swapchain: None,
                 }]);
+                log::warn!("Submitting transfer graphics done");
             }
             guard.graphics.used_cmd_buffers.push_back(cmd_buffer);
         }

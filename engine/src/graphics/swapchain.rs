@@ -57,7 +57,7 @@ impl Swapchain {
                     &self.destroyer,
                     texture,
                     &TextureViewInfo::default(),
-                    None,
+                    Some("Swapchain view"),
                 ))
             }
         }
@@ -72,7 +72,7 @@ impl Swapchain {
                 &self.destroyer,
                 texture,
                 &TextureViewInfo::default(),
-                None,
+                Some("Swapchain view"),
             ))
         });
     }

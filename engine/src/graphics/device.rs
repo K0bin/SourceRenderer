@@ -1,11 +1,11 @@
+use super::*;
+use crate::Mutex;
 use bytemuck::{BoxBytes, Pod, box_bytes_of, cast_slice};
+use crossbeam_channel::Sender;
 use log::trace;
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-
-use super::*;
-use crate::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 pub struct Device {
     device: Arc<active_gpu_backend::Device>,
@@ -46,7 +46,7 @@ impl Device {
         });
         let transfer_queue = device.transfer_queue().map(|q| {
             let fence = Fence::new(&device, &destroyer);
-            Queue::new(QueueType::Compute, fence)
+            Queue::new(QueueType::Transfer, fence)
         });
 
         Self {
@@ -538,7 +538,7 @@ impl Device {
             QueueType::Transfer => (self.transfer_queue.as_ref(), self.device.transfer_queue()),
         };
 
-        if queue_opt.is_none() || queue_opt.is_none() {
+        if queue_opt.is_none() || api_queue_opt.is_none() {
             return;
         }
 

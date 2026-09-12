@@ -109,7 +109,6 @@ impl ConservativeRenderer {
             QueueSubmission {
                 command_buffer: init_cmd_buffer.finish(),
                 wait_fences: &[],
-                signal_fences: &[],
                 acquire_swapchain: None,
                 release_swapchain: None,
             },

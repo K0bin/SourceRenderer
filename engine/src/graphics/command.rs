@@ -1,6 +1,3 @@
-use std::marker::PhantomData;
-use std::sync::Arc;
-
 use super::gpu::{self, Buffer as _, CommandBuffer as _};
 use super::{AccelerationStructure, BottomLevelAccelerationStructureInfo, *};
 use atomic_refcell::AtomicRefMut;
@@ -8,6 +5,9 @@ use bytemuck::{Pod, cast_slice};
 use crossbeam_channel::Sender;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::RenderPassResumeSuspend;
+use std::marker::PhantomData;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const DEBUG_FORCE_FAT_BARRIER: bool = false;
 
@@ -63,12 +63,8 @@ pub struct CommandBuffer<'a> {
     _global_context: &'a GraphicsContext,
     cmd_buffer_handle: active_gpu_backend::CommandBuffer,
     active_query_range: Option<QueryRange>,
+    command_pool_counter: CommandPoolCounter,
     no_send_sync: PhantomData<*mut u8>,
-}
-
-pub struct FinishedCommandBuffer {
-    pub(super) handle: active_gpu_backend::CommandBuffer,
-    pub(super) sender: Sender<active_gpu_backend::CommandBuffer>,
 }
 
 pub enum BufferRef<'a> {
@@ -122,12 +118,15 @@ impl<'a> CommandBuffer<'a> {
         global_context: &'a GraphicsContext,
         context: AtomicRefMut<'a, FrameContext>,
         handle: active_gpu_backend::CommandBuffer,
+        command_pool_counter: CommandPoolCounter,
     ) -> Self {
+        command_pool_counter.increment();
         Self {
             _global_context: global_context,
             context,
             cmd_buffer_handle: handle,
             active_query_range: None,
+            command_pool_counter,
             no_send_sync: PhantomData,
         }
     }
@@ -731,11 +730,13 @@ impl<'a> CommandBuffer<'a> {
             _global_context: _,
             cmd_buffer_handle,
             active_query_range: _,
+            command_pool_counter,
             no_send_sync: _,
         } = self;
         FinishedCommandBuffer {
             handle: cmd_buffer_handle,
             sender: context.sender().clone(),
+            command_pool_counter,
         }
     }
 

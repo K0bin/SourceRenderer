@@ -44,7 +44,7 @@ pub struct FrameContext {
     pub(super) acceleration_structure_scratch_offset: u64,
     frame: u64,
     query_allocator: QueryAllocator,
-    remaining_command_buffers: Arc<AtomicU64>,
+    remaining_command_buffers: CommandPoolCounter,
 }
 
 struct FrameContextCommandPool {
@@ -105,11 +105,11 @@ impl GraphicsContext {
         if new_frame >= self.frame_finished_counter_values.len() as u64 {
             let counter = self.frame_finished_counter_values
                 [(new_frame as usize) % self.frame_finished_counter_values.len()];
-            log::warn!(
+            /*log::warn!(
                 "Waiting for semaphore: {:?}, current frame: {:?}",
                 counter,
                 new_frame
-            );
+            );*/
             self.device
                 .await_queue_counter(QueueType::Graphics, counter);
             self.device.await_queue_counter(QueueType::Compute, counter);
@@ -124,7 +124,7 @@ impl GraphicsContext {
             let mut frames = thread_frame.borrow_mut();
             let frames_len = frames.len();
             let frame = &mut frames[(self.current_frame as usize) % frames_len];
-            assert_eq!(frame.remaining_command_buffers.load(Ordering::SeqCst), 0);
+            assert_eq!(frame.remaining_command_buffers.value(), 0);
 
             frame.acceleration_structure_scratch = None;
             frame.acceleration_structure_scratch_offset = 0;
@@ -150,7 +150,7 @@ impl GraphicsContext {
         new_frame
     }
 
-    pub fn end_frame(&mut self, swapchain: &Arc<Mutex<Swapchain>>, backbuffer: Arc<Backbuffer>) {
+    pub fn end_frame(&mut self) {
         assert_eq!(self.current_frame, self.completed_frame + 1);
         let frame_completed_fence_value = self.device.queue_counter(QueueType::Graphics);
         self.frame_finished_counter_values
@@ -161,13 +161,11 @@ impl GraphicsContext {
             .set_counter(frame_completed_fence_value + 1u64);
         self.destroyer
             .destroy_unused(self.device.completed_queue_counter(QueueType::Graphics));
-        log::warn!(
+        /*log::warn!(
             "Ending frame: {}, with counter value: {}",
             self.current_frame,
             frame_completed_fence_value - 1
-        );
-        self.device
-            .present(QueueType::Graphics, swapchain, backbuffer);
+        );*/
     }
 
     pub fn build_waits(
@@ -311,9 +309,7 @@ impl GraphicsContext {
         });
 
         let counter = frame_context.remaining_command_buffers.clone();
-        counter.fetch_add(1, Ordering::SeqCst);
-
-        let mut recorder = CommandBuffer::new(self, frame_context, cmd_buffer);
+        let mut recorder = CommandBuffer::new(self, frame_context, cmd_buffer, counter);
         recorder.begin(self.current_frame);
         recorder
     }
@@ -401,7 +397,7 @@ impl FrameContext {
             acceleration_structure_scratch_offset: 0u64,
             frame: 1u64,
             query_allocator: QueryAllocator::new(device, destroyer, QUERY_COUNT),
-            remaining_command_buffers: Arc::new(AtomicU64::new(0u64)),
+            remaining_command_buffers: CommandPoolCounter::default(),
         }
     }
 
