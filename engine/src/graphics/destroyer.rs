@@ -7,23 +7,6 @@ pub(super) struct DeferredDestroyer {
     inner: Mutex<DeferredDestroyerInner>,
 }
 
-enum DeferredDestructionEntry {
-    Allocation(MemoryAllocation<active_gpu_backend::Heap>),
-    Texture(active_gpu_backend::Texture),
-    TextureView(active_gpu_backend::TextureView),
-    Buffer(active_gpu_backend::Buffer),
-    Sampler(active_gpu_backend::Sampler),
-    Fence(active_gpu_backend::Fence),
-    AccelerationStructure(active_gpu_backend::AccelerationStructure),
-    BufferSliceRef(Arc<BufferSlice>),
-    GraphicsPipeline(active_gpu_backend::GraphicsPipeline),
-    MeshGraphicsPipeline(active_gpu_backend::MeshGraphicsPipeline),
-    ComputePipeline(active_gpu_backend::ComputePipeline),
-    RayTracingPipeline(active_gpu_backend::RayTracingPipeline),
-    BufferAllocation(Allocation<BufferAndAllocation>),
-    QueryPool(active_gpu_backend::QueryPool),
-}
-
 struct DeferredDestroyerInner {
     current_counter: u64,
     allocations: Vec<(u64, MemoryAllocation<active_gpu_backend::Heap>)>,
@@ -43,8 +26,6 @@ struct DeferredDestroyerInner {
     cmd_buffers: Vec<(u64, active_gpu_backend::CommandBuffer)>,
     cmd_pools: Vec<(u64, active_gpu_backend::CommandPool)>,
 }
-
-// TODO: Turn into a union to save memory
 
 impl DeferredDestroyer {
     pub(super) fn new() -> Self {
