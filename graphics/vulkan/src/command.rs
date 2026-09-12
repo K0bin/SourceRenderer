@@ -49,7 +49,7 @@ impl VkCommandPool {
 }
 
 impl gpu::CommandPool<VkBackend> for VkCommandPool {
-    unsafe fn create_command_buffer(&mut self) -> VkCommandBuffer {
+    unsafe fn create_command_buffer(&self) -> VkCommandBuffer {
         let buffer = VkCommandBuffer::new(
             &self.raw.device,
             &self.raw,

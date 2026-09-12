@@ -1,3 +1,7 @@
+use super::gpu::{self, Queue as GPUQueue};
+use super::*;
+use crate::{Condvar, Mutex, MutexGuard};
+use atomic_refcell::AtomicRefCell;
 use crossbeam_channel::Sender;
 use smallvec::{SmallVec, smallvec};
 use std::collections::VecDeque;
@@ -5,14 +9,21 @@ use std::ops::Range;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use super::gpu::{self, Queue as GPUQueue};
-use super::*;
-use crate::{Condvar, Mutex, MutexGuard};
-
 type SharedSwapchain = Arc<Mutex<super::Swapchain>>;
 type SharedSwapchainPtr = *const Mutex<super::Swapchain>;
 type GPUSwapchainPtr = *const active_gpu_backend::Swapchain;
 type Backbuffer = active_gpu_backend::Backbuffer;
+
+struct CountedCommandPool {
+    counter: CommandPoolCounter,
+    pool: Arc<AtomicRefCell<active_gpu_backend::CommandPool>>,
+}
+
+impl Drop for CountedCommandPool {
+    fn drop(&mut self) {
+        assert_eq!(self.counter.value(), 0);
+    }
+}
 
 #[derive(Clone, Default)]
 pub struct CommandPoolCounter(Arc<AtomicU64>);
@@ -33,6 +44,7 @@ impl Drop for CommandPoolCounter {
 pub struct FinishedCommandBuffer {
     pub(super) handle: active_gpu_backend::CommandBuffer,
     pub(super) sender: Sender<active_gpu_backend::CommandBuffer>,
+    pub(super) pool: Arc<active_gpu_backend::CommandPool>,
     pub(super) command_pool_counter: CommandPoolCounter,
 }
 
@@ -45,6 +57,7 @@ enum StoredQueueSubmission {
         signal_fences: SmallVec<[SharedFenceValuePair; 4]>,
         wait_fences: SmallVec<[SharedFenceValuePair; 4]>,
         command_pool_counter: CommandPoolCounter,
+        pool: Arc<active_gpu_backend::CommandPool>,
     },
     Sync {
         signal_swapchain: Option<(Arc<Mutex<super::Swapchain>>, Arc<Backbuffer>)>,
@@ -132,6 +145,7 @@ impl Queue {
             handle,
             sender,
             command_pool_counter,
+            pool,
         } = finished_cmd_buffer;
         guard
             .virtual_queue
@@ -143,6 +157,7 @@ impl Queue {
                     sync_before: Self::all_barrier_syncs(self.queue_type),
                     value
                 }],
+                pool,
                 wait_fences,
                 signal_swapchain,
                 wait_swapchain,
@@ -207,10 +222,10 @@ impl Queue {
 
         struct SubmissionHolder<'a> {
             queue: &'a active_gpu_backend::Queue,
-            command_buffers: SmallVec<[&'a active_gpu_backend::CommandBuffer; 2]>,
+            command_buffers: SmallVec<[active_gpu_backend::CommandBuffer; 2]>,
             cmd_buffer_range: Range<usize>,
             submissions: SmallVec<[active_gpu_backend::Submission<'a>; 2]>,
-            fences: SmallVec<[active_gpu_backend::FenceValuePairRef<'a>; 2]>,
+            fences: SmallVec<[SharedFenceValuePair; 2]>,
             swapchain_guards: SmallVec<[(SharedSwapchainPtr, SwapchainGuard<'a>); 2]>,
         }
 
@@ -256,9 +271,9 @@ impl Queue {
             holder.swapchain_guards.clear();
         }
 
-        fn push_command_buffer<'a>(
-            holder: &mut SubmissionHolder<'a>,
-            command_buffer: &'a active_gpu_backend::CommandBuffer,
+        fn push_command_buffer(
+            holder: &mut SubmissionHolder,
+            command_buffer: active_gpu_backend::CommandBuffer,
         ) {
             if holder.command_buffers.len() == COMMAND_BUFFER_CAPACITY {
                 flush_command_buffers(holder);
@@ -269,9 +284,9 @@ impl Queue {
 
         fn push_submission<'a>(
             holder: &mut SubmissionHolder<'a>,
-            command_buffer: Option<&'a active_gpu_backend::CommandBuffer>,
-            wait_fences: &'a [SharedFenceValuePair],
-            signal_fences: &'a [SharedFenceValuePair],
+            command_buffer: Option<active_gpu_backend::CommandBuffer>,
+            wait_fences: SmallVec<[SharedFenceValuePair; 4]>,
+            signal_fences: SmallVec<[SharedFenceValuePair; 4]>,
             acquire_swapchain: Option<(&'a SharedSwapchain, &'a Backbuffer)>,
             signal_swapchain: Option<(&'a SharedSwapchain, &'a Backbuffer)>,
         ) {
@@ -295,7 +310,7 @@ impl Queue {
                     });
             }
             let signal_fences_start = holder.fences.len();
-            for fence in signal_fences {
+            for fence in signal_fences.iter() {
                 holder.fences.push(super::gpu::FenceValuePairRef::<'a> {
                     fence: fence.fence.handle(),
                     value: fence.value,
@@ -339,6 +354,7 @@ impl Queue {
                 }
             }
 
+            let has_cmd_buffer = command_buffer.is_some();
             if let Some(command_buffer) = command_buffer {
                 holder.command_buffers.push(command_buffer);
             }
@@ -349,7 +365,7 @@ impl Queue {
                             .command_buffers
                             .as_ptr()
                             .add(holder.command_buffers.len() - 1),
-                        if command_buffer.is_some() { 1 } else { 0 },
+                        if has_cmd_buffer { 1 } else { 0 },
                     )
                 },
                 wait_fences: unsafe {
@@ -380,7 +396,7 @@ impl Queue {
             swapchain_guards: SmallVec::new(),
         };
 
-        for submission in guard.virtual_queue.iter() {
+        for submission in guard.virtual_queue.drain(..) {
             match submission {
                 StoredQueueSubmission::CommandBuffer {
                     command_buffer,
@@ -390,6 +406,7 @@ impl Queue {
                     wait_fences,
                     wait_swapchain,
                     command_pool_counter: _,
+                    pool,
                 } => {
                     if wait_fences.is_empty()
                         && signal_fences.is_empty()
@@ -403,8 +420,8 @@ impl Queue {
                             Some(command_buffer),
                             wait_fences,
                             signal_fences,
-                            wait_swapchain.as_ref().map(|(s, key)| (s, key.as_ref())),
-                            signal_swapchain.as_ref().map(|(s, key)| (s, key.as_ref())),
+                            wait_swapchain.map(|(s, key)| (s, key.as_ref())),
+                            signal_swapchain.map(|(s, key)| (s, key.as_ref())),
                         );
                     }
                 }

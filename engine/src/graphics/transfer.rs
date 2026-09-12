@@ -842,6 +842,15 @@ impl Transfer {
             if let Some(mut cmd_buffer) = cmd_buffer_opt {
                 unsafe {
                     log::warn!("Submitting transfer");
+                    /*device.submit(
+                        QueueType::Transfer,
+                        QueueSubmission {
+                            command_buffer: FinishedCommandBuffer {},
+                            wait_fences: &[],
+                            acquire_swapchain: None,
+                            release_swapchain: None,
+                        },
+                    );*/
                     device
                         .handle()
                         .transfer_queue()

@@ -36,7 +36,7 @@ type ThreadFrames = AtomicRefCell<SmallVec<[FrameContext; FRAME_COUNT]>>;
 
 pub struct FrameContext {
     device: Arc<active_gpu_backend::Device>,
-    command_pool: FrameContextCommandPool,
+    pub(super) command_pool: FrameContextCommandPool,
     transient_buffer_allocator: TransientBufferAllocator,
     global_buffer_allocator: Arc<BufferAllocator>,
     destroyer: Arc<DeferredDestroyer>,
@@ -47,8 +47,8 @@ pub struct FrameContext {
     remaining_command_buffers: CommandPoolCounter,
 }
 
-struct FrameContextCommandPool {
-    command_pool: active_gpu_backend::CommandPool,
+pub(super) struct FrameContextCommandPool {
+    pub(super) command_pool: Arc<AtomicRefCell<active_gpu_backend::CommandPool>>,
     sender: Sender<active_gpu_backend::CommandBuffer>,
     receiver: Receiver<active_gpu_backend::CommandBuffer>,
     existing_cmd_buffer_handles: VecDeque<active_gpu_backend::CommandBuffer>,
@@ -131,16 +131,14 @@ impl GraphicsContext {
             frame.frame = new_frame;
 
             unsafe {
-                frame.command_pool.command_pool.reset();
+                //frame.command_pool.command_pool.reset();
+                todo!()
             }
             frame.transient_buffer_allocator.reset();
 
             frame.query_allocator.reset();
 
             while let Ok(mut existing_cmd_buffer) = frame.command_pool.receiver.try_recv() {
-                unsafe {
-                    existing_cmd_buffer.reset(self.current_frame);
-                }
                 frame
                     .command_pool
                     .existing_cmd_buffer_handles
@@ -305,6 +303,7 @@ impl GraphicsContext {
             frame_context
                 .command_pool
                 .command_pool
+                .borrow_mut()
                 .create_command_buffer()
         });
 
@@ -385,7 +384,7 @@ impl FrameContext {
         Self {
             device: device.clone(),
             command_pool: FrameContextCommandPool {
-                command_pool,
+                command_pool: Arc::new(AtomicRefCell::new(command_pool)),
                 sender,
                 receiver,
                 existing_cmd_buffer_handles: VecDeque::new(),

@@ -1274,7 +1274,7 @@ impl WebGPUCommandPool {
 }
 
 impl gpu::CommandPool<WebGPUBackend> for WebGPUCommandPool {
-    unsafe fn create_command_buffer(&mut self) -> WebGPUCommandBuffer {
+    unsafe fn create_command_buffer(&self) -> WebGPUCommandBuffer {
         WebGPUCommandBuffer::new(&self.device, &self.limits)
     }
 

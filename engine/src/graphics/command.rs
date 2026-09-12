@@ -57,9 +57,9 @@ pub enum PipelineBinding<'a> {
     Compute(&'a super::ComputePipeline),
     RayTracing(&'a super::RayTracingPipeline),
 }
-
 pub struct CommandBuffer<'a> {
     context: AtomicRefMut<'a, FrameContext>,
+    pool: Arc<active_gpu_backend::CommandPool>,
     _global_context: &'a GraphicsContext,
     cmd_buffer_handle: active_gpu_backend::CommandBuffer,
     active_query_range: Option<QueryRange>,
@@ -123,6 +123,7 @@ impl<'a> CommandBuffer<'a> {
         command_pool_counter.increment();
         Self {
             _global_context: global_context,
+            pool: context.command_pool.command_pool.clone(),
             context,
             cmd_buffer_handle: handle,
             active_query_range: None,
@@ -727,6 +728,7 @@ impl<'a> CommandBuffer<'a> {
 
         let CommandBuffer {
             context,
+            pool,
             _global_context: _,
             cmd_buffer_handle,
             active_query_range: _,
@@ -737,6 +739,7 @@ impl<'a> CommandBuffer<'a> {
             handle: cmd_buffer_handle,
             sender: context.sender().clone(),
             command_pool_counter,
+            pool,
         }
     }
 
