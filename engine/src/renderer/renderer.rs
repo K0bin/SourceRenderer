@@ -248,7 +248,7 @@ impl Renderer {
             &self.assets,
         );
         std::mem::drop(swapchain_guard);
-        let frame_end_signal = self.context.end_frame();
+        self.context.end_frame();
 
         match render_path_result {
             Ok(result) => {
@@ -257,7 +257,6 @@ impl Renderer {
                     QueueSubmission {
                         command_buffer: result.cmd_buffer,
                         wait_fences: &[],
-                        signal_fences: &[frame_end_signal],
                         acquire_swapchain: result
                             .backbuffer
                             .as_ref()

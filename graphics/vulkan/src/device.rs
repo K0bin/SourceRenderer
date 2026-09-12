@@ -25,7 +25,6 @@ impl VkDevice {
         transfer_queue_info: Option<VkQueueInfo>,
     ) -> Self {
         let shared = Arc::new(VkShared::new(&device));
-
         let graphics_queue =
             { VkQueue::new(graphics_queue_info, VkQueueType::Graphics, &device, &shared) };
 

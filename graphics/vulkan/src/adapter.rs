@@ -178,6 +178,20 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                             != vk::QueueFlags::GRAPHICS
                 });
 
+        assert!(
+            compute_queue_family_props.is_none()
+                || compute_queue_family_props.unwrap().0 != graphics_queue_family_props.0
+        );
+        assert!(
+            transfer_queue_family_props.is_none()
+                || transfer_queue_family_props.unwrap().0 != graphics_queue_family_props.0
+        );
+        assert!(
+            compute_queue_family_props.is_none()
+                || transfer_queue_family_props.is_none()
+                || compute_queue_family_props.unwrap().0 != transfer_queue_family_props.unwrap().0
+        );
+
         let graphics_queue_info = VkQueueInfo {
             queue_family_index: graphics_queue_family_props.0,
             supports_presentation: unsafe {

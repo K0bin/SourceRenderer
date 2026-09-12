@@ -1,7 +1,7 @@
 use super::*;
 
 pub struct Submission<'a, B: GPUBackend> {
-    pub command_buffers: &'a [&'a B::CommandBuffer],
+    pub command_buffers: &'a [B::CommandBuffer],
     pub wait_fences: &'a [FenceValuePairRef<'a, B>],
     pub signal_fences: &'a [FenceValuePairRef<'a, B>],
     pub acquire_swapchain: Option<(

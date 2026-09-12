@@ -1,10 +1,7 @@
 use std::sync::Arc;
 
 use super::*;
-use crate::{
-    Mutex,
-    MutexGuard,
-};
+use crate::{Mutex, MutexGuard};
 
 pub(super) struct DeferredDestroyer {
     inner: Mutex<DeferredDestroyerInner>,
@@ -26,9 +23,9 @@ struct DeferredDestroyerInner {
     raytracing_pipelines: Vec<(u64, active_gpu_backend::RayTracingPipeline)>,
     buffer_allocations: Vec<(u64, Allocation<BufferAndAllocation>)>,
     query_pools: Vec<(u64, active_gpu_backend::QueryPool)>,
+    cmd_buffers: Vec<(u64, active_gpu_backend::CommandBuffer)>,
+    cmd_pools: Vec<(u64, active_gpu_backend::CommandPool)>,
 }
-
-// TODO: Turn into a union to save memory
 
 impl DeferredDestroyer {
     pub(super) fn new() -> Self {
@@ -49,6 +46,8 @@ impl DeferredDestroyer {
                 raytracing_pipelines: Vec::new(),
                 buffer_allocations: Vec::new(),
                 query_pools: Vec::new(),
+                cmd_buffers: Vec::new(),
+                cmd_pools: Vec::new(),
             }),
         }
     }
@@ -209,6 +208,12 @@ impl DeferredDestroyer {
         guard
             .buffer_allocations
             .retain(|(resource_counter, _)| *resource_counter > counter);
+        guard
+            .cmd_buffers
+            .retain(|(resource_counter, _)| *resource_counter > counter);
+        guard
+            .cmd_pools
+            .retain(|(resource_counter, _)| *resource_counter > counter);
     }
 }
 
@@ -229,5 +234,7 @@ impl Drop for DeferredDestroyer {
         assert!(guard.raytracing_pipelines.is_empty());
         assert!(guard.query_pools.is_empty());
         assert!(guard.buffer_allocations.is_empty());
+        assert!(guard.cmd_buffers.is_empty());
+        assert!(guard.cmd_pools.is_empty());
     }
 }
