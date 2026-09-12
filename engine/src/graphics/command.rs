@@ -63,14 +63,12 @@ pub struct CommandBuffer<'a> {
     _global_context: &'a GraphicsContext,
     cmd_buffer_handle: active_gpu_backend::CommandBuffer,
     active_query_range: Option<QueryRange>,
-    frame_context_entry: FrameContextCommandBufferEntry,
     no_send_sync: PhantomData<*mut u8>,
 }
 
 pub struct FinishedCommandBuffer {
     pub(super) handle: active_gpu_backend::CommandBuffer,
     pub(super) sender: Sender<active_gpu_backend::CommandBuffer>,
-    pub(super) frame_context_entry: FrameContextCommandBufferEntry,
 }
 
 pub enum BufferRef<'a> {
@@ -124,14 +122,12 @@ impl<'a> CommandBuffer<'a> {
         global_context: &'a GraphicsContext,
         context: AtomicRefMut<'a, FrameContext>,
         handle: active_gpu_backend::CommandBuffer,
-        frame_context_entry: FrameContextCommandBufferEntry,
     ) -> Self {
         Self {
             _global_context: global_context,
             context,
             cmd_buffer_handle: handle,
             active_query_range: None,
-            frame_context_entry,
             no_send_sync: PhantomData,
         }
     }
@@ -735,13 +731,11 @@ impl<'a> CommandBuffer<'a> {
             _global_context: _,
             cmd_buffer_handle,
             active_query_range: _,
-            frame_context_entry,
             no_send_sync: _,
         } = self;
         FinishedCommandBuffer {
             handle: cmd_buffer_handle,
             sender: context.sender().clone(),
-            frame_context_entry,
         }
     }
 

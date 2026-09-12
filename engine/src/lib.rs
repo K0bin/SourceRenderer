@@ -1,3 +1,5 @@
+#![feature(unboxed_closures)]
+
 pub use camera::{ActiveCamera, Camera};
 
 pub use self::engine::{Engine, EngineLoopFuncResult, WindowState};

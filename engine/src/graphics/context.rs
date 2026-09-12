@@ -2,10 +2,11 @@ use std::collections::VecDeque;
 #[cfg(target_arch = "wasm32")]
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use atomic_refcell::{AtomicRefCell, AtomicRefMut};
+use bevy_tasks::{ComputeTaskPool, Task};
 use crossbeam_channel::{Receiver, Sender};
 use smallvec::SmallVec;
 use thread_local::ThreadLocal;
@@ -17,14 +18,12 @@ const QUERY_COUNT: u32 = 1024;
 const FRAME_COUNT: usize = 5;
 
 pub struct GraphicsContext {
-    device: Arc<active_gpu_backend::Device>,
+    device: Arc<Device>,
     memory_allocator: Arc<MemoryAllocator>,
-    fence: Arc<super::Fence>,
-    current_unsubmitted_fence_value: u64,
     current_frame: u64,
     completed_frame: u64,
     frame_finished_counter_values: [u64; FRAME_COUNT],
-    thread_contexts: ManuallyDrop<ThreadLocal<ThreadContext>>,
+    thread_frames: ManuallyDrop<ThreadLocal<ThreadFrames>>,
     prerendered_frames: u32,
     destroyer: ManuallyDrop<Arc<DeferredDestroyer>>,
     global_buffer_allocator: Arc<BufferAllocator>,
@@ -33,9 +32,7 @@ pub struct GraphicsContext {
     _p: PhantomData<*const u8>, // Remove Send + Sync
 }
 
-pub struct ThreadContext {
-    frames: AtomicRefCell<SmallVec<[FrameContext; FRAME_COUNT]>>,
-}
+type ThreadFrames = AtomicRefCell<SmallVec<[FrameContext; FRAME_COUNT]>>;
 
 pub struct FrameContext {
     device: Arc<active_gpu_backend::Device>,
@@ -50,14 +47,6 @@ pub struct FrameContext {
     remaining_command_buffers: Arc<AtomicU64>,
 }
 
-pub struct FrameContextCommandBufferEntry(Arc<AtomicU64>);
-
-impl Drop for FrameContextCommandBufferEntry {
-    fn drop(&mut self) {
-        self.0.fetch_sub(1, Ordering::SeqCst);
-    }
-}
-
 struct FrameContextCommandPool {
     command_pool: active_gpu_backend::CommandPool,
     sender: Sender<active_gpu_backend::CommandBuffer>,
@@ -67,7 +56,7 @@ struct FrameContextCommandPool {
 
 impl GraphicsContext {
     pub(super) fn new(
-        device: &Arc<active_gpu_backend::Device>,
+        device: &Arc<Device>,
         memory_allocator: &Arc<MemoryAllocator>,
         buffer_allocator: &Arc<BufferAllocator>,
         destroyer: &Arc<DeferredDestroyer>,
@@ -78,18 +67,35 @@ impl GraphicsContext {
             device: device.clone(),
             memory_allocator: memory_allocator.clone(),
             destroyer: ManuallyDrop::new(destroyer.clone()),
-            fence: Arc::new(super::Fence::new(device, destroyer)),
-            current_unsubmitted_fence_value: 1u64,
             current_frame: 0u64,
             completed_frame: 0u64,
             frame_finished_counter_values: [1u64; 5],
-            thread_contexts: ManuallyDrop::new(ThreadLocal::new()),
+            thread_frames: ManuallyDrop::new(ThreadLocal::new()),
             prerendered_frames,
             global_buffer_allocator: buffer_allocator.clone(),
 
             #[cfg(target_arch = "wasm32")]
             _p: PhantomData,
         }
+    }
+
+    fn new_thread_frame(
+        device: &Arc<active_gpu_backend::Device>,
+        buffer_allocator: &Arc<BufferAllocator>,
+        memory_allocator: &Arc<MemoryAllocator>,
+        destroyer: &Arc<DeferredDestroyer>,
+        prerendered_frames: u32,
+    ) -> ThreadFrames {
+        let mut frames = SmallVec::<[FrameContext; 5]>::with_capacity(prerendered_frames as usize);
+        for _ in 0..prerendered_frames {
+            frames.push(FrameContext::new(
+                device,
+                buffer_allocator,
+                memory_allocator,
+                destroyer,
+            ));
+        }
+        AtomicRefCell::new(frames)
     }
 
     pub fn begin_frame(&mut self) -> u64 {
@@ -104,37 +110,38 @@ impl GraphicsContext {
                 counter,
                 new_frame
             );
-            self.fence.await_value(counter);
+            self.device
+                .await_queue_counter(QueueType::Graphics, counter);
+            self.device.await_queue_counter(QueueType::Compute, counter);
+            self.device
+                .await_queue_counter(QueueType::Transfer, counter);
             self.destroyer.destroy_unused(counter);
             self.global_buffer_allocator.cleanup_unused();
             self.memory_allocator.cleanup_unused();
         }
 
-        for thread_context in &mut (*self.thread_contexts) {
-            let frame_context = thread_context.get_frame_mut(self.current_frame);
-            assert_eq!(
-                frame_context
-                    .remaining_command_buffers
-                    .load(Ordering::SeqCst),
-                0
-            );
+        for thread_frame in &mut (*self.thread_frames) {
+            let mut frames = thread_frame.borrow_mut();
+            let frames_len = frames.len();
+            let frame = &mut frames[(self.current_frame as usize) % frames_len];
+            assert_eq!(frame.remaining_command_buffers.load(Ordering::SeqCst), 0);
 
-            frame_context.acceleration_structure_scratch = None;
-            frame_context.acceleration_structure_scratch_offset = 0;
-            frame_context.frame = new_frame;
+            frame.acceleration_structure_scratch = None;
+            frame.acceleration_structure_scratch_offset = 0;
+            frame.frame = new_frame;
 
             unsafe {
-                frame_context.command_pool.command_pool.reset();
+                frame.command_pool.command_pool.reset();
             }
-            frame_context.transient_buffer_allocator.reset();
+            frame.transient_buffer_allocator.reset();
 
-            frame_context.query_allocator.reset();
+            frame.query_allocator.reset();
 
-            while let Ok(mut existing_cmd_buffer) = frame_context.command_pool.receiver.try_recv() {
+            while let Ok(mut existing_cmd_buffer) = frame.command_pool.receiver.try_recv() {
                 unsafe {
                     existing_cmd_buffer.reset(self.current_frame);
                 }
-                frame_context
+                frame
                     .command_pool
                     .existing_cmd_buffer_handles
                     .push_back(existing_cmd_buffer);
@@ -143,47 +150,154 @@ impl GraphicsContext {
         new_frame
     }
 
-    // After calling this, it must be submitted!
-    // TODO: Consider moving submission into the context.
-    pub fn increment_timeline(&mut self) -> SharedFenceValuePairRef<'_> {
-        let unsubmitted_fence_value = self.current_unsubmitted_fence_value;
-        self.current_unsubmitted_fence_value += 1;
-        self.destroyer
-            .set_counter(self.current_unsubmitted_fence_value);
-        self.destroyer.destroy_unused(self.fence.value());
-        SharedFenceValuePairRef {
-            fence: &self.fence,
-            value: unsubmitted_fence_value,
-            sync_before: BarrierSync::all(),
-        }
-    }
-
-    pub fn end_frame(&mut self) -> SharedFenceValuePairRef<'_> {
+    pub fn end_frame(&mut self, swapchain: &Arc<Mutex<Swapchain>>, backbuffer: Arc<Backbuffer>) {
         assert_eq!(self.current_frame, self.completed_frame + 1);
-        let frame_completed_fence_value = self.current_unsubmitted_fence_value;
+        let frame_completed_fence_value = self.device.queue_counter(QueueType::Graphics);
         self.frame_finished_counter_values
             [(self.current_frame as usize) % self.frame_finished_counter_values.len()] =
             frame_completed_fence_value;
         self.completed_frame += 1;
-        self.current_unsubmitted_fence_value += 1;
         self.destroyer
-            .set_counter(self.current_unsubmitted_fence_value);
-        self.destroyer.destroy_unused(self.fence.value());
+            .set_counter(frame_completed_fence_value + 1u64);
+        self.destroyer
+            .destroy_unused(self.device.completed_queue_counter(QueueType::Graphics));
         log::warn!(
             "Ending frame: {}, with counter value: {}",
             self.current_frame,
-            self.current_unsubmitted_fence_value - 1
+            frame_completed_fence_value - 1
         );
-        SharedFenceValuePairRef {
-            fence: &self.fence,
-            value: frame_completed_fence_value,
-            sync_before: BarrierSync::all(),
+        self.device
+            .present(QueueType::Graphics, swapchain, backbuffer);
+    }
+
+    pub fn build_waits(
+        &self,
+        submit_queue: QueueType,
+        wait_for_graphics: Option<u64>,
+        wait_for_compute: Option<u64>,
+        wait_for_transfer: Option<u64>,
+    ) -> SmallVec<[SharedFenceValuePairRef; 2]> {
+        let mut wait_fences: SmallVec<[SharedFenceValuePairRef; 2]> = SmallVec::new();
+        if let Some(wait) = wait_for_graphics {
+            if submit_queue == QueueType::Graphics {
+                panic!(
+                    "Cannot wait for the queue the work is going to be submitted to. Use barriers instead."
+                );
+            }
+            wait_fences.push(SharedFenceValuePairRef {
+                fence: self.device.fence(QueueType::Graphics).unwrap(),
+                value: wait,
+                sync_before: BarrierSync::all(),
+            });
+        }
+        if let Some(wait) = wait_for_compute {
+            if submit_queue == QueueType::Compute {
+                panic!(
+                    "Cannot wait for the queue the work is going to be submitted to. Use barriers instead."
+                );
+            }
+            wait_fences.push(SharedFenceValuePairRef {
+                fence: self
+                    .device
+                    .fence(QueueType::Compute)
+                    .expect("Cannot wait for compute, there's no compute queue"),
+                value: wait,
+                sync_before: BarrierSync::all(),
+            });
+        }
+        if let Some(wait) = wait_for_transfer {
+            if submit_queue == QueueType::Transfer {
+                panic!(
+                    "Cannot wait for the queue the work is going to be submitted to. Use barriers instead."
+                );
+            }
+            wait_fences.push(SharedFenceValuePairRef {
+                fence: self
+                    .device
+                    .fence(QueueType::Transfer)
+                    .expect("Cannot wait for transfer, there's no transfer queue"),
+                value: wait,
+                sync_before: BarrierSync::all(),
+            });
+        }
+        wait_fences
+    }
+
+    pub fn with_par_command_buffers<'a, T: Sync, F>(
+        &self,
+        queue_type: QueueType,
+        elements: &[T],
+        callback: F,
+        wait_for_graphics: Option<u64>,
+        wait_for_compute: Option<u64>,
+        wait_for_transfer: Option<u64>,
+    ) where
+        for<'b> F: Fn(&mut CommandBuffer<'b>, &T) -> FinishedCommandBuffer,
+        F: Sync,
+    {
+        let pool = ComputeTaskPool::get();
+        let result = pool.scope(|s| {
+            for element in elements {
+                s.spawn(async {
+                    let mut cmd_buffer = self.get_command_buffer(queue_type);
+                    callback(&mut cmd_buffer, element);
+                    cmd_buffer.finish()
+                })
+            }
+        });
+        let wait_fences = self.build_waits(
+            queue_type,
+            wait_for_graphics,
+            wait_for_compute,
+            wait_for_transfer,
+        );
+        for cmd_buffer in result {
+            self.device.submit(
+                queue_type,
+                QueueSubmission {
+                    command_buffer: cmd_buffer,
+                    wait_fences: &wait_fences[..],
+                    acquire_swapchain: None,
+                    release_swapchain: None,
+                },
+            );
         }
     }
 
+    pub fn with_command_buffer<'a, T: Sync, F>(
+        &self,
+        queue_type: QueueType,
+        callback: F,
+        wait_for_graphics: Option<u64>,
+        wait_for_compute: Option<u64>,
+        wait_for_transfer: Option<u64>,
+    ) where
+        for<'b> F: FnOnce(&mut CommandBuffer<'b>) -> FinishedCommandBuffer,
+        F: Sync,
+    {
+        let mut cmd_buffer = self.get_command_buffer(queue_type);
+        callback(&mut cmd_buffer);
+        let cmd_buffer = cmd_buffer.finish();
+
+        let wait_fences = self.build_waits(
+            queue_type,
+            wait_for_graphics,
+            wait_for_compute,
+            wait_for_transfer,
+        );
+        self.device.submit(
+            queue_type,
+            QueueSubmission {
+                command_buffer: cmd_buffer,
+                wait_fences: &wait_fences[..],
+                acquire_swapchain: None,
+                release_swapchain: None,
+            },
+        )
+    }
+
     pub fn get_command_buffer(&self, _queue_type: QueueType) -> CommandBuffer<'_> {
-        let thread_context = self.get_thread_context();
-        let mut frame_context = thread_context.get_frame(self.current_frame);
+        let mut frame_context = self.get_thread_frame_context(self.current_frame);
 
         let existing_cmd_buffer_handle = frame_context
             .command_pool
@@ -198,22 +312,25 @@ impl GraphicsContext {
 
         let counter = frame_context.remaining_command_buffers.clone();
         counter.fetch_add(1, Ordering::SeqCst);
-        let frame_context_entry = FrameContextCommandBufferEntry(counter);
 
-        let mut recorder = CommandBuffer::new(self, frame_context, cmd_buffer, frame_context_entry);
+        let mut recorder = CommandBuffer::new(self, frame_context, cmd_buffer);
         recorder.begin(self.current_frame);
         recorder
     }
 
     pub(super) fn get_thread_frame_context(&self, frame: u64) -> AtomicRefMut<'_, FrameContext> {
-        let thread_context = self.get_thread_context();
-        thread_context.get_frame(frame)
+        let thread_frames = self.get_thread_frames();
+        let frames = thread_frames.borrow_mut();
+        AtomicRefMut::map(frames, |f| {
+            let len = f.len();
+            &mut f[(frame as usize) % len]
+        })
     }
 
-    fn get_thread_context(&self) -> &ThreadContext {
-        self.thread_contexts.get_or(|| {
-            ThreadContext::new(
-                &self.device,
+    fn get_thread_frames(&self) -> &ThreadFrames {
+        self.thread_frames.get_or(|| {
+            Self::new_thread_frame(
+                self.device.handle(),
                 &self.global_buffer_allocator,
                 &self.memory_allocator,
                 &self.destroyer,
@@ -231,13 +348,12 @@ impl GraphicsContext {
 impl Drop for GraphicsContext {
     fn drop(&mut self) {
         if self.current_frame > 0 {
-            let counter = self.current_unsubmitted_fence_value - 1;
-            self.fence.await_value(counter);
+            self.device.wait_for_idle();
             self.destroyer
-                .destroy_unused(counter.max(self.fence.value()));
+                .destroy_unused(self.device.completed_queue_counter(QueueType::Graphics));
         }
 
-        unsafe { ManuallyDrop::drop(&mut self.thread_contexts) };
+        unsafe { ManuallyDrop::drop(&mut self.thread_frames) };
         unsafe { ManuallyDrop::drop(&mut self.destroyer) };
     }
 }
@@ -249,44 +365,6 @@ impl Drop for GraphicsContext {
 unsafe impl Send for ThreadContext {}
 #[cfg(target_arch = "wasm32")]
 unsafe impl Sync for ThreadContext {}
-
-impl ThreadContext {
-    fn new(
-        device: &Arc<active_gpu_backend::Device>,
-        buffer_allocator: &Arc<BufferAllocator>,
-        memory_allocator: &Arc<MemoryAllocator>,
-        destroyer: &Arc<DeferredDestroyer>,
-        prerendered_frames: u32,
-    ) -> Self {
-        let mut frames = SmallVec::<[FrameContext; 5]>::with_capacity(prerendered_frames as usize);
-        for _ in 0..prerendered_frames {
-            frames.push(FrameContext::new(
-                device,
-                buffer_allocator,
-                memory_allocator,
-                destroyer,
-            ));
-        }
-
-        Self {
-            frames: AtomicRefCell::new(frames),
-        }
-    }
-
-    pub fn get_frame(&self, frame_counter: u64) -> AtomicRefMut<'_, FrameContext> {
-        let frames = self.frames.borrow_mut();
-        AtomicRefMut::map(frames, |f| {
-            let len = f.len();
-            &mut f[(frame_counter as usize) % len]
-        })
-    }
-
-    pub fn get_frame_mut(&mut self, frame_counter: u64) -> &mut FrameContext {
-        let frames = self.frames.get_mut();
-        let len = frames.len();
-        &mut frames[(frame_counter as usize) % len]
-    }
-}
 
 impl FrameContext {
     fn new(

@@ -1,9 +1,9 @@
 use std::collections::VecDeque;
 use std::ops::Range;
 use std::sync::Arc;
-
+use std::sync::atomic::{AtomicU64, Ordering};
 use crossbeam_channel::Sender;
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 
 use super::gpu::{
     self,
@@ -29,7 +29,12 @@ enum StoredQueueSubmission {
         wait_swapchain: Option<(Arc<Mutex<super::Swapchain>>, Arc<Backbuffer>)>,
         signal_fences: SmallVec<[SharedFenceValuePair; 4]>,
         wait_fences: SmallVec<[SharedFenceValuePair; 4]>,
-        _frame_context_entry: FrameContextCommandBufferEntry,
+    },
+    Sync {
+        signal_swapchain: Option<(Arc<Mutex<super::Swapchain>>, Arc<Backbuffer>)>,
+        wait_swapchain: Option<(Arc<Mutex<super::Swapchain>>, Arc<Backbuffer>)>,
+        signal_fences: SmallVec<[SharedFenceValuePair; 4]>,
+        wait_fences: SmallVec<[SharedFenceValuePair; 4]>,
     },
     Present {
         swapchain: (
@@ -42,7 +47,6 @@ enum StoredQueueSubmission {
 pub struct QueueSubmission<'a> {
     pub command_buffer: FinishedCommandBuffer,
     pub wait_fences: &'a [SharedFenceValuePairRef<'a>],
-    pub signal_fences: &'a [SharedFenceValuePairRef<'a>],
     pub acquire_swapchain: Option<(&'a SharedSwapchain, &'a Arc<Backbuffer>)>,
     pub release_swapchain: Option<(&'a SharedSwapchain, &'a Arc<Backbuffer>)>,
 }
@@ -56,10 +60,12 @@ pub(super) struct Queue {
     inner: Mutex<QueueInner>,
     queue_type: QueueType,
     idle_condvar: Condvar,
+    fence: Arc<Fence>,
+    next_counter: AtomicU64,
 }
 
 impl Queue {
-    pub(super) fn new(queue_type: QueueType) -> Self {
+    pub(super) fn new(queue_type: QueueType, fence: Fence) -> Self {
         Self {
             inner: Mutex::new(QueueInner {
                 virtual_queue: VecDeque::new(),
@@ -67,45 +73,88 @@ impl Queue {
             }),
             queue_type,
             idle_condvar: Condvar::new(),
+            fence: Arc::new(fence),
+            next_counter: AtomicU64::new(1u64),
         }
     }
 
     pub(super) fn submit(&self, submission: QueueSubmission) {
         let mut guard = self.inner.lock().unwrap();
         guard.is_idle = false;
+        let value = self.next_counter.fetch_add(1u64, Ordering::SeqCst);
 
         let QueueSubmission {
             command_buffer: finished_cmd_buffer,
             wait_fences,
-            signal_fences,
             acquire_swapchain,
             release_swapchain,
         } = submission;
+        let wait_fences: SmallVec<[SharedFenceValuePair; 4]> = wait_fences
+            .iter()
+            .map(|fence_ref| SharedFenceValuePair::from(fence_ref))
+            .collect();
+
+        let signal_swapchain =  release_swapchain
+            .map(|(swapchain, key)| (swapchain.clone(), key.clone()));
+        let wait_swapchain = acquire_swapchain
+            .map(|(swapchain, key)| (swapchain.clone(), key.clone()));
+
         let FinishedCommandBuffer {
             handle,
             sender,
-            frame_context_entry,
         } = finished_cmd_buffer;
-
         guard
             .virtual_queue
             .push_back(StoredQueueSubmission::CommandBuffer {
                 command_buffer: handle,
                 return_sender: sender,
-                signal_fences: signal_fences
-                    .iter()
-                    .map(|fence_ref| SharedFenceValuePair::from(fence_ref))
-                    .collect(),
-                wait_fences: wait_fences
-                    .iter()
-                    .map(|fence_ref| SharedFenceValuePair::from(fence_ref))
-                    .collect(),
-                signal_swapchain: release_swapchain
-                    .map(|(swapchain, key)| (swapchain.clone(), key.clone())),
-                wait_swapchain: acquire_swapchain
-                    .map(|(swapchain, key)| (swapchain.clone(), key.clone())),
-                _frame_context_entry: frame_context_entry,
+                signal_fences: smallvec![
+                    SharedFenceValuePair {
+                        fence: self.fence.clone(),
+                        sync_before: BarrierSync::all(),
+                        value
+                    }
+                ],
+                wait_fences,
+                signal_swapchain,
+                wait_swapchain,
             });
+    }
+
+    pub(super) fn submit_counter_bump(&self) {
+        let mut guard = self.inner.lock().unwrap();
+        guard.is_idle = false;
+        let value = self.next_counter.fetch_add(1u64, Ordering::SeqCst);
+        guard
+            .virtual_queue
+            .push_back(StoredQueueSubmission::Sync {
+                signal_fences: smallvec![
+                    SharedFenceValuePair {
+                        fence: self.fence.clone(),
+                        sync_before: BarrierSync::all(),
+                        value
+                    }
+                ],
+                wait_fences: smallvec![],
+                signal_swapchain: None,
+                wait_swapchain: None,
+            });
+    }
+
+    pub(super) fn next_counter(&self) -> u64 {
+        self.next_counter.load(Ordering::SeqCst)
+    }
+
+    pub(super) fn completed_counter(&self) -> u64 {
+        self.fence.value()
+    }
+
+    pub(super) fn await_counter(&self, value: u64) {
+        self.fence.await_value(value)
+    }
+
+    pub(super) fn fence(&self) -> &Arc<Fence> {
+        &self.fence
     }
 
     pub(super) fn present(
@@ -197,7 +246,7 @@ impl Queue {
 
         fn push_submission<'a>(
             holder: &mut SubmissionHolder<'a>,
-            command_buffer: &'a active_gpu_backend::CommandBuffer,
+            command_buffer: Option<&'a active_gpu_backend::CommandBuffer>,
             wait_fences: &'a [SharedFenceValuePair],
             signal_fences: &'a [SharedFenceValuePair],
             acquire_swapchain: Option<(&'a SharedSwapchain, &'a Backbuffer)>,
@@ -267,7 +316,9 @@ impl Queue {
                 }
             }
 
-            holder.command_buffers.push(command_buffer);
+            if let Some(command_buffer) = command_buffer {
+                holder.command_buffers.push(command_buffer);
+            }
             holder.submissions.push(gpu::Submission::<'a> {
                 command_buffers: unsafe {
                     std::slice::from_raw_parts(
@@ -275,7 +326,7 @@ impl Queue {
                             .command_buffers
                             .as_ptr()
                             .add(holder.command_buffers.len() - 1),
-                        1,
+                        if command_buffer.is_some() { 1 } else { 0 },
                     )
                 },
                 wait_fences: unsafe {
@@ -315,7 +366,6 @@ impl Queue {
                     signal_swapchain,
                     wait_fences,
                     wait_swapchain,
-                    _frame_context_entry,
                 } => {
                     if wait_fences.is_empty()
                         && signal_fences.is_empty()
@@ -326,13 +376,28 @@ impl Queue {
                     } else {
                         push_submission(
                             &mut holder,
-                            command_buffer,
+                            Some(command_buffer),
                             wait_fences,
                             signal_fences,
                             wait_swapchain.as_ref().map(|(s, key)| (s, key.as_ref())),
                             signal_swapchain.as_ref().map(|(s, key)| (s, key.as_ref())),
                         );
                     }
+                }
+                StoredQueueSubmission::Sync {
+                    signal_fences,
+                    signal_swapchain,
+                    wait_fences,
+                    wait_swapchain,
+                } => {
+                    push_submission(
+                        &mut holder,
+                        None,
+                        wait_fences,
+                        signal_fences,
+                        wait_swapchain.as_ref().map(|(s, key)| (s, key.as_ref())),
+                        signal_swapchain.as_ref().map(|(s, key)| (s, key.as_ref())),
+                    );
                 }
                 StoredQueueSubmission::Present {
                     swapchain: (swapchain, key),
@@ -371,6 +436,7 @@ impl Queue {
                     return_sender.send(command_buffer).unwrap();
                 }
                 StoredQueueSubmission::Present { swapchain: _ } => {}
+                StoredQueueSubmission::Sync { .. } => {}
             }
         }
 
@@ -386,8 +452,10 @@ impl Queue {
         self.queue_type
     }
 
-    pub(super) fn wait_for_idle(&self) {
+    pub(super) fn wait_for_idle(&self) -> u64 {
         let guard = self.inner.lock().unwrap();
         let _new_guard = self.idle_condvar.wait_while(guard, |g| !g.is_idle).unwrap();
+        self.fence.await_value(self.next_counter.load(Ordering::SeqCst) - 1);
+        self.fence.value()
     }
 }
