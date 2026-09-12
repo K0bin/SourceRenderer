@@ -29,9 +29,6 @@ impl VkCommandPool {
         shared: &Arc<VkShared>,
     ) -> Self {
         let mut vk_flags = vk::CommandPoolCreateFlags::empty();
-        if flags.contains(gpu::CommandPoolFlags::INDIVIDUAL_RESET) {
-            vk_flags |= vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER;
-        }
         if flags.contains(gpu::CommandPoolFlags::TRANSIENT) {
             vk_flags |= vk::CommandPoolCreateFlags::TRANSIENT;
         }
@@ -57,7 +54,6 @@ impl gpu::CommandPool<VkBackend> for VkCommandPool {
             &self.raw.device,
             &self.raw,
             self.queue_family_index,
-            self.flags.contains(gpu::CommandPoolFlags::INDIVIDUAL_RESET),
             &self.shared,
         );
         buffer
@@ -159,7 +155,6 @@ pub struct VkCommandBuffer {
     pipeline: VkBoundPipeline,
     descriptor_manager: VkBindingManager,
     frame: u64,
-    reset_individually: bool,
     is_in_render_pass: bool,
     query_pool: Option<vk::QueryPool>,
 }
@@ -169,7 +164,6 @@ impl VkCommandBuffer {
         device: &Arc<RawVkDevice>,
         pool: &Arc<RawVkCommandPool>,
         _queue_family_index: u32,
-        reset_individually: bool,
         shared: &Arc<VkShared>,
     ) -> Self {
         let buffers_create_info = vk::CommandBufferAllocateInfo {
@@ -188,7 +182,6 @@ impl VkCommandBuffer {
             state: AtomicCell::new(VkCommandBufferState::Ready),
             descriptor_manager: VkBindingManager::new(device),
             frame: 0u64,
-            reset_individually,
             is_in_render_pass: false,
             query_pool: None,
         }
@@ -1460,7 +1453,8 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
     }
 
     unsafe fn begin(&mut self, frame: u64) {
-        assert_eq!(self.state.load(), VkCommandBufferState::Ready);
+        self.descriptor_manager.reset(frame);
+        self.state.store(VkCommandBufferState::Ready);
 
         self.descriptor_manager.mark_all_dirty();
         self.state.store(VkCommandBufferState::Recording);
@@ -1563,18 +1557,6 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         unsafe {
             self.device.end_command_buffer(self.cmd_buffer).unwrap();
         }
-    }
-
-    unsafe fn reset(&mut self, frame: u64) {
-        if self.reset_individually {
-            unsafe {
-                self.device
-                    .reset_command_buffer(self.cmd_buffer, vk::CommandBufferResetFlags::empty())
-                    .unwrap();
-            }
-        }
-        self.descriptor_manager.reset(frame);
-        self.state.store(VkCommandBufferState::Ready);
     }
 
     unsafe fn begin_query(&mut self, index: u32) {

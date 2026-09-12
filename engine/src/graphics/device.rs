@@ -1,11 +1,9 @@
 use super::*;
 use crate::Mutex;
 use bytemuck::{BoxBytes, Pod, box_bytes_of, cast_slice};
-use crossbeam_channel::Sender;
-use log::trace;
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub struct Device {
     device: Arc<active_gpu_backend::Device>,
@@ -16,7 +14,6 @@ pub struct Device {
     bindless_slot_allocator: BindlessSlotAllocator,
     transfer: ManuallyDrop<Transfer>,
     prerendered_frames: u32,
-    has_context: AtomicBool,
     graphics_queue: Queue,
     compute_queue: Option<Queue>,
     transfer_queue: Option<Queue>,
@@ -58,7 +55,6 @@ impl Device {
             transfer: ManuallyDrop::new(Transfer::new(&device, &destroyer, &buffer_allocator)),
             buffer_allocator: ManuallyDrop::new(buffer_allocator),
             prerendered_frames,
-            has_context: AtomicBool::new(false),
             graphics_queue,
             compute_queue,
             transfer_queue,
@@ -82,8 +78,7 @@ impl Device {
 
     #[inline(always)]
     pub fn create_context(self: &Arc<Self>) -> GraphicsContext {
-        trace!("Creating graphics context");
-        assert!(!self.has_context.swap(true, Ordering::AcqRel));
+        log::trace!("Creating graphics context");
         GraphicsContext::new(
             self,
             &self.allocator,
@@ -267,9 +262,9 @@ impl Device {
         array_layer: u32,
     ) -> Result<(), OutOfMemoryError> {
         let data_u8: BoxBytes = box_bytes_of(data);
-        let _ = self
-            .transfer
-            .init_texture_box(data_u8, dst, mip_level, array_layer, false)?;
+        let _ =
+            self.transfer
+                .init_texture_box(self, data_u8, dst, mip_level, array_layer, false)?;
         Ok(())
     }
 
@@ -283,7 +278,7 @@ impl Device {
         let data_u8: &[u8] = cast_slice(data);
         let _ = self
             .transfer
-            .init_texture(data_u8, dst, mip_level, array_layer, false)?;
+            .init_texture(self, data_u8, dst, mip_level, array_layer, false)?;
         Ok(())
     }
 
@@ -308,7 +303,7 @@ impl Device {
     ) -> Result<Option<SharedFenceValuePair>, OutOfMemoryError> {
         let data_u8: &[u8] = cast_slice(data);
         self.transfer
-            .init_texture(&data_u8, dst, mip_level, array_layer, true)
+            .init_texture(self, &data_u8, dst, mip_level, array_layer, true)
     }
 
     pub fn init_texture_box_async<T: Pod>(
@@ -320,7 +315,7 @@ impl Device {
     ) -> Result<Option<SharedFenceValuePair>, OutOfMemoryError> {
         let data_u8: BoxBytes = box_bytes_of(data);
         self.transfer
-            .init_texture_box(data_u8, dst, mip_level, array_layer, true)
+            .init_texture_box(self, data_u8, dst, mip_level, array_layer, true)
     }
 
     pub fn init_texture_from_buffer_async(
@@ -342,7 +337,7 @@ impl Device {
 
     #[inline(always)]
     pub fn flush_transfers(&self) {
-        self.transfer.flush();
+        self.transfer.flush(self);
     }
 
     #[inline(always)]

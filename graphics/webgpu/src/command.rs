@@ -840,10 +840,21 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
     }
 
     unsafe fn begin(&mut self, frame: u64) {
-        if let &WebGPUCommandBufferHandle::Reset(_) = &self.handle {
-        } else {
-            panic!("Command buffer was not reset.");
-        }
+        self.readback_syncs.clear();
+        let handle = std::mem::replace(&mut self.handle, WebGPUCommandBufferHandle::Uninit);
+        let mut binding_manager = match handle {
+            WebGPUCommandBufferHandle::Finished(cmd_buffer) => cmd_buffer.binding_manager,
+            WebGPUCommandBufferHandle::Reset(cmd_buffer) => cmd_buffer.binding_manager,
+            WebGPUCommandBufferHandle::Recording(cmd_buffer) => cmd_buffer.binding_manager,
+            _ => unreachable!(),
+        };
+        binding_manager.reset(frame);
+        let encoder = self.device.create_command_encoder();
+        self.handle = WebGPUCommandBufferHandle::Reset(WebGPUResetCommandBuffer {
+            command_encoder: encoder,
+            binding_manager,
+            _p: PhantomData,
+        });
 
         self.frame = frame;
 
@@ -1139,24 +1150,6 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
 
     unsafe fn barrier(&mut self, _barriers: &[gpu::Barrier<WebGPUBackend>]) {
         // Handled by the WebGPU implementation
-    }
-
-    unsafe fn reset(&mut self, frame: u64) {
-        self.readback_syncs.clear();
-        let handle = std::mem::replace(&mut self.handle, WebGPUCommandBufferHandle::Uninit);
-        let mut binding_manager = match handle {
-            WebGPUCommandBufferHandle::Finished(cmd_buffer) => cmd_buffer.binding_manager,
-            WebGPUCommandBufferHandle::Reset(cmd_buffer) => cmd_buffer.binding_manager,
-            WebGPUCommandBufferHandle::Recording(cmd_buffer) => cmd_buffer.binding_manager,
-            _ => unreachable!(),
-        };
-        binding_manager.reset(frame);
-        let encoder = self.device.create_command_encoder();
-        self.handle = WebGPUCommandBufferHandle::Reset(WebGPUResetCommandBuffer {
-            command_encoder: encoder,
-            binding_manager,
-            _p: PhantomData,
-        });
     }
 
     unsafe fn create_bottom_level_acceleration_structure(

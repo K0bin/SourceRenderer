@@ -312,8 +312,6 @@ pub trait CommandBuffer<B: GPUBackend> {
         buffer_offset: u64,
     );
 
-    unsafe fn reset(&mut self, frame: u64);
-
     // RT
     unsafe fn create_bottom_level_acceleration_structure(
         &mut self,
@@ -781,7 +779,6 @@ bitflags! {
     #[derive(Clone, Copy, Eq, Hash, PartialEq, Debug)]
     pub struct CommandPoolFlags : u32 {
         const TRANSIENT = 0x1;
-        const INDIVIDUAL_RESET = 0x2;
     }
 }
 
