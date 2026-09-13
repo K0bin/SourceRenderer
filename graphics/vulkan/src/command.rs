@@ -222,14 +222,6 @@ impl VkCommandBuffer {
     }
 }
 
-impl Drop for VkCommandBuffer {
-    fn drop(&mut self) {
-        if self.state.load() == VkCommandBufferState::Submitted {
-            self.device.wait_for_idle();
-        }
-    }
-}
-
 impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
     unsafe fn set_pipeline(&mut self, pipeline: gpu::PipelineBinding<VkBackend>) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
