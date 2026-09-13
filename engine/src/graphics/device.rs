@@ -14,10 +14,18 @@ pub struct Device {
     bindless_slot_allocator: BindlessSlotAllocator,
     transfer: ManuallyDrop<Transfer>,
     prerendered_frames: u32,
+    queues: Mutex<Queues>,
+    graphics_queue_tracker: QueueTracker,
+    compute_queue_tracker: QueueTracker,
+    transfer_queue_tracker: QueueTracker,
+}
+
+// Queue <-> QueueTracker is separated because I want to access the atomics in the latter without
+// taking the mutex
+struct Queues {
     graphics_queue: Queue,
     compute_queue: Option<Queue>,
     transfer_queue: Option<Queue>,
-    flush_mutex: Mutex<()>, // Synchronizes every access to queues. Ugly but whatever
 }
 
 impl Device {
@@ -56,10 +64,14 @@ impl Device {
             transfer: ManuallyDrop::new(Transfer::new(&device, &destroyer, &buffer_allocator)),
             buffer_allocator: ManuallyDrop::new(buffer_allocator),
             prerendered_frames,
-            graphics_queue,
-            compute_queue,
-            transfer_queue,
-            flush_mutex: Mutex::new(()),
+            queues: Mutex::new(Queues {
+                graphics_queue,
+                compute_queue,
+                transfer_queue,
+            }),
+            graphics_queue_tracker: QueueTracker::new(Fence::new(&device, &destroyer)),
+            compute_queue_tracker: QueueTracker::new(Fence::new(&device, &destroyer)),
+            transfer_queue_tracker: QueueTracker::new(Fence::new(&device, &destroyer)),
         }
     }
 
@@ -403,16 +415,25 @@ impl Device {
 
     pub fn block_until_idle(&self) {
         log::warn!("Block until idle.");
-        self.flush();
-        self.graphics_queue.flush(self.device.graphics_queue());
-        self.graphics_queue.wait_for_idle();
-        if let Some(queue) = self.compute_queue.as_ref() {
-            queue.flush(self.device.compute_queue().unwrap());
-            queue.wait_for_idle();
+        let mut queues = self.queues.lock().unwrap();
+        self.flush_locked(&mut queues);
+        queues
+            .graphics_queue
+            .flush(self.device.graphics_queue(), &self.graphics_queue_tracker);
+        self.graphics_queue_tracker.wait_for_idle();
+        if let Some(queue) = queues.compute_queue.as_mut() {
+            queue.flush(
+                self.device.compute_queue().unwrap(),
+                &self.compute_queue_tracker,
+            );
+            self.compute_queue_tracker.wait_for_idle();
         }
-        if let Some(queue) = self.transfer_queue.as_ref() {
-            queue.flush(self.device.transfer_queue().unwrap());
-            queue.wait_for_idle();
+        if let Some(queue) = queues.transfer_queue.as_mut() {
+            queue.flush(
+                self.device.compute_queue().unwrap(),
+                &self.transfer_queue_tracker,
+            );
+            self.transfer_queue_tracker.wait_for_idle();
         }
 
         unsafe {
@@ -420,44 +441,38 @@ impl Device {
         }
     }
 
-    pub fn queue_counter(&self, queue_type: QueueType) -> u64 {
-        let queue_opt = match queue_type {
-            QueueType::Graphics => Some(&self.graphics_queue),
-            QueueType::Compute => self.compute_queue.as_ref(),
-            QueueType::Transfer => self.transfer_queue.as_ref(),
+    pub fn queue_next_counter(&self, queue_type: QueueType) -> u64 {
+        let queue_tracker = match queue_type {
+            QueueType::Graphics => &self.graphics_queue_tracker,
+            QueueType::Compute => &self.compute_queue_tracker,
+            QueueType::Transfer => &self.transfer_queue_tracker,
         };
-        queue_opt.map(|q| q.next_counter()).unwrap_or(0u64)
+        queue_tracker.next_counter()
     }
 
     pub fn await_queue_counter(&self, queue_type: QueueType, value: u64) {
-        let queue_opt = match queue_type {
-            QueueType::Graphics => Some(&self.graphics_queue),
-            QueueType::Compute => self.compute_queue.as_ref(),
-            QueueType::Transfer => self.transfer_queue.as_ref(),
+        let queue_tracker = match queue_type {
+            QueueType::Graphics => &self.graphics_queue_tracker,
+            QueueType::Compute => &self.compute_queue_tracker,
+            QueueType::Transfer => &self.transfer_queue_tracker,
         };
-        if let Some(queue) = queue_opt {
-            queue.await_counter(value);
-            if value != 0 {
-                self.destroyer.destroy_unused(value);
-            }
+        queue_tracker.await_counter(value);
+        if value != 0 {
+            self.destroyer.destroy_unused(value);
         }
     }
 
     pub fn completed_queue_counter(&self, queue_type: QueueType) -> u64 {
-        let queue_opt = match queue_type {
-            QueueType::Graphics => Some(&self.graphics_queue),
-            QueueType::Compute => self.compute_queue.as_ref(),
-            QueueType::Transfer => self.transfer_queue.as_ref(),
+        let queue_tracker = match queue_type {
+            QueueType::Graphics => &self.graphics_queue_tracker,
+            QueueType::Compute => &self.compute_queue_tracker,
+            QueueType::Transfer => &self.transfer_queue_tracker,
         };
-
-        if let Some(queue) = queue_opt {
-            let counter = queue.completed_counter();
-            if counter != 0 {
-                self.destroyer.destroy_unused(counter);
-            }
-            return counter;
+        let counter = queue_tracker.completed_counter();
+        if counter != 0 {
+            self.destroyer.destroy_unused(counter);
         }
-        0u64
+        counter
     }
 
     pub fn wait_for(
@@ -467,67 +482,64 @@ impl Device {
         counter: u64,
         wait_before: BarrierSync,
     ) {
-        let _guard = self.flush_mutex.lock().unwrap();
+        let mut queues = self.queues.lock().unwrap();
+        match wait_for_queue {
+            QueueType::Graphics => {}
+            QueueType::Compute => {
+                if !queues.compute_queue.is_some() {
+                    panic!("Cannot wait for compute queue, queue is not supported.");
+                }
+            }
+            QueueType::Transfer => {
+                if !queues.transfer_queue.is_some() {
+                    panic!("Cannot wait for transfer queue, queue is not supported.");
+                }
+            }
+        }
+        if queue_type == wait_for_queue {
+            panic!("Cannot wait for same queue.");
+        }
+
         match queue_type {
             QueueType::Graphics => {
-                let queue = &self.graphics_queue;
+                let queue = &mut queues.graphics_queue;
                 match wait_for_queue {
-                    QueueType::Compute => queue.wait_for(
-                        self.compute_queue
-                            .as_ref()
-                            .expect("No compute queue to wait for")
-                            .fence(),
-                        counter,
-                        wait_before,
-                    ),
-                    QueueType::Transfer => queue.wait_for(
-                        self.transfer_queue
-                            .as_ref()
-                            .expect("No transfer queue to wait for")
-                            .fence(),
-                        counter,
-                        wait_before,
-                    ),
-                    QueueType::Graphics => panic!("Cannot wait for same queue."),
+                    QueueType::Compute => {
+                        queue.wait_for(self.compute_queue_tracker.fence(), counter, wait_before)
+                    }
+                    QueueType::Transfer => {
+                        queue.wait_for(self.transfer_queue_tracker.fence(), counter, wait_before)
+                    }
+                    QueueType::Graphics => unreachable!(),
                 }
             }
             QueueType::Compute => {
-                let queue = &self
+                let queue = queues
                     .compute_queue
-                    .as_ref()
+                    .as_mut()
                     .expect("Device does not support requested queue type.");
                 match wait_for_queue {
-                    QueueType::Compute => panic!("Cannot wait for same queue."),
-                    QueueType::Transfer => queue.wait_for(
-                        self.transfer_queue
-                            .as_ref()
-                            .expect("No transfer queue to wait for")
-                            .fence(),
-                        counter,
-                        wait_before,
-                    ),
+                    QueueType::Compute => unreachable!(),
+                    QueueType::Transfer => {
+                        queue.wait_for(self.transfer_queue_tracker.fence(), counter, wait_before)
+                    }
                     QueueType::Graphics => {
-                        queue.wait_for(self.graphics_queue.fence(), counter, wait_before)
+                        queue.wait_for(self.graphics_queue_tracker.fence(), counter, wait_before)
                     }
                 }
             }
             QueueType::Transfer => {
-                let queue = &self
+                let queue = queues
                     .transfer_queue
-                    .as_ref()
+                    .as_mut()
                     .expect("Device does not support requested queue type.");
                 match wait_for_queue {
-                    QueueType::Compute => queue.wait_for(
-                        self.compute_queue
-                            .as_ref()
-                            .expect("No compute queue to wait for")
-                            .fence(),
-                        counter,
-                        wait_before,
-                    ),
-                    QueueType::Transfer => panic!("Cannot wait for same queue."),
+                    QueueType::Compute => {
+                        queue.wait_for(self.compute_queue_tracker.fence(), counter, wait_before)
+                    }
+                    QueueType::Transfer => unreachable!(),
                     QueueType::Graphics => {
-                        queue.wait_for(self.graphics_queue.fence(), counter, wait_before)
+                        queue.wait_for(self.graphics_queue_tracker.fence(), counter, wait_before)
                     }
                 }
             }
@@ -535,27 +547,27 @@ impl Device {
     }
 
     pub fn submit(&self, queue_type: QueueType, cmd_buffer: FinishedCommandBuffer) -> u64 {
-        let _guard = self.flush_mutex.lock().unwrap();
+        let mut queues = self.queues.lock().unwrap();
         match queue_type {
             QueueType::Graphics => {
-                self.graphics_queue.submit(cmd_buffer);
+                queues.graphics_queue.submit(cmd_buffer);
             }
             QueueType::Compute => {
-                let queue = self
+                let queue = queues
                     .compute_queue
-                    .as_ref()
+                    .as_mut()
                     .expect("Device does not support requested queue type.");
                 queue.submit(cmd_buffer);
             }
             QueueType::Transfer => {
-                let queue = self
+                let queue = queues
                     .transfer_queue
-                    .as_ref()
+                    .as_mut()
                     .expect("Device does not support requested queue type.");
                 queue.submit(cmd_buffer);
             }
         }
-        self.graphics_queue.next_counter()
+        self.graphics_queue_tracker.next_counter()
     }
 
     pub fn present(
@@ -565,16 +577,16 @@ impl Device {
         backbuffer: Arc<active_gpu_backend::Backbuffer>,
     ) {
         self.transfer.flush(self);
-        let mut guard = self.flush_mutex.lock().unwrap();
-        self.flush_locked(&mut guard);
+        let mut queues = self.queues.lock().unwrap();
+        self.flush_locked(&mut queues);
 
         let (queue_opt, api_queue_opt) = match queue_type {
             QueueType::Graphics => (
-                Some(&self.graphics_queue),
+                Some(&mut queues.graphics_queue),
                 Some(self.device.graphics_queue()),
             ),
-            QueueType::Compute => (self.compute_queue.as_ref(), self.device.compute_queue()),
-            QueueType::Transfer => (self.transfer_queue.as_ref(), self.device.transfer_queue()),
+            QueueType::Compute => (queues.compute_queue.as_mut(), self.device.compute_queue()),
+            QueueType::Transfer => (queues.transfer_queue.as_mut(), self.device.transfer_queue()),
         };
 
         if queue_opt.is_none() || api_queue_opt.is_none() {
@@ -592,12 +604,12 @@ impl Device {
         swapchain: &Arc<Mutex<Swapchain>>,
         backbuffer: &Arc<active_gpu_backend::Backbuffer>,
     ) {
-        let _guard = self.flush_mutex.lock().unwrap();
+        let mut queues = self.queues.lock().unwrap();
         let queue_opt = match queue_type {
-            QueueType::Graphics => Some(&self.graphics_queue),
+            QueueType::Graphics => Some(&mut queues.graphics_queue),
 
-            QueueType::Compute => self.compute_queue.as_ref(),
-            QueueType::Transfer => self.transfer_queue.as_ref(),
+            QueueType::Compute => queues.compute_queue.as_mut(),
+            QueueType::Transfer => queues.transfer_queue.as_mut(),
         };
 
         if queue_opt.is_none() {
@@ -614,12 +626,12 @@ impl Device {
         swapchain: &Arc<Mutex<Swapchain>>,
         backbuffer: &Arc<active_gpu_backend::Backbuffer>,
     ) {
-        let _guard = self.flush_mutex.lock().unwrap();
+        let mut queues = self.queues.lock().unwrap();
         let queue_opt = match queue_type {
-            QueueType::Graphics => Some(&self.graphics_queue),
+            QueueType::Graphics => Some(&mut queues.graphics_queue),
 
-            QueueType::Compute => self.compute_queue.as_ref(),
-            QueueType::Transfer => self.transfer_queue.as_ref(),
+            QueueType::Compute => queues.compute_queue.as_mut(),
+            QueueType::Transfer => queues.transfer_queue.as_mut(),
         };
 
         if queue_opt.is_none() {
@@ -632,40 +644,42 @@ impl Device {
 
     pub fn flush(&self) -> u64 {
         self.transfer.flush(self);
-        let mut guard = self.flush_mutex.lock().unwrap();
+        let mut guard = self.queues.lock().unwrap();
         self.flush_locked(&mut guard)
     }
 
-    pub fn flush_locked(&self, _guard: &mut MutexGuard<()>) -> u64 {
+    pub fn flush_locked(&self, queues: &mut Queues) -> u64 {
         self.transfer.flush(self);
 
         let mut all_empty = true;
-        all_empty &= self.graphics_queue.is_empty();
-        all_empty &= self.compute_queue.as_ref().map_or(true, |q| q.is_empty());
-        all_empty &= self.transfer_queue.as_ref().map_or(true, |q| q.is_empty());
+        all_empty &= queues.graphics_queue.is_empty();
+        all_empty &= queues.compute_queue.as_ref().map_or(true, |q| q.is_empty());
+        all_empty &= queues
+            .transfer_queue
+            .as_ref()
+            .map_or(true, |q| q.is_empty());
         if all_empty {
-            return self.graphics_queue.next_counter().max(1) - 1;
+            return self.graphics_queue_tracker.next_counter().max(1) - 1;
         }
 
         // Increase counter for the other queues to keep them sync for the deferred destruction.
         // This allows us to have one synchronized GPU timeline.
         // I hope the extra submits don't add too much unnecessary synchronization.
-        self.graphics_queue.submit_counter_bump();
-        self.compute_queue.as_ref().map(|q| q.submit_counter_bump());
-        self.transfer_queue
-            .as_ref()
-            .map(|q| q.submit_counter_bump());
+        queues
+            .graphics_queue
+            .submit_counter_bump(&self.graphics_queue_tracker);
+        queues
+            .compute_queue
+            .as_mut()
+            .map(|q| q.submit_counter_bump(&self.compute_queue_tracker));
+        queues
+            .transfer_queue
+            .as_mut()
+            .map(|q| q.submit_counter_bump(&self.transfer_queue_tracker));
 
-        let graphics_counter = self.flush_queue(QueueType::Graphics);
-        let compute_counter = self.flush_queue(QueueType::Compute);
-        let transfer_counter = self.flush_queue(QueueType::Transfer);
-
-        log::warn!(
-            "Flushing. Flushed counters: GFX: {:?}, COMP: {:?}, COPY: {:?}",
-            graphics_counter,
-            compute_counter,
-            transfer_counter
-        );
+        let graphics_counter = self.flush_queue(queues, QueueType::Graphics);
+        let compute_counter = self.flush_queue(queues, QueueType::Compute);
+        let transfer_counter = self.flush_queue(queues, QueueType::Transfer);
 
         assert!(compute_counter == 0 || graphics_counter == compute_counter);
         assert!(transfer_counter == 0 || graphics_counter == transfer_counter);
@@ -675,14 +689,23 @@ impl Device {
         graphics_counter.max(compute_counter.max(transfer_counter))
     }
 
-    fn flush_queue(&self, queue_type: QueueType) -> u64 {
-        let (queue_opt, api_queue_opt) = match queue_type {
+    fn flush_queue(&self, queues: &mut Queues, queue_type: QueueType) -> u64 {
+        let (queue_opt, api_queue_opt, tracker) = match queue_type {
             QueueType::Graphics => (
-                Some(&self.graphics_queue),
+                Some(&mut queues.graphics_queue),
                 Some(self.device.graphics_queue()),
+                &self.graphics_queue_tracker,
             ),
-            QueueType::Compute => (self.compute_queue.as_ref(), self.device.compute_queue()),
-            QueueType::Transfer => (self.transfer_queue.as_ref(), self.device.transfer_queue()),
+            QueueType::Compute => (
+                queues.compute_queue.as_mut(),
+                self.device.compute_queue(),
+                &self.compute_queue_tracker,
+            ),
+            QueueType::Transfer => (
+                queues.transfer_queue.as_mut(),
+                self.device.transfer_queue(),
+                &self.transfer_queue_tracker,
+            ),
         };
 
         if queue_opt.is_none() || api_queue_opt.is_none() {
@@ -692,7 +715,7 @@ impl Device {
         let api_queue = api_queue_opt.unwrap();
         let queue = queue_opt.unwrap();
 
-        queue.flush(api_queue)
+        queue.flush(api_queue, tracker)
     }
 
     pub fn has_queue(&self, queue_type: QueueType) -> bool {

@@ -509,7 +509,7 @@ impl Transfer {
 
             (
                 QueueType::Transfer,
-                device.queue_counter(QueueType::Transfer),
+                device.queue_next_counter(QueueType::Transfer),
             )
         };
 
@@ -768,7 +768,7 @@ impl Transfer {
             api_cmd_buffer.finish();
         }
 
-        cmd_buffer.fence_value = device.queue_counter(commands.queue_type);
+        cmd_buffer.fence_value = device.queue_next_counter(commands.queue_type);
         cmd_buffer.mark_used();
 
         Some(cmd_buffer)

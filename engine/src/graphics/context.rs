@@ -130,7 +130,7 @@ impl GraphicsContext {
 
     pub fn end_frame(&mut self) {
         assert_eq!(self.current_frame, self.completed_frame + 1);
-        let frame_completed_fence_value = self.device.queue_counter(QueueType::Graphics);
+        let frame_completed_fence_value = self.device.queue_next_counter(QueueType::Graphics);
         self.frame_finished_counter_values
             [(self.current_frame as usize) % self.frame_finished_counter_values.len()] =
             frame_completed_fence_value;
