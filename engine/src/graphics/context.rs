@@ -36,7 +36,7 @@ type ThreadFrames = AtomicRefCell<SmallVec<[FrameContext; FRAME_COUNT]>>;
 
 pub struct FrameContext {
     device: Arc<active_gpu_backend::Device>,
-    pub(super) command_pool: FrameContextCommandPool,
+    pub(super) command_pool: active_gpu_backend::CommandPool,
     transient_buffer_allocator: TransientBufferAllocator,
     global_buffer_allocator: Arc<BufferAllocator>,
     destroyer: Arc<DeferredDestroyer>,
@@ -44,14 +44,6 @@ pub struct FrameContext {
     pub(super) acceleration_structure_scratch_offset: u64,
     frame: u64,
     query_allocator: QueryAllocator,
-    remaining_command_buffers: CommandPoolCounter,
-}
-
-pub(super) struct FrameContextCommandPool {
-    pub(super) command_pool: Arc<AtomicRefCell<active_gpu_backend::CommandPool>>,
-    sender: Sender<active_gpu_backend::CommandBuffer>,
-    receiver: Receiver<active_gpu_backend::CommandBuffer>,
-    existing_cmd_buffer_handles: VecDeque<active_gpu_backend::CommandBuffer>,
 }
 
 impl GraphicsContext {
@@ -124,26 +116,17 @@ impl GraphicsContext {
             let mut frames = thread_frame.borrow_mut();
             let frames_len = frames.len();
             let frame = &mut frames[(self.current_frame as usize) % frames_len];
-            assert_eq!(frame.remaining_command_buffers.value(), 0);
 
             frame.acceleration_structure_scratch = None;
             frame.acceleration_structure_scratch_offset = 0;
             frame.frame = new_frame;
 
             unsafe {
-                //frame.command_pool.command_pool.reset();
-                todo!()
+                frame.command_pool.reset();
             }
             frame.transient_buffer_allocator.reset();
 
             frame.query_allocator.reset();
-
-            while let Ok(mut existing_cmd_buffer) = frame.command_pool.receiver.try_recv() {
-                frame
-                    .command_pool
-                    .existing_cmd_buffer_handles
-                    .push_back(existing_cmd_buffer);
-            }
         }
         new_frame
     }
@@ -293,22 +276,11 @@ impl GraphicsContext {
     }
 
     pub fn get_command_buffer(&self, _queue_type: QueueType) -> CommandBuffer<'_> {
-        let mut frame_context = self.get_thread_frame_context(self.current_frame);
+        let frame_context = self.get_thread_frame_context(self.current_frame);
 
-        let existing_cmd_buffer_handle = frame_context
-            .command_pool
-            .existing_cmd_buffer_handles
-            .pop_front();
-        let cmd_buffer = existing_cmd_buffer_handle.unwrap_or_else(|| unsafe {
-            frame_context
-                .command_pool
-                .command_pool
-                .borrow_mut()
-                .create_command_buffer()
-        });
+        let cmd_buffer = unsafe { frame_context.command_pool.create_command_buffer() };
 
-        let counter = frame_context.remaining_command_buffers.clone();
-        let mut recorder = CommandBuffer::new(self, frame_context, cmd_buffer, counter);
+        let mut recorder = CommandBuffer::new(self, frame_context, cmd_buffer);
         recorder.begin(self.current_frame);
         recorder
     }
@@ -383,12 +355,7 @@ impl FrameContext {
         );
         Self {
             device: device.clone(),
-            command_pool: FrameContextCommandPool {
-                command_pool: Arc::new(AtomicRefCell::new(command_pool)),
-                sender,
-                receiver,
-                existing_cmd_buffer_handles: VecDeque::new(),
-            },
+            command_pool,
             transient_buffer_allocator,
             global_buffer_allocator: buffer_allocator.clone(),
             destroyer: destroyer.clone(),
@@ -396,7 +363,6 @@ impl FrameContext {
             acceleration_structure_scratch_offset: 0u64,
             frame: 1u64,
             query_allocator: QueryAllocator::new(device, destroyer, QUERY_COUNT),
-            remaining_command_buffers: CommandPoolCounter::default(),
         }
     }
 
@@ -428,10 +394,5 @@ impl FrameContext {
     #[inline(always)]
     pub(super) fn query_allocator(&mut self) -> &mut QueryAllocator {
         &mut self.query_allocator
-    }
-
-    #[inline(always)]
-    pub(super) fn sender(&self) -> &Sender<active_gpu_backend::CommandBuffer> {
-        &self.command_pool.sender
     }
 }

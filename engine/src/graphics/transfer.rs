@@ -61,17 +61,16 @@ struct TransferCommands {
     queue_type: QueueType,
     pre_barriers: Vec<OwnedBarrier>,
     copies: Vec<TransferCopy>,
-    post_barriers: Vec<(Option<SharedFenceValuePair>, OwnedBarrier)>,
+    post_barriers: Vec<(Option<QueueFenceValue>, OwnedBarrier)>,
     used_cmd_buffers: VecDeque<Box<TransferCommandBuffer>>,
-    fence_value: SharedFenceValuePair,
     used_buffers_slices: Vec<Arc<BufferSlice>>,
     used_textures: Vec<Arc<super::Texture>>,
 }
 
 pub struct TransferCommandBuffer {
     cmd_pool: active_gpu_backend::CommandPool,
-    cmd_buffer: active_gpu_backend::CommandBuffer,
-    fence_value: SharedFenceValuePair,
+    cmd_buffer: Option<active_gpu_backend::CommandBuffer>,
+    fence_value: u64,
     is_used: bool,
     used_buffers_slices: Vec<Arc<BufferSlice>>,
     used_textures: Vec<Arc<super::Texture>>,
@@ -85,23 +84,17 @@ impl Transfer {
     ) -> Self {
         let graphics_fence = Arc::new(super::Fence::new(device.as_ref(), destroyer));
 
-        let transfer_commands = device.transfer_queue().map(|transfer_queue| {
-            let transfer_fence = Arc::new(super::Fence::new(device.as_ref(), destroyer));
-            TransferCommands {
+        let transfer_commands = device
+            .transfer_queue()
+            .map(|transfer_queue| TransferCommands {
                 queue_type: QueueType::Transfer,
                 pre_barriers: Vec::new(),
                 copies: Vec::new(),
                 post_barriers: Vec::new(),
                 used_cmd_buffers: VecDeque::new(),
-                fence_value: SharedFenceValuePair {
-                    fence: transfer_fence,
-                    value: 1u64,
-                    sync_before: BarrierSync::COPY,
-                },
                 used_buffers_slices: Vec::new(),
                 used_textures: Vec::new(),
-            }
-        });
+            });
 
         let graphics_commands = TransferCommands {
             queue_type: QueueType::Graphics,
@@ -109,11 +102,6 @@ impl Transfer {
             copies: Vec::new(),
             post_barriers: Vec::new(),
             used_cmd_buffers: VecDeque::new(),
-            fence_value: SharedFenceValuePair {
-                fence: graphics_fence,
-                value: 1u64,
-                sync_before: BarrierSync::COPY,
-            },
             used_buffers_slices: Vec::new(),
             used_textures: Vec::new(),
         };
@@ -297,7 +285,7 @@ impl Transfer {
         mip_level: u32,
         array_layer: u32,
         do_async: bool,
-    ) -> Result<Option<SharedFenceValuePair>, OutOfMemoryError> {
+    ) -> Result<Option<QueueFenceValue>, OutOfMemoryError> {
         unsafe {
             if texture.handle().can_be_written_directly() {
                 self.copy_to_host_visible_texture(device, data, texture, mip_level, array_layer);
@@ -316,6 +304,7 @@ impl Transfer {
             Ok(None)
         } else {
             let fence_pair_opt = self.init_texture_from_buffer_async(
+                device,
                 texture,
                 &src_buffer,
                 mip_level,
@@ -334,7 +323,7 @@ impl Transfer {
         mip_level: u32,
         array_layer: u32,
         do_async: bool,
-    ) -> Result<Option<SharedFenceValuePair>, OutOfMemoryError> {
+    ) -> Result<Option<QueueFenceValue>, OutOfMemoryError> {
         unsafe {
             if texture.handle().can_be_written_directly() {
                 self.copy_to_host_visible_texture(device, &data, texture, mip_level, array_layer);
@@ -353,6 +342,7 @@ impl Transfer {
             Ok(None)
         } else {
             let fence_pair_opt = self.init_texture_from_buffer_async(
+                device,
                 texture,
                 &src_buffer,
                 mip_level,
@@ -431,12 +421,13 @@ impl Transfer {
 
     pub fn init_texture_from_buffer_async(
         &self,
+        device: &super::Device,
         texture: &Arc<super::Texture>,
         src_buffer: &Arc<BufferSlice>,
         mip_level: u32,
         array_layer: u32,
         buffer_offset: u64,
-    ) -> Option<SharedFenceValuePair> {
+    ) -> Option<QueueFenceValue> {
         let mut guard = self.inner.lock().unwrap();
         if guard.transfer.is_none() || DEBUG_FORCE_FAT_BARRIER {
             std::mem::drop(guard);
@@ -455,7 +446,6 @@ impl Transfer {
             transfer.used_buffers_slices.push(src_buffer.clone());
             transfer.used_textures.push(texture.clone());
 
-            debug_assert!(!transfer.fence_value.is_signalled());
             transfer.pre_barriers.push(OwnedBarrier::TextureBarrier {
                 old_sync: BarrierSync::empty(),
                 new_sync: BarrierSync::COPY,
@@ -517,7 +507,10 @@ impl Transfer {
                 },
             ));
 
-            transfer.fence_value.clone()
+            (
+                QueueType::Transfer,
+                device.queue_counter(QueueType::Transfer),
+            )
         };
 
         // acquire
@@ -548,20 +541,16 @@ impl Transfer {
         Some(fence_value_pair)
     }
 
-    pub fn try_free_unused_buffers(&self) {
+    pub fn try_free_unused_buffers(&self, device: &super::Device) {
         let mut guard = self.inner.lock().unwrap();
-        let mut signalled_counter: u64 = 0u64;
         for cmd_buffer in &mut guard.graphics.used_cmd_buffers {
-            if cmd_buffer.fence_value.is_signalled() {
-                signalled_counter = signalled_counter.max(cmd_buffer.fence_value.value);
+            if device.completed_queue_counter(QueueType::Graphics) >= cmd_buffer.fence_value {
                 cmd_buffer.reset();
             }
         }
         if let Some(transfer) = guard.transfer.as_mut() {
-            signalled_counter = 0u64;
             for cmd_buffer in &mut transfer.used_cmd_buffers {
-                if cmd_buffer.fence_value.is_signalled() {
-                    signalled_counter = signalled_counter.max(cmd_buffer.fence_value.value);
+                if device.completed_queue_counter(QueueType::Transfer) >= cmd_buffer.fence_value {
                     cmd_buffer.reset();
                 }
             }
@@ -575,10 +564,13 @@ impl Transfer {
     ) -> Option<Box<TransferCommandBuffer>> {
         if commands.copies.is_empty()
             && (commands.post_barriers.is_empty()
-                || commands
-                    .post_barriers
-                    .iter()
-                    .all(|(fence, _)| fence.as_ref().map_or(false, |f| !f.is_signalled())))
+                || commands.post_barriers.iter().all(|(queue_fence_value, _)| {
+                    queue_fence_value
+                        .as_ref()
+                        .map_or(false, |&(queue_type, value)| {
+                            !device.completed_queue_counter(queue_type) >= value
+                        })
+                }))
         {
             return None;
         }
@@ -586,7 +578,9 @@ impl Transfer {
         let reuse_first_graphics_buffer = commands
             .used_cmd_buffers
             .front()
-            .map(|cmd_buffer| cmd_buffer.fence_value.is_signalled())
+            .map(|cmd_buffer| {
+                device.completed_queue_counter(commands.queue_type) >= cmd_buffer.fence_value
+            })
             .unwrap_or(false);
         let mut cmd_buffer = if reuse_first_graphics_buffer {
             let mut cmd_buffer = commands.used_cmd_buffers.pop_front().unwrap();
@@ -609,7 +603,7 @@ impl Transfer {
                         .create_command_pool(gpu::CommandPoolFlags::empty())
                 }
             };
-            Box::new({ TransferCommandBuffer::new(device.handle(), pool, &commands.fence_value) })
+            Box::new({ TransferCommandBuffer::new(device.handle(), pool, 0) })
         };
         debug_assert!(!cmd_buffer.is_used());
 
@@ -620,12 +614,13 @@ impl Transfer {
             .used_textures
             .extend(commands.used_textures.drain(..));
 
+        let api_cmd_buffer = cmd_buffer.cmd_buffer.as_mut().unwrap();
         unsafe {
-            cmd_buffer.cmd_buffer.begin(0u64);
+            api_cmd_buffer.begin(0u64);
         }
 
         if DEBUG_FORCE_FAT_BARRIER {
-            Self::fat_barrier(&mut cmd_buffer.cmd_buffer);
+            Self::fat_barrier(api_cmd_buffer);
         }
 
         // commit pre barriers
@@ -677,7 +672,7 @@ impl Transfer {
             });
         }
         unsafe {
-            cmd_buffer.cmd_buffer.barrier(&barriers);
+            api_cmd_buffer.barrier(&barriers);
         }
         std::mem::drop(barriers);
         commands.pre_barriers.clear();
@@ -685,27 +680,21 @@ impl Transfer {
         // commit copies
         for copy in commands.copies.drain(..) {
             if DEBUG_FORCE_FAT_BARRIER {
-                Self::fat_barrier(&mut cmd_buffer.cmd_buffer);
+                Self::fat_barrier(api_cmd_buffer);
             }
 
             match copy {
                 TransferCopy::BufferToBuffer { src, dst, region } => unsafe {
-                    cmd_buffer
-                        .cmd_buffer
-                        .copy_buffer(src.handle(), dst.handle(), &region);
+                    api_cmd_buffer.copy_buffer(src.handle(), dst.handle(), &region);
                 },
 
                 TransferCopy::BufferToImage { src, dst, region } => unsafe {
-                    cmd_buffer.cmd_buffer.copy_buffer_to_texture(
-                        src.handle(),
-                        dst.handle(),
-                        &region,
-                    );
+                    api_cmd_buffer.copy_buffer_to_texture(src.handle(), dst.handle(), &region);
                 },
             }
 
             if DEBUG_FORCE_FAT_BARRIER {
-                Self::fat_barrier(&mut cmd_buffer.cmd_buffer);
+                Self::fat_barrier(api_cmd_buffer);
             }
         }
 
@@ -714,8 +703,8 @@ impl Transfer {
             Vec::<active_gpu_backend::Barrier>::with_capacity(commands.pre_barriers.len());
         let mut retained_barrier_indices = HashSet::<u32>::new();
         for (index, (fence_opt, barrier)) in commands.post_barriers.iter().enumerate() {
-            if let Some(fence) = fence_opt {
-                if !fence.is_signalled() {
+            if let Some((queue_type, value)) = fence_opt {
+                if device.completed_queue_counter(*queue_type) < *value {
                     retained_barrier_indices.insert(index as u32);
                     continue;
                 }
@@ -766,7 +755,7 @@ impl Transfer {
             });
         }
         unsafe {
-            cmd_buffer.cmd_buffer.barrier(&barriers);
+            api_cmd_buffer.barrier(&barriers);
         }
         let mut index = 0u32;
         commands.post_barriers.retain(|_| {
@@ -776,12 +765,11 @@ impl Transfer {
         });
 
         unsafe {
-            cmd_buffer.cmd_buffer.finish();
+            api_cmd_buffer.finish();
         }
 
-        cmd_buffer.fence_value.value = commands.fence_value.value;
+        cmd_buffer.fence_value = device.queue_counter(commands.queue_type);
         cmd_buffer.mark_used();
-        commands.fence_value.value += 1;
 
         Some(cmd_buffer)
     }
@@ -833,58 +821,29 @@ impl Transfer {
     }
 
     pub fn flush(&self, device: &Device) {
-        self.try_free_unused_buffers();
+        self.try_free_unused_buffers(device);
 
         let mut guard = self.inner.lock().unwrap();
         if let Some(transfer) = guard.transfer.as_mut() {
             let cmd_buffer_opt: Option<Box<TransferCommandBuffer>> =
                 self.flush_commands(device, transfer);
             if let Some(mut cmd_buffer) = cmd_buffer_opt {
-                unsafe {
-                    log::warn!("Submitting transfer");
-                    /*device.submit(
-                        QueueType::Transfer,
-                        QueueSubmission {
-                            command_buffer: FinishedCommandBuffer {},
-                            wait_fences: &[],
-                            acquire_swapchain: None,
-                            release_swapchain: None,
-                        },
-                    );*/
-                    device
-                        .handle()
-                        .transfer_queue()
-                        .as_ref()
-                        .unwrap()
-                        .submit(&mut [gpu::Submission {
-                            command_buffers: &mut [&mut cmd_buffer.cmd_buffer],
-                            wait_fences: &[],
-                            signal_fences: &[cmd_buffer.fence_value.as_handle_ref()],
-                            acquire_swapchain: None,
-                            release_swapchain: None,
-                        }]);
-                    log::warn!("Submitting transfer done");
-                }
+                let inner = cmd_buffer
+                    .cmd_buffer
+                    .take()
+                    .expect("Commands with no command buffer");
+                device.submit(QueueType::Transfer, FinishedCommandBuffer::new(inner));
                 transfer.used_cmd_buffers.push_back(cmd_buffer);
             }
         }
 
         let cmd_buffer_opt = self.flush_commands(device, &mut guard.graphics);
         if let Some(mut cmd_buffer) = cmd_buffer_opt {
-            unsafe {
-                log::warn!("Submitting transfer graphics");
-                device
-                    .handle()
-                    .graphics_queue()
-                    .submit(&mut [gpu::Submission {
-                        command_buffers: &mut [&mut cmd_buffer.cmd_buffer],
-                        signal_fences: &[cmd_buffer.fence_value.as_handle_ref()],
-                        wait_fences: &[],
-                        acquire_swapchain: None,
-                        release_swapchain: None,
-                    }]);
-                log::warn!("Submitting transfer graphics done");
-            }
+            let inner = cmd_buffer
+                .cmd_buffer
+                .take()
+                .expect("Commands with no command buffer");
+            device.submit(QueueType::Transfer, FinishedCommandBuffer::new(inner));
             guard.graphics.used_cmd_buffers.push_back(cmd_buffer);
         }
     }
@@ -907,14 +866,14 @@ impl TransferCommandBuffer {
     pub(super) fn new(
         _device: &Arc<active_gpu_backend::Device>,
         mut cmd_pool: active_gpu_backend::CommandPool,
-        fence_value: &SharedFenceValuePair,
+        fence_value: u64,
     ) -> Self {
         let cmd_buffer = unsafe { cmd_pool.create_command_buffer() };
 
         Self {
-            cmd_buffer,
+            cmd_buffer: Some(cmd_buffer),
             cmd_pool,
-            fence_value: fence_value.clone(),
+            fence_value,
             is_used: false,
             used_buffers_slices: Vec::new(),
             used_textures: Vec::new(),
@@ -937,7 +896,6 @@ impl TransferCommandBuffer {
         }
 
         unsafe {
-            debug_assert!(self.fence_value.is_signalled());
             self.cmd_pool.reset();
         }
         self.is_used = false;
@@ -948,20 +906,12 @@ impl TransferCommandBuffer {
     #[allow(unused)]
     #[inline(always)]
     pub(super) fn handle(&self) -> &active_gpu_backend::CommandBuffer {
-        &self.cmd_buffer
+        self.cmd_buffer.as_ref().expect("No active command buffer")
     }
 
     #[allow(unused)]
     #[inline(always)]
-    pub(super) fn fence_value(&self) -> &SharedFenceValuePair {
-        &self.fence_value
-    }
-}
-
-impl Drop for TransferCommandBuffer {
-    fn drop(&mut self) {
-        if self.is_used {
-            self.fence_value.await_signal();
-        }
+    pub(super) fn fence_value(&self) -> u64 {
+        self.fence_value
     }
 }

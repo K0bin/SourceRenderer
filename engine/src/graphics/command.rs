@@ -59,11 +59,9 @@ pub enum PipelineBinding<'a> {
 }
 pub struct CommandBuffer<'a> {
     context: AtomicRefMut<'a, FrameContext>,
-    pool: Arc<active_gpu_backend::CommandPool>,
     _global_context: &'a GraphicsContext,
     cmd_buffer_handle: active_gpu_backend::CommandBuffer,
     active_query_range: Option<QueryRange>,
-    command_pool_counter: CommandPoolCounter,
     no_send_sync: PhantomData<*mut u8>,
 }
 
@@ -118,16 +116,12 @@ impl<'a> CommandBuffer<'a> {
         global_context: &'a GraphicsContext,
         context: AtomicRefMut<'a, FrameContext>,
         handle: active_gpu_backend::CommandBuffer,
-        command_pool_counter: CommandPoolCounter,
     ) -> Self {
-        command_pool_counter.increment();
         Self {
             _global_context: global_context,
-            pool: context.command_pool.command_pool.clone(),
             context,
             cmd_buffer_handle: handle,
             active_query_range: None,
-            command_pool_counter,
             no_send_sync: PhantomData,
         }
     }
@@ -726,21 +720,7 @@ impl<'a> CommandBuffer<'a> {
             self.cmd_buffer_handle.finish();
         }
 
-        let CommandBuffer {
-            context,
-            pool,
-            _global_context: _,
-            cmd_buffer_handle,
-            active_query_range: _,
-            command_pool_counter,
-            no_send_sync: _,
-        } = self;
-        FinishedCommandBuffer {
-            handle: cmd_buffer_handle,
-            sender: context.sender().clone(),
-            command_pool_counter,
-            pool,
-        }
+        FinishedCommandBuffer::new(self.cmd_buffer_handle)
     }
 
     pub fn clear_storage_texture(

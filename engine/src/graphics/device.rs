@@ -300,7 +300,7 @@ impl Device {
         dst: &Arc<super::Texture>,
         mip_level: u32,
         array_layer: u32,
-    ) -> Result<Option<SharedFenceValuePair>, OutOfMemoryError> {
+    ) -> Result<Option<QueueFenceValue>, OutOfMemoryError> {
         let data_u8: &[u8] = cast_slice(data);
         self.transfer
             .init_texture(self, &data_u8, dst, mip_level, array_layer, true)
@@ -312,7 +312,7 @@ impl Device {
         dst: &Arc<super::Texture>,
         mip_level: u32,
         array_layer: u32,
-    ) -> Result<Option<SharedFenceValuePair>, OutOfMemoryError> {
+    ) -> Result<Option<QueueFenceValue>, OutOfMemoryError> {
         let data_u8: BoxBytes = box_bytes_of(data);
         self.transfer
             .init_texture_box(self, data_u8, dst, mip_level, array_layer, true)
@@ -325,8 +325,9 @@ impl Device {
         mip_level: u32,
         array_layer: u32,
         buffer_offset: u64,
-    ) -> Option<SharedFenceValuePair> {
+    ) -> Option<QueueFenceValue> {
         self.transfer.init_texture_from_buffer_async(
+            &self,
             dst,
             src,
             mip_level,
@@ -342,7 +343,7 @@ impl Device {
 
     #[inline(always)]
     pub fn free_completed_transfers(&self) {
-        self.transfer.try_free_unused_buffers();
+        self.transfer.try_free_unused_buffers(&self);
     }
 
     pub fn insert_texture_into_bindless_heap(
@@ -464,39 +465,100 @@ impl Device {
         }
     }
 
-    pub fn submit(&self, queue_type: QueueType, submission: QueueSubmission) {
-        // Increase counter for the other queues to keep them sync for the deferred destruction.
-        // This allows us to have one synchronized GPU timeline.
-        // I hope the extra submits don't add too much unnecessary synchronization.
+    pub fn wait_for(
+        &self,
+        queue_type: QueueType,
+        wait_for_queue: QueueType,
+        counter: u64,
+        wait_before: BarrierSync,
+    ) {
         match queue_type {
             QueueType::Graphics => {
-                self.graphics_queue.submit(submission);
-                self.compute_queue.as_ref().map(|q| q.submit_counter_bump());
-                self.transfer_queue
+                let queue = &self.graphics_queue;
+                match wait_for_queue {
+                    QueueType::Compute => queue.wait_for(
+                        self.compute_queue
+                            .as_ref()
+                            .expect("No compute queue to wait for")
+                            .fence(),
+                        counter,
+                        wait_before,
+                    ),
+                    QueueType::Transfer => queue.wait_for(
+                        self.transfer_queue
+                            .as_ref()
+                            .expect("No transfer queue to wait for")
+                            .fence(),
+                        counter,
+                        wait_before,
+                    ),
+                    QueueType::Graphics => panic!("Cannot wait for same queue."),
+                }
+            }
+            QueueType::Compute => {
+                let queue = &self
+                    .compute_queue
                     .as_ref()
-                    .map(|q| q.submit_counter_bump());
+                    .expect("Device does not support requested queue type.");
+                match wait_for_queue {
+                    QueueType::Compute => panic!("Cannot wait for same queue."),
+                    QueueType::Transfer => queue.wait_for(
+                        self.transfer_queue
+                            .as_ref()
+                            .expect("No transfer queue to wait for")
+                            .fence(),
+                        counter,
+                        wait_before,
+                    ),
+                    QueueType::Graphics => {
+                        queue.wait_for(self.graphics_queue.fence(), counter, wait_before)
+                    }
+                }
+            }
+            QueueType::Transfer => {
+                let queue = &self
+                    .transfer_queue
+                    .as_ref()
+                    .expect("Device does not support requested queue type.");
+                match wait_for_queue {
+                    QueueType::Compute => queue.wait_for(
+                        self.compute_queue
+                            .as_ref()
+                            .expect("No compute queue to wait for")
+                            .fence(),
+                        counter,
+                        wait_before,
+                    ),
+                    QueueType::Transfer => panic!("Cannot wait for same queue."),
+                    QueueType::Graphics => {
+                        queue.wait_for(self.graphics_queue.fence(), counter, wait_before)
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn submit(&self, queue_type: QueueType, cmd_buffer: FinishedCommandBuffer) -> u64 {
+        match queue_type {
+            QueueType::Graphics => {
+                self.graphics_queue.submit(cmd_buffer);
             }
             QueueType::Compute => {
                 let queue = self
                     .compute_queue
                     .as_ref()
                     .expect("Device does not support requested queue type.");
-                queue.submit(submission);
-                self.graphics_queue.submit_counter_bump();
-                self.transfer_queue
-                    .as_ref()
-                    .map(|q| q.submit_counter_bump());
+                queue.submit(cmd_buffer);
             }
             QueueType::Transfer => {
                 let queue = self
                     .transfer_queue
                     .as_ref()
                     .expect("Device does not support requested queue type.");
-                queue.submit(submission);
-                self.graphics_queue.submit_counter_bump();
-                self.compute_queue.as_ref().map(|q| q.submit_counter_bump());
+                queue.submit(cmd_buffer);
             }
         }
+        self.graphics_queue.next_counter()
     }
 
     pub fn present(
@@ -505,23 +567,50 @@ impl Device {
         swapchain: &Arc<Mutex<Swapchain>>,
         backbuffer: Arc<active_gpu_backend::Backbuffer>,
     ) {
-        let queue_opt: Option<&Queue> = match queue_type {
-            QueueType::Graphics => Some(&self.graphics_queue),
-            QueueType::Compute => self.compute_queue.as_ref(),
-            QueueType::Transfer => self.transfer_queue.as_ref(),
+        let (queue_opt, api_queue_opt) = match queue_type {
+            QueueType::Graphics => (
+                Some(&self.graphics_queue),
+                Some(self.device.graphics_queue()),
+            ),
+            QueueType::Compute => (self.compute_queue.as_ref(), self.device.compute_queue()),
+            QueueType::Transfer => (self.transfer_queue.as_ref(), self.device.transfer_queue()),
         };
 
-        let queue = queue_opt.expect("Device does not support requested queue type.");
-        queue.present(swapchain, backbuffer);
+        if queue_opt.is_none() || api_queue_opt.is_none() {
+            panic!("Device does not support requested queue type.");
+        }
+
+        let api_queue = api_queue_opt.unwrap();
+        let queue = queue_opt.unwrap();
+        queue.present(swapchain, backbuffer, api_queue);
     }
 
-    pub fn flush_all(&self) {
-        self.flush(QueueType::Graphics);
-        self.flush(QueueType::Compute);
-        self.flush(QueueType::Transfer);
+    pub fn flush(&self) -> u64 {
+        let mut all_empty = true;
+        all_empty &= self.graphics_queue.is_empty();
+        all_empty &= self.transfer_queue.as_ref().map_or(true, |q| q.is_empty());
+        all_empty &= self.compute_queue.as_ref().map_or(true, |q| q.is_empty());
+        if all_empty {
+            return self.graphics_queue.next_counter().max(1) - 1;
+        }
+
+        // Increase counter for the other queues to keep them sync for the deferred destruction.
+        // This allows us to have one synchronized GPU timeline.
+        // I hope the extra submits don't add too much unnecessary synchronization.
+        self.graphics_queue.submit_counter_bump();
+        self.compute_queue.as_ref().map(|q| q.submit_counter_bump());
+        self.transfer_queue
+            .as_ref()
+            .map(|q| q.submit_counter_bump());
+
+        let graphics_counter = self.flush_queue(QueueType::Graphics);
+        let compute_counter = self.flush_queue(QueueType::Compute);
+        let transfer_counter = self.flush_queue(QueueType::Transfer);
+
+        graphics_counter.max(compute_counter.max(transfer_counter))
     }
 
-    pub fn flush(&self, queue_type: QueueType) {
+    fn flush_queue(&self, queue_type: QueueType) -> u64 {
         self.flush_transfers();
 
         let (queue_opt, api_queue_opt) = match queue_type {
@@ -534,13 +623,13 @@ impl Device {
         };
 
         if queue_opt.is_none() || api_queue_opt.is_none() {
-            return;
+            return 0u64;
         }
 
         let api_queue = api_queue_opt.unwrap();
         let queue = queue_opt.unwrap();
 
-        queue.flush(api_queue);
+        queue.flush(api_queue)
     }
 }
 

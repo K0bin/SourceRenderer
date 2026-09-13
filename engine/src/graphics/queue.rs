@@ -1,7 +1,6 @@
 use super::gpu::Queue as GPUQueue;
 use super::*;
 use crate::{Condvar, Mutex, MutexGuard};
-use atomic_refcell::AtomicRefCell;
 use smallvec::{SmallVec, smallvec};
 use std::collections::VecDeque;
 use std::ops::Range;
@@ -13,37 +12,13 @@ type SharedSwapchainPtr = *const Mutex<super::Swapchain>;
 type GPUSwapchainPtr = *const active_gpu_backend::Swapchain;
 type Backbuffer = active_gpu_backend::Backbuffer;
 
-struct CountedCommandPool {
-    counter: CommandPoolCounter,
-    pool: Arc<AtomicRefCell<active_gpu_backend::CommandPool>>,
-}
+pub type QueueFenceValue = (QueueType, u64);
 
-impl Drop for CountedCommandPool {
-    fn drop(&mut self) {
-        assert_eq!(self.counter.value(), 0);
+pub struct FinishedCommandBuffer(active_gpu_backend::CommandBuffer);
+impl FinishedCommandBuffer {
+    pub(super) fn new(cmd_buffer: active_gpu_backend::CommandBuffer) -> Self {
+        Self(cmd_buffer)
     }
-}
-
-#[derive(Clone, Default)]
-pub struct CommandPoolCounter(Arc<AtomicU64>);
-impl CommandPoolCounter {
-    pub fn value(&self) -> u64 {
-        self.0.load(Ordering::SeqCst)
-    }
-    pub(super) fn increment(&self) -> u64 {
-        self.0.fetch_add(1, Ordering::SeqCst) + 1
-    }
-}
-impl Drop for CommandPoolCounter {
-    fn drop(&mut self) {
-        self.0.fetch_sub(1, Ordering::SeqCst);
-    }
-}
-
-pub struct FinishedCommandBuffer {
-    pub(super) handle: active_gpu_backend::CommandBuffer,
-    pub(super) pool: Arc<active_gpu_backend::CommandPool>,
-    pub(super) command_pool_counter: CommandPoolCounter,
 }
 
 struct StoredQueueSubmission {
@@ -122,6 +97,11 @@ impl Queue {
         });
     }
 
+    pub(super) fn is_empty(&self) -> bool {
+        let mut guard = self.inner.lock().unwrap();
+        guard.virtual_queue.is_empty()
+    }
+
     pub(super) fn submit_counter_bump(&self) {
         let mut guard = self.inner.lock().unwrap();
         guard.is_idle = false;
@@ -142,16 +122,37 @@ impl Queue {
             }
 
             last.signal_fences.push(fence_value);
+            return;
         }
 
         guard.virtual_queue.push_back(StoredQueueSubmission {
             command_buffers: smallvec![],
-            signal_fences: smallvec![SharedFenceValuePair {
-                fence: self.fence.clone(),
-                sync_before: Self::all_barrier_syncs(self.queue_type),
-                value
-            }],
+            signal_fences: smallvec![fence_value],
             wait_fences: smallvec![],
+            signal_swapchain: None,
+            wait_swapchain: None,
+        });
+    }
+
+    pub(super) fn wait_for(
+        &self,
+        fence: &Arc<super::Fence>,
+        counter: u64,
+        wait_before: BarrierSync,
+    ) {
+        let mut guard = self.inner.lock().unwrap();
+        guard.is_idle = false;
+
+        let fence_value = SharedFenceValuePair {
+            fence: fence.clone(),
+            sync_before: wait_before,
+            value: counter,
+        };
+
+        guard.virtual_queue.push_back(StoredQueueSubmission {
+            command_buffers: smallvec![],
+            signal_fences: smallvec![],
+            wait_fences: smallvec![fence_value],
             signal_swapchain: None,
             wait_swapchain: None,
         });
@@ -228,10 +229,10 @@ impl Queue {
         }
     }
 
-    pub(super) fn flush(&self, queue: &active_gpu_backend::Queue) {
+    pub(super) fn flush(&self, queue: &active_gpu_backend::Queue) -> u64 {
         let mut guard = self.inner.lock().unwrap();
         if guard.virtual_queue.is_empty() {
-            return;
+            return self.next_counter.load(Ordering::SeqCst).max(1) - 1;
         }
 
         let mut cmd_buffers: SmallVec<[active_gpu_backend::CommandBuffer; 4]> =
@@ -241,7 +242,7 @@ impl Queue {
         for submission in guard.virtual_queue.iter_mut() {
             let range_start = cmd_buffers.len();
             for cmd_buffer in submission.command_buffers.drain(..) {
-                cmd_buffers.push(cmd_buffer.handle);
+                cmd_buffers.push(cmd_buffer.0);
             }
             cmd_buffers_ranges.push(range_start..cmd_buffers.len());
         }
@@ -321,6 +322,7 @@ impl Queue {
         std::mem::drop(cmd_buffers);
         std::mem::drop(cmd_buffers_ranges);
         guard.virtual_queue.clear();
+        return self.next_counter.load(Ordering::SeqCst).max(1) - 1;
     }
 
     #[allow(unused)]
