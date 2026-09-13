@@ -138,10 +138,6 @@ impl GraphicsContext {
             [(self.current_frame as usize) % self.frame_finished_counter_values.len()] =
             frame_completed_fence_value;
         self.completed_frame += 1;
-        self.destroyer
-            .set_counter(frame_completed_fence_value + 1u64);
-        self.destroyer
-            .destroy_unused(self.device.completed_queue_counter(QueueType::Graphics));
         /*log::warn!(
             "Ending frame: {}, with counter value: {}",
             self.current_frame,

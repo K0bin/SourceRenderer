@@ -405,6 +405,7 @@ impl Device {
     }
 
     pub fn block_until_idle(&self) {
+        log::warn!("Block until idle.");
         self.flush_transfers();
         self.graphics_queue.flush(self.device.graphics_queue());
         self.graphics_queue.wait_for_idle();
@@ -439,8 +440,10 @@ impl Device {
         };
         if let Some(queue) = queue_opt {
             queue.await_counter(value);
+            if value != 0 {
+                self.destroyer.destroy_unused(value);
+            }
         }
-        self.destroyer.destroy_unused(value);
     }
 
     pub fn completed_queue_counter(&self, queue_type: QueueType) -> u64 {
@@ -449,9 +452,12 @@ impl Device {
             QueueType::Compute => self.compute_queue.as_ref(),
             QueueType::Transfer => self.transfer_queue.as_ref(),
         };
+
         if let Some(queue) = queue_opt {
             let counter = queue.completed_counter();
-            self.destroyer.destroy_unused(counter);
+            if counter != 0 {
+                self.destroyer.destroy_unused(counter);
+            }
             return counter;
         }
         0u64
@@ -567,6 +573,8 @@ impl Device {
         swapchain: &Arc<Mutex<Swapchain>>,
         backbuffer: Arc<active_gpu_backend::Backbuffer>,
     ) {
+        self.flush();
+
         let (queue_opt, api_queue_opt) = match queue_type {
             QueueType::Graphics => (
                 Some(&self.graphics_queue),
@@ -628,10 +636,12 @@ impl Device {
     }
 
     pub fn flush(&self) -> u64 {
+        self.flush_transfers();
+
         let mut all_empty = true;
         all_empty &= self.graphics_queue.is_empty();
-        all_empty &= self.transfer_queue.as_ref().map_or(true, |q| q.is_empty());
         all_empty &= self.compute_queue.as_ref().map_or(true, |q| q.is_empty());
+        all_empty &= self.transfer_queue.as_ref().map_or(true, |q| q.is_empty());
         if all_empty {
             return self.graphics_queue.next_counter().max(1) - 1;
         }
@@ -649,12 +659,22 @@ impl Device {
         let compute_counter = self.flush_queue(QueueType::Compute);
         let transfer_counter = self.flush_queue(QueueType::Transfer);
 
+        log::warn!(
+            "Flushing. Flushed counters: GFX: {:?}, COMP: {:?}, COPY: {:?}",
+            graphics_counter,
+            compute_counter,
+            transfer_counter
+        );
+
+        assert!(compute_counter == 0 || graphics_counter == compute_counter);
+        assert!(transfer_counter == 0 || graphics_counter == transfer_counter);
+        //assert_eq!(graphics_counter + 1, self.graphics_queue.next_counter());
+        self.destroyer.set_counter(graphics_counter + 1);
+
         graphics_counter.max(compute_counter.max(transfer_counter))
     }
 
     fn flush_queue(&self, queue_type: QueueType) -> u64 {
-        self.flush_transfers();
-
         let (queue_opt, api_queue_opt) = match queue_type {
             QueueType::Graphics => (
                 Some(&self.graphics_queue),

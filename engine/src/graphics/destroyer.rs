@@ -31,7 +31,7 @@ impl DeferredDestroyer {
     pub(super) fn new() -> Self {
         Self {
             inner: Mutex::new(DeferredDestroyerInner {
-                current_counter: 0u64,
+                current_counter: 1u64,
                 allocations: Vec::new(),
                 textures: Vec::new(),
                 texture_views: Vec::new(),
@@ -149,7 +149,9 @@ impl DeferredDestroyer {
 
     pub(super) fn set_counter(&self, counter: u64) {
         let mut guard = self.inner.lock().unwrap();
-        assert!(guard.current_counter <= counter);
+        if guard.current_counter > counter {
+            return;
+        }
         guard.current_counter = counter;
     }
 
@@ -165,7 +167,16 @@ impl DeferredDestroyer {
     }
 
     fn destroy_unused_locked(guard: &mut MutexGuard<'_, DeferredDestroyerInner>, counter: u64) {
-        assert!(guard.current_counter >= counter);
+        //assert!(guard.current_counter >= counter);
+        if guard.current_counter < counter {
+            log::warn!(
+                "Current counter ({:?} is smaller than the counter we're waiting for ({:?}",
+                guard.current_counter,
+                counter
+            );
+            panic!("Bye");
+        }
+
         guard
             .acceleration_structures
             .retain(|(resource_counter, _)| *resource_counter > counter);

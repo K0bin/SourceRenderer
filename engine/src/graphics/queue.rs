@@ -4,8 +4,8 @@ use crate::{Condvar, Mutex, MutexGuard};
 use smallvec::{SmallVec, smallvec};
 use std::collections::VecDeque;
 use std::ops::Range;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, LockResult, TryLockError, TryLockResult};
 
 type SharedSwapchain = Arc<Mutex<super::Swapchain>>;
 type SharedSwapchainPtr = *const Mutex<super::Swapchain>;
@@ -36,13 +36,8 @@ pub struct QueueSubmission<'a> {
     pub release_swapchain: Option<(&'a SharedSwapchain, &'a Arc<Backbuffer>)>,
 }
 
-struct QueueInner {
-    virtual_queue: VecDeque<StoredQueueSubmission>,
-    is_idle: bool,
-}
-
 pub(super) struct Queue {
-    inner: Mutex<QueueInner>,
+    inner: Mutex<VecDeque<StoredQueueSubmission>>,
     queue_type: QueueType,
     idle_condvar: Condvar,
     fence: Arc<Fence>,
@@ -52,10 +47,7 @@ pub(super) struct Queue {
 impl Queue {
     pub(super) fn new(queue_type: QueueType, fence: Fence) -> Self {
         Self {
-            inner: Mutex::new(QueueInner {
-                virtual_queue: VecDeque::new(),
-                is_idle: true,
-            }),
+            inner: Mutex::new(VecDeque::new()),
             queue_type,
             idle_condvar: Condvar::new(),
             fence: Arc::new(fence),
@@ -78,9 +70,8 @@ impl Queue {
 
     pub(super) fn submit(&self, command_buffer: FinishedCommandBuffer) {
         let mut guard = self.inner.lock().unwrap();
-        guard.is_idle = false;
 
-        let last = guard.virtual_queue.iter_mut().last();
+        let last = guard.iter_mut().last();
         if let Some(last) = last {
             if last.signal_fences.is_empty() && last.signal_swapchain.is_none() {
                 last.command_buffers.push(command_buffer);
@@ -88,7 +79,7 @@ impl Queue {
             }
         }
 
-        guard.virtual_queue.push_back(StoredQueueSubmission {
+        guard.push_back(StoredQueueSubmission {
             command_buffers: smallvec![command_buffer],
             signal_fences: SmallVec::new(),
             wait_fences: SmallVec::new(),
@@ -98,22 +89,28 @@ impl Queue {
     }
 
     pub(super) fn is_empty(&self) -> bool {
-        let mut guard = self.inner.lock().unwrap();
-        guard.virtual_queue.is_empty()
+        let guard = self.inner.lock().unwrap();
+        guard.is_empty()
     }
 
     pub(super) fn submit_counter_bump(&self) {
         let mut guard = self.inner.lock().unwrap();
-        guard.is_idle = false;
 
         let value = self.next_counter.fetch_add(1u64, Ordering::SeqCst);
+
+        log::warn!(
+            "Submitting bump for {:?}. new value: {:?}",
+            self.queue_type,
+            value + 1
+        );
+
         let fence_value = SharedFenceValuePair {
             fence: self.fence.clone(),
             sync_before: Self::all_barrier_syncs(self.queue_type),
             value,
         };
 
-        let last = guard.virtual_queue.iter_mut().last();
+        let last = guard.iter_mut().last();
         if let Some(last) = last {
             for fence in last.signal_fences.iter() {
                 if fence == &fence_value {
@@ -125,7 +122,7 @@ impl Queue {
             return;
         }
 
-        guard.virtual_queue.push_back(StoredQueueSubmission {
+        guard.push_back(StoredQueueSubmission {
             command_buffers: smallvec![],
             signal_fences: smallvec![fence_value],
             wait_fences: smallvec![],
@@ -141,7 +138,6 @@ impl Queue {
         wait_before: BarrierSync,
     ) {
         let mut guard = self.inner.lock().unwrap();
-        guard.is_idle = false;
 
         let fence_value = SharedFenceValuePair {
             fence: fence.clone(),
@@ -149,7 +145,7 @@ impl Queue {
             value: counter,
         };
 
-        guard.virtual_queue.push_back(StoredQueueSubmission {
+        guard.push_back(StoredQueueSubmission {
             command_buffers: smallvec![],
             signal_fences: smallvec![],
             wait_fences: smallvec![fence_value],
@@ -164,9 +160,8 @@ impl Queue {
         backbuffer: &Arc<Backbuffer>,
     ) {
         let mut guard = self.inner.lock().unwrap();
-        guard.is_idle = false;
 
-        guard.virtual_queue.push_back(StoredQueueSubmission {
+        guard.push_back(StoredQueueSubmission {
             command_buffers: smallvec![],
             signal_fences: smallvec![],
             wait_fences: smallvec![],
@@ -181,16 +176,15 @@ impl Queue {
         backbuffer: &Arc<Backbuffer>,
     ) {
         let mut guard = self.inner.lock().unwrap();
-        guard.is_idle = false;
 
-        let last = guard.virtual_queue.iter_mut().last();
+        let last = guard.iter_mut().last();
         if let Some(last) = last {
             assert!(last.signal_swapchain.is_none());
             last.signal_swapchain = Some((swapchain.clone(), backbuffer.clone()));
             return;
         }
 
-        guard.virtual_queue.push_back(StoredQueueSubmission {
+        guard.push_back(StoredQueueSubmission {
             command_buffers: smallvec![],
             signal_fences: smallvec![],
             wait_fences: smallvec![],
@@ -221,7 +215,8 @@ impl Queue {
         backbuffer: Arc<active_gpu_backend::Backbuffer>,
         queue: &active_gpu_backend::Queue,
     ) {
-        self.flush(queue);
+        let mut guard = self.inner.lock().unwrap();
+        //Self::flush_locked(&mut guard, self.queue_type, queue);
 
         let mut swapchain_inner = swapchain.lock().unwrap();
         unsafe {
@@ -231,15 +226,26 @@ impl Queue {
 
     pub(super) fn flush(&self, queue: &active_gpu_backend::Queue) -> u64 {
         let mut guard = self.inner.lock().unwrap();
-        if guard.virtual_queue.is_empty() {
-            return self.next_counter.load(Ordering::SeqCst).max(1) - 1;
+        Self::flush_locked(&mut guard, self.queue_type, queue);
+        self.next_counter.load(Ordering::SeqCst).max(1) - 1
+    }
+
+    fn flush_locked(
+        guard: &mut MutexGuard<VecDeque<StoredQueueSubmission>>,
+        queue_type: QueueType,
+        queue: &active_gpu_backend::Queue,
+    ) {
+        log::warn!("Flushing queue: {:?}", queue_type);
+
+        if guard.is_empty() {
+            return;
         }
 
         let mut cmd_buffers: SmallVec<[active_gpu_backend::CommandBuffer; 4]> =
-            SmallVec::with_capacity(guard.virtual_queue.len());
+            SmallVec::with_capacity(guard.len());
         let mut cmd_buffers_ranges: SmallVec<[Range<usize>; 4]> =
-            SmallVec::with_capacity(guard.virtual_queue.len());
-        for submission in guard.virtual_queue.iter_mut() {
+            SmallVec::with_capacity(guard.len());
+        for submission in guard.iter_mut() {
             let range_start = cmd_buffers.len();
             for cmd_buffer in submission.command_buffers.drain(..) {
                 cmd_buffers.push(cmd_buffer.0);
@@ -247,18 +253,15 @@ impl Queue {
             cmd_buffers_ranges.push(range_start..cmd_buffers.len());
         }
 
-        let mut swapchain_guards = SmallVec::<
-            [Option<(
-                MutexGuard<super::Swapchain>,
-                &active_gpu_backend::Backbuffer,
-            )>; 2],
-        >::with_capacity(guard.virtual_queue.len() * 2);
-        let mut fence_refs = SmallVec::<[active_gpu_backend::FenceValuePairRef; 2]>::with_capacity(
-            guard.virtual_queue.len() * 2,
-        );
-        let mut fence_ranges =
-            SmallVec::<[Range<usize>; 2]>::with_capacity(guard.virtual_queue.len() * 2);
-        for submission in guard.virtual_queue.iter() {
+        let mut swapchain_guards =
+            SmallVec::<[MutexGuard<super::Swapchain>; 2]>::with_capacity(guard.len());
+        let mut swapchain_guard_indices = SmallVec::<
+            [Option<(usize, &active_gpu_backend::Backbuffer)>; 2],
+        >::with_capacity(guard.len() * 2);
+        let mut fence_refs =
+            SmallVec::<[active_gpu_backend::FenceValuePairRef; 2]>::with_capacity(guard.len() * 2);
+        let mut fence_ranges = SmallVec::<[Range<usize>; 2]>::with_capacity(guard.len() * 2);
+        for submission in guard.iter() {
             let mut start = fence_refs.len();
             for fence in &submission.wait_fences {
                 fence_refs.push(active_gpu_backend::FenceValuePairRef {
@@ -280,29 +283,63 @@ impl Queue {
             fence_ranges.push(start..fence_refs.len());
         }
 
-        let mut gpu_submissions = SmallVec::<[active_gpu_backend::Submission; 2]>::with_capacity(
-            guard.virtual_queue.len(),
-        );
-        for submission in guard.virtual_queue.iter() {
-            if let Some((swapchain, backbuffer)) = submission.signal_swapchain.as_ref() {
-                swapchain_guards.push(Some((swapchain.lock().unwrap(), &backbuffer)));
+        let mut gpu_submissions =
+            SmallVec::<[active_gpu_backend::Submission; 2]>::with_capacity(guard.len());
+        for submission in guard.iter() {
+            if let Some((swapchain, backbuffer)) = submission.wait_swapchain.as_ref() {
+                let index = match swapchain.try_lock() {
+                    Ok(swapchain_lock) => {
+                        swapchain_guards.push(swapchain_lock);
+                        swapchain_guards.len() - 1
+                    }
+                    Err(e) => {
+                        match e {
+                            TryLockError::WouldBlock => {}
+                            _ => panic!("{:?}", e),
+                        }
+                        assert!(!swapchain_guards.is_empty());
+                        // TODO: Find the swapchain.
+                        0
+                    }
+                };
+                swapchain_guard_indices.push(Some((index, &backbuffer)));
             } else {
-                swapchain_guards.push(None);
+                swapchain_guard_indices.push(None);
             }
 
-            if let Some((swapchain, backbuffer)) = submission.wait_swapchain.as_ref() {
-                swapchain_guards.push(Some((swapchain.lock().unwrap(), &backbuffer)));
+            if let Some((swapchain, backbuffer)) = submission.signal_swapchain.as_ref() {
+                let index = match swapchain.try_lock() {
+                    Ok(swapchain_lock) => {
+                        swapchain_guards.push(swapchain_lock);
+                        swapchain_guards.len() - 1
+                    }
+                    Err(e) => {
+                        match e {
+                            TryLockError::WouldBlock => {}
+                            _ => panic!("{:?}", e),
+                        }
+                        assert!(!swapchain_guards.is_empty());
+                        // TODO: Find the swapchain.
+                        0
+                    }
+                };
+                swapchain_guard_indices.push(Some((index, &backbuffer)));
             } else {
-                swapchain_guards.push(None);
+                swapchain_guard_indices.push(None);
             }
         }
-        for (idx, _) in guard.virtual_queue.iter().enumerate() {
-            let acquire_swapchain = swapchain_guards[idx * 2]
-                .as_ref()
-                .map(|(swapchain, backbuffer)| (swapchain.handle(), *backbuffer));
-            let release_swapchain = swapchain_guards[idx * 2]
-                .as_ref()
-                .map(|(swapchain, backbuffer)| (swapchain.handle(), *backbuffer));
+        for (idx, _) in guard.iter().enumerate() {
+            let acquire_swapchain =
+                swapchain_guard_indices[idx * 2]
+                    .as_ref()
+                    .map(|(swapchain_index, backbuffer)| {
+                        (swapchain_guards[*swapchain_index].handle(), *backbuffer)
+                    });
+            let release_swapchain = swapchain_guard_indices[idx * 2 + 1].as_ref().map(
+                |(swapchain_index, backbuffer)| {
+                    (swapchain_guards[*swapchain_index].handle(), *backbuffer)
+                },
+            );
 
             gpu_submissions.push(active_gpu_backend::Submission {
                 command_buffers: &cmd_buffers[cmd_buffers_ranges[idx].clone()],
@@ -318,11 +355,11 @@ impl Queue {
         }
         std::mem::drop(gpu_submissions);
         std::mem::drop(fence_refs);
+        std::mem::drop(swapchain_guard_indices);
         std::mem::drop(swapchain_guards);
         std::mem::drop(cmd_buffers);
         std::mem::drop(cmd_buffers_ranges);
-        guard.virtual_queue.clear();
-        return self.next_counter.load(Ordering::SeqCst).max(1) - 1;
+        guard.clear();
     }
 
     #[allow(unused)]
@@ -333,7 +370,10 @@ impl Queue {
 
     pub(super) fn wait_for_idle(&self) -> u64 {
         let guard = self.inner.lock().unwrap();
-        let _new_guard = self.idle_condvar.wait_while(guard, |g| !g.is_idle).unwrap();
+        let _new_guard = self
+            .idle_condvar
+            .wait_while(guard, |g| !g.is_empty())
+            .unwrap();
         self.fence
             .await_value(self.next_counter.load(Ordering::SeqCst) - 1);
         self.fence.value()
