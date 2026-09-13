@@ -100,3 +100,11 @@ impl gpu::Fence for WebGPUFence {
 
     unsafe fn await_value(&self, _value: u64) {}
 }
+
+impl PartialEq for WebGPUFence {
+    fn eq(&self, other: &Self) -> bool {
+        self.value.load(Ordering::SeqCst) == other.value.load(Ordering::SeqCst)
+    }
+}
+
+impl Eq for WebGPUFence {}

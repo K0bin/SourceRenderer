@@ -1,8 +1,7 @@
-use super::gpu::{self, Queue as GPUQueue};
+use super::gpu::Queue as GPUQueue;
 use super::*;
 use crate::{Condvar, Mutex, MutexGuard};
 use atomic_refcell::AtomicRefCell;
-use crossbeam_channel::Sender;
 use smallvec::{SmallVec, smallvec};
 use std::collections::VecDeque;
 use std::ops::Range;
@@ -43,34 +42,16 @@ impl Drop for CommandPoolCounter {
 
 pub struct FinishedCommandBuffer {
     pub(super) handle: active_gpu_backend::CommandBuffer,
-    pub(super) sender: Sender<active_gpu_backend::CommandBuffer>,
     pub(super) pool: Arc<active_gpu_backend::CommandPool>,
     pub(super) command_pool_counter: CommandPoolCounter,
 }
 
-enum StoredQueueSubmission {
-    CommandBuffer {
-        command_buffer: active_gpu_backend::CommandBuffer,
-        return_sender: Sender<active_gpu_backend::CommandBuffer>,
-        signal_swapchain: Option<(Arc<Mutex<super::Swapchain>>, Arc<Backbuffer>)>,
-        wait_swapchain: Option<(Arc<Mutex<super::Swapchain>>, Arc<Backbuffer>)>,
-        signal_fences: SmallVec<[SharedFenceValuePair; 4]>,
-        wait_fences: SmallVec<[SharedFenceValuePair; 4]>,
-        command_pool_counter: CommandPoolCounter,
-        pool: Arc<active_gpu_backend::CommandPool>,
-    },
-    Sync {
-        signal_swapchain: Option<(Arc<Mutex<super::Swapchain>>, Arc<Backbuffer>)>,
-        wait_swapchain: Option<(Arc<Mutex<super::Swapchain>>, Arc<Backbuffer>)>,
-        signal_fences: SmallVec<[SharedFenceValuePair; 4]>,
-        wait_fences: SmallVec<[SharedFenceValuePair; 4]>,
-    },
-    Present {
-        swapchain: (
-            Arc<Mutex<super::Swapchain>>,
-            Arc<active_gpu_backend::Backbuffer>,
-        ),
-    },
+struct StoredQueueSubmission {
+    command_buffers: SmallVec<[FinishedCommandBuffer; 4]>,
+    signal_swapchain: Option<(SharedSwapchain, Arc<Backbuffer>)>,
+    wait_swapchain: Option<(SharedSwapchain, Arc<Backbuffer>)>,
+    signal_fences: SmallVec<[SharedFenceValuePair; 4]>,
+    wait_fences: SmallVec<[SharedFenceValuePair; 4]>,
 }
 
 pub struct QueueSubmission<'a> {
@@ -120,56 +101,51 @@ impl Queue {
         }
     }
 
-    pub(super) fn submit(&self, submission: QueueSubmission) {
+    pub(super) fn submit(&self, command_buffer: FinishedCommandBuffer) {
         let mut guard = self.inner.lock().unwrap();
         guard.is_idle = false;
-        let value = self.next_counter.fetch_add(1u64, Ordering::SeqCst);
 
-        let QueueSubmission {
-            command_buffer: finished_cmd_buffer,
-            wait_fences,
-            acquire_swapchain,
-            release_swapchain,
-        } = submission;
-        let wait_fences: SmallVec<[SharedFenceValuePair; 4]> = wait_fences
-            .iter()
-            .map(|fence_ref| SharedFenceValuePair::from(fence_ref))
-            .collect();
+        let last = guard.virtual_queue.iter_mut().last();
+        if let Some(last) = last {
+            if last.signal_fences.is_empty() && last.signal_swapchain.is_none() {
+                last.command_buffers.push(command_buffer);
+                return;
+            }
+        }
 
-        let signal_swapchain =
-            release_swapchain.map(|(swapchain, key)| (swapchain.clone(), key.clone()));
-        let wait_swapchain =
-            acquire_swapchain.map(|(swapchain, key)| (swapchain.clone(), key.clone()));
-
-        let FinishedCommandBuffer {
-            handle,
-            sender,
-            command_pool_counter,
-            pool,
-        } = finished_cmd_buffer;
-        guard
-            .virtual_queue
-            .push_back(StoredQueueSubmission::CommandBuffer {
-                command_buffer: handle,
-                return_sender: sender,
-                signal_fences: smallvec![SharedFenceValuePair {
-                    fence: self.fence.clone(),
-                    sync_before: Self::all_barrier_syncs(self.queue_type),
-                    value
-                }],
-                pool,
-                wait_fences,
-                signal_swapchain,
-                wait_swapchain,
-                command_pool_counter,
-            });
+        guard.virtual_queue.push_back(StoredQueueSubmission {
+            command_buffers: smallvec![command_buffer],
+            signal_fences: SmallVec::new(),
+            wait_fences: SmallVec::new(),
+            signal_swapchain: None,
+            wait_swapchain: None,
+        });
     }
 
     pub(super) fn submit_counter_bump(&self) {
         let mut guard = self.inner.lock().unwrap();
         guard.is_idle = false;
+
         let value = self.next_counter.fetch_add(1u64, Ordering::SeqCst);
-        guard.virtual_queue.push_back(StoredQueueSubmission::Sync {
+        let fence_value = SharedFenceValuePair {
+            fence: self.fence.clone(),
+            sync_before: Self::all_barrier_syncs(self.queue_type),
+            value,
+        };
+
+        let last = guard.virtual_queue.iter_mut().last();
+        if let Some(last) = last {
+            for fence in last.signal_fences.iter() {
+                if fence == &fence_value {
+                    return;
+                }
+            }
+
+            last.signal_fences.push(fence_value);
+        }
+
+        guard.virtual_queue.push_back(StoredQueueSubmission {
+            command_buffers: smallvec![],
             signal_fences: smallvec![SharedFenceValuePair {
                 fence: self.fence.clone(),
                 sync_before: Self::all_barrier_syncs(self.queue_type),
@@ -177,6 +153,47 @@ impl Queue {
             }],
             wait_fences: smallvec![],
             signal_swapchain: None,
+            wait_swapchain: None,
+        });
+    }
+
+    pub(super) fn acquire_swapchain(
+        &self,
+        swapchain: &SharedSwapchain,
+        backbuffer: &Arc<Backbuffer>,
+    ) {
+        let mut guard = self.inner.lock().unwrap();
+        guard.is_idle = false;
+
+        guard.virtual_queue.push_back(StoredQueueSubmission {
+            command_buffers: smallvec![],
+            signal_fences: smallvec![],
+            wait_fences: smallvec![],
+            signal_swapchain: None,
+            wait_swapchain: Some((swapchain.clone(), backbuffer.clone())),
+        });
+    }
+
+    pub(super) fn release_swapchain(
+        &self,
+        swapchain: &SharedSwapchain,
+        backbuffer: &Arc<Backbuffer>,
+    ) {
+        let mut guard = self.inner.lock().unwrap();
+        guard.is_idle = false;
+
+        let last = guard.virtual_queue.iter_mut().last();
+        if let Some(last) = last {
+            assert!(last.signal_swapchain.is_none());
+            last.signal_swapchain = Some((swapchain.clone(), backbuffer.clone()));
+            return;
+        }
+
+        guard.virtual_queue.push_back(StoredQueueSubmission {
+            command_buffers: smallvec![],
+            signal_fences: smallvec![],
+            wait_fences: smallvec![],
+            signal_swapchain: Some((swapchain.clone(), backbuffer.clone())),
             wait_swapchain: None,
         });
     }
@@ -201,290 +218,109 @@ impl Queue {
         &self,
         swapchain: &Arc<Mutex<super::Swapchain>>,
         backbuffer: Arc<active_gpu_backend::Backbuffer>,
+        queue: &active_gpu_backend::Queue,
     ) {
-        let mut guard: crate::MutexGuard<'_, QueueInner> = self.inner.lock().unwrap();
-        guard.is_idle = false;
-        guard
-            .virtual_queue
-            .push_back(StoredQueueSubmission::Present {
-                swapchain: (swapchain.clone(), backbuffer),
-            });
+        self.flush(queue);
+
+        let mut swapchain_inner = swapchain.lock().unwrap();
+        unsafe {
+            queue.present(swapchain_inner.handle_mut(), backbuffer.as_ref());
+        }
     }
 
     pub(super) fn flush(&self, queue: &active_gpu_backend::Queue) {
         let mut guard = self.inner.lock().unwrap();
-
-        const COMMAND_BUFFER_CAPACITY: usize = 16;
-        const SUBMISSION_CAPACITY: usize = 16;
-        const FENCE_CAPACITY: usize = 16;
-
-        type SwapchainGuard<'a> = MutexGuard<'a, Swapchain>;
-
-        struct SubmissionHolder<'a> {
-            queue: &'a active_gpu_backend::Queue,
-            command_buffers: SmallVec<[active_gpu_backend::CommandBuffer; 2]>,
-            cmd_buffer_range: Range<usize>,
-            submissions: SmallVec<[active_gpu_backend::Submission<'a>; 2]>,
-            fences: SmallVec<[SharedFenceValuePair; 2]>,
-            swapchain_guards: SmallVec<[(SharedSwapchainPtr, SwapchainGuard<'a>); 2]>,
+        if guard.virtual_queue.is_empty() {
+            return;
         }
 
-        fn flush_command_buffers<'a>(holder: &mut SubmissionHolder<'a>) {
-            if holder.command_buffers.is_empty() || holder.cmd_buffer_range.len() == 0 {
-                return;
+        let mut cmd_buffers: SmallVec<[active_gpu_backend::CommandBuffer; 4]> =
+            SmallVec::with_capacity(guard.virtual_queue.len());
+        let mut cmd_buffers_ranges: SmallVec<[Range<usize>; 4]> =
+            SmallVec::with_capacity(guard.virtual_queue.len());
+        for submission in guard.virtual_queue.iter_mut() {
+            let range_start = cmd_buffers.len();
+            for cmd_buffer in submission.command_buffers.drain(..) {
+                cmd_buffers.push(cmd_buffer.handle);
             }
-
-            if holder.submissions.len() == SUBMISSION_CAPACITY {
-                flush_submissions(holder);
-            }
-
-            holder.submissions.push(gpu::Submission::<'a> {
-                command_buffers: unsafe {
-                    std::slice::from_raw_parts(
-                        holder
-                            .command_buffers
-                            .as_ptr()
-                            .add(holder.cmd_buffer_range.start),
-                        holder.cmd_buffer_range.end - holder.cmd_buffer_range.start,
-                    )
-                },
-                wait_fences: &[],
-                signal_fences: &[],
-                acquire_swapchain: None,
-                release_swapchain: None,
-            });
-
-            holder.cmd_buffer_range.start = holder.cmd_buffer_range.end;
+            cmd_buffers_ranges.push(range_start..cmd_buffers.len());
         }
 
-        fn flush_submissions<'a>(holder: &mut SubmissionHolder<'a>) {
-            if holder.submissions.is_empty() {
-                return;
-            }
-            unsafe {
-                holder.queue.submit(&holder.submissions[..]);
-            }
-            holder.submissions.clear();
-            holder.command_buffers.clear();
-            holder.cmd_buffer_range.start = 0;
-            holder.cmd_buffer_range.end = 0;
-            holder.swapchain_guards.clear();
-        }
-
-        fn push_command_buffer(
-            holder: &mut SubmissionHolder,
-            command_buffer: active_gpu_backend::CommandBuffer,
-        ) {
-            if holder.command_buffers.len() == COMMAND_BUFFER_CAPACITY {
-                flush_command_buffers(holder);
-            }
-            holder.command_buffers.push(command_buffer);
-            holder.cmd_buffer_range.end += 1;
-        }
-
-        fn push_submission<'a>(
-            holder: &mut SubmissionHolder<'a>,
-            command_buffer: Option<active_gpu_backend::CommandBuffer>,
-            wait_fences: SmallVec<[SharedFenceValuePair; 4]>,
-            signal_fences: SmallVec<[SharedFenceValuePair; 4]>,
-            acquire_swapchain: Option<(&'a SharedSwapchain, &'a Backbuffer)>,
-            signal_swapchain: Option<(&'a SharedSwapchain, &'a Backbuffer)>,
-        ) {
-            if !holder.command_buffers.is_empty() {
-                flush_command_buffers(holder);
-            }
-            if holder.submissions.len() == SUBMISSION_CAPACITY
-                || FENCE_CAPACITY - holder.fences.len() < wait_fences.len() + signal_fences.len()
-                || holder.command_buffers.len() == COMMAND_BUFFER_CAPACITY
-            {
-                flush_submissions(holder);
-            }
-            let wait_fences_start = holder.fences.len();
-            for fence in wait_fences {
-                holder
-                    .fences
-                    .push(super::gpu::FenceValuePairRef::<'static> {
-                        fence: unsafe { std::mem::transmute(fence.fence.handle()) },
-                        value: fence.value,
-                        sync_before: fence.sync_before,
-                    });
-            }
-            let signal_fences_start = holder.fences.len();
-            for fence in signal_fences.iter() {
-                holder.fences.push(super::gpu::FenceValuePairRef::<'a> {
+        let mut swapchain_guards = SmallVec::<
+            [Option<(
+                MutexGuard<super::Swapchain>,
+                &active_gpu_backend::Backbuffer,
+            )>; 2],
+        >::with_capacity(guard.virtual_queue.len() * 2);
+        let mut fence_refs = SmallVec::<[active_gpu_backend::FenceValuePairRef; 2]>::with_capacity(
+            guard.virtual_queue.len() * 2,
+        );
+        let mut fence_ranges =
+            SmallVec::<[Range<usize>; 2]>::with_capacity(guard.virtual_queue.len() * 2);
+        for submission in guard.virtual_queue.iter() {
+            let mut start = fence_refs.len();
+            for fence in &submission.wait_fences {
+                fence_refs.push(active_gpu_backend::FenceValuePairRef {
                     fence: fence.fence.handle(),
                     value: fence.value,
                     sync_before: fence.sync_before,
                 });
             }
+            fence_ranges.push(start..fence_refs.len());
 
-            let mut acquire_swapchain_handle_ptr: Option<(GPUSwapchainPtr, &'a Backbuffer)> = None;
-            if let Some((swapchain, backbuffer)) = acquire_swapchain {
-                let ptr: SharedSwapchainPtr = Arc::as_ptr(swapchain);
-                for (existing_ptr, existing_guard) in &holder.swapchain_guards {
-                    if *existing_ptr == ptr {
-                        acquire_swapchain_handle_ptr =
-                            Some((existing_guard.handle() as GPUSwapchainPtr, backbuffer));
-                        break;
-                    }
-                }
-                if acquire_swapchain_handle_ptr.is_none() {
-                    let guard = swapchain.lock().unwrap();
-                    acquire_swapchain_handle_ptr =
-                        Some((guard.handle() as GPUSwapchainPtr, backbuffer));
-                    holder.swapchain_guards.push((ptr, guard));
-                }
+            start = fence_refs.len();
+            for fence in &submission.signal_fences {
+                fence_refs.push(active_gpu_backend::FenceValuePairRef {
+                    fence: fence.fence.handle(),
+                    value: fence.value,
+                    sync_before: fence.sync_before,
+                });
+            }
+            fence_ranges.push(start..fence_refs.len());
+        }
+
+        let mut gpu_submissions = SmallVec::<[active_gpu_backend::Submission; 2]>::with_capacity(
+            guard.virtual_queue.len(),
+        );
+        for submission in guard.virtual_queue.iter() {
+            if let Some((swapchain, backbuffer)) = submission.signal_swapchain.as_ref() {
+                swapchain_guards.push(Some((swapchain.lock().unwrap(), &backbuffer)));
+            } else {
+                swapchain_guards.push(None);
             }
 
-            let mut signal_swapchain_handle_ptr: Option<(GPUSwapchainPtr, &'a Backbuffer)> = None;
-            if let Some((swapchain, backbuffer)) = signal_swapchain {
-                let ptr: SharedSwapchainPtr = Arc::as_ptr(swapchain);
-                for (existing_ptr, existing_guard) in &holder.swapchain_guards {
-                    if *existing_ptr == ptr {
-                        signal_swapchain_handle_ptr =
-                            Some((existing_guard.handle() as GPUSwapchainPtr, backbuffer));
-                        break;
-                    }
-                }
-                if signal_swapchain_handle_ptr.is_none() {
-                    let guard = swapchain.lock().unwrap();
-                    signal_swapchain_handle_ptr =
-                        Some((guard.handle() as GPUSwapchainPtr, backbuffer));
-                    holder.swapchain_guards.push((ptr, guard));
-                }
+            if let Some((swapchain, backbuffer)) = submission.wait_swapchain.as_ref() {
+                swapchain_guards.push(Some((swapchain.lock().unwrap(), &backbuffer)));
+            } else {
+                swapchain_guards.push(None);
             }
+        }
+        for (idx, _) in guard.virtual_queue.iter().enumerate() {
+            let acquire_swapchain = swapchain_guards[idx * 2]
+                .as_ref()
+                .map(|(swapchain, backbuffer)| (swapchain.handle(), *backbuffer));
+            let release_swapchain = swapchain_guards[idx * 2]
+                .as_ref()
+                .map(|(swapchain, backbuffer)| (swapchain.handle(), *backbuffer));
 
-            let has_cmd_buffer = command_buffer.is_some();
-            if let Some(command_buffer) = command_buffer {
-                holder.command_buffers.push(command_buffer);
-            }
-            holder.submissions.push(gpu::Submission::<'a> {
-                command_buffers: unsafe {
-                    std::slice::from_raw_parts(
-                        holder
-                            .command_buffers
-                            .as_ptr()
-                            .add(holder.command_buffers.len() - 1),
-                        if has_cmd_buffer { 1 } else { 0 },
-                    )
-                },
-                wait_fences: unsafe {
-                    std::slice::from_raw_parts(
-                        holder.fences.as_ptr().add(wait_fences_start),
-                        wait_fences.len(),
-                    )
-                },
-                signal_fences: unsafe {
-                    std::slice::from_raw_parts(
-                        holder.fences.as_ptr().add(signal_fences_start),
-                        signal_fences.len(),
-                    )
-                },
-                acquire_swapchain: acquire_swapchain_handle_ptr
-                    .map(|(ptr, backbuffer)| (unsafe { ptr.as_ref().unwrap() }, backbuffer)),
-                release_swapchain: signal_swapchain_handle_ptr
-                    .map(|(ptr, backbuffer)| (unsafe { ptr.as_ref().unwrap() }, backbuffer)),
+            gpu_submissions.push(active_gpu_backend::Submission {
+                command_buffers: &cmd_buffers[cmd_buffers_ranges[idx].clone()],
+                wait_fences: &fence_refs[fence_ranges[idx * 2].clone()],
+                signal_fences: &fence_refs[fence_ranges[idx * 2 + 1].clone()],
+                acquire_swapchain,
+                release_swapchain,
             });
         }
 
-        let mut holder = SubmissionHolder {
-            queue,
-            command_buffers: SmallVec::new(),
-            cmd_buffer_range: 0..0,
-            submissions: SmallVec::new(),
-            fences: SmallVec::new(),
-            swapchain_guards: SmallVec::new(),
-        };
-
-        for submission in guard.virtual_queue.drain(..) {
-            match submission {
-                StoredQueueSubmission::CommandBuffer {
-                    command_buffer,
-                    return_sender: _,
-                    signal_fences,
-                    signal_swapchain,
-                    wait_fences,
-                    wait_swapchain,
-                    command_pool_counter: _,
-                    pool,
-                } => {
-                    if wait_fences.is_empty()
-                        && signal_fences.is_empty()
-                        && wait_swapchain.is_none()
-                        && signal_swapchain.is_none()
-                    {
-                        push_command_buffer(&mut holder, command_buffer);
-                    } else {
-                        push_submission(
-                            &mut holder,
-                            Some(command_buffer),
-                            wait_fences,
-                            signal_fences,
-                            wait_swapchain.map(|(s, key)| (s, key.as_ref())),
-                            signal_swapchain.map(|(s, key)| (s, key.as_ref())),
-                        );
-                    }
-                }
-                StoredQueueSubmission::Sync {
-                    signal_fences,
-                    signal_swapchain,
-                    wait_fences,
-                    wait_swapchain,
-                } => {
-                    push_submission(
-                        &mut holder,
-                        None,
-                        wait_fences,
-                        signal_fences,
-                        wait_swapchain.as_ref().map(|(s, key)| (s, key.as_ref())),
-                        signal_swapchain.as_ref().map(|(s, key)| (s, key.as_ref())),
-                    );
-                }
-                StoredQueueSubmission::Present {
-                    swapchain: (swapchain, key),
-                } => {
-                    if !holder.command_buffers.is_empty() {
-                        flush_command_buffers(&mut holder);
-                    }
-                    if !holder.submissions.is_empty() {
-                        flush_submissions(&mut holder);
-                    }
-
-                    let mut swapchain_guard = swapchain.lock().unwrap();
-                    unsafe {
-                        queue.present(swapchain_guard.handle_mut(), &key);
-                    }
-                }
-            }
+        unsafe {
+            queue.submit(&gpu_submissions);
         }
-
-        if !holder.cmd_buffer_range.is_empty() {
-            flush_command_buffers(&mut holder);
-        }
-
-        if !holder.submissions.is_empty() {
-            flush_submissions(&mut holder);
-        }
-        std::mem::drop(holder);
-
-        for submission in guard.virtual_queue.drain(..) {
-            match submission {
-                StoredQueueSubmission::CommandBuffer {
-                    command_buffer,
-                    return_sender,
-                    ..
-                } => {
-                    return_sender.send(command_buffer).unwrap();
-                }
-                StoredQueueSubmission::Present { swapchain: _ } => {}
-                StoredQueueSubmission::Sync { .. } => {}
-            }
-        }
-
-        guard.is_idle = guard.virtual_queue.is_empty();
-        if guard.is_idle {
-            self.idle_condvar.notify_all();
-        }
+        std::mem::drop(gpu_submissions);
+        std::mem::drop(fence_refs);
+        std::mem::drop(swapchain_guards);
+        std::mem::drop(cmd_buffers);
+        std::mem::drop(cmd_buffers_ranges);
+        guard.virtual_queue.clear();
     }
 
     #[allow(unused)]

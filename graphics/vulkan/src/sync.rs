@@ -92,6 +92,15 @@ impl gpu::Fence for VkTimelineSemaphore {
     }
 }
 
+impl PartialEq for VkTimelineSemaphore {
+    fn eq(&self, other: &Self) -> bool {
+        self.semaphore == other.semaphore
+            && self.device.device.handle() == other.device.device.handle()
+    }
+}
+
+impl Eq for VkTimelineSemaphore {}
+
 pub struct VkEvent {
     device: Arc<RawVkDevice>,
     event: vk::Event,
@@ -129,3 +138,11 @@ impl VkEvent {
         self.event
     }
 }
+
+impl PartialEq for VkEvent {
+    fn eq(&self, other: &Self) -> bool {
+        self.event == other.event && self.device.device.handle() == other.device.device.handle()
+    }
+}
+
+impl Eq for VkEvent {}
