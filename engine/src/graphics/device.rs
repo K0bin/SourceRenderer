@@ -2,8 +2,7 @@ use super::*;
 use crate::Mutex;
 use bytemuck::{BoxBytes, Pod, box_bytes_of, cast_slice};
 use std::mem::ManuallyDrop;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, MutexGuard};
+use std::sync::Arc;
 
 pub struct Device {
     device: Arc<active_gpu_backend::Device>,

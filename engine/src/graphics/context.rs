@@ -248,12 +248,12 @@ impl GraphicsContext {
         self.device.submit(queue_type, cmd_buffer);
     }
 
-    pub fn get_command_buffer(&self, _queue_type: QueueType) -> CommandBuffer<'_> {
+    pub fn get_command_buffer(&self, queue_type: QueueType) -> CommandBuffer<'_> {
         let frame_context = self.get_thread_frame_context(self.current_frame);
 
         let cmd_buffer = unsafe { frame_context.command_pool.create_command_buffer() };
 
-        let mut recorder = CommandBuffer::new(self, frame_context, cmd_buffer);
+        let mut recorder = CommandBuffer::new(self, frame_context, cmd_buffer, queue_type);
         recorder.begin(self.current_frame);
         recorder
     }

@@ -1,15 +1,13 @@
 use super::gpu::Queue as GPUQueue;
 use super::*;
-use crate::{Condvar, Mutex, MutexGuard};
+use crate::{Mutex, MutexGuard};
 use smallvec::{SmallVec, smallvec};
 use std::collections::VecDeque;
 use std::ops::Range;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, LockResult, TryLockError, TryLockResult};
+use std::sync::{Arc, TryLockError};
 
 type SharedSwapchain = Arc<Mutex<super::Swapchain>>;
-type SharedSwapchainPtr = *const Mutex<super::Swapchain>;
-type GPUSwapchainPtr = *const active_gpu_backend::Swapchain;
 type Backbuffer = active_gpu_backend::Backbuffer;
 
 pub type QueueFenceValue = (QueueType, u64);
@@ -84,7 +82,7 @@ impl Queue {
         }
     }
 
-    fn all_barrier_syncs(queue_type: QueueType) -> BarrierSync {
+    pub(super) fn all_barrier_syncs(queue_type: QueueType) -> BarrierSync {
         match queue_type {
             QueueType::Graphics => BarrierSync::all(),
             QueueType::Compute => {

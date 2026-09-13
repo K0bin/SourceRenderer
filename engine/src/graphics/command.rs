@@ -62,6 +62,7 @@ pub struct CommandBuffer<'a> {
     _global_context: &'a GraphicsContext,
     cmd_buffer_handle: active_gpu_backend::CommandBuffer,
     active_query_range: Option<QueryRange>,
+    queue_type: QueueType,
     no_send_sync: PhantomData<*mut u8>,
 }
 
@@ -116,12 +117,14 @@ impl<'a> CommandBuffer<'a> {
         global_context: &'a GraphicsContext,
         context: AtomicRefMut<'a, FrameContext>,
         handle: active_gpu_backend::CommandBuffer,
+        queue_type: QueueType,
     ) -> Self {
         Self {
             _global_context: global_context,
             context,
             cmd_buffer_handle: handle,
             active_query_range: None,
+            queue_type,
             no_send_sync: PhantomData,
         }
     }
@@ -812,8 +815,8 @@ impl<'a> CommandBuffer<'a> {
 
     fn fat_barrier(&mut self) {
         let fat_core_barrier = [gpu::Barrier::GlobalBarrier {
-            old_sync: gpu::BarrierSync::all(),
-            new_sync: gpu::BarrierSync::all(),
+            old_sync: gpu::BarrierSync::all() & Queue::all_barrier_syncs(self.queue_type),
+            new_sync: gpu::BarrierSync::all() & Queue::all_barrier_syncs(self.queue_type),
             old_access: gpu::BarrierAccess::MEMORY_WRITE,
             new_access: gpu::BarrierAccess::MEMORY_READ | gpu::BarrierAccess::MEMORY_WRITE,
         }];
@@ -842,8 +845,8 @@ impl<'a> CommandBuffer<'a> {
                     range,
                     queue_ownership,
                 } => gpu::Barrier::TextureBarrier {
-                    old_sync: *old_sync,
-                    new_sync: *new_sync,
+                    old_sync: *old_sync & Queue::all_barrier_syncs(self.queue_type),
+                    new_sync: *new_sync & Queue::all_barrier_syncs(self.queue_type),
                     old_layout: *old_layout,
                     new_layout: *new_layout,
                     old_access: *old_access,
@@ -866,8 +869,8 @@ impl<'a> CommandBuffer<'a> {
                         length: buffer_length,
                     } = buffer.deconstruct(self.frame());
                     gpu::Barrier::BufferBarrier {
-                        old_sync: *old_sync,
-                        new_sync: *new_sync,
+                        old_sync: *old_sync & Queue::all_barrier_syncs(self.queue_type),
+                        new_sync: *new_sync & Queue::all_barrier_syncs(self.queue_type),
                         old_access: *old_access,
                         new_access: *new_access,
                         buffer: buffer_handle,
@@ -882,8 +885,8 @@ impl<'a> CommandBuffer<'a> {
                     old_access,
                     new_access,
                 } => gpu::Barrier::GlobalBarrier {
-                    old_sync: *old_sync,
-                    new_sync: *new_sync,
+                    old_sync: *old_sync & Queue::all_barrier_syncs(self.queue_type),
+                    new_sync: *new_sync & Queue::all_barrier_syncs(self.queue_type),
                     old_access: *old_access,
                     new_access: *new_access,
                 },
@@ -898,8 +901,8 @@ impl<'a> CommandBuffer<'a> {
                     range,
                     queue_ownership,
                 } => gpu::Barrier::TextureBarrier {
-                    old_sync: *old_sync,
-                    new_sync: *new_sync,
+                    old_sync: *old_sync & Queue::all_barrier_syncs(self.queue_type),
+                    new_sync: *new_sync & Queue::all_barrier_syncs(self.queue_type),
                     old_layout: *old_layout,
                     new_layout: *new_layout,
                     old_access: *old_access,
