@@ -45,7 +45,7 @@ impl WebRenderer {
             GeometryPass::new(device, assets, swapchain, &mut init_cmd_buffer, resources);
 
         init_cmd_buffer.flush_barriers();
-        device.flush_transfers();
+        device.flush();
 
         device.submit(QueueType::Graphics, init_cmd_buffer.finish());
         let c_device = device.clone();

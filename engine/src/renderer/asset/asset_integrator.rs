@@ -46,7 +46,7 @@ impl AssetIntegrator {
             BufferUsage::INDEX | BufferUsage::COPY_DST | BufferUsage::STORAGE,
         );
 
-        device.flush_transfers();
+        device.flush();
 
         Self {
             device: device.clone(),
@@ -353,7 +353,7 @@ impl AssetIntegrator {
         }
 
         // Make sure the work initializing the resources actually gets submitted
-        self.device.flush_transfers();
+        self.device.flush();
         self.device.free_completed_transfers();
 
         ready_delayed_assets

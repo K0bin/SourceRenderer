@@ -14,8 +14,8 @@ use super::ssao::SsaoPass;
 use super::taa::TAAPass;
 use super::visibility_buffer::VisibilityBufferPass;
 use crate::graphics::{
-    BindingFrequency, BufferRef, BufferUsage, CommandBuffer, Device, GraphicsContext,
-    QueueSubmission, QueueType, Swapchain, SwapchainError, TextureInfo, WHOLE_BUFFER,
+    BindingFrequency, BufferRef, BufferUsage, CommandBuffer, Device, GraphicsContext, QueueType,
+    Swapchain, SwapchainError, TextureInfo, WHOLE_BUFFER,
 };
 use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::passes::modern::gpu_scene::SceneBuffers;
@@ -101,7 +101,7 @@ impl ModernRenderer {
         );
 
         init_cmd_buffer.flush_barriers();
-        device.flush_transfers();
+        device.flush();
 
         device.submit(QueueType::Graphics, init_cmd_buffer.finish());
         let c_device = device.clone();

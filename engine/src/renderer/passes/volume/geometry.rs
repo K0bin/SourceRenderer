@@ -1,17 +1,15 @@
-use crate::asset::{AssetLoadPriority, AssetType, TextureHandle};
 use crate::graphics::*;
 use crate::renderer::asset::{
     GraphicsPipelineHandle, GraphicsPipelineInfo, PathPipelineShaderStage, RendererAssets,
     RendererAssetsReadOnly,
 };
-use crate::renderer::drawable::{RendererVolumeDrawable, View, VolumeDrawableTransparencyMode};
+use crate::renderer::drawable::{RendererVolumeDrawable, VolumeDrawableTransparencyMode};
 use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
 use crate::renderer::passes::volume::marching_cubes::{
     MarchingCubesIndirectCall, MarchingCubesInfo, MarchingCubesKey, MarchingCubesPass,
 };
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
-use crate::renderer::renderer_scene::RendererScene;
 use bytemuck::{Pod, Zeroable};
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{StencilOp, TexturePlane};

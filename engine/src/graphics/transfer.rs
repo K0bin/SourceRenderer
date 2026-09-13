@@ -897,6 +897,7 @@ impl TransferCommandBuffer {
 
         unsafe {
             self.cmd_pool.reset();
+            self.cmd_buffer = Some(self.cmd_pool.create_command_buffer());
         }
         self.is_used = false;
         self.used_buffers_slices.clear();

@@ -1,17 +1,14 @@
-use std::collections::VecDeque;
 #[cfg(target_arch = "wasm32")]
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use atomic_refcell::{AtomicRefCell, AtomicRefMut};
-use bevy_tasks::{ComputeTaskPool, Task};
-use crossbeam_channel::{Receiver, Sender};
+use bevy_tasks::ComputeTaskPool;
 use smallvec::SmallVec;
 use thread_local::ThreadLocal;
 
-use super::gpu::{self, CommandBuffer as _, CommandPool as _, Queue as _};
+use super::gpu::{self, CommandPool as _, Queue as _};
 use super::{CommandBuffer, *};
 
 const QUERY_COUNT: u32 = 1024;
@@ -321,8 +318,6 @@ impl FrameContext {
                 .graphics_queue()
                 .create_command_pool(gpu::CommandPoolFlags::empty())
         };
-        let (sender, receiver) =
-            crossbeam_channel::unbounded::<active_gpu_backend::CommandBuffer>();
         let transient_buffer_allocator = TransientBufferAllocator::new(
             device,
             memory_allocator,

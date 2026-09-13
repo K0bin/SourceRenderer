@@ -2,8 +2,8 @@ use super::*;
 use crate::Mutex;
 use bytemuck::{BoxBytes, Pod, box_bytes_of, cast_slice};
 use std::mem::ManuallyDrop;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, MutexGuard};
 
 pub struct Device {
     device: Arc<active_gpu_backend::Device>,
@@ -17,6 +17,7 @@ pub struct Device {
     graphics_queue: Queue,
     compute_queue: Option<Queue>,
     transfer_queue: Option<Queue>,
+    flush_mutex: Mutex<()>, // Synchronizes every access to queues. Ugly but whatever
 }
 
 impl Device {
@@ -37,11 +38,11 @@ impl Device {
             let fence = Fence::new(&device, &destroyer);
             Queue::new(QueueType::Graphics, fence)
         };
-        let compute_queue = device.compute_queue().map(|q| {
+        let compute_queue = device.compute_queue().map(|_| {
             let fence = Fence::new(&device, &destroyer);
             Queue::new(QueueType::Compute, fence)
         });
-        let transfer_queue = device.transfer_queue().map(|q| {
+        let transfer_queue = device.transfer_queue().map(|_| {
             let fence = Fence::new(&device, &destroyer);
             Queue::new(QueueType::Transfer, fence)
         });
@@ -58,6 +59,7 @@ impl Device {
             graphics_queue,
             compute_queue,
             transfer_queue,
+            flush_mutex: Mutex::new(()),
         }
     }
 
@@ -337,11 +339,6 @@ impl Device {
     }
 
     #[inline(always)]
-    pub fn flush_transfers(&self) {
-        self.transfer.flush(self);
-    }
-
-    #[inline(always)]
     pub fn free_completed_transfers(&self) {
         self.transfer.try_free_unused_buffers(&self);
     }
@@ -406,7 +403,7 @@ impl Device {
 
     pub fn block_until_idle(&self) {
         log::warn!("Block until idle.");
-        self.flush_transfers();
+        self.flush();
         self.graphics_queue.flush(self.device.graphics_queue());
         self.graphics_queue.wait_for_idle();
         if let Some(queue) = self.compute_queue.as_ref() {
@@ -463,14 +460,6 @@ impl Device {
         0u64
     }
 
-    pub fn fence(&self, queue_type: QueueType) -> Option<&Arc<Fence>> {
-        match queue_type {
-            QueueType::Graphics => Some(&self.graphics_queue.fence()),
-            QueueType::Compute => self.compute_queue.as_ref().map(|q| q.fence()),
-            QueueType::Transfer => self.transfer_queue.as_ref().map(|q| q.fence()),
-        }
-    }
-
     pub fn wait_for(
         &self,
         queue_type: QueueType,
@@ -478,6 +467,7 @@ impl Device {
         counter: u64,
         wait_before: BarrierSync,
     ) {
+        let _guard = self.flush_mutex.lock().unwrap();
         match queue_type {
             QueueType::Graphics => {
                 let queue = &self.graphics_queue;
@@ -545,6 +535,7 @@ impl Device {
     }
 
     pub fn submit(&self, queue_type: QueueType, cmd_buffer: FinishedCommandBuffer) -> u64 {
+        let _guard = self.flush_mutex.lock().unwrap();
         match queue_type {
             QueueType::Graphics => {
                 self.graphics_queue.submit(cmd_buffer);
@@ -573,7 +564,9 @@ impl Device {
         swapchain: &Arc<Mutex<Swapchain>>,
         backbuffer: Arc<active_gpu_backend::Backbuffer>,
     ) {
-        self.flush();
+        self.transfer.flush(self);
+        let mut guard = self.flush_mutex.lock().unwrap();
+        self.flush_locked(&mut guard);
 
         let (queue_opt, api_queue_opt) = match queue_type {
             QueueType::Graphics => (
@@ -599,6 +592,7 @@ impl Device {
         swapchain: &Arc<Mutex<Swapchain>>,
         backbuffer: &Arc<active_gpu_backend::Backbuffer>,
     ) {
+        let _guard = self.flush_mutex.lock().unwrap();
         let queue_opt = match queue_type {
             QueueType::Graphics => Some(&self.graphics_queue),
 
@@ -620,6 +614,7 @@ impl Device {
         swapchain: &Arc<Mutex<Swapchain>>,
         backbuffer: &Arc<active_gpu_backend::Backbuffer>,
     ) {
+        let _guard = self.flush_mutex.lock().unwrap();
         let queue_opt = match queue_type {
             QueueType::Graphics => Some(&self.graphics_queue),
 
@@ -636,7 +631,13 @@ impl Device {
     }
 
     pub fn flush(&self) -> u64 {
-        self.flush_transfers();
+        self.transfer.flush(self);
+        let mut guard = self.flush_mutex.lock().unwrap();
+        self.flush_locked(&mut guard)
+    }
+
+    pub fn flush_locked(&self, _guard: &mut MutexGuard<()>) -> u64 {
+        self.transfer.flush(self);
 
         let mut all_empty = true;
         all_empty &= self.graphics_queue.is_empty();

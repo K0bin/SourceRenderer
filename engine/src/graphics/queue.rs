@@ -29,13 +29,6 @@ struct StoredQueueSubmission {
     wait_fences: SmallVec<[SharedFenceValuePair; 4]>,
 }
 
-pub struct QueueSubmission<'a> {
-    pub command_buffer: FinishedCommandBuffer,
-    pub wait_fences: &'a [SharedFenceValuePairRef<'a>],
-    pub acquire_swapchain: Option<(&'a SharedSwapchain, &'a Arc<Backbuffer>)>,
-    pub release_swapchain: Option<(&'a SharedSwapchain, &'a Arc<Backbuffer>)>,
-}
-
 pub(super) struct Queue {
     inner: Mutex<VecDeque<StoredQueueSubmission>>,
     queue_type: QueueType,

@@ -98,7 +98,7 @@ impl VolumeRenderer {
         let ui = DearImguiRenderer::new(device, resources, assets, swapchain.format());
 
         init_cmd_buffer.flush_barriers();
-        device.flush_transfers();
+        device.flush();
 
         device.submit(QueueType::Graphics, init_cmd_buffer.finish());
         let c_device = device.clone();

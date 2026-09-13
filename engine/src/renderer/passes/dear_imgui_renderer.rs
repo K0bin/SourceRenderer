@@ -1,6 +1,3 @@
-use crate::asset::{
-    AssetData, AssetHandle, AssetLoadPriority, AssetType, TextureData, TextureHandle,
-};
 use crate::graphics::*;
 use crate::renderer::asset::{
     GraphicsPipelineHandle, PathPipelineShaderStage, RendererAssets, RendererAssetsReadOnly,
@@ -8,7 +5,7 @@ use crate::renderer::asset::{
 use crate::renderer::renderer_resources::RendererResources;
 use bytemuck::{Pod, Zeroable, box_bytes_of};
 use dear_imgui_rs;
-use smallvec::{SmallVec, smallvec};
+use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{Texture as _, TexturePlane};
 use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec3UI};
 use std::collections::HashMap;

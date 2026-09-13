@@ -490,7 +490,7 @@ impl MarchingCubesPass {
             .unwrap();
         device.init_buffer(&TRI_TABLE, &tris_buffer, 0u64).unwrap();
 
-        device.flush_transfers();
+        device.flush();
 
         Self {
             pipelines: pipelines.as_array().unwrap().clone(),
