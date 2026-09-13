@@ -33,7 +33,7 @@ type ThreadFrames = AtomicRefCell<SmallVec<[FrameContext; FRAME_COUNT]>>;
 
 pub struct FrameContext {
     device: Arc<active_gpu_backend::Device>,
-    pub(super) command_pool: active_gpu_backend::CommandPool,
+    pub(super) command_pool: ManuallyDrop<active_gpu_backend::CommandPool>,
     transient_buffer_allocator: TransientBufferAllocator,
     global_buffer_allocator: Arc<BufferAllocator>,
     destroyer: Arc<DeferredDestroyer>,
@@ -316,7 +316,7 @@ impl FrameContext {
         );
         Self {
             device: device.clone(),
-            command_pool,
+            command_pool: ManuallyDrop::new(command_pool),
             transient_buffer_allocator,
             global_buffer_allocator: buffer_allocator.clone(),
             destroyer: destroyer.clone(),
@@ -355,5 +355,12 @@ impl FrameContext {
     #[inline(always)]
     pub(super) fn query_allocator(&mut self) -> &mut QueryAllocator {
         &mut self.query_allocator
+    }
+}
+
+impl Drop for FrameContext {
+    fn drop(&mut self) {
+        let cmd_pool = unsafe { ManuallyDrop::take(&mut self.command_pool) };
+        self.destroyer.destroy_command_pool(cmd_pool);
     }
 }

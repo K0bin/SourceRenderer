@@ -2,6 +2,7 @@ use bytemuck::BoxBytes;
 use sourcerenderer_core::Vec3UI;
 use std::collections::{HashSet, VecDeque};
 use std::ffi::c_void;
+use std::mem::ManuallyDrop;
 use std::sync::Arc;
 
 use super::gpu::{CommandBuffer as _, CommandPool as _, Queue as _, Texture as _};
@@ -68,7 +69,8 @@ struct TransferCommands {
 }
 
 pub struct TransferCommandBuffer {
-    cmd_pool: active_gpu_backend::CommandPool,
+    cmd_pool: ManuallyDrop<active_gpu_backend::CommandPool>,
+    destroyer: Arc<DeferredDestroyer>,
     cmd_buffer: Option<active_gpu_backend::CommandBuffer>,
     fence_value: u64,
     is_used: bool,
@@ -603,7 +605,7 @@ impl Transfer {
                         .create_command_pool(gpu::CommandPoolFlags::empty())
                 }
             };
-            Box::new(TransferCommandBuffer::new(device.handle(), pool, 0))
+            Box::new(TransferCommandBuffer::new(device.destroyer(), pool, 0))
         };
         debug_assert!(!cmd_buffer.is_used());
 
@@ -864,15 +866,16 @@ impl Transfer {
 
 impl TransferCommandBuffer {
     pub(super) fn new(
-        _device: &Arc<active_gpu_backend::Device>,
-        mut cmd_pool: active_gpu_backend::CommandPool,
+        destroyer: &Arc<DeferredDestroyer>,
+        cmd_pool: active_gpu_backend::CommandPool,
         fence_value: u64,
     ) -> Self {
         let cmd_buffer = unsafe { cmd_pool.create_command_buffer() };
 
         Self {
             cmd_buffer: Some(cmd_buffer),
-            cmd_pool,
+            cmd_pool: ManuallyDrop::new(cmd_pool),
+            destroyer: destroyer.clone(),
             fence_value,
             is_used: false,
             used_buffers_slices: Vec::new(),
@@ -914,5 +917,12 @@ impl TransferCommandBuffer {
     #[inline(always)]
     pub(super) fn fence_value(&self) -> u64 {
         self.fence_value
+    }
+}
+
+impl Drop for TransferCommandBuffer {
+    fn drop(&mut self) {
+        let cmd_pool = unsafe { ManuallyDrop::take(&mut self.cmd_pool) };
+        self.destroyer.destroy_command_pool(cmd_pool);
     }
 }
