@@ -404,7 +404,7 @@ impl Device {
         self.device.supports_min_max_filter()
     }
 
-    pub fn wait_for_idle(&self) {
+    pub fn block_until_idle(&self) {
         self.flush_transfers();
         self.graphics_queue.flush(self.device.graphics_queue());
         self.graphics_queue.wait_for_idle();
@@ -418,7 +418,7 @@ impl Device {
         }
 
         unsafe {
-            self.device.wait_for_idle();
+            self.device.block_until_idle();
         }
     }
 
@@ -585,6 +585,48 @@ impl Device {
         queue.present(swapchain, backbuffer, api_queue);
     }
 
+    pub fn acquire_swapchain(
+        &self,
+        queue_type: QueueType,
+        swapchain: &Arc<Mutex<Swapchain>>,
+        backbuffer: &Arc<active_gpu_backend::Backbuffer>,
+    ) {
+        let queue_opt = match queue_type {
+            QueueType::Graphics => Some(&self.graphics_queue),
+
+            QueueType::Compute => self.compute_queue.as_ref(),
+            QueueType::Transfer => self.transfer_queue.as_ref(),
+        };
+
+        if queue_opt.is_none() {
+            panic!("Device does not support requested queue type.");
+        }
+
+        let queue = queue_opt.unwrap();
+        queue.acquire_swapchain(swapchain, backbuffer);
+    }
+
+    pub fn release_swapchain(
+        &self,
+        queue_type: QueueType,
+        swapchain: &Arc<Mutex<Swapchain>>,
+        backbuffer: &Arc<active_gpu_backend::Backbuffer>,
+    ) {
+        let queue_opt = match queue_type {
+            QueueType::Graphics => Some(&self.graphics_queue),
+
+            QueueType::Compute => self.compute_queue.as_ref(),
+            QueueType::Transfer => self.transfer_queue.as_ref(),
+        };
+
+        if queue_opt.is_none() {
+            panic!("Device does not support requested queue type.");
+        }
+
+        let queue = queue_opt.unwrap();
+        queue.release_swapchain(swapchain, backbuffer);
+    }
+
     pub fn flush(&self) -> u64 {
         let mut all_empty = true;
         all_empty &= self.graphics_queue.is_empty();
@@ -631,13 +673,21 @@ impl Device {
 
         queue.flush(api_queue)
     }
+
+    pub fn has_queue(&self, queue_type: QueueType) -> bool {
+        match queue_type {
+            QueueType::Graphics => true,
+            QueueType::Compute => self.device.compute_queue().is_some(),
+            QueueType::Transfer => self.device.transfer_queue().is_some(),
+        }
+    }
 }
 
 impl Drop for Device {
     fn drop(&mut self) {
         unsafe {
             ManuallyDrop::drop(&mut self.transfer);
-            self.device.wait_for_idle();
+            self.device.block_until_idle();
             ManuallyDrop::drop(&mut self.buffer_allocator);
             ManuallyDrop::drop(&mut self.allocator);
             self.destroyer.destroy_all();

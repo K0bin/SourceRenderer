@@ -145,7 +145,7 @@ impl Queue {
 
         let fence_value = SharedFenceValuePair {
             fence: fence.clone(),
-            sync_before: wait_before,
+            sync_before: wait_before & Self::all_barrier_syncs(self.queue_type),
             value: counter,
         };
 

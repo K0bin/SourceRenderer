@@ -175,7 +175,7 @@ impl gpu::Device<VkBackend> for VkDevice {
         VkPipeline::new_mesh_graphics(&self.device, info, shared, name)
     }
 
-    unsafe fn wait_for_idle(&self) {
+    unsafe fn block_until_idle(&self) {
         self.device.wait_for_idle();
     }
 
@@ -709,7 +709,7 @@ impl gpu::Device<VkBackend> for VkDevice {
 impl Drop for VkDevice {
     fn drop(&mut self) {
         unsafe {
-            self.wait_for_idle();
+            self.block_until_idle();
         }
     }
 }

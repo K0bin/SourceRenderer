@@ -2,19 +2,19 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::*;
+use crate::Mutex;
 use crate::asset::{
     AssetData, AssetHandle, AssetLoadPriority, AssetManager, AssetType, MaterialData,
     MaterialHandle, MaterialValue, MeshData, ModelData, ShaderData, ShaderHandle, TextureData,
     TextureHandle,
 };
 use crate::graphics::*;
-use crate::Mutex;
 use log::trace;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::TexturePlane;
 
 struct DelayedAsset {
-    fence: SharedFenceValuePair,
+    fence: QueueFenceValue,
     asset: RendererAssetWithHandle,
 }
 
@@ -114,7 +114,7 @@ impl AssetIntegrator {
         handle: TextureHandle,
         priority: AssetLoadPriority,
         texture_data: TextureData,
-    ) -> (RendererTexture, Option<SharedFenceValuePair>) {
+    ) -> (RendererTexture, Option<QueueFenceValue>) {
         let (view, fence) =
             self.upload_texture(handle, texture_data, priority == AssetLoadPriority::Low);
         let bindless_index = if self.device.supports_bindless() {
@@ -216,14 +216,14 @@ impl AssetIntegrator {
         handle: TextureHandle,
         texture: TextureData,
         do_async: bool,
-    ) -> (Arc<TextureView>, Option<SharedFenceValuePair>) {
+    ) -> (Arc<TextureView>, Option<QueueFenceValue>) {
         let name = format!("{:?}", handle);
         let gpu_texture = self
             .device
             .create_texture(&texture.info, Some(&name))
             .unwrap();
         let subresources = texture.info.array_length * texture.info.mip_levels;
-        let mut fence = Option::<SharedFenceValuePair>::None;
+        let mut fence = Option::<QueueFenceValue>::None;
         for subresource in 0..subresources {
             let mip_level = subresource % texture.info.mip_levels;
             let array_index = subresource / texture.info.mip_levels;
@@ -336,7 +336,9 @@ impl AssetIntegrator {
         {
             let mut queue = self.asset_queue.lock().unwrap();
             for delayed_asset in queue.drain(..) {
-                if delayed_asset.fence.is_signalled() {
+                if self.device.completed_queue_counter(delayed_asset.fence.0)
+                    >= delayed_asset.fence.1
+                {
                     ready_delayed_assets.push(delayed_asset.asset);
                 } else {
                     retained_delayed_assets.push(delayed_asset);

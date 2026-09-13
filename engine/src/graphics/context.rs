@@ -155,19 +155,15 @@ impl GraphicsContext {
         wait_for_graphics: Option<u64>,
         wait_for_compute: Option<u64>,
         wait_for_transfer: Option<u64>,
-    ) -> SmallVec<[SharedFenceValuePairRef; 2]> {
-        let mut wait_fences: SmallVec<[SharedFenceValuePairRef; 2]> = SmallVec::new();
+    ) -> SmallVec<[QueueFenceValue; 2]> {
+        let mut wait_fences: SmallVec<[QueueFenceValue; 2]> = SmallVec::new();
         if let Some(wait) = wait_for_graphics {
             if submit_queue == QueueType::Graphics {
                 panic!(
                     "Cannot wait for the queue the work is going to be submitted to. Use barriers instead."
                 );
             }
-            wait_fences.push(SharedFenceValuePairRef {
-                fence: self.device.fence(QueueType::Graphics).unwrap(),
-                value: wait,
-                sync_before: BarrierSync::all(),
-            });
+            wait_fences.push((QueueType::Graphics, wait));
         }
         if let Some(wait) = wait_for_compute {
             if submit_queue == QueueType::Compute {
@@ -175,14 +171,8 @@ impl GraphicsContext {
                     "Cannot wait for the queue the work is going to be submitted to. Use barriers instead."
                 );
             }
-            wait_fences.push(SharedFenceValuePairRef {
-                fence: self
-                    .device
-                    .fence(QueueType::Compute)
-                    .expect("Cannot wait for compute, there's no compute queue"),
-                value: wait,
-                sync_before: BarrierSync::all(),
-            });
+            assert!(self.device.has_queue(QueueType::Compute));
+            wait_fences.push((QueueType::Compute, wait));
         }
         if let Some(wait) = wait_for_transfer {
             if submit_queue == QueueType::Transfer {
@@ -190,14 +180,8 @@ impl GraphicsContext {
                     "Cannot wait for the queue the work is going to be submitted to. Use barriers instead."
                 );
             }
-            wait_fences.push(SharedFenceValuePairRef {
-                fence: self
-                    .device
-                    .fence(QueueType::Transfer)
-                    .expect("Cannot wait for transfer, there's no transfer queue"),
-                value: wait,
-                sync_before: BarrierSync::all(),
-            });
+            assert!(self.device.has_queue(QueueType::Transfer));
+            wait_fences.push((QueueType::Transfer, wait));
         }
         wait_fences
     }
@@ -230,16 +214,14 @@ impl GraphicsContext {
             wait_for_compute,
             wait_for_transfer,
         );
+
+        for fence in wait_fences {
+            self.device
+                .wait_for(queue_type, fence.0, fence.1, BarrierSync::all());
+        }
+
         for cmd_buffer in result {
-            self.device.submit(
-                queue_type,
-                QueueSubmission {
-                    command_buffer: cmd_buffer,
-                    wait_fences: &wait_fences[..],
-                    acquire_swapchain: None,
-                    release_swapchain: None,
-                },
-            );
+            self.device.submit(queue_type, cmd_buffer);
         }
     }
 
@@ -264,15 +246,13 @@ impl GraphicsContext {
             wait_for_compute,
             wait_for_transfer,
         );
-        self.device.submit(
-            queue_type,
-            QueueSubmission {
-                command_buffer: cmd_buffer,
-                wait_fences: &wait_fences[..],
-                acquire_swapchain: None,
-                release_swapchain: None,
-            },
-        )
+
+        for fence in wait_fences {
+            self.device
+                .wait_for(queue_type, fence.0, fence.1, BarrierSync::all());
+        }
+
+        self.device.submit(queue_type, cmd_buffer);
     }
 
     pub fn get_command_buffer(&self, _queue_type: QueueType) -> CommandBuffer<'_> {
@@ -315,7 +295,7 @@ impl GraphicsContext {
 impl Drop for GraphicsContext {
     fn drop(&mut self) {
         if self.current_frame > 0 {
-            self.device.wait_for_idle();
+            self.device.block_until_idle();
             self.destroyer
                 .destroy_unused(self.device.completed_queue_counter(QueueType::Graphics));
         }
