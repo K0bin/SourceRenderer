@@ -94,11 +94,6 @@ impl GraphicsContext {
         if new_frame >= self.frame_finished_counter_values.len() as u64 {
             let counter = self.frame_finished_counter_values
                 [(new_frame as usize) % self.frame_finished_counter_values.len()];
-            /*log::warn!(
-                "Waiting for semaphore: {:?}, current frame: {:?}",
-                counter,
-                new_frame
-            );*/
             self.device
                 .await_queue_counter(QueueType::Graphics, counter);
             self.device.await_queue_counter(QueueType::Compute, counter);
@@ -135,11 +130,6 @@ impl GraphicsContext {
             [(self.current_frame as usize) % self.frame_finished_counter_values.len()] =
             frame_completed_fence_value;
         self.completed_frame += 1;
-        /*log::warn!(
-            "Ending frame: {}, with counter value: {}",
-            self.current_frame,
-            frame_completed_fence_value - 1
-        );*/
     }
 
     pub fn build_waits(
