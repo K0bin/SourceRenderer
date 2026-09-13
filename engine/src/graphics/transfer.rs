@@ -587,7 +587,7 @@ impl Transfer {
             cmd_buffer.reset();
             cmd_buffer
         } else {
-            let pool = if commands.queue_type == QueueType::Transfer {
+            let pool = if commands.queue_type == QueueType::Graphics {
                 unsafe {
                     device
                         .handle()
@@ -603,7 +603,7 @@ impl Transfer {
                         .create_command_pool(gpu::CommandPoolFlags::empty())
                 }
             };
-            Box::new({ TransferCommandBuffer::new(device.handle(), pool, 0) })
+            Box::new(TransferCommandBuffer::new(device.handle(), pool, 0))
         };
         debug_assert!(!cmd_buffer.is_used());
 
@@ -620,7 +620,7 @@ impl Transfer {
         }
 
         if DEBUG_FORCE_FAT_BARRIER {
-            Self::fat_barrier(api_cmd_buffer);
+            Self::fat_barrier(api_cmd_buffer, commands.queue_type);
         }
 
         // commit pre barriers
@@ -680,7 +680,7 @@ impl Transfer {
         // commit copies
         for copy in commands.copies.drain(..) {
             if DEBUG_FORCE_FAT_BARRIER {
-                Self::fat_barrier(api_cmd_buffer);
+                Self::fat_barrier(api_cmd_buffer, commands.queue_type);
             }
 
             match copy {
@@ -694,7 +694,7 @@ impl Transfer {
             }
 
             if DEBUG_FORCE_FAT_BARRIER {
-                Self::fat_barrier(api_cmd_buffer);
+                Self::fat_barrier(api_cmd_buffer, commands.queue_type);
             }
         }
 
@@ -843,15 +843,15 @@ impl Transfer {
                 .cmd_buffer
                 .take()
                 .expect("Commands with no command buffer");
-            device.submit(QueueType::Transfer, FinishedCommandBuffer::new(inner));
+            device.submit(QueueType::Graphics, FinishedCommandBuffer::new(inner));
             guard.graphics.used_cmd_buffers.push_back(cmd_buffer);
         }
     }
 
-    fn fat_barrier(cmd_buffer: &mut active_gpu_backend::CommandBuffer) {
+    fn fat_barrier(cmd_buffer: &mut active_gpu_backend::CommandBuffer, queue_type: QueueType) {
         let fat_core_barrier = [gpu::Barrier::GlobalBarrier {
-            old_sync: BarrierSync::all(),
-            new_sync: BarrierSync::all(),
+            old_sync: BarrierSync::all() & Queue::all_barrier_syncs(queue_type),
+            new_sync: BarrierSync::all() & Queue::all_barrier_syncs(queue_type),
             old_access: BarrierAccess::MEMORY_WRITE,
             new_access: BarrierAccess::MEMORY_READ | BarrierAccess::MEMORY_WRITE,
         }];
