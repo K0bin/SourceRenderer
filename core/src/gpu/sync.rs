@@ -5,7 +5,6 @@ pub trait Fence {
     unsafe fn await_value(&self, value: u64);
 }
 
-#[derive(PartialEq, Eq)]
 pub struct FenceValuePairRef<'a, B: GPUBackend> {
     pub fence: &'a B::Fence,
     pub value: u64,

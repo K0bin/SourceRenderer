@@ -128,12 +128,6 @@ impl Queue {
 
         let last = self.inner.iter_mut().last();
         if let Some(last) = last {
-            for fence in last.signal_fences.iter() {
-                if fence == &fence_value {
-                    return;
-                }
-            }
-
             last.signal_fences.push(fence_value);
             return;
         }

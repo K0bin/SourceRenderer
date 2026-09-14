@@ -9,16 +9,6 @@ pub struct Fence {
     destroyer: Arc<DeferredDestroyer>,
 }
 
-impl PartialEq for Fence {
-    fn eq(&self, other: &Self) -> bool {
-        self.fence == other.fence
-            && self.destroyer.as_ref() as *const DeferredDestroyer
-                == other.destroyer.as_ref() as *const DeferredDestroyer
-    }
-}
-
-impl Eq for Fence {}
-
 impl Drop for Fence {
     fn drop(&mut self) {
         let fence = unsafe { ManuallyDrop::take(&mut self.fence) };
@@ -56,7 +46,6 @@ impl Fence {
     }
 }
 
-#[derive(PartialEq, Eq)]
 pub struct SharedFenceValuePairRef<'a> {
     pub fence: &'a Arc<super::Fence>,
     pub value: u64,
@@ -75,7 +64,6 @@ impl<'a> SharedFenceValuePairRef<'a> {
     }
 }
 
-#[derive(PartialEq, Eq)]
 pub struct SharedFenceValuePair {
     pub fence: Arc<super::Fence>,
     pub value: u64,
