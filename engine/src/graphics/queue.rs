@@ -3,6 +3,7 @@ use super::*;
 use crate::{Mutex, MutexGuard};
 use smallvec::{SmallVec, smallvec};
 use std::collections::VecDeque;
+use std::mem::ManuallyDrop;
 use std::ops::Range;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, TryLockError};
@@ -12,10 +13,10 @@ type Backbuffer = active_gpu_backend::Backbuffer;
 
 pub type QueueFenceValue = (QueueType, u64);
 
-pub struct FinishedCommandBuffer(active_gpu_backend::CommandBuffer);
+pub struct FinishedCommandBuffer(ManuallyDrop<active_gpu_backend::CommandBuffer>);
 impl FinishedCommandBuffer {
     pub(super) fn new(cmd_buffer: active_gpu_backend::CommandBuffer) -> Self {
-        Self(cmd_buffer)
+        Self(ManuallyDrop::new(cmd_buffer))
     }
 }
 
@@ -36,6 +37,7 @@ pub struct QueueSubmission<'a> {
 
 pub(super) struct Queue {
     inner: VecDeque<StoredQueueSubmission>,
+    destroyer: Arc<DeferredDestroyer>,
     queue_type: QueueType,
 }
 
@@ -75,10 +77,15 @@ impl QueueTracker {
 }
 
 impl Queue {
-    pub(super) fn new(queue_type: QueueType, fence: Fence) -> Self {
+    pub(super) fn new(
+        destroyer: &Arc<DeferredDestroyer>,
+        queue_type: QueueType,
+        fence: Fence,
+    ) -> Self {
         Self {
             inner: VecDeque::new(),
             queue_type,
+            destroyer: destroyer.clone(),
         }
     }
 
@@ -220,17 +227,9 @@ impl Queue {
             return tracker.submitted_counter();
         }
 
-        let mut cmd_buffers: SmallVec<[active_gpu_backend::CommandBuffer; 4]> =
-            SmallVec::with_capacity(self.inner.len());
-        let mut cmd_buffers_ranges: SmallVec<[Range<usize>; 4]> =
-            SmallVec::with_capacity(self.inner.len());
-        for submission in self.inner.iter_mut() {
-            let range_start = cmd_buffers.len();
-            for cmd_buffer in submission.command_buffers.drain(..) {
-                cmd_buffers.push(cmd_buffer.0);
-            }
-            cmd_buffers_ranges.push(range_start..cmd_buffers.len());
-        }
+        let mut cmd_buffer_refs =
+            SmallVec::<[&active_gpu_backend::CommandBuffer; 2]>::with_capacity(self.inner.len());
+        let mut cmd_buffer_ranges = SmallVec::<[Range<usize>; 2]>::with_capacity(self.inner.len());
 
         let mut swapchain_guards =
             SmallVec::<[MutexGuard<super::Swapchain>; 2]>::with_capacity(self.inner.len());
@@ -242,6 +241,12 @@ impl Queue {
         );
         let mut fence_ranges = SmallVec::<[Range<usize>; 2]>::with_capacity(self.inner.len() * 2);
         for submission in self.inner.iter() {
+            let mut cmd_buffer_start = cmd_buffer_refs.len();
+            for cmd_buffer in &submission.command_buffers {
+                cmd_buffer_refs.push(&*cmd_buffer.0);
+            }
+            cmd_buffer_ranges.push(cmd_buffer_start..cmd_buffer_refs.len());
+
             let mut start = fence_refs.len();
             for fence in &submission.wait_fences {
                 fence_refs.push(active_gpu_backend::FenceValuePairRef {
@@ -322,7 +327,7 @@ impl Queue {
             );
 
             gpu_submissions.push(active_gpu_backend::Submission {
-                command_buffers: &cmd_buffers[cmd_buffers_ranges[idx].clone()],
+                command_buffers: &cmd_buffer_refs[cmd_buffer_ranges[idx].clone()],
                 wait_fences: &fence_refs[fence_ranges[idx * 2].clone()],
                 signal_fences: &fence_refs[fence_ranges[idx * 2 + 1].clone()],
                 acquire_swapchain,
@@ -337,15 +342,36 @@ impl Queue {
         std::mem::drop(fence_refs);
         std::mem::drop(swapchain_guard_indices);
         std::mem::drop(swapchain_guards);
-        std::mem::drop(cmd_buffers);
-        std::mem::drop(cmd_buffers_ranges);
+        std::mem::drop(cmd_buffer_refs);
+        std::mem::drop(cmd_buffer_ranges);
+
+        Self::destroy_cmd_buffers(&self.destroyer, self.inner.drain(..));
+
         self.inner.clear();
         tracker.submitted_counter()
+    }
+
+    fn destroy_cmd_buffers(
+        destroyer: &DeferredDestroyer,
+        submissions: impl Iterator<Item = StoredQueueSubmission>,
+    ) {
+        for mut submission in submissions {
+            for mut cmd_buffer in submission.command_buffers.drain(..) {
+                let cmd_buffer_handle = unsafe { ManuallyDrop::take(&mut cmd_buffer.0) };
+                destroyer.destroy_command_buffer(cmd_buffer_handle);
+            }
+        }
     }
 
     #[allow(unused)]
     #[inline(always)]
     pub fn queue_type(&self) -> QueueType {
         self.queue_type
+    }
+}
+
+impl Drop for Queue {
+    fn drop(&mut self) {
+        Self::destroy_cmd_buffers(&self.destroyer, self.inner.drain(..));
     }
 }

@@ -867,7 +867,7 @@ impl Transfer {
 impl TransferCommandBuffer {
     pub(super) fn new(
         destroyer: &Arc<DeferredDestroyer>,
-        cmd_pool: active_gpu_backend::CommandPool,
+        mut cmd_pool: active_gpu_backend::CommandPool,
         fence_value: u64,
     ) -> Self {
         let cmd_buffer = unsafe { cmd_pool.create_command_buffer() };

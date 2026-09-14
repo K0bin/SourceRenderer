@@ -24,6 +24,7 @@ struct DeferredDestroyerInner {
     buffer_allocations: Vec<(u64, Allocation<BufferAndAllocation>)>,
     query_pools: Vec<(u64, active_gpu_backend::QueryPool)>,
     cmd_pools: Vec<(u64, active_gpu_backend::CommandPool)>,
+    cmd_buffers: Vec<(u64, active_gpu_backend::CommandBuffer)>,
 }
 
 impl DeferredDestroyer {
@@ -46,6 +47,7 @@ impl DeferredDestroyer {
                 buffer_allocations: Vec::new(),
                 query_pools: Vec::new(),
                 cmd_pools: Vec::new(),
+                cmd_buffers: Vec::new(),
             }),
         }
     }
@@ -151,6 +153,12 @@ impl DeferredDestroyer {
         guard.cmd_pools.push((frame, command_pool));
     }
 
+    pub(super) fn destroy_command_buffer(&self, command_buffer: active_gpu_backend::CommandBuffer) {
+        let mut guard = self.inner.lock().unwrap();
+        let frame = guard.current_counter;
+        guard.cmd_buffers.push((frame, command_buffer));
+    }
+
     pub(super) fn set_counter(&self, counter: u64) {
         let mut guard = self.inner.lock().unwrap();
         if guard.current_counter > counter {
@@ -216,6 +224,9 @@ impl DeferredDestroyer {
             .buffer_allocations
             .retain(|(resource_counter, _)| *resource_counter > counter);
         guard
+            .cmd_buffers
+            .retain(|(resource_counter, _)| *resource_counter > counter);
+        guard
             .cmd_pools
             .retain(|(resource_counter, _)| *resource_counter > counter);
     }
@@ -239,5 +250,6 @@ impl Drop for DeferredDestroyer {
         assert!(guard.query_pools.is_empty());
         assert!(guard.buffer_allocations.is_empty());
         assert!(guard.cmd_pools.is_empty());
+        assert!(guard.cmd_buffers.is_empty());
     }
 }

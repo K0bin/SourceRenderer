@@ -43,15 +43,15 @@ impl Device {
 
         let graphics_queue = {
             let fence = Fence::new(&device, &destroyer);
-            Queue::new(QueueType::Graphics, fence)
+            Queue::new(&destroyer, QueueType::Graphics, fence)
         };
         let compute_queue = device.compute_queue().map(|_| {
             let fence = Fence::new(&device, &destroyer);
-            Queue::new(QueueType::Compute, fence)
+            Queue::new(&destroyer, QueueType::Compute, fence)
         });
         let transfer_queue = device.transfer_queue().map(|_| {
             let fence = Fence::new(&device, &destroyer);
-            Queue::new(QueueType::Transfer, fence)
+            Queue::new(&destroyer, QueueType::Transfer, fence)
         });
 
         Self {
@@ -695,7 +695,10 @@ impl Device {
 
         assert!(compute_counter == 0 || graphics_counter == compute_counter);
         assert!(transfer_counter == 0 || graphics_counter == transfer_counter);
-        //assert_eq!(graphics_counter + 1, self.graphics_queue.next_counter());
+        assert_eq!(
+            graphics_counter + 1,
+            self.graphics_queue_tracker.next_counter()
+        );
         self.destroyer.set_counter(graphics_counter + 1);
 
         graphics_counter.max(compute_counter.max(transfer_counter))
