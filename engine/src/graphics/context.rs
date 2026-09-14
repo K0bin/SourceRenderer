@@ -94,12 +94,7 @@ impl GraphicsContext {
         if new_frame >= self.frame_finished_counter_values.len() as u64 {
             let counter = self.frame_finished_counter_values
                 [(new_frame as usize) % self.frame_finished_counter_values.len()];
-            self.device
-                .await_queue_counter(QueueType::Graphics, counter);
-            self.device.await_queue_counter(QueueType::Compute, counter);
-            self.device
-                .await_queue_counter(QueueType::Transfer, counter);
-            self.destroyer.destroy_unused(counter);
+            self.device.await_counter(counter);
             self.global_buffer_allocator.cleanup_unused();
             self.memory_allocator.cleanup_unused();
         }

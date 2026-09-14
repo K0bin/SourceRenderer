@@ -456,6 +456,19 @@ impl Device {
             QueueType::Transfer => &self.transfer_queue_tracker,
         };
         queue_tracker.await_counter(value);
+    }
+
+    pub fn await_counter(&self, value: u64) {
+        let guard = self.queues.lock().unwrap();
+        self.graphics_queue_tracker.await_counter(value);
+        guard
+            .compute_queue
+            .as_ref()
+            .map(|_| self.compute_queue_tracker.await_counter(value));
+        guard
+            .transfer_queue
+            .as_ref()
+            .map(|_| self.transfer_queue_tracker.await_counter(value));
         if value != 0 {
             self.destroyer.destroy_unused(value);
         }
