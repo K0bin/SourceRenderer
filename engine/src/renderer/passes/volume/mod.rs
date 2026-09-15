@@ -149,6 +149,7 @@ impl RenderPath for VolumeRenderer {
 
     fn render(
         &mut self,
+        _device: &Device,
         context: &mut GraphicsContext,
         swapchain: &mut Swapchain,
         scene: &SceneInfo,

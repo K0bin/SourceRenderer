@@ -271,6 +271,7 @@ impl RenderPath for ConservativeRenderer {
     #[profiling::function]
     fn render(
         &mut self,
+        _device: &Device,
         context: &mut GraphicsContext,
         swapchain: &mut Swapchain,
         scene: &SceneInfo,

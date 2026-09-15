@@ -294,6 +294,7 @@ impl RenderPath for PathTracingRenderer {
     #[profiling::function]
     fn render(
         &mut self,
+        _device: &Device,
         context: &mut GraphicsContext,
         swapchain: &mut Swapchain,
         scene: &SceneInfo,

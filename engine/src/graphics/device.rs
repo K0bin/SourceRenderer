@@ -614,7 +614,7 @@ impl Device {
         queue.present(swapchain, backbuffer, api_queue);
     }
 
-    pub fn acquire_swapchain(
+    pub fn wait_for_backbuffer(
         &self,
         queue_type: QueueType,
         swapchain: &Arc<Mutex<Swapchain>>,
@@ -636,7 +636,7 @@ impl Device {
         queue.acquire_swapchain(swapchain, backbuffer);
     }
 
-    pub fn release_swapchain(
+    pub fn signal_backbuffer(
         &self,
         queue_type: QueueType,
         swapchain: &Arc<Mutex<Swapchain>>,

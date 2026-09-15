@@ -81,6 +81,7 @@ impl RenderPath for WebRenderer {
 
     fn render(
         &mut self,
+        _device: &Device,
         context: &mut GraphicsContext,
         swapchain: &mut Swapchain,
         scene: &SceneInfo,

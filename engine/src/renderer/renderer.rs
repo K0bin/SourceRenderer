@@ -240,6 +240,7 @@ impl Renderer {
         self.assets.bump_frame(&self.context);
 
         let render_path_result = self.render_path.render(
+            &self.device,
             &mut self.context,
             &mut swapchain_guard,
             &scene_info,
@@ -255,13 +256,13 @@ impl Renderer {
             Ok(result) => {
                 if let Some(backbuffer) = result.backbuffer.as_ref() {
                     self.device
-                        .acquire_swapchain(QueueType::Graphics, &self.swapchain, backbuffer);
+                        .wait_for_backbuffer(QueueType::Graphics, &self.swapchain, backbuffer);
                 }
 
                 self.device.submit(QueueType::Graphics, result.cmd_buffer);
 
                 if let Some(backbuffer) = result.backbuffer {
-                    self.device.release_swapchain(
+                    self.device.signal_backbuffer(
                         QueueType::Graphics,
                         &self.swapchain,
                         &backbuffer,

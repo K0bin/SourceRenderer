@@ -39,6 +39,7 @@ pub trait RenderPath {
     fn is_ready(&self, assets: &RendererAssetsReadOnly) -> bool;
     fn render(
         &mut self,
+        device: &Device,
         context: &mut GraphicsContext,
         swapchain: &mut Swapchain,
         scene: &SceneInfo,
@@ -67,6 +68,7 @@ impl RenderPath for NoOpRenderPath {
     }
     fn render(
         &mut self,
+        _device: &Device,
         context: &mut GraphicsContext,
         swapchain: &mut Swapchain,
         _scene: &SceneInfo,
