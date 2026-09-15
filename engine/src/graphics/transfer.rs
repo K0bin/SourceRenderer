@@ -68,6 +68,8 @@ struct TransferCommands {
     used_textures: Vec<Arc<super::Texture>>,
 }
 
+// We need to hold references here because TransferCommandBuffers
+// exist outside of regular frame boundaries.
 pub struct TransferCommandBuffer {
     cmd_pool: ManuallyDrop<active_gpu_backend::CommandPool>,
     destroyer: Arc<DeferredDestroyer>,
@@ -81,14 +83,11 @@ pub struct TransferCommandBuffer {
 impl Transfer {
     pub(super) fn new(
         device: &Arc<active_gpu_backend::Device>,
-        destroyer: &Arc<DeferredDestroyer>,
         buffer_allocator: &Arc<BufferAllocator>,
     ) -> Self {
-        let graphics_fence = Arc::new(super::Fence::new(device.as_ref(), destroyer));
-
         let transfer_commands = device
             .transfer_queue()
-            .map(|transfer_queue| TransferCommands {
+            .map(|_transfer_queue| TransferCommands {
                 queue_type: QueueType::Transfer,
                 pre_barriers: Vec::new(),
                 copies: Vec::new(),

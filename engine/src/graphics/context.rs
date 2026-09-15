@@ -95,7 +95,10 @@ impl GraphicsContext {
         if new_frame >= self.prerendered_frames as u64 {
             let counter = self.frame_finished_counter_values
                 [(new_frame as usize) % (self.prerendered_frames as usize)];
+            self.destroyer.set_counter(new_frame);
             self.device.await_counter(counter);
+            self.destroyer
+                .destroy_unused(new_frame - (self.prerendered_frames as u64));
             self.global_buffer_allocator.cleanup_unused();
             self.memory_allocator.cleanup_unused();
         }
@@ -237,7 +240,13 @@ impl GraphicsContext {
     pub fn get_command_buffer(&self, queue_type: QueueType) -> CommandBuffer<'_> {
         let frame_context = self.get_thread_frame_context(self.current_frame);
 
-        let mut cmd_buffer = CommandBuffer::new(self, frame_context, &self.destroyer, queue_type, Some(&format!("Cmd Buffer for frame {}", self.current_frame)));
+        let mut cmd_buffer = CommandBuffer::new(
+            self,
+            frame_context,
+            &self.destroyer,
+            queue_type,
+            Some(&format!("Cmd Buffer for frame {}", self.current_frame)),
+        );
         cmd_buffer.begin();
         cmd_buffer
     }
@@ -273,8 +282,7 @@ impl Drop for GraphicsContext {
     fn drop(&mut self) {
         if self.current_frame > 0 {
             self.device.block_until_idle();
-            self.destroyer
-                .destroy_unused(self.device.completed_queue_counter(QueueType::Graphics));
+            self.destroyer.destroy_unused(self.current_frame);
         }
 
         unsafe { ManuallyDrop::drop(&mut self.thread_frames) };
@@ -299,9 +307,10 @@ impl FrameContext {
         context_idx: u32,
     ) -> Self {
         let command_pool = unsafe {
-            device
-                .graphics_queue()
-                .create_command_pool(gpu::CommandPoolFlags::empty(), Some(&format!("Cmd Pool context {}", context_idx)))
+            device.graphics_queue().create_command_pool(
+                gpu::CommandPoolFlags::empty(),
+                Some(&format!("Cmd Pool context {}", context_idx)),
+            )
         };
         let transient_buffer_allocator = TransientBufferAllocator::new(
             device,

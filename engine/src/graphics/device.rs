@@ -60,7 +60,7 @@ impl Device {
             allocator: memory_allocator.clone(),
             destroyer: destroyer.clone(),
             bindless_slot_allocator: BindlessSlotAllocator::new(BINDLESS_TEXTURE_COUNT),
-            transfer: ManuallyDrop::new(Transfer::new(&device, &destroyer, &buffer_allocator)),
+            transfer: ManuallyDrop::new(Transfer::new(&device, &buffer_allocator)),
             buffer_allocator: ManuallyDrop::new(buffer_allocator),
             prerendered_frames,
             queues: Mutex::new(Queues {
@@ -474,9 +474,6 @@ impl Device {
             .transfer_queue
             .as_ref()
             .map(|_| self.transfer_queue_tracker.await_counter(value));
-        if value != 0 {
-            self.destroyer.destroy_unused(value);
-        }
     }
 
     pub fn completed_queue_counter(&self, queue_type: QueueType) -> u64 {
@@ -485,11 +482,7 @@ impl Device {
             QueueType::Compute => &self.compute_queue_tracker,
             QueueType::Transfer => &self.transfer_queue_tracker,
         };
-        let counter = queue_tracker.completed_counter();
-        if counter != 0 {
-            self.destroyer.destroy_unused(counter);
-        }
-        counter
+        queue_tracker.completed_counter()
     }
 
     pub fn wait_for(
@@ -703,7 +696,6 @@ impl Device {
             graphics_counter + 1,
             self.graphics_queue_tracker.next_counter()
         );
-        self.destroyer.set_counter(graphics_counter + 1);
 
         graphics_counter.max(compute_counter.max(transfer_counter))
     }

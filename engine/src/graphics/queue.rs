@@ -241,7 +241,7 @@ impl Queue {
         );
         let mut fence_ranges = SmallVec::<[Range<usize>; 2]>::with_capacity(self.inner.len() * 2);
         for submission in self.inner.iter() {
-            let mut cmd_buffer_start = cmd_buffer_refs.len();
+            let cmd_buffer_start = cmd_buffer_refs.len();
             for cmd_buffer in &submission.command_buffers {
                 cmd_buffer_refs.push(&*cmd_buffer.0);
             }
