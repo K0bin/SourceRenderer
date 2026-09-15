@@ -564,7 +564,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         }
 
         if supports_rt_pipeline {
-            println!("Ray tracing pipelines supported.");
+            log::info!("Ray tracing pipelines supported.");
             enabled_extensions.push(RAY_TRACING_PIPELINE_EXT_NAME);
             if extensions.contains(VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS) {
                 enabled_extensions.push(DEFERRED_HOST_OPERATIONS_EXT_NAME);
@@ -579,7 +579,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         }
 
         if supports_rt_query {
-            println!("Ray tracing queries supported.");
+            log::info!("Ray tracing queries supported.");
             enabled_extensions.push(RAY_QUERY_EXT_NAME);
             _features_rt_query.ray_query = vk::TRUE;
             _features_rt_query.p_next = std::mem::replace(
@@ -610,7 +610,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         enabled_features_13.synchronization2 = vk::TRUE;
 
         if supported_features_barycentrics.fragment_shader_barycentric == vk::TRUE {
-            println!("Barycentrics supported.");
+            log::info!("Barycentrics supported.");
             features_barycentrics.fragment_shader_barycentric = vk::TRUE;
             features_barycentrics.p_next = std::mem::replace(
                 &mut enabled_features.p_next,

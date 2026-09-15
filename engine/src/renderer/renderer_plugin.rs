@@ -146,9 +146,9 @@ pub fn insert_resources<P: GraphicsPlatform<ActiveBackend>>(
     let (sender, receiver) = Renderer::new_channel();
 
     #[cfg(feature = "render_thread")]
-    log::info!("RENDER THREAD");
+    log::info!("Using a render thread");
     #[cfg(not(feature = "render_thread"))]
-    log::info!("NO RENDER THREAD");
+    log::info!("Running renderer on application thread");
 
     #[cfg(feature = "render_thread")]
     let handle = start_render_thread::<P>(

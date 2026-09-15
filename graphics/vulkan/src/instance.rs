@@ -243,33 +243,24 @@ impl VkInstance {
         }
         let callback_data = callback_data_opt.unwrap();
 
-        if message_severity == vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE {
-            return vk::FALSE;
-        }
+        log::log!(
+            Self::vulkan_severity_to_log(message_severity),
+            "Vulkan message: {:?}: {:?}",
+            message_types,
+            unsafe { CStr::from_ptr(callback_data.p_message) }
+        );
 
-        if callback_data.message_id_number == 688222058 {
-            // False positive about setting the viewport & scissor for ray tracing pipelines
-            return vk::FALSE;
-        }
-
-        if message_severity != vk::DebugUtilsMessageSeverityFlagsEXT::INFO
-            || message_severity.contains(vk::DebugUtilsMessageSeverityFlagsEXT::ERROR)
-        {
-            println!(
-                "VK: {:?} - {:?}: {:?}",
-                message_severity,
-                message_types,
-                unsafe { CStr::from_ptr(callback_data.p_message) }
-            );
-        } else {
-            println!(
-                "VK: {:?} - {:?}: {:?}",
-                message_severity,
-                message_types,
-                unsafe { CStr::from_ptr(callback_data.p_message) }
-            );
-        }
         vk::FALSE
+    }
+
+    fn vulkan_severity_to_log(severity: vk::DebugUtilsMessageSeverityFlagsEXT) -> log::Level {
+        match severity {
+            vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE => log::Level::Trace,
+            vk::DebugUtilsMessageSeverityFlagsEXT::INFO => log::Level::Info,
+            vk::DebugUtilsMessageSeverityFlagsEXT::WARNING => log::Level::Warn,
+            vk::DebugUtilsMessageSeverityFlagsEXT::ERROR => log::Level::Error,
+            _ => unreachable!(),
+        }
     }
 }
 
