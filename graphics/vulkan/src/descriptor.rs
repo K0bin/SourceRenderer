@@ -1174,7 +1174,7 @@ impl DescriptorCaches {
         let permanent_pools_mut = &mut self.permanent_pools;
         for (_, entries) in &mut self.permanent_cache {
             for entry in entries {
-            entry.used = false;
+                entry.used = false;
             }
         }
         permanent_pools_mut.next_non_full_pool_index = 0u32;
@@ -1183,8 +1183,7 @@ impl DescriptorCaches {
     pub(crate) fn clean_permanent_cache(&mut self) {
         // TODO: I might need to make this more aggressive because of memory usage.
 
-        if self.cache_mode != CacheMode::Everything
-        {
+        if self.cache_mode != CacheMode::Everything {
             return;
         }
 
@@ -1276,18 +1275,12 @@ impl VkBindingManager {
         caches: &mut DescriptorCaches,
     ) -> Option<VkDescriptorSetBinding> {
         let layout_option = pipeline_layout.descriptor_set_layout(frequency as u32);
-        if !self.dirty.contains(DirtyDescriptorSets::from(frequency)) || layout_option.is_none() {
-            log::warn!("No layout for {:?}", frequency);
-            return None;
-        }
         let layout = layout_option.unwrap();
-        log::warn!("Set: {:?}, bindings: {:?}", frequency,  &self.bindings[frequency as usize][..(layout.max_used_binding() + 1) as usize]);
 
         let mut set: Option<Arc<VkDescriptorSet>> = None;
         let bindings =
             &self.bindings[frequency as usize][..(layout.max_used_binding() + 1) as usize];
         if let Some(current_set) = &self.current_sets[frequency as usize] {
-            log::warn!("Currently bound set is fine");
             // This should cover the hottest case.
             if current_set.is_compatible(layout, bindings) {
                 set = Some(current_set.clone());
@@ -1379,7 +1372,6 @@ impl VkBindingManager {
             self.find_compatible_set(layout, &bindings, !transient, caches)
         };
         let set: Arc<VkDescriptorSet> = if let Some(cached_set) = cached_set {
-            log::warn!("Found cached set");
             cached_set
         } else {
             let pools = if !transient {
@@ -1387,7 +1379,6 @@ impl VkBindingManager {
             } else {
                 &mut caches.transient_pools
             };
-            log::warn!("Creating new set");
             let mut new_set = Option::<VkDescriptorSet>::None;
 
             'pools_iter: for i in (pools.next_non_full_pool_index as usize)..pools.pools.len() {
@@ -1451,25 +1442,18 @@ impl VkBindingManager {
         pipeline_layout: &VkPipelineLayout,
         caches: &mut DescriptorCaches,
     ) -> [Option<VkDescriptorSetBinding>; gpu::NON_BINDLESS_SET_COUNT as usize] {
-        log::warn!("Binding: {:?}", self.dirty);
         if self.dirty.is_empty() {
             return Default::default();
         }
 
         let mut set_bindings: [Option<VkDescriptorSetBinding>;
             gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
-        set_bindings[gpu::BindingFrequency::VeryFrequent as usize] = self.finish_set(
-            pipeline_layout,
-            gpu::BindingFrequency::VeryFrequent,
-            caches,
-        );
+        set_bindings[gpu::BindingFrequency::VeryFrequent as usize] =
+            self.finish_set(pipeline_layout, gpu::BindingFrequency::VeryFrequent, caches);
         set_bindings[gpu::BindingFrequency::Frame as usize] =
             self.finish_set(pipeline_layout, gpu::BindingFrequency::Frame, caches);
-        set_bindings[gpu::BindingFrequency::Frequent as usize] = self.finish_set(
-            pipeline_layout,
-            gpu::BindingFrequency::Frequent,
-            caches,
-        );
+        set_bindings[gpu::BindingFrequency::Frequent as usize] =
+            self.finish_set(pipeline_layout, gpu::BindingFrequency::Frequent, caches);
 
         self.dirty = DirtyDescriptorSets::empty();
         set_bindings

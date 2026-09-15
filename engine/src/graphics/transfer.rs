@@ -364,7 +364,6 @@ impl Transfer {
         array_layer: u32,
     ) {
         unsafe {
-            log::warn!("host image copy");
             device.handle().transition_texture(
                 texture.handle(),
                 &gpu::CPUTextureTransition {
@@ -592,10 +591,10 @@ impl Transfer {
         } else {
             let pool = if commands.queue_type == QueueType::Graphics {
                 unsafe {
-                    device
-                        .handle()
-                        .graphics_queue()
-                        .create_command_pool(gpu::CommandPoolFlags::empty(), Some("Transfer Graphics Pool"))
+                    device.handle().graphics_queue().create_command_pool(
+                        gpu::CommandPoolFlags::empty(),
+                        Some("Transfer Graphics Pool"),
+                    )
                 }
             } else {
                 unsafe {
@@ -603,7 +602,10 @@ impl Transfer {
                         .handle()
                         .transfer_queue()
                         .unwrap()
-                        .create_command_pool(gpu::CommandPoolFlags::empty(), Some("Transfer Transfer Pool"))
+                        .create_command_pool(
+                            gpu::CommandPoolFlags::empty(),
+                            Some("Transfer Transfer Pool"),
+                        )
                 }
             };
             Box::new(TransferCommandBuffer::new(device.destroyer(), pool, 0))
@@ -901,7 +903,10 @@ impl TransferCommandBuffer {
 
         unsafe {
             self.cmd_pool.reset();
-            self.cmd_buffer = Some(self.cmd_pool.create_command_buffer(Some("Transfer Command Buffer")));
+            self.cmd_buffer = Some(
+                self.cmd_pool
+                    .create_command_buffer(Some("Transfer Command Buffer")),
+            );
         }
         self.is_used = false;
         self.used_buffers_slices.clear();
