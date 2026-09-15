@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 sourcerenderer_core = { path = "../core" }
 sourcerenderer_engine = { path = "../engine", default-features = false }
-log = "0.4.25"
+log = "0.4"
 bevy_app = "0.19"
 bevy_math = { version = "0.19", features = ["serialize"] }
 bevy_ecs = "0.19"

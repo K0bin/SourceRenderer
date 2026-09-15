@@ -7,7 +7,6 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use bevy_input::ButtonInput;
 use bevy_input::keyboard::KeyCode;
-use bevy_log::*;
 use bevy_transform::components::Transform;
 use sourcerenderer_core::{Quaternion, Vec2, Vec3};
 use sourcerenderer_engine::Engine;
@@ -275,7 +274,7 @@ impl Plugin for SpinningCubePlugin {
             },*/
         ));
 
-        info!("Added spinning cube");
+        log::info!("Added spinning cube");
     }
 }
 

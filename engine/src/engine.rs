@@ -17,7 +17,6 @@ use bevy_ecs::resource::Resource;
 use bevy_input::InputPlugin;
 use bevy_input::keyboard::KeyboardInput;
 use bevy_input::mouse::{MouseButtonInput, MouseMotion};
-use bevy_log::LogPlugin;
 use bevy_time::{Fixed, Time, TimePlugin};
 use bevy_transform::TransformPlugin;
 use sourcerenderer_core::Vec2;
