@@ -541,7 +541,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             && supports_bda;
 
         if supports_descriptor_indexing {
-            println!("Bindless supported.");
+            log::info!("Bindless supported.");
             enabled_features_12.shader_sampled_image_array_non_uniform_indexing = vk::TRUE;
             enabled_features_12.descriptor_binding_sampled_image_update_after_bind = vk::TRUE;
             enabled_features_12.descriptor_binding_variable_descriptor_count = vk::TRUE;

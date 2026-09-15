@@ -250,6 +250,7 @@ impl Renderer {
         std::mem::drop(swapchain_guard);
         self.context.end_frame();
 
+        self.device.submit_transfers();
         match render_path_result {
             Ok(result) => {
                 if let Some(backbuffer) = result.backbuffer.as_ref() {

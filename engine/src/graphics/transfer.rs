@@ -364,6 +364,7 @@ impl Transfer {
         array_layer: u32,
     ) {
         unsafe {
+            log::warn!("host image copy");
             device.handle().transition_texture(
                 texture.handle(),
                 &gpu::CPUTextureTransition {
@@ -577,14 +578,14 @@ impl Transfer {
             return None;
         }
 
-        let reuse_first_graphics_buffer = commands
+        let reuse_first_cmd_buffer = commands
             .used_cmd_buffers
             .front()
             .map(|cmd_buffer| {
                 device.completed_queue_counter(commands.queue_type) >= cmd_buffer.fence_value
             })
             .unwrap_or(false);
-        let mut cmd_buffer = if reuse_first_graphics_buffer {
+        let mut cmd_buffer = if reuse_first_cmd_buffer {
             let mut cmd_buffer = commands.used_cmd_buffers.pop_front().unwrap();
             cmd_buffer.reset();
             cmd_buffer
@@ -822,7 +823,7 @@ impl Transfer {
         Ok(slice)
     }
 
-    pub fn flush(&self, device: &Device) {
+    pub fn submit(&self, device: &Device) {
         self.try_free_unused_buffers(device);
 
         let mut guard = self.inner.lock().unwrap();

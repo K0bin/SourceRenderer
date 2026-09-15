@@ -111,7 +111,7 @@ impl VkDescriptorSetLayout {
         };
 
         let info = vk::DescriptorSetLayoutCreateInfo {
-            p_next: if device.features_12.buffer_device_address == vk::TRUE {
+            p_next: if device.features_12.descriptor_binding_partially_bound == vk::TRUE {
                 &binding_flags_struct as *const vk::DescriptorSetLayoutBindingFlagsCreateInfo
                     as *const c_void
             } else {
@@ -1206,11 +1206,6 @@ pub(crate) struct VkBindingManager {
 
 impl VkBindingManager {
     pub(crate) fn new(device: &Arc<RawVkDevice>) -> Self {
-        let transient_pool = Arc::new(VkDescriptorPool::new(device, true));
-        let permanent_pool = Arc::new(VkDescriptorPool::new(device, false));
-
-        let cache_mode = CacheMode::Everything;
-
         Self {
             device: device.clone(),
             current_sets: Default::default(),

@@ -350,6 +350,11 @@ impl Device {
     }
 
     #[inline(always)]
+    pub fn submit_transfers(&self) {
+        self.transfer.submit(self);
+    }
+
+    #[inline(always)]
     pub fn free_completed_transfers(&self) {
         self.transfer.try_free_unused_buffers(&self);
     }
@@ -588,7 +593,6 @@ impl Device {
         swapchain: &Arc<Mutex<Swapchain>>,
         backbuffer: Arc<active_gpu_backend::Backbuffer>,
     ) {
-        self.transfer.flush(self);
         let mut queues = self.queues.lock().unwrap();
         self.flush_locked(&mut queues);
 
@@ -655,13 +659,13 @@ impl Device {
     }
 
     pub fn flush(&self) -> u64 {
-        self.transfer.flush(self);
+        self.transfer.submit(self);
         let mut guard = self.queues.lock().unwrap();
         self.flush_locked(&mut guard)
     }
 
-    pub fn flush_locked(&self, queues: &mut Queues) -> u64 {
-        self.transfer.flush(self);
+    fn flush_locked(&self, queues: &mut Queues) -> u64 {
+        self.transfer.submit(self);
 
         let mut all_empty = true;
         all_empty &= queues.graphics_queue.is_empty();

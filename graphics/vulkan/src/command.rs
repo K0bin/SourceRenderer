@@ -1385,9 +1385,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
     }
 
     unsafe fn begin(&mut self) {
-        self.state.store(VkCommandBufferState::Ready);
-
-        self.descriptor_manager.mark_all_dirty();
+        self.descriptor_manager.reset();
         self.state.store(VkCommandBufferState::Recording);
 
         unsafe {
