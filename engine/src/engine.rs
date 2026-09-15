@@ -94,9 +94,6 @@ impl Engine {
         app.add_plugins(PanicHandlerPlugin::default());
 
         #[cfg(not(target_arch = "wasm32"))]
-        app.add_plugins(LogPlugin::default());
-
-        #[cfg(not(target_arch = "wasm32"))]
         app.add_plugins(TerminalCtrlCHandlerPlugin::default());
 
         app.add_plugins(TaskPoolPlugin::default())

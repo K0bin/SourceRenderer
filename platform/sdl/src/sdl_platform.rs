@@ -78,6 +78,8 @@ impl SDLPlatform {
             video_subsystem = sdl_context.video().unwrap();
         }
 
+        log::info!("SDL using {:?}", video_subsystem.current_video_driver());
+
         let event_pump = sdl_context.event_pump().unwrap();
 
         Box::new(SDLPlatform {
