@@ -209,12 +209,14 @@ impl RendererScene {
         min_threshold: f32,
         texture_lod: u32,
         transparent: VolumeDrawableTransparencyMode,
+        render_as_cubes: bool,
     ) {
         let volume_mesh_opt = self.volume_meshes.get_mut(entity);
         if let Some(volume_mesh) = volume_mesh_opt {
             volume_mesh.min_threshold = min_threshold;
             volume_mesh.texture_lod = texture_lod;
             volume_mesh.transparent = transparent;
+            volume_mesh.render_as_cubes = render_as_cubes;
             return;
         }
 

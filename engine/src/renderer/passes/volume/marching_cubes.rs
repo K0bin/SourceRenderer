@@ -77,6 +77,7 @@ pub struct MarchingCubesIndirectCall {
 
 pub struct MarchingCubesPass {
     pipelines: [ComputePipelineHandle; 4],
+    cube_pipelines: [ComputePipelineHandle; 4],
     edges_buffer: Arc<BufferSlice>,
     tris_buffer: Arc<BufferSlice>,
     executed_count: u32,
@@ -94,9 +95,19 @@ impl MarchingCubesPass {
         // Compile optimized pipelines for 1-3 thresholds
         let mut spec_consts = HashMap::<u32, SpecConstValue>::with_capacity(1);
         let mut pipelines = SmallVec::<[ComputePipelineHandle; 4]>::with_capacity(4);
+        spec_consts.insert(1u32, SpecConstValue::Bool(false));
         for i in 0..4 {
             spec_consts.insert(0u32, SpecConstValue::UInt(i));
             pipelines.push(assets.request_compute_pipeline(PathPipelineShaderStage {
+                shader_path: "shaders/marching_cubes.comp.json",
+                spec_consts: Some(&spec_consts),
+            }));
+        }
+        let mut cube_pipelines = SmallVec::<[ComputePipelineHandle; 4]>::with_capacity(4);
+        spec_consts.insert(1u32, SpecConstValue::Bool(true));
+        for i in 0..4 {
+            spec_consts.insert(0u32, SpecConstValue::UInt(i));
+            cube_pipelines.push(assets.request_compute_pipeline(PathPipelineShaderStage {
                 shader_path: "shaders/marching_cubes.comp.json",
                 spec_consts: Some(&spec_consts),
             }));
@@ -497,6 +508,7 @@ impl MarchingCubesPass {
 
         Self {
             pipelines: pipelines.as_array().unwrap().clone(),
+            cube_pipelines: cube_pipelines.as_array().unwrap().clone(),
             edges_buffer,
             tris_buffer,
             executed_count: 0u32,
@@ -550,14 +562,17 @@ impl MarchingCubesPass {
 
         let mut chunk_first_element_atomics_offset = 0;
         let mut meshes_grouped_by_dispatch: SmallVec<
-            [((TextureHandle, u32), SmallVec<[&RendererVolumeDrawable; 1]>); 2],
+            [(
+                (TextureHandle, u32, bool),
+                SmallVec<[&RendererVolumeDrawable; 1]>,
+            ); 2],
         > = SmallVec::new();
-        for ((volume_texture, texture_lod), chunk) in pass_params
+        for ((volume_texture, texture_lod, as_cube), chunk) in pass_params
             .scene
             .scene
             .volume_mesh_instances()
             .iter()
-            .chunk_by(|d| (d.volume_texture, d.texture_lod))
+            .chunk_by(|d| (d.volume_texture, d.texture_lod, d.render_as_cubes))
             .into_iter()
         {
             let mut volume_meshes =
@@ -583,7 +598,8 @@ impl MarchingCubesPass {
             }
             chunk_first_element_atomics_offset +=
                 volume_meshes.len() * std::mem::size_of::<MarchingCubesIndirectCall>();
-            meshes_grouped_by_dispatch.push(((volume_texture, texture_lod), volume_meshes));
+            meshes_grouped_by_dispatch
+                .push(((volume_texture, texture_lod, as_cube), volume_meshes));
         }
 
         let mut keys_to_destroy = SmallVec::<[String; 2]>::new();
@@ -675,7 +691,7 @@ impl MarchingCubesPass {
         std::mem::drop(buffer_slices);
 
         let mut chunk_first_element_atomics_offset = 0usize;
-        for ((texture, lod), chunk) in &meshes_grouped_by_dispatch {
+        for ((texture, lod, as_cubes), chunk) in &meshes_grouped_by_dispatch {
             let mut buffer_slices = SmallVec::<[Ref<Arc<BufferSlice>>; 4]>::new();
             let mut thresholds = SmallVec::<[f32; 4]>::new();
             assert!(!chunk.is_empty());
@@ -722,7 +738,11 @@ impl MarchingCubesPass {
             };
             let pipeline = pass_params
                 .assets
-                .get_compute_pipeline(self.pipelines[pipeline_index])
+                .get_compute_pipeline(if *as_cubes {
+                    self.cube_pipelines[pipeline_index]
+                } else {
+                    self.pipelines[pipeline_index]
+                })
                 .unwrap();
             command_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
             command_buffer.bind_uniform_buffer(

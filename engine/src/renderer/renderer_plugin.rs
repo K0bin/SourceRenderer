@@ -415,12 +415,9 @@ fn extract_volume_renderables(
                 let _ = events.write(AppExit::from_code(1));
             }
         } else if !renderer.is_saturated {
-            let result = renderer.sender.update_volume_thresholds(
-                entity,
-                renderable.threshold_min,
-                renderable.volume_texture_lod,
-                renderable.transparent,
-            );
+            let result = renderer
+                .sender
+                .update_volume_thresholds(entity, &renderable);
             if result.is_err() {
                 let _ = events.write(AppExit::from_code(1));
             }

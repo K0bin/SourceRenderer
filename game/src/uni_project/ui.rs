@@ -72,6 +72,7 @@ fn volume_meshes_ui_system(
                                         .to_string(),
                                     threshold_min: 0.95f32,
                                     transparent: VolumeDrawableTransparencyMode::Opaque,
+                                    render_as_cubes: false,
                                 },
                                 InterpolatedTransform(Affine3A::from_mat4(manix_transform())),
                             ))
@@ -122,6 +123,13 @@ fn volume_meshes_ui_system(
                             0u32,
                             4u32,
                             &mut mesh.volume_texture_lod,
+                        );
+
+                        ui.text("Render as cubes:");
+                        ui.same_line();
+                        ui.checkbox(
+                            format!("##renderascubes{:?}", entity),
+                            &mut mesh.render_as_cubes,
                         );
 
                         if ui.button("Delete mesh##addmeshbutton") {

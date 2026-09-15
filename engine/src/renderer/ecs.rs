@@ -31,4 +31,5 @@ pub struct VolumeMeshInstance {
     pub transfer_function_texture_path: String,
     pub threshold_min: f32,
     pub transparent: VolumeDrawableTransparencyMode,
+    pub render_as_cubes: bool,
 }

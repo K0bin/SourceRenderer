@@ -36,6 +36,7 @@ pub struct RendererVolumeDrawable {
     pub texture_lod: u32,
     pub transparent: VolumeDrawableTransparencyMode,
     pub min_threshold: f32,
+    pub render_as_cubes: bool,
 }
 
 #[derive(Clone)]

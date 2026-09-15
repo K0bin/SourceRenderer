@@ -255,8 +255,11 @@ impl Renderer {
         match render_path_result {
             Ok(result) => {
                 if let Some(backbuffer) = result.backbuffer.as_ref() {
-                    self.device
-                        .wait_for_backbuffer(QueueType::Graphics, &self.swapchain, backbuffer);
+                    self.device.wait_for_backbuffer(
+                        QueueType::Graphics,
+                        &self.swapchain,
+                        backbuffer,
+                    );
                 }
 
                 self.device.submit(QueueType::Graphics, result.cmd_buffer);
@@ -356,9 +359,15 @@ impl Renderer {
                     min_threshold,
                     transparent,
                     texture_lod: lod,
+                    render_as_cubes,
                 } => {
-                    self.scene
-                        .update_volume_mesh_data(entity, min_threshold, lod, transparent);
+                    self.scene.update_volume_mesh_data(
+                        entity,
+                        min_threshold,
+                        lod,
+                        transparent,
+                        render_as_cubes,
+                    );
                 }
 
                 RendererCommand::RegisterStatic {
@@ -434,6 +443,7 @@ impl Renderer {
                     texture_lod,
                     min_threshold,
                     transparent,
+                    render_as_cubes,
                 } => {
                     let (volume_texture_handle, _) = self.assets.asset_manager().request_asset(
                         &texture_path,
@@ -469,6 +479,7 @@ impl Renderer {
                             volume_texture_min: volume_texture_handle_min.into(),
                             volume_texture_max: volume_texture_handle_max.into(),
                             transfer_function_texture: transfer_function_texture_handle.into(),
+                            render_as_cubes,
                         },
                     );
                 }
@@ -647,6 +658,7 @@ impl RendererSender {
                 texture_path: renderable.volume_texture_path.clone(),
                 texture_lod: renderable.volume_texture_lod,
                 transfer_function_texture_path: renderable.transfer_function_texture_path.clone(),
+                render_as_cubes: renderable.render_as_cubes,
             })
             .map_err(|_| SendError(()))
     }
@@ -701,9 +713,7 @@ impl RendererSender {
     pub fn update_volume_thresholds(
         &self,
         entity: Entity,
-        min_threshold: f32,
-        texture_lod: u32,
-        transparent: VolumeDrawableTransparencyMode,
+        renderable: &VolumeMeshInstance,
     ) -> Result<(), SendError<()>> {
         let sender = if let Some(sender) = self.sender.as_ref() {
             sender
@@ -714,9 +724,10 @@ impl RendererSender {
         sender
             .send(RendererCommand::UpdateVolumeMeshData {
                 entity,
-                min_threshold,
-                texture_lod,
-                transparent,
+                min_threshold: renderable.threshold_min,
+                texture_lod: renderable.volume_texture_lod,
+                transparent: renderable.transparent,
+                render_as_cubes: renderable.render_as_cubes,
             })
             .map_err(|_| SendError(()))
     }

@@ -31,6 +31,7 @@ impl Plugin for UniProjectPlugin {
                     volume_texture_lod: 3,
                     threshold_min: 0.0288f32,
                     transparent: VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque,
+                    render_as_cubes: false,
                 },
                 InterpolatedTransform(Affine3A::from_mat4(model_matrix)),
             ));
@@ -41,6 +42,7 @@ impl Plugin for UniProjectPlugin {
                     volume_texture_lod: 3,
                     threshold_min: 0.55f32,
                     transparent: VolumeDrawableTransparencyMode::Opaque,
+                    render_as_cubes: false,
                 },
                 InterpolatedTransform(Affine3A::from_mat4(model_matrix)),
             ));

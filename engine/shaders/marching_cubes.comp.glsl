@@ -113,7 +113,8 @@ uint buildVertexKey(uint index) {
 
 const uint maxIndices = (512u * 512u * 512u) / 100u * 15u;
 
-const bool renderDebugCube = false;
+
+layout(constant_id = 1) const bool renderDebugCube = false;
 const uvec3 cubePositions[8] = uvec3[8](
         uvec3(0, 0, 0), uvec3(1, 0, 0),
         uvec3(1, 1, 0), uvec3(0, 1, 0),

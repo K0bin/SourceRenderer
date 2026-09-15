@@ -34,6 +34,7 @@ pub enum RendererCommand {
         texture_lod: u32,
         min_threshold: f32,
         transparent: VolumeDrawableTransparencyMode,
+        render_as_cubes: bool,
     },
     UnregisterVolume(Entity),
     UpdateTransform {
@@ -49,6 +50,7 @@ pub enum RendererCommand {
         min_threshold: f32,
         texture_lod: u32,
         transparent: VolumeDrawableTransparencyMode,
+        render_as_cubes: bool,
     },
     SetLightmap(String),
     EndFrame,
