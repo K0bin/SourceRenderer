@@ -813,7 +813,7 @@ pub(crate) struct WebGPUBindGroupBinding {
 
 struct WebGPUBindGroupCacheEntry {
     set: Arc<WebGPUBindGroup>,
-    last_used_frame: u64,
+    used: bool,
 }
 
 #[allow(unused)]
@@ -839,7 +839,6 @@ pub(crate) struct WebGPUBindingManager {
     bindings: [Vec<WebGPUBoundResource>; gpu::NON_BINDLESS_SET_COUNT as usize],
     transient_cache: RefCell<HashMap<Arc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>>,
     permanent_cache: RefCell<HashMap<Arc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>>,
-    last_cleanup_frame: u64,
     bump_allocator: PushConstBumpAllocator,
     limits: WebGPULimits,
 }
@@ -876,7 +875,6 @@ impl WebGPUBindingManager {
             bindings,
             transient_cache: RefCell::new(HashMap::new()),
             permanent_cache: RefCell::new(HashMap::new()),
-            last_cleanup_frame: 0,
             bump_allocator: PushConstBumpAllocator {
                 buffer: bump_alloc_buffer,
                 offset: 0,
@@ -890,7 +888,7 @@ impl WebGPUBindingManager {
         result
     }
 
-    pub(crate) fn reset(&mut self, frame: u64) {
+    pub(crate) fn reset(&mut self) {
         self.dirty = DirtyBindGroups::all();
         for set in &mut self.bindings {
             set.clear();
@@ -901,7 +899,7 @@ impl WebGPUBindingManager {
         }
 
         self.current_sets = Default::default();
-        self.clean_permanent_cache(frame);
+        self.clean_permanent_cache();
         if self.cache_mode != CacheMode::None {
             let mut transient_cache_mut = self.transient_cache.borrow_mut();
             transient_cache_mut.clear();
@@ -1094,7 +1092,6 @@ impl WebGPUBindingManager {
 
     fn find_compatible_set<'a, T>(
         &self,
-        frame: u64,
         layout: &'a Arc<WebGPUBindGroupLayout>,
         bindings: &'a [T],
         use_permanent_cache: bool,
@@ -1113,14 +1110,13 @@ impl WebGPUBindingManager {
                 .find(|entry| entry.set.is_compatible(layout, bindings))
         });
         if let Some(entry) = &mut entry_opt {
-            entry.last_used_frame = frame;
+            entry.used = true;
         }
         entry_opt.map(|entry| entry.set.clone())
     }
 
     fn finish_set(
         &mut self,
-        frame: u64,
         pipeline_layout: &WebGPUPipelineLayout,
         frequency: gpu::BindingFrequency,
     ) -> Option<WebGPUBindGroupBinding> {
@@ -1140,7 +1136,7 @@ impl WebGPUBindingManager {
             }
         }
 
-        set = set.or_else(|| self.get_or_create_set(frame, layout, bindings));
+        set = set.or_else(|| self.get_or_create_set(layout, bindings));
         self.current_sets[frequency as usize] = set.clone();
         set.map(|set| self.get_descriptor_set_binding_info(set, bindings))
     }
@@ -1207,7 +1203,6 @@ impl WebGPUBindingManager {
 
     pub fn get_or_create_set<'a, T>(
         &self,
-        frame: u64,
         layout: &'a Arc<WebGPUBindGroupLayout>,
         bindings: &'a [T],
     ) -> Option<Arc<WebGPUBindGroup>>
@@ -1225,7 +1220,7 @@ impl WebGPUBindingManager {
         let cached_set = if self.cache_mode == CacheMode::None {
             None
         } else {
-            self.find_compatible_set(frame, layout, &bindings, !transient)
+            self.find_compatible_set(layout, &bindings, !transient)
         };
         let set: Arc<WebGPUBindGroup> = if let Some(cached_set) = cached_set {
             cached_set
@@ -1244,7 +1239,7 @@ impl WebGPUBindingManager {
                     .or_default()
                     .push(WebGPUBindGroupCacheEntry {
                         set: new_set.clone(),
-                        last_used_frame: frame,
+                        used: true
                     });
             }
             new_set
@@ -1266,7 +1261,6 @@ impl WebGPUBindingManager {
 
     pub(super) fn finish(
         &mut self,
-        frame: u64,
         pipeline_layout: &WebGPUPipelineLayout,
     ) -> [Option<WebGPUBindGroupBinding>; gpu::NON_BINDLESS_SET_COUNT as usize] {
         if self.dirty.is_empty() {
@@ -1276,31 +1270,27 @@ impl WebGPUBindingManager {
         let mut set_bindings: [Option<WebGPUBindGroupBinding>;
             gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
         set_bindings[gpu::BindingFrequency::VeryFrequent as usize] =
-            self.finish_set(frame, pipeline_layout, gpu::BindingFrequency::VeryFrequent);
+            self.finish_set(pipeline_layout, gpu::BindingFrequency::VeryFrequent);
         set_bindings[gpu::BindingFrequency::Frame as usize] =
-            self.finish_set(frame, pipeline_layout, gpu::BindingFrequency::Frame);
+            self.finish_set(pipeline_layout, gpu::BindingFrequency::Frame);
         set_bindings[gpu::BindingFrequency::Frequent as usize] =
-            self.finish_set(frame, pipeline_layout, gpu::BindingFrequency::Frequent);
+            self.finish_set(pipeline_layout, gpu::BindingFrequency::Frequent);
 
         self.dirty = DirtyBindGroups::empty();
         set_bindings
     }
 
-    const FRAMES_BETWEEN_CLEANUP: u64 = 0;
-    const MAX_FRAMES_SET_UNUSED: u64 = 16;
-    fn clean_permanent_cache(&mut self, frame: u64) {
+    fn clean_permanent_cache(&mut self) {
         // TODO: I might need to make this more aggressive because of memory usage.
 
         if self.cache_mode != CacheMode::Everything
-            || frame - self.last_cleanup_frame < Self::FRAMES_BETWEEN_CLEANUP
         {
             return;
         }
 
         let mut cache_mut = self.permanent_cache.borrow_mut();
         for entries in cache_mut.values_mut() {
-            entries.retain(|entry| (frame - entry.last_used_frame) < Self::MAX_FRAMES_SET_UNUSED);
+            entries.retain(|entry| entry.used);
         }
-        self.last_cleanup_frame = frame;
     }
 }

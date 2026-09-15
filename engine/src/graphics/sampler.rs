@@ -13,8 +13,9 @@ impl Sampler {
         device: &Arc<active_gpu_backend::Device>,
         destroyer: &Arc<DeferredDestroyer>,
         info: &SamplerInfo,
+        name: Option<&str>,
     ) -> Self {
-        let sampler = device.create_sampler(info);
+        let sampler = device.create_sampler(info, name);
         Self {
             sampler: ManuallyDrop::new(sampler),
             destroyer: destroyer.clone(),

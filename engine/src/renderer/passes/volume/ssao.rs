@@ -47,7 +47,7 @@ impl SsaoPass {
             compare_op: None,
             min_lod: 0.0f32,
             max_lod: None,
-        });
+        }, None);
 
         let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(
             "shaders/ssao.comp.json",

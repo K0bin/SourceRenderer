@@ -1,10 +1,7 @@
 use std::sync::Arc;
 
 use super::*;
-use crate::{
-    Mutex,
-    MutexGuard,
-};
+use crate::{Mutex, MutexGuard};
 
 pub(super) struct DeferredDestroyer {
     inner: Mutex<DeferredDestroyerInner>,
@@ -26,15 +23,15 @@ struct DeferredDestroyerInner {
     raytracing_pipelines: Vec<(u64, active_gpu_backend::RayTracingPipeline)>,
     buffer_allocations: Vec<(u64, Allocation<BufferAndAllocation>)>,
     query_pools: Vec<(u64, active_gpu_backend::QueryPool)>,
+    cmd_pools: Vec<(u64, active_gpu_backend::CommandPool)>,
+    cmd_buffers: Vec<(u64, active_gpu_backend::CommandBuffer)>,
 }
-
-// TODO: Turn into a union to save memory
 
 impl DeferredDestroyer {
     pub(super) fn new() -> Self {
         Self {
             inner: Mutex::new(DeferredDestroyerInner {
-                current_counter: 0u64,
+                current_counter: 1u64,
                 allocations: Vec::new(),
                 textures: Vec::new(),
                 texture_views: Vec::new(),
@@ -49,6 +46,8 @@ impl DeferredDestroyer {
                 raytracing_pipelines: Vec::new(),
                 buffer_allocations: Vec::new(),
                 query_pools: Vec::new(),
+                cmd_pools: Vec::new(),
+                cmd_buffers: Vec::new(),
             }),
         }
     }
@@ -148,9 +147,23 @@ impl DeferredDestroyer {
         guard.buffer_allocations.push((frame, buffer_allocation));
     }
 
+    pub(super) fn destroy_command_pool(&self, command_pool: active_gpu_backend::CommandPool) {
+        let mut guard = self.inner.lock().unwrap();
+        let frame = guard.current_counter;
+        guard.cmd_pools.push((frame, command_pool));
+    }
+
+    pub(super) fn destroy_command_buffer(&self, command_buffer: active_gpu_backend::CommandBuffer) {
+        let mut guard = self.inner.lock().unwrap();
+        let frame = guard.current_counter;
+        guard.cmd_buffers.push((frame, command_buffer));
+    }
+
     pub(super) fn set_counter(&self, counter: u64) {
         let mut guard = self.inner.lock().unwrap();
-        assert!(guard.current_counter <= counter);
+        if guard.current_counter > counter {
+            return;
+        }
         guard.current_counter = counter;
     }
 
@@ -167,6 +180,7 @@ impl DeferredDestroyer {
 
     fn destroy_unused_locked(guard: &mut MutexGuard<'_, DeferredDestroyerInner>, counter: u64) {
         assert!(guard.current_counter >= counter);
+
         guard
             .acceleration_structures
             .retain(|(resource_counter, _)| *resource_counter > counter);
@@ -209,6 +223,12 @@ impl DeferredDestroyer {
         guard
             .buffer_allocations
             .retain(|(resource_counter, _)| *resource_counter > counter);
+        guard
+            .cmd_buffers
+            .retain(|(resource_counter, _)| *resource_counter > counter);
+        guard
+            .cmd_pools
+            .retain(|(resource_counter, _)| *resource_counter > counter);
     }
 }
 
@@ -229,5 +249,7 @@ impl Drop for DeferredDestroyer {
         assert!(guard.raytracing_pipelines.is_empty());
         assert!(guard.query_pools.is_empty());
         assert!(guard.buffer_allocations.is_empty());
+        assert!(guard.cmd_pools.is_empty());
+        assert!(guard.cmd_buffers.is_empty());
     }
 }

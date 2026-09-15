@@ -184,7 +184,7 @@ impl Renderer {
         self.assets.receive_assets();
 
         // Flush all submissions from the last frame in case this hasn't happened yet.
-        self.device.flush_all();
+        self.device.flush();
 
         let message_receiving_result = self.receive_messages();
         match message_receiving_result {
@@ -214,13 +214,13 @@ impl Renderer {
 
         let frame_info = FrameInfo {
             frame: self.frame,
-            delta: delta,
+            delta,
         };
 
         // Read assets again in case something came in while we were processing messages
         self.assets.receive_assets();
         // Flush all submissions from the last frame in case this hasn't happened yet.
-        self.device.flush_all();
+        self.device.flush();
 
         {
             let read_assets = self.assets.read();
@@ -240,6 +240,7 @@ impl Renderer {
         self.assets.bump_frame(&self.context);
 
         let render_path_result = self.render_path.render(
+            &self.device,
             &mut self.context,
             &mut swapchain_guard,
             &scene_info,
@@ -248,27 +249,24 @@ impl Renderer {
             &self.assets,
         );
         std::mem::drop(swapchain_guard);
-        let frame_end_signal = self.context.end_frame();
+        self.context.end_frame();
 
+        self.device.submit_transfers();
         match render_path_result {
             Ok(result) => {
-                self.device.submit(
-                    QueueType::Graphics,
-                    QueueSubmission {
-                        command_buffer: result.cmd_buffer,
-                        wait_fences: &[],
-                        signal_fences: &[frame_end_signal],
-                        acquire_swapchain: result
-                            .backbuffer
-                            .as_ref()
-                            .map(|backbuffer| (&self.swapchain, backbuffer)),
-                        release_swapchain: result
-                            .backbuffer
-                            .as_ref()
-                            .map(|backbuffer| (&self.swapchain, backbuffer)),
-                    },
-                );
+                if let Some(backbuffer) = result.backbuffer.as_ref() {
+                    self.device
+                        .wait_for_backbuffer(QueueType::Graphics, &self.swapchain, backbuffer);
+                }
+
+                self.device.submit(QueueType::Graphics, result.cmd_buffer);
+
                 if let Some(backbuffer) = result.backbuffer {
+                    self.device.signal_backbuffer(
+                        QueueType::Graphics,
+                        &self.swapchain,
+                        &backbuffer,
+                    );
                     self.device
                         .present(QueueType::Graphics, &self.swapchain, backbuffer);
                 }
@@ -285,7 +283,7 @@ impl Renderer {
         bevy_tasks::ComputeTaskPool::get()
             .spawn(async move {
                 crate::autoreleasepool(|| {
-                    c_device.flush(QueueType::Graphics);
+                    c_device.flush();
                 });
             })
             .detach();

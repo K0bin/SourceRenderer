@@ -93,7 +93,7 @@ pub struct BufferArrayEntry<'a, B: GPUBackend> {
 }
 
 pub trait CommandPool<B: GPUBackend> {
-    unsafe fn create_command_buffer(&mut self) -> B::CommandBuffer;
+    unsafe fn create_command_buffer(&mut self, name: Option<&str>) -> B::CommandBuffer;
     unsafe fn reset(&mut self);
 }
 
@@ -255,7 +255,7 @@ pub trait CommandBuffer<B: GPUBackend> {
     );
     unsafe fn clear_binding(&mut self, frequency: BindingFrequency, binding: u32);
     unsafe fn clear_all_bindings(&mut self, frequency: BindingFrequency);
-    unsafe fn finish_binding(&mut self);
+    unsafe fn finish_binding(&mut self, pool: &mut B::CommandPool);
     unsafe fn begin_label(&mut self, label: &str);
     unsafe fn end_label(&mut self);
     unsafe fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32);
@@ -271,7 +271,7 @@ pub trait CommandBuffer<B: GPUBackend> {
     );
     unsafe fn set_stencil_reference(&mut self, reference: u32);
 
-    unsafe fn begin(&mut self, frame: u64);
+    unsafe fn begin(&mut self);
     unsafe fn finish(&mut self);
 
     unsafe fn copy_buffer_to_texture(
@@ -311,8 +311,6 @@ pub trait CommandBuffer<B: GPUBackend> {
         buffer: &B::Buffer,
         buffer_offset: u64,
     );
-
-    unsafe fn reset(&mut self, frame: u64);
 
     // RT
     unsafe fn create_bottom_level_acceleration_structure(
@@ -781,7 +779,6 @@ bitflags! {
     #[derive(Clone, Copy, Eq, Hash, PartialEq, Debug)]
     pub struct CommandPoolFlags : u32 {
         const TRANSIENT = 0x1;
-        const INDIVIDUAL_RESET = 0x2;
     }
 }
 

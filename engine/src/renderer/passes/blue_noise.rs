@@ -41,7 +41,7 @@ impl BlueNoise {
                 compare_op: None,
                 min_lod: 0f32,
                 max_lod: None,
-            })),
+            }, None)),
         }
     }
 

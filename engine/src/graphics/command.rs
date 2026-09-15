@@ -1,13 +1,12 @@
-use std::marker::PhantomData;
-use std::sync::Arc;
-
 use super::gpu::{self, Buffer as _, CommandBuffer as _};
 use super::{AccelerationStructure, BottomLevelAccelerationStructureInfo, *};
 use atomic_refcell::AtomicRefMut;
 use bytemuck::{Pod, cast_slice};
-use crossbeam_channel::Sender;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::RenderPassResumeSuspend;
+use sourcerenderer_core::gpu::{CommandPool, RenderPassResumeSuspend};
+use std::marker::PhantomData;
+use std::mem::ManuallyDrop;
+use std::sync::Arc;
 
 const DEBUG_FORCE_FAT_BARRIER: bool = false;
 
@@ -57,20 +56,15 @@ pub enum PipelineBinding<'a> {
     Compute(&'a super::ComputePipeline),
     RayTracing(&'a super::RayTracingPipeline),
 }
-
 pub struct CommandBuffer<'a> {
     context: AtomicRefMut<'a, FrameContext>,
     _global_context: &'a GraphicsContext,
-    cmd_buffer_handle: active_gpu_backend::CommandBuffer,
+    cmd_buffer_handle: ManuallyDrop<active_gpu_backend::CommandBuffer>,
+    destroyer: Arc<DeferredDestroyer>,
     active_query_range: Option<QueryRange>,
-    frame_context_entry: FrameContextCommandBufferEntry,
+    queue_type: QueueType,
+    finished: bool,
     no_send_sync: PhantomData<*mut u8>,
-}
-
-pub struct FinishedCommandBuffer {
-    pub(super) handle: active_gpu_backend::CommandBuffer,
-    pub(super) sender: Sender<active_gpu_backend::CommandBuffer>,
-    pub(super) frame_context_entry: FrameContextCommandBufferEntry,
 }
 
 pub enum BufferRef<'a> {
@@ -122,16 +116,20 @@ impl<'a> Copy for BufferRef<'a> {}
 impl<'a> CommandBuffer<'a> {
     pub(super) fn new(
         global_context: &'a GraphicsContext,
-        context: AtomicRefMut<'a, FrameContext>,
-        handle: active_gpu_backend::CommandBuffer,
-        frame_context_entry: FrameContextCommandBufferEntry,
+        mut context: AtomicRefMut<'a, FrameContext>,
+        destroyer: &Arc<DeferredDestroyer>,
+        queue_type: QueueType,
+        name: Option<&str>,
     ) -> Self {
+        let handle = unsafe { context.command_pool.create_command_buffer(name) };
         Self {
             _global_context: global_context,
             context,
-            cmd_buffer_handle: handle,
+            cmd_buffer_handle: ManuallyDrop::new(handle),
+            destroyer: destroyer.clone(),
             active_query_range: None,
-            frame_context_entry,
+            queue_type,
+            finished: false,
             no_send_sync: PhantomData,
         }
     }
@@ -618,7 +616,8 @@ impl<'a> CommandBuffer<'a> {
 
     pub fn finish_binding(&mut self) {
         unsafe {
-            self.cmd_buffer_handle.finish_binding();
+            self.cmd_buffer_handle
+                .finish_binding(&mut self.context.command_pool);
         }
     }
 
@@ -720,29 +719,21 @@ impl<'a> CommandBuffer<'a> {
         }
     }
 
-    pub fn begin(&mut self, frame: u64) {
-        unsafe { self.cmd_buffer_handle.begin(frame) }
+    pub fn begin(&mut self) {
+        unsafe { self.cmd_buffer_handle.begin() }
     }
 
     pub fn finish(mut self) -> FinishedCommandBuffer {
         self.flush_barriers();
-        unsafe {
-            self.cmd_buffer_handle.finish();
-        }
 
-        let CommandBuffer {
-            context,
-            _global_context: _,
-            cmd_buffer_handle,
-            active_query_range: _,
-            frame_context_entry,
-            no_send_sync: _,
-        } = self;
-        FinishedCommandBuffer {
-            handle: cmd_buffer_handle,
-            sender: context.sender().clone(),
-            frame_context_entry,
-        }
+        self.finished = true;
+
+        let cmd_buffer = unsafe {
+            self.cmd_buffer_handle.finish();
+            ManuallyDrop::take(&mut self.cmd_buffer_handle)
+        };
+
+        FinishedCommandBuffer::new(cmd_buffer)
     }
 
     pub fn clear_storage_texture(
@@ -834,8 +825,8 @@ impl<'a> CommandBuffer<'a> {
 
     fn fat_barrier(&mut self) {
         let fat_core_barrier = [gpu::Barrier::GlobalBarrier {
-            old_sync: gpu::BarrierSync::all(),
-            new_sync: gpu::BarrierSync::all(),
+            old_sync: gpu::BarrierSync::all() & Queue::all_barrier_syncs(self.queue_type),
+            new_sync: gpu::BarrierSync::all() & Queue::all_barrier_syncs(self.queue_type),
             old_access: gpu::BarrierAccess::MEMORY_WRITE,
             new_access: gpu::BarrierAccess::MEMORY_READ | gpu::BarrierAccess::MEMORY_WRITE,
         }];
@@ -864,8 +855,8 @@ impl<'a> CommandBuffer<'a> {
                     range,
                     queue_ownership,
                 } => gpu::Barrier::TextureBarrier {
-                    old_sync: *old_sync,
-                    new_sync: *new_sync,
+                    old_sync: *old_sync & Queue::all_barrier_syncs(self.queue_type),
+                    new_sync: *new_sync & Queue::all_barrier_syncs(self.queue_type),
                     old_layout: *old_layout,
                     new_layout: *new_layout,
                     old_access: *old_access,
@@ -888,8 +879,8 @@ impl<'a> CommandBuffer<'a> {
                         length: buffer_length,
                     } = buffer.deconstruct(self.frame());
                     gpu::Barrier::BufferBarrier {
-                        old_sync: *old_sync,
-                        new_sync: *new_sync,
+                        old_sync: *old_sync & Queue::all_barrier_syncs(self.queue_type),
+                        new_sync: *new_sync & Queue::all_barrier_syncs(self.queue_type),
                         old_access: *old_access,
                         new_access: *new_access,
                         buffer: buffer_handle,
@@ -904,8 +895,8 @@ impl<'a> CommandBuffer<'a> {
                     old_access,
                     new_access,
                 } => gpu::Barrier::GlobalBarrier {
-                    old_sync: *old_sync,
-                    new_sync: *new_sync,
+                    old_sync: *old_sync & Queue::all_barrier_syncs(self.queue_type),
+                    new_sync: *new_sync & Queue::all_barrier_syncs(self.queue_type),
                     old_access: *old_access,
                     new_access: *new_access,
                 },
@@ -920,8 +911,8 @@ impl<'a> CommandBuffer<'a> {
                     range,
                     queue_ownership,
                 } => gpu::Barrier::TextureBarrier {
-                    old_sync: *old_sync,
-                    new_sync: *new_sync,
+                    old_sync: *old_sync & Queue::all_barrier_syncs(self.queue_type),
+                    new_sync: *new_sync & Queue::all_barrier_syncs(self.queue_type),
                     old_layout: *old_layout,
                     new_layout: *new_layout,
                     old_access: *old_access,
@@ -986,6 +977,7 @@ impl<'a> CommandBuffer<'a> {
                 });
 
         self.active_query_range = renderpass_info.query_range.clone();
+        let frame = self.frame();
         unsafe {
             self.cmd_buffer_handle
                 .begin_render_pass(&gpu::RenderPassBeginInfo {
@@ -995,7 +987,7 @@ impl<'a> CommandBuffer<'a> {
                     query_pool: renderpass_info
                         .query_range
                         .as_ref()
-                        .map(|q| q.pool_handle(self.frame())),
+                        .map(|q| q.pool_handle(frame)),
                 });
         }
     }
@@ -1034,6 +1026,7 @@ impl<'a> CommandBuffer<'a> {
         mut use_preallocated_scratch: bool,
     ) -> Option<AccelerationStructure> {
         assert_ne!(info.mesh_parts.len(), 0);
+        let frame = self.frame();
         let core_info = gpu::BottomLevelAccelerationStructureInfo {
             index_format: info.index_format,
             vertex_position_offset: info.vertex_position_offset,
@@ -1106,7 +1099,7 @@ impl<'a> CommandBuffer<'a> {
                             old_access: BarrierAccess::ACCELERATION_STRUCTURE_WRITE,
                             new_access: BarrierAccess::ACCELERATION_STRUCTURE_READ
                                 | BarrierAccess::ACCELERATION_STRUCTURE_WRITE,
-                            buffer: preallocated_scratch.handle(self.frame()),
+                            buffer: preallocated_scratch.handle(frame),
                             offset: preallocated_scratch.offset(),
                             length: preallocated_scratch.length(),
                             queue_ownership: None,
@@ -1149,7 +1142,7 @@ impl<'a> CommandBuffer<'a> {
                     size.size,
                     buffer.handle(),
                     buffer.offset(),
-                    scratch.handle(self.frame()),
+                    scratch.handle(frame),
                     scratch.offset() + scratch_offset,
                 )
         };
@@ -1166,6 +1159,8 @@ impl<'a> CommandBuffer<'a> {
         info: &super::rt::TopLevelAccelerationStructureInfo,
         mut use_preallocated_scratch: bool,
     ) -> Option<AccelerationStructure> {
+        let frame = self.frame();
+
         let core_instances: SmallVec<[active_gpu_backend::AccelerationStructureInstance; 16]> =
             info.instances
                 .iter()
@@ -1284,7 +1279,7 @@ impl<'a> CommandBuffer<'a> {
                             old_access: BarrierAccess::ACCELERATION_STRUCTURE_WRITE,
                             new_access: BarrierAccess::ACCELERATION_STRUCTURE_READ
                                 | BarrierAccess::ACCELERATION_STRUCTURE_WRITE,
-                            buffer: preallocated_scratch.handle(self.frame()),
+                            buffer: preallocated_scratch.handle(frame),
                             offset: preallocated_scratch.offset(),
                             length: preallocated_scratch.length(),
                             queue_ownership: None,
@@ -1327,7 +1322,7 @@ impl<'a> CommandBuffer<'a> {
                     size.size,
                     buffer.handle(),
                     buffer.offset(),
-                    scratch.handle(self.frame()),
+                    scratch.handle(frame),
                     scratch.offset() + scratch_offset,
                 )
         };
@@ -1371,6 +1366,16 @@ impl<'a> CommandBuffer<'a> {
         self.context
             .query_allocator()
             .get_queries(frame, query_count)
+    }
+}
+
+impl<'a> Drop for CommandBuffer<'a> {
+    fn drop(&mut self) {
+        if self.finished {
+            return;
+        }
+        let cmd_buffer = unsafe { ManuallyDrop::take(&mut self.cmd_buffer_handle) };
+        self.destroyer.destroy_command_buffer(cmd_buffer);
     }
 }
 

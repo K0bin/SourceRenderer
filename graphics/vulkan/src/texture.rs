@@ -610,7 +610,7 @@ pub struct VkSampler {
 }
 
 impl VkSampler {
-    pub fn new(device: &Arc<RawVkDevice>, info: &gpu::SamplerInfo) -> Self {
+    pub fn new(device: &Arc<RawVkDevice>, info: &gpu::SamplerInfo, name: Option<&str>) -> Self {
         let mut sampler_create_info = vk::SamplerCreateInfo {
             mag_filter: filter_to_vk(info.mag_filter),
             min_filter: filter_to_vk(info.mag_filter),
@@ -646,6 +646,22 @@ impl VkSampler {
         debug_assert_ne!(info.mip_filter, gpu::Filter::Max);
 
         let sampler = unsafe { device.create_sampler(&sampler_create_info, None) }.unwrap();
+
+        if let Some(name) = name {
+            if let Some(debug_utils) = device.debug_utils.as_ref() {
+                let name_cstring = CString::new(name).unwrap();
+                unsafe {
+                    debug_utils
+                    .set_debug_utils_object_name(&vk::DebugUtilsObjectNameInfoEXT {
+                    object_type: vk::ObjectType::SAMPLER,
+                    object_handle: sampler.as_raw(),
+                    p_object_name: name_cstring.as_ptr(),
+                    ..Default::default()
+                    })
+                    .unwrap();
+                }
+            }
+        }
 
         Self {
             sampler,

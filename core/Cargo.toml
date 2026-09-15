@@ -20,7 +20,6 @@ half = { version = "2.7", features = ["bytemuck"] }
 bytemuck = { version = "1.25", features = ["extern_crate_std"] }
 
 bevy_math = { version = "0.19", features = ["serialize"] }
-bevy_log = "0.19"
 
 [features]
 default = []

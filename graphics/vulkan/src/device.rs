@@ -25,7 +25,6 @@ impl VkDevice {
         transfer_queue_info: Option<VkQueueInfo>,
     ) -> Self {
         let shared = Arc::new(VkShared::new(&device));
-
         let graphics_queue =
             { VkQueue::new(graphics_queue_info, VkQueueType::Graphics, &device, &shared) };
 
@@ -154,8 +153,8 @@ impl gpu::Device<VkBackend> for VkDevice {
         VkPipeline::new_compute(&self.device, shader, self.shared.as_ref(), name)
     }
 
-    fn create_sampler(&self, info: &gpu::SamplerInfo) -> VkSampler {
-        VkSampler::new(&self.device, info)
+    fn create_sampler(&self, info: &gpu::SamplerInfo, name: Option<&str>) -> VkSampler {
+        VkSampler::new(&self.device, info, name)
     }
 
     fn create_graphics_pipeline(
@@ -176,7 +175,7 @@ impl gpu::Device<VkBackend> for VkDevice {
         VkPipeline::new_mesh_graphics(&self.device, info, shared, name)
     }
 
-    unsafe fn wait_for_idle(&self) {
+    unsafe fn block_until_idle(&self) {
         self.device.wait_for_idle();
     }
 
@@ -710,7 +709,7 @@ impl gpu::Device<VkBackend> for VkDevice {
 impl Drop for VkDevice {
     fn drop(&mut self) {
         unsafe {
-            self.wait_for_idle();
+            self.block_until_idle();
         }
     }
 }

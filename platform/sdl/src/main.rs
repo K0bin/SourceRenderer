@@ -41,6 +41,9 @@ fn autoreleasepool<T, F: FnOnce() -> T>(func: F) -> T {
 }
 
 pub fn main() {
+    if simple_logger::init().is_err() {
+        eprintln!("Failed to set up logger!");
+    }
     let mut platform = SDLPlatform::new();
     let mut window = platform.create_window();
     let mut engine = Box::new(Engine::run::<_, StdIO, SDLPlatform>(

@@ -55,7 +55,7 @@ impl PathTracerPass {
             compare_op: None,
             min_lod: 0.0,
             max_lod: None,
-        });
+        }, None);
 
         Self { pipeline, sampler }
     }

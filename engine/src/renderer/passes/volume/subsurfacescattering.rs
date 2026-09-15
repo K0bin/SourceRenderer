@@ -47,7 +47,7 @@ impl SSSPass {
             compare_op: None,
             min_lod: 0.0f32,
             max_lod: None,
-        });
+        }, None);
 
         Self {
             pipeline,

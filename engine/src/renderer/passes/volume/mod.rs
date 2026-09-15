@@ -98,24 +98,15 @@ impl VolumeRenderer {
         let ui = DearImguiRenderer::new(device, resources, assets, swapchain.format());
 
         init_cmd_buffer.flush_barriers();
-        device.flush_transfers();
+        device.flush();
 
-        device.submit(
-            QueueType::Graphics,
-            QueueSubmission {
-                command_buffer: init_cmd_buffer.finish(),
-                wait_fences: &[],
-                signal_fences: &[],
-                acquire_swapchain: None,
-                release_swapchain: None,
-            },
-        );
+        device.submit(QueueType::Graphics, init_cmd_buffer.finish());
         let c_device = device.clone();
         let task_pool = bevy_tasks::ComputeTaskPool::get();
         task_pool
             .spawn(async move {
                 crate::autoreleasepool(|| {
-                    c_device.flush(QueueType::Graphics);
+                    c_device.flush();
                 })
             })
             .detach();
@@ -158,6 +149,7 @@ impl RenderPath for VolumeRenderer {
 
     fn render(
         &mut self,
+        _device: &Device,
         context: &mut GraphicsContext,
         swapchain: &mut Swapchain,
         scene: &SceneInfo,

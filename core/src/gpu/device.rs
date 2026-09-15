@@ -67,7 +67,7 @@ pub trait Device<B: GPUBackend> {
         shader: PipelineShaderStage<B>,
         name: Option<&str>,
     ) -> B::ComputePipeline;
-    fn create_sampler(&self, info: &SamplerInfo) -> B::Sampler;
+    fn create_sampler(&self, info: &SamplerInfo, name: Option<&str>) -> B::Sampler;
     fn create_graphics_pipeline(
         &self,
         info: &GraphicsPipelineInfo<B>,
@@ -78,7 +78,7 @@ pub trait Device<B: GPUBackend> {
         info: &MeshGraphicsPipelineInfo<B>,
         name: Option<&str>,
     ) -> B::MeshGraphicsPipeline;
-    unsafe fn wait_for_idle(&self);
+    unsafe fn block_until_idle(&self);
     fn create_fence(&self, is_cpu_accessible: bool) -> B::Fence;
     fn memory_infos(&self) -> Box<[gpu::MemoryInfo]>;
     fn memory_type_infos(&self) -> &[MemoryTypeInfo];

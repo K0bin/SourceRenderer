@@ -1,19 +1,19 @@
-use std::marker::PhantomData;
-use js_sys::{
-    wasm_bindgen::{prelude::Closure, JsCast},
-    Array,
-};
-use sourcerenderer_core::{
-    align_up_32,
-    gpu::{self, Texture as _},
-};
-use web_sys::{GpuDevice, GpuExtent3dDict, GpuTexelCopyBufferLayout, GpuTexelCopyTextureInfo};
-use sourcerenderer_core::gpu::{MemoryInfo, PipelineShaderStage};
 use crate::{
     WebGPUBackend, WebGPUBuffer, WebGPUComputePipeline, WebGPUFeatures, WebGPUFence,
     WebGPUGraphicsPipeline, WebGPUHeap, WebGPULimits, WebGPUQueryPool, WebGPUQueue, WebGPUSampler,
     WebGPUShader, WebGPUShared, WebGPUTexture, WebGPUTextureView,
 };
+use js_sys::{
+    Array,
+    wasm_bindgen::{JsCast, prelude::Closure},
+};
+use sourcerenderer_core::gpu::{MemoryInfo, PipelineShaderStage};
+use sourcerenderer_core::{
+    align_up_32,
+    gpu::{self, Texture as _},
+};
+use std::marker::PhantomData;
+use web_sys::{GpuDevice, GpuExtent3dDict, GpuTexelCopyBufferLayout, GpuTexelCopyTextureInfo};
 
 pub struct WebGPUDevice {
     device: GpuDevice,
@@ -144,7 +144,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         WebGPUGraphicsPipeline::new(&self.device, info, &self.shared, name, &self.limits).unwrap()
     }
 
-    unsafe fn wait_for_idle(&self) {}
+    unsafe fn block_until_idle(&self) {}
 
     fn create_fence(&self, _is_cpu_accessible: bool) -> WebGPUFence {
         WebGPUFence::new(&self.device)
@@ -159,7 +159,8 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
             available: (u32::MAX as u64) / 3u64,
             total: (u32::MAX as u64) / 3u64,
             memory_kind: gpu::MemoryKind::VRAM,
-        }].into_boxed_slice()
+        }]
+        .into_boxed_slice()
     }
 
     fn memory_type_infos(&self) -> &[gpu::MemoryTypeInfo] {
@@ -340,7 +341,11 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         src_info.set_rows_per_image((slice_pitch / row_pitch) as u32);
         let dst_info = GpuTexelCopyTextureInfo::new(dst.handle());
         dst_info.set_mip_level(region.texture_subresource.mip_level);
-        let mut origin = [js_sys::Number::from(0), js_sys::Number::from(0), js_sys::Number::from(0)];
+        let mut origin = [
+            js_sys::Number::from(0),
+            js_sys::Number::from(0),
+            js_sys::Number::from(0),
+        ];
         origin[0] = js_sys::Number::from(region.texture_offset.x as f64);
         origin[1] = js_sys::Number::from(region.texture_offset.y as f64);
         let copy_size = GpuExtent3dDict::new(region.texture_extent.x);

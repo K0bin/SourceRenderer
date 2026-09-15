@@ -178,6 +178,20 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
                             != vk::QueueFlags::GRAPHICS
                 });
 
+        assert!(
+            compute_queue_family_props.is_none()
+                || compute_queue_family_props.unwrap().0 != graphics_queue_family_props.0
+        );
+        assert!(
+            transfer_queue_family_props.is_none()
+                || transfer_queue_family_props.unwrap().0 != graphics_queue_family_props.0
+        );
+        assert!(
+            compute_queue_family_props.is_none()
+                || transfer_queue_family_props.is_none()
+                || compute_queue_family_props.unwrap().0 != transfer_queue_family_props.unwrap().0
+        );
+
         let graphics_queue_info = VkQueueInfo {
             queue_family_index: graphics_queue_family_props.0,
             supports_presentation: unsafe {
@@ -527,7 +541,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             && supports_bda;
 
         if supports_descriptor_indexing {
-            println!("Bindless supported.");
+            log::info!("Bindless supported.");
             enabled_features_12.shader_sampled_image_array_non_uniform_indexing = vk::TRUE;
             enabled_features_12.descriptor_binding_sampled_image_update_after_bind = vk::TRUE;
             enabled_features_12.descriptor_binding_variable_descriptor_count = vk::TRUE;
@@ -550,7 +564,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         }
 
         if supports_rt_pipeline {
-            println!("Ray tracing pipelines supported.");
+            log::info!("Ray tracing pipelines supported.");
             enabled_extensions.push(RAY_TRACING_PIPELINE_EXT_NAME);
             if extensions.contains(VkAdapterExtensionSupport::DEFERRED_HOST_OPERATIONS) {
                 enabled_extensions.push(DEFERRED_HOST_OPERATIONS_EXT_NAME);
@@ -565,7 +579,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         }
 
         if supports_rt_query {
-            println!("Ray tracing queries supported.");
+            log::info!("Ray tracing queries supported.");
             enabled_extensions.push(RAY_QUERY_EXT_NAME);
             _features_rt_query.ray_query = vk::TRUE;
             _features_rt_query.p_next = std::mem::replace(
@@ -596,7 +610,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         enabled_features_13.synchronization2 = vk::TRUE;
 
         if supported_features_barycentrics.fragment_shader_barycentric == vk::TRUE {
-            println!("Barycentrics supported.");
+            log::info!("Barycentrics supported.");
             features_barycentrics.fragment_shader_barycentric = vk::TRUE;
             features_barycentrics.p_next = std::mem::replace(
                 &mut enabled_features.p_next,

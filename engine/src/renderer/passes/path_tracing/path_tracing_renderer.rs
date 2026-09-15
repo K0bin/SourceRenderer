@@ -2,8 +2,8 @@ use super::PathTracerPass;
 use crate::graphics::gpu::TextureViewInfo;
 use crate::graphics::{
     Barrier, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, BufferRef,
-    BufferUsage, CommandBuffer, Device, GraphicsContext, MemoryUsage, QueueSubmission, QueueType,
-    Swapchain, SwapchainError, TextureLayout, WHOLE_BUFFER,
+    BufferUsage, CommandBuffer, Device, GraphicsContext, MemoryUsage, QueueType, Swapchain,
+    SwapchainError, TextureLayout, WHOLE_BUFFER,
 };
 use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::passes::blit::BlitPass;
@@ -52,24 +52,15 @@ impl PathTracingRenderer {
             PathTracerPass::new(device, resolution, resources, assets, &mut init_cmd_buffer);
 
         init_cmd_buffer.flush_barriers();
-        device.flush_transfers();
+        device.flush();
 
-        device.submit(
-            QueueType::Graphics,
-            QueueSubmission {
-                command_buffer: init_cmd_buffer.finish(),
-                wait_fences: &[],
-                signal_fences: &[],
-                acquire_swapchain: None,
-                release_swapchain: None,
-            },
-        );
+        device.submit(QueueType::Graphics, init_cmd_buffer.finish());
         let c_device = device.clone();
         let task_pool = bevy_tasks::ComputeTaskPool::get();
         task_pool
             .spawn(async move {
                 crate::autoreleasepool(|| {
-                    c_device.flush(QueueType::Graphics);
+                    c_device.flush();
                 })
             })
             .detach();
@@ -303,6 +294,7 @@ impl RenderPath for PathTracingRenderer {
     #[profiling::function]
     fn render(
         &mut self,
+        _device: &Device,
         context: &mut GraphicsContext,
         swapchain: &mut Swapchain,
         scene: &SceneInfo,
