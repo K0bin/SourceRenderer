@@ -664,7 +664,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         binding_manager.clear_all_bindings(frequency);
     }
 
-    unsafe fn finish_binding(&mut self) {
+    unsafe fn finish_binding(&mut self, _pool: &mut WebGPUCommandPool) {
         let frame = self.frame;
         let pipeline_layout = match &self.get_recording().bound_pipeline {
             WebGPUBoundPipeline::Graphics { pipeline_layout } => pipeline_layout.clone(),

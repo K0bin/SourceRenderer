@@ -1127,18 +1127,77 @@ struct DescriptorPools {
     next_non_full_pool_index: u32,
 }
 
-pub(crate) struct VkBindingManager {
+pub(crate) struct DescriptorCaches {
     cache_mode: CacheMode,
-    transient_pools: RefCell<DescriptorPools>,
-    permanent_pools: RefCell<DescriptorPools>,
+    transient_pools: DescriptorPools,
+    permanent_pools: DescriptorPools,
+    transient_cache: HashMap<Arc<VkDescriptorSetLayout>, Vec<VkDescriptorSetCacheEntry>>,
+    permanent_cache: HashMap<Arc<VkDescriptorSetLayout>, Vec<VkDescriptorSetCacheEntry>>,
+    last_cleanup_frame: u64,
+}
+
+impl DescriptorCaches {
+    pub(crate) fn new(device: &Arc<RawVkDevice>) -> Self {
+        let transient_pool = Arc::new(VkDescriptorPool::new(device, true));
+        let permanent_pool = Arc::new(VkDescriptorPool::new(device, false));
+
+        let cache_mode = CacheMode::Everything;
+        Self {
+            cache_mode,
+            transient_pools: crate::descriptor::DescriptorPools {
+                pools: vec![transient_pool],
+                next_non_full_pool_index: 0,
+            },
+            permanent_pools: crate::descriptor::DescriptorPools {
+                pools: vec![permanent_pool],
+                next_non_full_pool_index: 0,
+            },
+            transient_cache: HashMap::new(),
+            permanent_cache: HashMap::new(),
+            last_cleanup_frame: 0,
+        }
+    }
+
+    pub(crate) fn reset(&mut self, frame: u64) {
+        self.clean_permanent_cache(frame);
+        if self.cache_mode != CacheMode::None {
+            let transient_cache_mut = &mut self.transient_cache;
+            transient_cache_mut.clear();
+        }
+        let transient_pools_mut = &mut self.transient_pools;
+        transient_pools_mut.next_non_full_pool_index = 0u32;
+        for pool in transient_pools_mut.pools.iter_mut() {
+            pool.reset();
+        }
+        let permanent_pools_mut = &mut self.permanent_pools;
+        permanent_pools_mut.next_non_full_pool_index = 0u32;
+    }
+
+    const FRAMES_BETWEEN_CLEANUP: u64 = 0;
+    const MAX_FRAMES_SET_UNUSED: u64 = 16;
+    pub(crate) fn clean_permanent_cache(&mut self, frame: u64) {
+        // TODO: I might need to make this more aggressive because of memory usage.
+
+        if self.cache_mode != CacheMode::Everything
+            || frame - self.last_cleanup_frame < Self::FRAMES_BETWEEN_CLEANUP
+        {
+            return;
+        }
+
+        let cache_mut = &mut self.permanent_cache;
+        for entries in cache_mut.values_mut() {
+            entries.retain(|entry| (frame - entry.last_used_frame) < Self::MAX_FRAMES_SET_UNUSED);
+        }
+        self.last_cleanup_frame = frame;
+    }
+}
+
+pub(crate) struct VkBindingManager {
     device: Arc<RawVkDevice>,
     current_sets: [Option<Arc<VkDescriptorSet>>; gpu::NON_BINDLESS_SET_COUNT as usize],
     dirty: DirtyDescriptorSets,
     bindings:
         [[VkBoundResource; gpu::PER_SET_BINDINGS as usize]; gpu::NON_BINDLESS_SET_COUNT as usize],
-    transient_cache: RefCell<HashMap<Arc<VkDescriptorSetLayout>, Vec<VkDescriptorSetCacheEntry>>>,
-    permanent_cache: RefCell<HashMap<Arc<VkDescriptorSetLayout>, Vec<VkDescriptorSetCacheEntry>>>,
-    last_cleanup_frame: u64,
 }
 
 impl VkBindingManager {
@@ -1149,41 +1208,17 @@ impl VkBindingManager {
         let cache_mode = CacheMode::Everything;
 
         Self {
-            cache_mode,
-            transient_pools: RefCell::new(DescriptorPools {
-                pools: vec![transient_pool],
-                next_non_full_pool_index: 0,
-            }),
-            permanent_pools: RefCell::new(DescriptorPools {
-                pools: vec![permanent_pool],
-                next_non_full_pool_index: 0,
-            }),
             device: device.clone(),
             current_sets: Default::default(),
             dirty: DirtyDescriptorSets::all(),
             bindings: Default::default(),
-            transient_cache: RefCell::new(HashMap::new()),
-            permanent_cache: RefCell::new(HashMap::new()),
-            last_cleanup_frame: 0,
         }
     }
 
-    pub(crate) fn reset(&mut self, frame: u64) {
+    pub(crate) fn reset(&mut self) {
         self.dirty = DirtyDescriptorSets::all();
         self.bindings = Default::default();
         self.current_sets = Default::default();
-        self.clean_permanent_cache(frame);
-        if self.cache_mode != CacheMode::None {
-            let mut transient_cache_mut = self.transient_cache.borrow_mut();
-            transient_cache_mut.clear();
-        }
-        let mut transient_pools_mut = self.transient_pools.borrow_mut();
-        transient_pools_mut.next_non_full_pool_index = 0u32;
-        for pool in transient_pools_mut.pools.iter_mut() {
-            pool.reset();
-        }
-        let mut permanent_pools_mut = self.permanent_pools.borrow_mut();
-        permanent_pools_mut.next_non_full_pool_index = 0u32;
     }
 
     pub(crate) fn clear_all_bindings(&mut self, frequency: gpu::BindingFrequency) {
@@ -1216,14 +1251,15 @@ impl VkBindingManager {
         layout: &'a Arc<VkDescriptorSetLayout>,
         bindings: &'a [T],
         use_permanent_cache: bool,
+        caches: &mut DescriptorCaches,
     ) -> Option<Arc<VkDescriptorSet>>
     where
         VkBoundResource: BindingCompare<Option<&'a T>>,
     {
-        let mut cache = if use_permanent_cache {
-            self.permanent_cache.borrow_mut()
+        let cache = if use_permanent_cache {
+            &mut caches.permanent_cache
         } else {
-            self.transient_cache.borrow_mut()
+            &mut caches.transient_cache
         };
 
         let mut entry_opt = cache.get_mut(layout).and_then(|sets| {
@@ -1241,6 +1277,7 @@ impl VkBindingManager {
         frame: u64,
         pipeline_layout: &VkPipelineLayout,
         frequency: gpu::BindingFrequency,
+        caches: &mut DescriptorCaches,
     ) -> Option<VkDescriptorSetBinding> {
         let layout_option = pipeline_layout.descriptor_set_layout(frequency as u32);
         if !self.dirty.contains(DirtyDescriptorSets::from(frequency)) || layout_option.is_none() {
@@ -1258,7 +1295,7 @@ impl VkBindingManager {
             }
         }
 
-        set = set.or_else(|| self.get_or_create_set(frame, layout, bindings));
+        set = set.or_else(|| self.get_or_create_set(frame, layout, bindings, caches));
         self.current_sets[frequency as usize] = set.clone();
         set.map(|set| self.get_descriptor_set_binding_info(set, bindings))
     }
@@ -1326,6 +1363,7 @@ impl VkBindingManager {
         frame: u64,
         layout: &'a Arc<VkDescriptorSetLayout>,
         bindings: &'a [T],
+        caches: &mut DescriptorCaches,
     ) -> Option<Arc<VkDescriptorSet>>
     where
         VkBoundResource: BindingCompare<Option<&'a T>>,
@@ -1335,20 +1373,20 @@ impl VkBindingManager {
             return None;
         }
 
-        let transient = self.cache_mode != CacheMode::Everything;
+        let transient = caches.cache_mode != CacheMode::Everything;
 
-        let cached_set = if self.cache_mode == CacheMode::None {
+        let cached_set = if caches.cache_mode == CacheMode::None {
             None
         } else {
-            self.find_compatible_set(frame, layout, &bindings, !transient)
+            self.find_compatible_set(frame, layout, &bindings, !transient, caches)
         };
         let set: Arc<VkDescriptorSet> = if let Some(cached_set) = cached_set {
             cached_set
         } else {
-            let mut pools = if !transient {
-                self.permanent_pools.borrow_mut()
+            let pools = if !transient {
+                &mut caches.permanent_pools
             } else {
-                self.transient_pools.borrow_mut()
+                &mut caches.transient_pools
             };
             let mut new_set = Option::<VkDescriptorSet>::None;
 
@@ -1377,11 +1415,11 @@ impl VkBindingManager {
             }
             let new_set = Arc::new(new_set.unwrap());
 
-            if self.cache_mode != CacheMode::None {
+            if caches.cache_mode != CacheMode::None {
                 let mut cache = if transient {
-                    self.transient_cache.borrow_mut()
+                    &mut caches.transient_cache
                 } else {
-                    self.permanent_cache.borrow_mut()
+                    &mut caches.permanent_cache
                 };
                 cache
                     .entry(layout.clone())
@@ -1412,6 +1450,7 @@ impl VkBindingManager {
         &mut self,
         frame: u64,
         pipeline_layout: &VkPipelineLayout,
+        caches: &mut DescriptorCaches,
     ) -> [Option<VkDescriptorSetBinding>; gpu::NON_BINDLESS_SET_COUNT as usize] {
         if self.dirty.is_empty() {
             return Default::default();
@@ -1419,32 +1458,22 @@ impl VkBindingManager {
 
         let mut set_bindings: [Option<VkDescriptorSetBinding>;
             gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
-        set_bindings[gpu::BindingFrequency::VeryFrequent as usize] =
-            self.finish_set(frame, pipeline_layout, gpu::BindingFrequency::VeryFrequent);
+        set_bindings[gpu::BindingFrequency::VeryFrequent as usize] = self.finish_set(
+            frame,
+            pipeline_layout,
+            gpu::BindingFrequency::VeryFrequent,
+            caches,
+        );
         set_bindings[gpu::BindingFrequency::Frame as usize] =
-            self.finish_set(frame, pipeline_layout, gpu::BindingFrequency::Frame);
-        set_bindings[gpu::BindingFrequency::Frequent as usize] =
-            self.finish_set(frame, pipeline_layout, gpu::BindingFrequency::Frequent);
+            self.finish_set(frame, pipeline_layout, gpu::BindingFrequency::Frame, caches);
+        set_bindings[gpu::BindingFrequency::Frequent as usize] = self.finish_set(
+            frame,
+            pipeline_layout,
+            gpu::BindingFrequency::Frequent,
+            caches,
+        );
 
         self.dirty = DirtyDescriptorSets::empty();
         set_bindings
-    }
-
-    const FRAMES_BETWEEN_CLEANUP: u64 = 0;
-    const MAX_FRAMES_SET_UNUSED: u64 = 16;
-    fn clean_permanent_cache(&mut self, frame: u64) {
-        // TODO: I might need to make this more aggressive because of memory usage.
-
-        if self.cache_mode != CacheMode::Everything
-            || frame - self.last_cleanup_frame < Self::FRAMES_BETWEEN_CLEANUP
-        {
-            return;
-        }
-
-        let mut cache_mut = self.permanent_cache.borrow_mut();
-        for entries in cache_mut.values_mut() {
-            entries.retain(|entry| (frame - entry.last_used_frame) < Self::MAX_FRAMES_SET_UNUSED);
-        }
-        self.last_cleanup_frame = frame;
     }
 }

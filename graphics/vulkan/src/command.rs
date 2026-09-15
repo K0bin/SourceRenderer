@@ -17,8 +17,9 @@ use super::*;
 pub struct VkCommandPool {
     raw: Arc<RawVkCommandPool>,
     shared: Arc<VkShared>,
-    flags: gpu::CommandPoolFlags,
+    _flags: gpu::CommandPoolFlags,
     queue_family_index: u32,
+    caches: DescriptorCaches,
 }
 
 impl VkCommandPool {
@@ -42,8 +43,9 @@ impl VkCommandPool {
         Self {
             raw: Arc::new(RawVkCommandPool::new(device, &create_info).unwrap()),
             shared: shared.clone(),
-            flags,
+            _flags: flags,
             queue_family_index,
+            caches: DescriptorCaches::new(device),
         }
     }
 }
@@ -626,7 +628,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         self.descriptor_manager.clear_all_bindings(frequency);
     }
 
-    unsafe fn finish_binding(&mut self) {
+    unsafe fn finish_binding(&mut self, pool: &mut VkCommandPool) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
 
         let mut offsets = SmallVec::<[u32; 16]>::new();
@@ -676,7 +678,9 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             }
         };
 
-        let finished_sets = self.descriptor_manager.finish(self.frame, pipeline_layout);
+        let finished_sets =
+            self.descriptor_manager
+                .finish(self.frame, pipeline_layout, &mut pool.caches);
         for (index, set_option) in finished_sets.iter().enumerate() {
             match set_option {
                 None => {
@@ -1370,82 +1374,18 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         };
         let length_in_bytes = actual_length_in_u32s * 4;
         debug_assert!(buffer.info().size - offset >= length_in_bytes);
-
-        #[allow(unused)]
-        #[repr(packed)]
-        struct MetaClearShaderData {
-            length: u32,
-            value: u32,
-        }
-        let push_data = MetaClearShaderData {
-            length: length_in_bytes as u32,
-            value: value,
-        };
-
-        let meta_pipeline = self.shared.get_clear_buffer_meta_pipeline();
-        let binding_offsets = [offset as u32];
-        let is_dynamic_binding = meta_pipeline
-            .layout()
-            .descriptor_set_layout(0)
-            .unwrap()
-            .is_dynamic_binding(0);
-        let descriptor_set = self
-            .descriptor_manager
-            .get_or_create_set(
-                0,
-                meta_pipeline
-                    .layout()
-                    .descriptor_set_layout(0)
-                    .as_ref()
-                    .unwrap(),
-                &[VkBoundResourceRef::StorageBuffer(VkBufferBindingInfo {
-                    buffer: buffer.handle(),
-                    offset,
-                    length: length_in_bytes,
-                })],
-            )
-            .unwrap();
         unsafe {
-            self.device.cmd_bind_pipeline(
+            self.device.cmd_fill_buffer(
                 self.cmd_buffer,
-                vk::PipelineBindPoint::COMPUTE,
-                meta_pipeline.handle(),
-            );
-
-            self.device.cmd_push_constants(
-                self.cmd_buffer,
-                meta_pipeline.layout().handle(),
-                vk::ShaderStageFlags::COMPUTE,
-                0,
-                std::slice::from_raw_parts(
-                    std::mem::transmute(&push_data as *const MetaClearShaderData),
-                    std::mem::size_of::<MetaClearShaderData>(),
-                ),
-            );
-            self.device.cmd_bind_descriptor_sets(
-                self.cmd_buffer,
-                vk::PipelineBindPoint::COMPUTE,
-                meta_pipeline.layout().handle(),
-                0,
-                &[descriptor_set.handle()],
-                if is_dynamic_binding {
-                    &binding_offsets
-                } else {
-                    &[]
-                },
-            );
-            self.device.cmd_dispatch(
-                self.cmd_buffer,
-                (actual_length_in_u32s as u32 + 63) / 64,
-                1,
-                1,
+                buffer.handle(),
+                offset,
+                length_in_bytes,
+                value,
             );
         }
-        self.descriptor_manager.mark_all_dirty();
     }
 
     unsafe fn begin(&mut self, frame: u64) {
-        self.descriptor_manager.reset(frame);
         self.state.store(VkCommandBufferState::Ready);
 
         self.descriptor_manager.mark_all_dirty();

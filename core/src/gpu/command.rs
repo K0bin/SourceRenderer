@@ -255,7 +255,7 @@ pub trait CommandBuffer<B: GPUBackend> {
     );
     unsafe fn clear_binding(&mut self, frequency: BindingFrequency, binding: u32);
     unsafe fn clear_all_bindings(&mut self, frequency: BindingFrequency);
-    unsafe fn finish_binding(&mut self);
+    unsafe fn finish_binding(&mut self, pool: &mut B::CommandPool);
     unsafe fn begin_label(&mut self, label: &str);
     unsafe fn end_label(&mut self);
     unsafe fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32);

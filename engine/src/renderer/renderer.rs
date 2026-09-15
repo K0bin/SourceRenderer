@@ -214,7 +214,7 @@ impl Renderer {
 
         let frame_info = FrameInfo {
             frame: self.frame,
-            delta: delta,
+            delta,
         };
 
         // Read assets again in case something came in while we were processing messages

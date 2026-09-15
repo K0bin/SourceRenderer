@@ -2,13 +2,11 @@ use super::gpu::{self, Buffer as _, CommandBuffer as _};
 use super::{AccelerationStructure, BottomLevelAccelerationStructureInfo, *};
 use atomic_refcell::AtomicRefMut;
 use bytemuck::{Pod, cast_slice};
-use crossbeam_channel::Sender;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::RenderPassResumeSuspend;
+use sourcerenderer_core::gpu::{CommandPool, RenderPassResumeSuspend};
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 const DEBUG_FORCE_FAT_BARRIER: bool = false;
 
@@ -118,11 +116,11 @@ impl<'a> Copy for BufferRef<'a> {}
 impl<'a> CommandBuffer<'a> {
     pub(super) fn new(
         global_context: &'a GraphicsContext,
-        context: AtomicRefMut<'a, FrameContext>,
-        handle: active_gpu_backend::CommandBuffer,
+        mut context: AtomicRefMut<'a, FrameContext>,
         destroyer: &Arc<DeferredDestroyer>,
         queue_type: QueueType,
     ) -> Self {
+        let handle = unsafe { context.command_pool.create_command_buffer() };
         Self {
             _global_context: global_context,
             context,
@@ -617,7 +615,8 @@ impl<'a> CommandBuffer<'a> {
 
     pub fn finish_binding(&mut self) {
         unsafe {
-            self.cmd_buffer_handle.finish_binding();
+            self.cmd_buffer_handle
+                .finish_binding(&mut self.context.command_pool);
         }
     }
 

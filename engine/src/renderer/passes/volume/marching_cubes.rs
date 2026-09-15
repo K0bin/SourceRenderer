@@ -107,7 +107,10 @@ impl MarchingCubesPass {
             Self::ATOMICS_BUFFER_NAME,
             &BufferInfo {
                 size: std::mem::size_of::<MarchingCubesIndirectCall>() as u64 * 16u64,
-                usage: BufferUsage::STORAGE | BufferUsage::CONSTANT | BufferUsage::INDIRECT,
+                usage: BufferUsage::COPY_DST
+                    | BufferUsage::STORAGE
+                    | BufferUsage::CONSTANT
+                    | BufferUsage::INDIRECT,
                 sharing_mode: QueueSharingMode::Exclusive,
             },
             MemoryUsage::GPUMemory,
@@ -514,7 +517,7 @@ impl MarchingCubesPass {
             name,
             &BufferInfo {
                 size: (std::mem::size_of::<u32>() * 15 * resolution_multiplied) as u64,
-                usage: BufferUsage::STORAGE | BufferUsage::INDEX,
+                usage: BufferUsage::STORAGE | BufferUsage::INDEX | BufferUsage::COPY_DST,
                 sharing_mode: QueueSharingMode::Exclusive,
             },
             MemoryUsage::GPUMemory,
@@ -613,8 +616,8 @@ impl MarchingCubesPass {
             buffer_slices.push(pass_params.resources.access_buffer(
                 command_buffer,
                 &entry.buffer_name,
-                BarrierSync::COMPUTE_SHADER,
-                BarrierAccess::STORAGE_WRITE,
+                BarrierSync::COPY,
+                BarrierAccess::COPY_WRITE,
                 HistoryResourceEntry::Current,
             ));
         }
@@ -622,8 +625,8 @@ impl MarchingCubesPass {
         let atomics_slice = pass_params.resources.access_buffer(
             command_buffer,
             Self::ATOMICS_BUFFER_NAME,
-            BarrierSync::COMPUTE_SHADER,
-            BarrierAccess::STORAGE_WRITE,
+            BarrierSync::COPY,
+            BarrierAccess::COPY_WRITE,
             HistoryResourceEntry::Current,
         );
         command_buffer.flush_barriers();
