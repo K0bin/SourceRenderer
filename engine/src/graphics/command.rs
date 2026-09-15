@@ -119,8 +119,9 @@ impl<'a> CommandBuffer<'a> {
         mut context: AtomicRefMut<'a, FrameContext>,
         destroyer: &Arc<DeferredDestroyer>,
         queue_type: QueueType,
+        name: Option<&str>,
     ) -> Self {
-        let handle = unsafe { context.command_pool.create_command_buffer(None) };
+        let handle = unsafe { context.command_pool.create_command_buffer(name) };
         Self {
             _global_context: global_context,
             context,

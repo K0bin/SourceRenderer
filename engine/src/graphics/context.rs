@@ -92,9 +92,9 @@ impl GraphicsContext {
         self.current_frame += 1;
         let new_frame = self.current_frame;
 
-        if new_frame >= self.frame_finished_counter_values.len() as u64 {
+        if new_frame >= self.prerendered_frames as u64 {
             let counter = self.frame_finished_counter_values
-                [(new_frame as usize) % self.frame_finished_counter_values.len()];
+                [(new_frame as usize) % (self.prerendered_frames as usize)];
             self.device.await_counter(counter);
             self.global_buffer_allocator.cleanup_unused();
             self.memory_allocator.cleanup_unused();
@@ -103,7 +103,7 @@ impl GraphicsContext {
         for thread_frame in &mut (*self.thread_frames) {
             let mut frames = thread_frame.borrow_mut();
             let frames_len = frames.len();
-            let frame = &mut frames[(self.current_frame as usize) % frames_len];
+            let frame = &mut frames[(new_frame as usize) % frames_len];
 
             frame.acceleration_structure_scratch = None;
             frame.acceleration_structure_scratch_offset = 0;
@@ -123,7 +123,7 @@ impl GraphicsContext {
         assert_eq!(self.current_frame, self.completed_frame + 1);
         let frame_completed_fence_value = self.device.queue_next_counter(QueueType::Graphics);
         self.frame_finished_counter_values
-            [(self.current_frame as usize) % self.frame_finished_counter_values.len()] =
+            [(self.current_frame as usize) % (self.prerendered_frames as usize)] =
             frame_completed_fence_value;
         self.completed_frame += 1;
     }
@@ -237,7 +237,7 @@ impl GraphicsContext {
     pub fn get_command_buffer(&self, queue_type: QueueType) -> CommandBuffer<'_> {
         let frame_context = self.get_thread_frame_context(self.current_frame);
 
-        let mut cmd_buffer = CommandBuffer::new(self, frame_context, &self.destroyer, queue_type);
+        let mut cmd_buffer = CommandBuffer::new(self, frame_context, &self.destroyer, queue_type, Some(&format!("Cmd Buffer for frame {}", self.current_frame)));
         cmd_buffer.begin();
         cmd_buffer
     }
@@ -296,12 +296,12 @@ impl FrameContext {
         buffer_allocator: &Arc<BufferAllocator>,
         memory_allocator: &Arc<MemoryAllocator>,
         destroyer: &Arc<DeferredDestroyer>,
-        frame: u32,
+        context_idx: u32,
     ) -> Self {
         let command_pool = unsafe {
             device
                 .graphics_queue()
-                .create_command_pool(gpu::CommandPoolFlags::empty(), Some(&format!("Cmd Pool Frame {}", frame)))
+                .create_command_pool(gpu::CommandPoolFlags::empty(), Some(&format!("Cmd Pool context {}", context_idx)))
         };
         let transient_buffer_allocator = TransientBufferAllocator::new(
             device,
