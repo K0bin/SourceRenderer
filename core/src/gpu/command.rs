@@ -93,7 +93,7 @@ pub struct BufferArrayEntry<'a, B: GPUBackend> {
 }
 
 pub trait CommandPool<B: GPUBackend> {
-    unsafe fn create_command_buffer(&mut self) -> B::CommandBuffer;
+    unsafe fn create_command_buffer(&mut self, name: Option<&str>) -> B::CommandBuffer;
     unsafe fn reset(&mut self);
 }
 

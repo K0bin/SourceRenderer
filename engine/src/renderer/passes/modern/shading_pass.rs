@@ -46,7 +46,7 @@ impl ShadingPass {
             compare_op: None,
             min_lod: 0.0,
             max_lod: None,
-        }));
+        }, None));
 
         resources.create_texture(
             Self::SHADING_TEXTURE_NAME,
@@ -77,7 +77,7 @@ impl ShadingPass {
             compare_op: Some(CompareFunc::Less),
             min_lod: 0f32,
             max_lod: None,
-        }));
+        }, None));
 
         Self {
             sampler,

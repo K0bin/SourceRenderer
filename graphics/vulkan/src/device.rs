@@ -153,8 +153,8 @@ impl gpu::Device<VkBackend> for VkDevice {
         VkPipeline::new_compute(&self.device, shader, self.shared.as_ref(), name)
     }
 
-    fn create_sampler(&self, info: &gpu::SamplerInfo) -> VkSampler {
-        VkSampler::new(&self.device, info)
+    fn create_sampler(&self, info: &gpu::SamplerInfo, name: Option<&str>) -> VkSampler {
+        VkSampler::new(&self.device, info, name)
     }
 
     fn create_graphics_pipeline(

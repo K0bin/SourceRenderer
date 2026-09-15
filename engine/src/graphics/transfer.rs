@@ -595,7 +595,7 @@ impl Transfer {
                     device
                         .handle()
                         .graphics_queue()
-                        .create_command_pool(gpu::CommandPoolFlags::empty())
+                        .create_command_pool(gpu::CommandPoolFlags::empty(), Some("Transfer Graphics Pool"))
                 }
             } else {
                 unsafe {
@@ -603,7 +603,7 @@ impl Transfer {
                         .handle()
                         .transfer_queue()
                         .unwrap()
-                        .create_command_pool(gpu::CommandPoolFlags::empty())
+                        .create_command_pool(gpu::CommandPoolFlags::empty(), Some("Transfer Transfer Pool"))
                 }
             };
             Box::new(TransferCommandBuffer::new(device.destroyer(), pool, 0))
@@ -871,7 +871,7 @@ impl TransferCommandBuffer {
         mut cmd_pool: active_gpu_backend::CommandPool,
         fence_value: u64,
     ) -> Self {
-        let cmd_buffer = unsafe { cmd_pool.create_command_buffer() };
+        let cmd_buffer = unsafe { cmd_pool.create_command_buffer(Some("Transfer Command Buffer")) };
 
         Self {
             cmd_buffer: Some(cmd_buffer),
@@ -901,7 +901,7 @@ impl TransferCommandBuffer {
 
         unsafe {
             self.cmd_pool.reset();
-            self.cmd_buffer = Some(self.cmd_pool.create_command_buffer());
+            self.cmd_buffer = Some(self.cmd_pool.create_command_buffer(Some("Transfer Command Buffer")));
         }
         self.is_used = false;
         self.used_buffers_slices.clear();

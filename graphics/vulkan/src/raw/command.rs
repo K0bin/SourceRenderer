@@ -1,8 +1,10 @@
+use std::ffi::CString;
 use std::ops::Deref;
 use std::sync::Arc;
 
 use ash::VkResult;
 use ash::vk;
+use ash::vk::Handle;
 
 use crate::raw::RawVkDevice;
 
@@ -15,15 +17,33 @@ impl RawVkCommandPool {
     pub fn new(
         device: &Arc<RawVkDevice>,
         create_info: &vk::CommandPoolCreateInfo,
+        name: Option<&str>,
     ) -> VkResult<Self> {
-        unsafe {
+        let pool = unsafe {
             device
-                .create_command_pool(create_info, None)
-                .map(|pool| Self {
-                    pool,
-                    device: device.clone(),
-                })
+                .create_command_pool(create_info, None)?
+        };
+
+        if let Some(name) = name {
+            if let Some(debug_utils) = device.debug_utils.as_ref() {
+                let name_cstring = CString::new(name).unwrap();
+                unsafe {
+                    debug_utils
+                        .set_debug_utils_object_name(&vk::DebugUtilsObjectNameInfoEXT {
+                            object_type: vk::ObjectType::COMMAND_POOL,
+                            object_handle: pool.as_raw(),
+                            p_object_name: name_cstring.as_ptr(),
+                            ..Default::default()
+                        })
+                        .unwrap();
+                }
+            }
         }
+
+        Ok(Self {
+            pool,
+            device: device.clone(),
+        })
     }
 }
 

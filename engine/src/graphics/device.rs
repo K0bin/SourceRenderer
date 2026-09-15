@@ -136,8 +136,8 @@ impl Device {
     }
 
     #[inline(always)]
-    pub fn create_sampler(&self, info: &SamplerInfo) -> super::Sampler {
-        super::Sampler::new(&self.device, &self.destroyer, info)
+    pub fn create_sampler(&self, info: &SamplerInfo, name: Option<&str>) -> super::Sampler {
+        super::Sampler::new(&self.device, &self.destroyer, info, name)
     }
 
     #[inline(always)]

@@ -120,7 +120,7 @@ impl<'a> CommandBuffer<'a> {
         destroyer: &Arc<DeferredDestroyer>,
         queue_type: QueueType,
     ) -> Self {
-        let handle = unsafe { context.command_pool.create_command_buffer() };
+        let handle = unsafe { context.command_pool.create_command_buffer(None) };
         Self {
             _global_context: global_context,
             context,

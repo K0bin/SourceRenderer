@@ -32,7 +32,7 @@ impl WebGPUQueue {
 }
 
 impl gpu::Queue<WebGPUBackend> for WebGPUQueue {
-    unsafe fn create_command_pool(&self, _flags: gpu::CommandPoolFlags) -> WebGPUCommandPool {
+    unsafe fn create_command_pool(&self, _flags: gpu::CommandPoolFlags, _name: Option<&str>) -> WebGPUCommandPool {
         WebGPUCommandPool::new(&self.device, &self.limits)
     }
 

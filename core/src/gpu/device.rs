@@ -67,7 +67,7 @@ pub trait Device<B: GPUBackend> {
         shader: PipelineShaderStage<B>,
         name: Option<&str>,
     ) -> B::ComputePipeline;
-    fn create_sampler(&self, info: &SamplerInfo) -> B::Sampler;
+    fn create_sampler(&self, info: &SamplerInfo, name: Option<&str>) -> B::Sampler;
     fn create_graphics_pipeline(
         &self,
         info: &GraphicsPipelineInfo<B>,

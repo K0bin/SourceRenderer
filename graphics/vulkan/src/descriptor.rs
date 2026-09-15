@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::hash::{Hash, Hasher};
@@ -1278,14 +1277,17 @@ impl VkBindingManager {
     ) -> Option<VkDescriptorSetBinding> {
         let layout_option = pipeline_layout.descriptor_set_layout(frequency as u32);
         if !self.dirty.contains(DirtyDescriptorSets::from(frequency)) || layout_option.is_none() {
+            log::warn!("No layout for {:?}", frequency);
             return None;
         }
         let layout = layout_option.unwrap();
+        log::warn!("Set: {:?}, bindings: {:?}", frequency,  &self.bindings[frequency as usize][..(layout.max_used_binding() + 1) as usize]);
 
         let mut set: Option<Arc<VkDescriptorSet>> = None;
         let bindings =
             &self.bindings[frequency as usize][..(layout.max_used_binding() + 1) as usize];
         if let Some(current_set) = &self.current_sets[frequency as usize] {
+            log::warn!("Currently bound set is fine");
             // This should cover the hottest case.
             if current_set.is_compatible(layout, bindings) {
                 set = Some(current_set.clone());
@@ -1377,6 +1379,7 @@ impl VkBindingManager {
             self.find_compatible_set(layout, &bindings, !transient, caches)
         };
         let set: Arc<VkDescriptorSet> = if let Some(cached_set) = cached_set {
+            log::warn!("Found cached set");
             cached_set
         } else {
             let pools = if !transient {
@@ -1384,6 +1387,7 @@ impl VkBindingManager {
             } else {
                 &mut caches.transient_pools
             };
+            log::warn!("Creating new set");
             let mut new_set = Option::<VkDescriptorSet>::None;
 
             'pools_iter: for i in (pools.next_non_full_pool_index as usize)..pools.pools.len() {
@@ -1447,6 +1451,7 @@ impl VkBindingManager {
         pipeline_layout: &VkPipelineLayout,
         caches: &mut DescriptorCaches,
     ) -> [Option<VkDescriptorSetBinding>; gpu::NON_BINDLESS_SET_COUNT as usize] {
+        log::warn!("Binding: {:?}", self.dirty);
         if self.dirty.is_empty() {
             return Default::default();
         }

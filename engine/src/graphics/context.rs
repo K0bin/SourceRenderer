@@ -76,12 +76,13 @@ impl GraphicsContext {
         prerendered_frames: u32,
     ) -> ThreadFrames {
         let mut frames = SmallVec::<[FrameContext; 5]>::with_capacity(prerendered_frames as usize);
-        for _ in 0..prerendered_frames {
+        for i in 0..prerendered_frames {
             frames.push(FrameContext::new(
                 device,
                 buffer_allocator,
                 memory_allocator,
                 destroyer,
+                i,
             ));
         }
         AtomicRefCell::new(frames)
@@ -295,11 +296,12 @@ impl FrameContext {
         buffer_allocator: &Arc<BufferAllocator>,
         memory_allocator: &Arc<MemoryAllocator>,
         destroyer: &Arc<DeferredDestroyer>,
+        frame: u32,
     ) -> Self {
         let command_pool = unsafe {
             device
                 .graphics_queue()
-                .create_command_pool(gpu::CommandPoolFlags::empty())
+                .create_command_pool(gpu::CommandPoolFlags::empty(), Some(&format!("Cmd Pool Frame {}", frame)))
         };
         let transient_buffer_allocator = TransientBufferAllocator::new(
             device,

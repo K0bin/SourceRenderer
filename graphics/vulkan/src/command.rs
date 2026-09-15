@@ -3,6 +3,7 @@ use std::hash::Hash;
 use std::sync::Arc;
 
 use ash::vk;
+use ash::vk::Handle;
 use bytemuck::{Pod, cast_slice};
 use crossbeam_utils::atomic::AtomicCell;
 use smallvec::SmallVec;
@@ -28,6 +29,7 @@ impl VkCommandPool {
         queue_family_index: u32,
         flags: gpu::CommandPoolFlags,
         shared: &Arc<VkShared>,
+        name: Option<&str>,
     ) -> Self {
         let mut vk_flags = vk::CommandPoolCreateFlags::empty();
         if flags.contains(gpu::CommandPoolFlags::TRANSIENT) {
@@ -41,7 +43,7 @@ impl VkCommandPool {
         };
 
         Self {
-            raw: Arc::new(RawVkCommandPool::new(device, &create_info).unwrap()),
+            raw: Arc::new(RawVkCommandPool::new(device, &create_info, name).unwrap()),
             shared: shared.clone(),
             _flags: flags,
             queue_family_index,
@@ -51,12 +53,13 @@ impl VkCommandPool {
 }
 
 impl gpu::CommandPool<VkBackend> for VkCommandPool {
-    unsafe fn create_command_buffer(&mut self) -> VkCommandBuffer {
+    unsafe fn create_command_buffer(&mut self, name: Option<&str>) -> VkCommandBuffer {
         let buffer = VkCommandBuffer::new(
             &self.raw.device,
             &self.raw,
             self.queue_family_index,
             &self.shared,
+            name,
         );
         buffer
     }
@@ -167,6 +170,7 @@ impl VkCommandBuffer {
         pool: &Arc<RawVkCommandPool>,
         _queue_family_index: u32,
         shared: &Arc<VkShared>,
+        name: Option<&str>,
     ) -> Self {
         let buffers_create_info = vk::CommandBufferAllocateInfo {
             command_pool: ***pool,
@@ -175,6 +179,23 @@ impl VkCommandBuffer {
             ..Default::default()
         };
         let mut buffers = unsafe { device.allocate_command_buffers(&buffers_create_info) }.unwrap();
+
+        if let Some(name) = name {
+            if let Some(debug_utils) = device.debug_utils.as_ref() {
+                let name_cstring = CString::new(name).unwrap();
+                unsafe {
+                    debug_utils
+                        .set_debug_utils_object_name(&vk::DebugUtilsObjectNameInfoEXT {
+                            object_type: vk::ObjectType::COMMAND_BUFFER,
+                            object_handle: buffers[0].as_raw(),
+                            p_object_name: name_cstring.as_ptr(),
+                            ..Default::default()
+                        })
+                        .unwrap();
+                }
+            }
+        }
+
         VkCommandBuffer {
             cmd_buffer: buffers.pop().unwrap(),
             _pool: pool.clone(),

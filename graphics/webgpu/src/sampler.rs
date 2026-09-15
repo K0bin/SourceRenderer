@@ -58,11 +58,11 @@ impl WebGPUSampler {
         if let Some(compare_op) = info.compare_op {
             descriptor.set_compare(compare_func_to_webgpu(compare_op));
         }
-        if let Some(name) = name {
-            descriptor.set_label(name);
-        }
 
         let sampler = device.create_sampler_with_descriptor(&descriptor);
+        if let Some(name) = name {
+            sampler.set_label(name);
+        }
         Ok(Self { sampler, _p: PhantomData })
     }
 

@@ -119,7 +119,7 @@ impl GeometryPass {
             compare_op: None,
             min_lod: 0.0,
             max_lod: None,
-        }));
+        }, None));
 
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
             vs: PathPipelineShaderStage::empty_spec_consts("shaders/geometry_bindless.vert.json"),

@@ -92,7 +92,7 @@ impl RendererResources {
             compare_op: None,
             min_lod: 0f32,
             max_lod: None,
-        }));
+        }, Some("Nearest")));
         let linear_sampler = Arc::new(device.create_sampler(&SamplerInfo {
             mag_filter: Filter::Linear,
             min_filter: Filter::Linear,
@@ -105,7 +105,7 @@ impl RendererResources {
             compare_op: None,
             min_lod: 0f32,
             max_lod: None,
-        }));
+        }, Some("Linear")));
 
         Self {
             device: device.clone(),
