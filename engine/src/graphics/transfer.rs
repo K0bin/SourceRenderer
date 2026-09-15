@@ -618,7 +618,7 @@ impl Transfer {
 
         let api_cmd_buffer = cmd_buffer.cmd_buffer.as_mut().unwrap();
         unsafe {
-            api_cmd_buffer.begin(0u64);
+            api_cmd_buffer.begin();
         }
 
         if DEBUG_FORCE_FAT_BARRIER {

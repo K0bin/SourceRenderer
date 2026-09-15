@@ -62,6 +62,7 @@ impl gpu::CommandPool<VkBackend> for VkCommandPool {
     }
 
     unsafe fn reset(&mut self) {
+        self.caches.reset();
         unsafe {
             self.raw
                 .device
@@ -156,7 +157,6 @@ pub struct VkCommandBuffer {
     shared: Arc<VkShared>,
     pipeline: VkBoundPipeline,
     descriptor_manager: VkBindingManager,
-    frame: u64,
     is_in_render_pass: bool,
     query_pool: Option<vk::QueryPool>,
 }
@@ -183,7 +183,6 @@ impl VkCommandBuffer {
             shared: shared.clone(),
             state: AtomicCell::new(VkCommandBufferState::Ready),
             descriptor_manager: VkBindingManager::new(device),
-            frame: 0u64,
             is_in_render_pass: false,
             query_pool: None,
         }
@@ -680,7 +679,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
 
         let finished_sets =
             self.descriptor_manager
-                .finish(self.frame, pipeline_layout, &mut pool.caches);
+                .finish(pipeline_layout, &mut pool.caches);
         for (index, set_option) in finished_sets.iter().enumerate() {
             match set_option {
                 None => {
@@ -1385,12 +1384,11 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         }
     }
 
-    unsafe fn begin(&mut self, frame: u64) {
+    unsafe fn begin(&mut self) {
         self.state.store(VkCommandBufferState::Ready);
 
         self.descriptor_manager.mark_all_dirty();
         self.state.store(VkCommandBufferState::Recording);
-        self.frame = frame;
 
         unsafe {
             self.device

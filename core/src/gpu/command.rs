@@ -271,7 +271,7 @@ pub trait CommandBuffer<B: GPUBackend> {
     );
     unsafe fn set_stencil_reference(&mut self, reference: u32);
 
-    unsafe fn begin(&mut self, frame: u64);
+    unsafe fn begin(&mut self);
     unsafe fn finish(&mut self);
 
     unsafe fn copy_buffer_to_texture(

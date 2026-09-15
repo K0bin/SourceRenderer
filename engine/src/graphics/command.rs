@@ -718,8 +718,8 @@ impl<'a> CommandBuffer<'a> {
         }
     }
 
-    pub fn begin(&mut self, frame: u64) {
-        unsafe { self.cmd_buffer_handle.begin(frame) }
+    pub fn begin(&mut self) {
+        unsafe { self.cmd_buffer_handle.begin() }
     }
 
     pub fn finish(mut self) -> FinishedCommandBuffer {

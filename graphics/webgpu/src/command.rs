@@ -142,7 +142,6 @@ impl Eq for WebGPUReadbackBufferSync {}
 pub struct WebGPUCommandBuffer {
     handle: WebGPUCommandBufferHandle,
     device: GpuDevice,
-    frame: u64,
     readback_syncs: HashSet<WebGPUReadbackBufferSync>,
     _p: PhantomData<*const std::ffi::c_void>,
 }
@@ -192,7 +191,6 @@ impl WebGPUCommandBuffer {
                     _p: PhantomData,
                 })
             },
-            frame: 0u64,
             readback_syncs: HashSet::new(),
             _p: PhantomData,
         }
@@ -665,7 +663,6 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
     }
 
     unsafe fn finish_binding(&mut self, _pool: &mut WebGPUCommandPool) {
-        let frame = self.frame;
         let pipeline_layout = match &self.get_recording().bound_pipeline {
             WebGPUBoundPipeline::Graphics { pipeline_layout } => pipeline_layout.clone(),
             WebGPUBoundPipeline::Compute { pipeline_layout } => pipeline_layout.clone(),
@@ -678,7 +675,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         let binding_infos: [Option<WebGPUBindGroupBinding>; gpu::NON_BINDLESS_SET_COUNT as usize];
         {
             let binding_manager = &mut self.get_recording_mut().binding_manager;
-            binding_infos = binding_manager.finish(frame, &pipeline_layout);
+            binding_infos = binding_manager.finish(&pipeline_layout);
 
             for (set_index, binding) in binding_infos.iter().enumerate() {
                 if binding.is_none() {
@@ -839,7 +836,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
             .unwrap();
     }
 
-    unsafe fn begin(&mut self, frame: u64) {
+    unsafe fn begin(&mut self) {
         self.readback_syncs.clear();
         let handle = std::mem::replace(&mut self.handle, WebGPUCommandBufferHandle::Uninit);
         let mut binding_manager = match handle {
@@ -848,15 +845,13 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
             WebGPUCommandBufferHandle::Recording(cmd_buffer) => cmd_buffer.binding_manager,
             _ => unreachable!(),
         };
-        binding_manager.reset(frame);
+        binding_manager.reset();
         let encoder = self.device.create_command_encoder();
         self.handle = WebGPUCommandBufferHandle::Reset(WebGPUResetCommandBuffer {
             command_encoder: encoder,
             binding_manager,
             _p: PhantomData,
         });
-
-        self.frame = frame;
 
         let handle = std::mem::replace(&mut self.handle, WebGPUCommandBufferHandle::Uninit);
         if let WebGPUCommandBufferHandle::Reset(mut cmd_buffer) = handle {

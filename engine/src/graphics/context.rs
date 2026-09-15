@@ -237,7 +237,7 @@ impl GraphicsContext {
         let frame_context = self.get_thread_frame_context(self.current_frame);
 
         let mut cmd_buffer = CommandBuffer::new(self, frame_context, &self.destroyer, queue_type);
-        cmd_buffer.begin(self.current_frame);
+        cmd_buffer.begin();
         cmd_buffer
     }
 
