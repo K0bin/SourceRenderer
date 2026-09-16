@@ -80,7 +80,7 @@ impl Queue {
     pub(super) fn new(
         destroyer: &Arc<DeferredDestroyer>,
         queue_type: QueueType,
-        fence: Fence,
+        _fence: Fence,
     ) -> Self {
         Self {
             inner: VecDeque::new(),

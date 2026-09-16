@@ -38,7 +38,7 @@ async-lock = "3.4"
 futures-lite = "2.6"
 parking_lot = "0.12"
 bytemuck = { version = "1.25", features = ["extern_crate_std"] }
-dear-imgui-rs = "0.17.0"
+dear-imgui-rs = "0.18"
 itertools = "0.15.0"
 
 bevy_app = "0.19"
@@ -68,6 +68,7 @@ wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 web-sys = { version = "0.3", features = ["OffscreenCanvas", "Navigator", "DedicatedWorkerGlobalScope", "WorkerNavigator"] }
 js-sys = "0.3"
 wasm-bindgen-futures = "0.4"
+dear-imgui-rs = { version = "0.18", features = ["wasm"] }
 
 [features]
 default = ["threading"]

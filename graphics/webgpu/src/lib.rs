@@ -15,13 +15,7 @@ mod surface;
 mod swapchain;
 mod texture;
 
-pub use adapter::*;
 pub use backend::*;
-pub use device::*;
-pub use instance::*;
-pub use query::*;
-pub use surface::*;
-pub use swapchain::*;
 
 pub(crate) use binding::*;
 pub(crate) use buffer::*;

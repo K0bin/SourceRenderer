@@ -44,6 +44,13 @@ impl<IO: PlatformIO> Plugin for GamePlugin<IO> {
 
 impl<IO: PlatformIO> RendererPicker for GamePlugin<IO> {
     fn pick_renderer() -> RendererType {
-        RendererType::Regular
+        #[cfg(target_arch = "wasm32")]
+        {
+            RendererType::Compat
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            RendererType::Regular
+        }
     }
 }

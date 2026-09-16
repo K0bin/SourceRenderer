@@ -29,7 +29,7 @@ pub struct GraphicsContext {
     _p: PhantomData<*const u8>, // Remove Send + Sync
 }
 
-type ThreadFrames = AtomicRefCell<SmallVec<[FrameContext; FRAME_COUNT]>>;
+struct ThreadFrames(AtomicRefCell<SmallVec<[FrameContext; FRAME_COUNT]>>);
 
 pub struct FrameContext {
     device: Arc<active_gpu_backend::Device>,
@@ -85,7 +85,7 @@ impl GraphicsContext {
                 i,
             ));
         }
-        AtomicRefCell::new(frames)
+        ThreadFrames(AtomicRefCell::new(frames))
     }
 
     pub fn begin_frame(&mut self) -> u64 {
@@ -104,7 +104,7 @@ impl GraphicsContext {
         }
 
         for thread_frame in &mut (*self.thread_frames) {
-            let mut frames = thread_frame.borrow_mut();
+            let mut frames = thread_frame.0.borrow_mut();
             let frames_len = frames.len();
             let frame = &mut frames[(new_frame as usize) % frames_len];
 
@@ -181,15 +181,30 @@ impl GraphicsContext {
         F: Sync,
     {
         let pool = ComputeTaskPool::get();
-        let result = pool.scope(|s| {
-            for element in elements {
-                s.spawn(async {
-                    let mut cmd_buffer = self.get_command_buffer(queue_type);
-                    callback(&mut cmd_buffer, element);
-                    cmd_buffer.finish()
-                })
-            }
-        });
+        let result: Vec<FinishedCommandBuffer>;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            result = pool.scope(|s| {
+                for element in elements {
+                    s.spawn(async {
+                        let mut cmd_buffer = self.get_command_buffer(queue_type);
+                        callback(&mut cmd_buffer, element);
+                        cmd_buffer.finish()
+                    })
+                }
+            });
+        }
+
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            result = elements.iter().map(|element| {
+                let mut cmd_buffer = self.get_command_buffer(queue_type);
+                callback(&mut cmd_buffer, element);
+                cmd_buffer.finish()
+            }).collect();
+        }
+
         let wait_fences = self.build_waits(
             queue_type,
             wait_for_graphics,
@@ -253,7 +268,7 @@ impl GraphicsContext {
 
     pub(super) fn get_thread_frame_context(&self, frame: u64) -> AtomicRefMut<'_, FrameContext> {
         let thread_frames = self.get_thread_frames();
-        let frames = thread_frames.borrow_mut();
+        let frames = thread_frames.0.borrow_mut();
         AtomicRefMut::map(frames, |f| {
             let len = f.len();
             &mut f[(frame as usize) % len]
@@ -290,13 +305,13 @@ impl Drop for GraphicsContext {
     }
 }
 
-// ThreadContext is only ever accessed through GraphicsContext.
-// GraphicsContext will be turned !Send + !Sync on Wasm32, so we can make ThreadContext Send + Sync
+// ThreadFrames is only ever accessed through GraphicsContext.
+// GraphicsContext will be turned !Send + !Sync on Wasm32, so we can make ThreadFrames Send + Sync
 // so ThreadLocal is fine with it.
 #[cfg(target_arch = "wasm32")]
-unsafe impl Send for ThreadContext {}
+unsafe impl Send for ThreadFrames {}
 #[cfg(target_arch = "wasm32")]
-unsafe impl Sync for ThreadContext {}
+unsafe impl Sync for ThreadFrames {}
 
 impl FrameContext {
     fn new(

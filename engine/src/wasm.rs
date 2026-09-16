@@ -3,7 +3,6 @@ use std::pin::Pin;
 use std::sync::{Arc, Condvar, Mutex};
 
 use js_sys::WebAssembly;
-use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::{JsCast as _, JsValue, wasm_bindgen};
 
 // Wasm thread
@@ -44,7 +43,7 @@ pub mod thread {
         }
     }
 
-    pub fn spawn<F, T>(f: F)
+    pub fn spawn<F, T>(_f: F)
     where
         F: FnOnce() -> T + Send + 'static,
         T: Send + 'static,

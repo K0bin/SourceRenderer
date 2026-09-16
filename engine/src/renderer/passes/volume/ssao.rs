@@ -147,7 +147,7 @@ impl SsaoPass {
     fn create_noise_texture(device: &Arc<Device>, size: u32) -> Arc<TextureView> {
         let mut noise = Vec::<Vec4>::with_capacity((size * size) as usize);
 
-        for i in 0..size * size {
+        for _i in 0..size * size {
             noise.push(Vec4::new(
                 random::<f32>() * 2.0f32 - 1.0f32,
                 random::<f32>() * 2.0f32 - 1.0f32,

@@ -25,14 +25,13 @@ layout(push_constant) uniform VeryHighFrequencyUbo {
 };
 
 void main(void) {
-  vec4 pos = vec4(in_pos, 1);
+  vec4 pos = vec4(in_pos, 1.0);
+  vec4 worldPos = model * pos;
 
-  mat4 mvp = camera.viewProj * model;
-
-  out_worldPosition = (model * pos).xyz;
+  out_worldPosition = worldPos.xyz;
   out_uv = in_uv;
   out_lightmap_uv = in_uv;
-  out_normal = normalize((model * vec4(in_normal, 0)).xyz);
+  out_normal = normalize((model * vec4(in_normal, 0.0)).xyz);
 
-  gl_Position = mvp * pos;
+  gl_Position = camera.viewProj * worldPos;
 }

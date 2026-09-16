@@ -1,6 +1,5 @@
-use crate::window::WebWindow;
 use io::WebIO;
-use js_sys::{JsString, Uint8Array};
+use js_sys::Uint8Array;
 use log::info;
 use platform::WebPlatform;
 use sourcerenderer_core::Vec2;
@@ -9,7 +8,7 @@ use sourcerenderer_engine::{
     ButtonState, Engine as ActualEngine, EngineLoopFuncResult, Key, KeyCode, KeyboardInput,
     MouseMotion, WindowState,
 };
-use sourcerenderer_game::GamePlugin;
+use sourcerenderer_game::{GamePlugin, RendererPicker};
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 use web_sys::OffscreenCanvas;
 
@@ -65,18 +64,14 @@ impl Engine {
     }
 
     #[wasm_bindgen(js_name = "keyboardEvent")]
-    pub fn keyboard_event(&mut self, down: bool, key: &JsString) {
+    pub fn keyboard_event(&mut self, down: bool, key: &str) {
         let engine = if let Some(engine) = self.engine.as_mut() {
             engine
         } else {
             log::error!("Engine has been stopped.");
             return;
         };
-        let key_str = key.as_string();
-        if key_str.is_none() {
-            return;
-        }
-        let key_code = js_key_code_to_engine_key_code(key_str.as_ref().unwrap());
+        let key_code = js_key_code_to_engine_key_code(key);
         if key_code.is_none() {
             return;
         }
@@ -114,7 +109,7 @@ impl Engine {
 #[wasm_bindgen(js_name = "startEngine")]
 pub async fn start_engine(canvas: OffscreenCanvas) -> Engine {
     utils::set_panic_hook();
-    console_log::init_with_level(log::Level::Trace).unwrap();
+    console_log::init_with_level(log::Level::Info).unwrap();
 
     info!("Initializing platform");
     let platform = WebPlatform::new_on_worker(canvas).await;
@@ -123,6 +118,7 @@ pub async fn start_engine(canvas: OffscreenCanvas) -> Engine {
     let engine = ActualEngine::run::<_, WebIO, WebPlatform>(
         &platform.window,
         GamePlugin::<WebIO>::default(),
+        GamePlugin::<WebIO>::pick_renderer(),
     );
 
     let wrapper = Engine {

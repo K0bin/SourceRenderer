@@ -551,8 +551,7 @@ mod wasm {
     use sourcerenderer_webgpu::{WebGPUInstance, WebGPUSurface};
     use wasm_bindgen::JsCast;
     use wasm_bindgen::closure::Closure;
-    use wasm_bindgen::prelude::wasm_bindgen;
-    use web_sys::{DedicatedWorkerGlobalScope, Navigator, OffscreenCanvas};
+    use web_sys::{DedicatedWorkerGlobalScope, OffscreenCanvas};
 
     use super::*;
     use crate::AsyncCounter;

@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use smallvec::SmallVec;
 use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI};
 
 use crate::graphics::*;
@@ -109,7 +108,7 @@ impl GeometryPass {
             },
             rasterizer: RasterizerInfo {
                 fill_mode: FillMode::Fill,
-                cull_mode: CullMode::None,
+                cull_mode: CullMode::Back,
                 front_face: FrontFace::Clockwise,
                 sample_count: SampleCount::Samples1,
             },
@@ -232,23 +231,19 @@ impl GeometryPass {
             );
             let model = assets.get_model(drawable.model);
             if model.is_none() {
-                log::info!("Skipping draw because of missing model");
+                log::debug!("Skipping draw because of missing model");
                 continue;
             }
             let model = model.unwrap();
             let mesh = assets.get_mesh(model.mesh_handle());
             if mesh.is_none() {
-                log::info!("Skipping draw because of missing mesh");
+                log::debug!("Skipping draw because of missing mesh");
                 continue;
             }
             let mesh = mesh.unwrap();
-            let materials: SmallVec<[&RendererMaterial; 4]> = model
-                .material_handles()
-                .iter()
-                .map(|handle| assets.get_material(*handle))
-                .collect();
+            let material_handle = model.material_handles()[part.part_index];
+            let material = assets.get_material(material_handle);
             let range = &mesh.parts[part.part_index];
-            let material = &materials[part.part_index];
             let albedo_value = material.get("albedo").unwrap();
             match albedo_value {
                 RendererMaterialValue::Texture(handle) => {
@@ -270,7 +265,7 @@ impl GeometryPass {
                         albedo_view,
                         &self.sampler,
                     );
-                } //_ => unimplemented!(),
+                }
             }
             cmd_buffer.finish_binding();
 

@@ -1,4 +1,4 @@
-use std::{f32, usize};
+use std::f32;
 
 use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;

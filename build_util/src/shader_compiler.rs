@@ -1514,7 +1514,7 @@ fn compile_shader_naga(shader_name: &str, spirv: &[u8]) -> Result<String, ()> {
         },
     )
     .map_err(|e| {
-        error!(
+        warn!(
             "Error parsing SPIR-V when compiling WGSL: {} - {}",
             shader_name, e
         );
@@ -1523,7 +1523,7 @@ fn compile_shader_naga(shader_name: &str, spirv: &[u8]) -> Result<String, ()> {
 
     let mut validator = Validator::new(ValidationFlags::all(), Capabilities::empty());
     let module_info = validator.validate(&module).map_err(|e| {
-        error!(
+        warn!(
             "Error validating module when compiling WGSL: {} - {}",
             shader_name, e
         );
@@ -1532,7 +1532,7 @@ fn compile_shader_naga(shader_name: &str, spirv: &[u8]) -> Result<String, ()> {
 
     let wgsl = naga::back::wgsl::write_string(&module, &module_info, WriterFlags::empty())
         .map_err(|e| {
-            error!("Error compiling WGSL: {} - {}", shader_name, e);
+            warn!("Error compiling WGSL: {} - {}", shader_name, e);
             ()
         })?;
     Ok(wgsl)

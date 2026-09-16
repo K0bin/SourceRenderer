@@ -237,7 +237,6 @@ impl WebGPUCommandBuffer {
                 panic!("Command buffer was not begun.")
             }
             WebGPUCommandBufferHandle::Uninit => unreachable!(),
-            _ => panic!("Secondary command buffers aren't supported here"),
         }
     }
 

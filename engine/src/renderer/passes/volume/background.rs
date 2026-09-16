@@ -20,10 +20,10 @@ pub struct BackgroundPass {
 
 impl BackgroundPass {
     pub(crate) fn new(
-        device: &Arc<crate::graphics::Device>,
+        _device: &Arc<crate::graphics::Device>,
         assets: &RendererAssets,
         _init_cmd_buffer: &mut crate::graphics::CommandBuffer,
-        resources: &mut RendererResources,
+        _resources: &mut RendererResources,
     ) -> Self {
         let shader_file_extension = "json";
 
@@ -85,8 +85,8 @@ impl BackgroundPass {
     pub(crate) fn execute(
         &mut self,
         cmd_buffer: &mut CommandBuffer,
-        scene: &RendererScene,
-        view: &View,
+        _scene: &RendererScene,
+        _view: &View,
         camera_buffer: &TransientBufferSlice,
         params: &RenderPassParameters,
     ) {

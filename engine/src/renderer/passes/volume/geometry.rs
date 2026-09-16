@@ -60,26 +60,12 @@ impl GeometryPass {
     pub const SSS_INTENSITY_TEXTURE_NAME: &'static str = "SSSIntensity";
 
     pub(crate) fn new(
-        device: &Arc<crate::graphics::Device>,
+        _device: &Arc<crate::graphics::Device>,
         assets: &RendererAssets,
         resources: &mut RendererResources,
         resolution: Vec2UI,
     ) -> Self {
         Self::create_textures(resources, resolution);
-
-        let sampler = device.create_sampler(&SamplerInfo {
-            mag_filter: Filter::Linear,
-            min_filter: Filter::Linear,
-            mip_filter: Filter::Linear,
-            address_mode_u: AddressMode::Repeat,
-            address_mode_v: AddressMode::Repeat,
-            address_mode_w: AddressMode::ClampToEdge,
-            mip_bias: 0.0f32,
-            max_anisotropy: 1f32,
-            compare_op: None,
-            min_lod: 0.0f32,
-            max_lod: None,
-        }, None);
 
         let shader_file_extension = "json";
 
