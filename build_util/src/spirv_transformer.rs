@@ -350,7 +350,6 @@ pub fn spirv_turn_push_const_into_ubo_pass(spirv: &mut Vec<u8>, descriptor_set: 
     });
 
     if target_id_opt.is_none() {
-        log::info!("Done replacing push constants");
         return;
     }
 
@@ -377,8 +376,6 @@ pub fn spirv_turn_push_const_into_ubo_pass(spirv: &mut Vec<u8>, descriptor_set: 
             index,
         ],
     );
-
-    log::info!("Done replacing push constants");
 }
 
 pub fn spirv_remove_decoration(spirv: &mut Vec<u8>, decoration: u32) {
@@ -408,8 +405,6 @@ pub fn spirv_remove_decoration(spirv: &mut Vec<u8>, decoration: u32) {
     for range in ranges {
         remove_words(spirv, range);
     }
-
-    log::info!("Done removing decoration: {}", decoration);
 }
 
 pub fn spirv_remove_debug_info(spirv: &mut Vec<u8>) {
@@ -437,8 +432,6 @@ pub fn spirv_remove_debug_info(spirv: &mut Vec<u8>) {
     for range in ranges {
         remove_words(spirv, range);
     }
-
-    log::info!("Done removing debug info");
 }
 
 #[derive(Clone, Debug)]
@@ -498,8 +491,6 @@ pub fn spirv_remap_bindings(spirv: &mut Vec<u8>, callback: impl Fn(&Binding) -> 
         }
         return true;
     });
-
-    log::info!("Done remapping bindings");
 }
 
 #[allow(unused)]
@@ -618,7 +609,6 @@ pub fn spirv_separate_combined_image_samplers(
     });
 
     if sampled_img_types.is_empty() {
-        log::info!("No combined image samplers found in shader.");
         return Vec::new();
     }
 
@@ -1102,9 +1092,6 @@ pub fn spirv_separate_combined_image_samplers(
         let words = cast_to_words(spirv);
         words[3] = next_id;
     }
-
-    log::info!("Done separating combined image samplers");
-
     binding_pairs
 }
 
