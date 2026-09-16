@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
-use web_sys::{Gpu, OffscreenCanvas};
+use web_sys::OffscreenCanvas;
 
 use sourcerenderer_core::gpu;
 
-use crate::{WebGPUBackend, WebGPUDevice, WebGPUInstance, WebGPUSwapchain};
+use crate::{WebGPUBackend, WebGPUDevice, WebGPUSwapchain};
 
 pub struct WebGPUSurface {
     canvas: OffscreenCanvas,

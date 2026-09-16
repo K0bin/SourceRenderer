@@ -1,4 +1,4 @@
-use crate::asset::{AssetLoadPriority, AssetLoaderProgress, AssetType};
+use crate::asset::{AssetLoaderProgress, AssetType};
 use crate::graphics::{GraphicsContext, *};
 use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::passes::dear_imgui_renderer::DearImguiRenderer;

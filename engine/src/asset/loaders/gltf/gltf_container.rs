@@ -5,7 +5,6 @@ use std::io::{
     SeekFrom,
 };
 use std::path::Path;
-use std::usize;
 
 use bevy_tasks::futures_lite::io::{
     BufReader,

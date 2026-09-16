@@ -84,8 +84,7 @@ mod active_gpu_backend {
         WebGPUCommandBuffer as CommandBuffer, WebGPUCommandPool as CommandPool,
         WebGPUComputePipeline as ComputePipeline, WebGPUDevice as Device, WebGPUFence as Fence,
         WebGPUGraphicsPipeline as GraphicsPipeline, WebGPUHeap as Heap, WebGPUInstance as Instance,
-        WebGPUQueryPool as QueryPool, WebGPUQueue as Queue,
-        WebGPURenderBundleInheritance as CommandBufferInheritance, WebGPUSampler as Sampler,
+        WebGPUQueryPool as QueryPool, WebGPUQueue as Queue, WebGPUSampler as Sampler,
         WebGPUSurface as Surface, WebGPUSwapchain as Swapchain, WebGPUTexture as Texture,
         WebGPUTextureView as TextureView,
     };

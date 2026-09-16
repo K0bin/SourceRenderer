@@ -6,7 +6,7 @@ use std::pin::Pin;
 use std::sync::LazyLock;
 use std::task::{Context, Poll};
 
-use async_task::{Runnable, Task};
+use async_task::Task;
 use futures_lite::{AsyncRead, AsyncSeek, FutureExt};
 use sourcerenderer_core::platform::{FileWatcher, PlatformIO};
 
@@ -210,7 +210,7 @@ impl AsyncRead for WebFetchFile {
 impl AsyncSeek for WebFetchFile {
     fn poll_seek(
         mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        _cx: &mut Context<'_>,
         pos: std::io::SeekFrom,
     ) -> Poll<IOResult<u64>> {
         self.task = None;

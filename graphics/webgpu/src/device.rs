@@ -3,10 +3,7 @@ use crate::{
     WebGPUGraphicsPipeline, WebGPUHeap, WebGPULimits, WebGPUQueryPool, WebGPUQueue, WebGPUSampler,
     WebGPUShader, WebGPUShared, WebGPUTexture, WebGPUTextureView,
 };
-use js_sys::{
-    Array,
-    wasm_bindgen::{JsCast, prelude::Closure},
-};
+use js_sys::wasm_bindgen::{JsCast, prelude::Closure};
 use sourcerenderer_core::gpu::{MemoryInfo, PipelineShaderStage};
 use sourcerenderer_core::{
     align_up_32,
@@ -132,8 +129,8 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         WebGPUComputePipeline::new(&self.device, shader, &self.shared, name, &self.limits).unwrap()
     }
 
-    fn create_sampler(&self, info: &gpu::SamplerInfo) -> WebGPUSampler {
-        WebGPUSampler::new(&self.device, info, None).unwrap()
+    fn create_sampler(&self, info: &gpu::SamplerInfo, name: Option<&str>) -> WebGPUSampler {
+        WebGPUSampler::new(&self.device, info, name).unwrap()
     }
 
     fn create_graphics_pipeline(

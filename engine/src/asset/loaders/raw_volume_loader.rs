@@ -10,7 +10,6 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
-use std::slice;
 use std::sync::Arc;
 
 pub struct RawVolumeLoader {}

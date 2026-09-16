@@ -10,7 +10,7 @@ use web_time::{Duration, Instant};
 
 use super::asset::RendererAssets;
 use super::drawable::{
-    RendererStaticDrawable, RendererVolumeDrawable, VolumeDrawableTransparencyMode,
+    RendererStaticDrawable, RendererVolumeDrawable,
     make_camera_proj, make_camera_view,
 };
 use super::ecs::{DirectionalLightComponent, PointLightComponent, VolumeMeshInstance};
@@ -28,6 +28,7 @@ use crate::asset::{AssetLoadPriority, AssetManager, AssetType};
 use crate::engine::{EngineLoopFuncResult, WindowState};
 use crate::graphics::*;
 use crate::renderer::command::RendererCommand;
+#[allow(unused_imports)]
 use crate::renderer::passes::volume::VolumeRenderer;
 use crate::transform::InterpolatedTransform;
 use crate::{Condvar, Mutex};
@@ -115,17 +116,24 @@ impl Renderer {
 
         log::trace!("Initializing render path");
         let render_path: Box<dyn RenderPath>;
-        render_path = if cfg!(target_arch = "wasm32") {
-            assert_eq!(renderer_type, RendererType::Compat);
-            Box::new(WebRenderer::new(
-                device,
-                &swapchain,
-                &mut context,
-                &mut resources,
-                &assets,
-            ))
-        } else {
-            match renderer_type {
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            render_path = {
+                assert_eq!(renderer_type, RendererType::Compat);
+                Box::new(WebRenderer::new(
+                    device,
+                    &swapchain,
+                    &mut context,
+                    &mut resources,
+                    &assets,
+                ))
+            };
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            render_path = match renderer_type {
                 RendererType::Regular => Box::new(ModernRenderer::new(
                     device,
                     &swapchain,
@@ -147,8 +155,8 @@ impl Renderer {
                     &mut resources,
                     &assets,
                 )) as Box<dyn RenderPath>,
-            }
-        };
+            };
+        }
 
         let mut scene = RendererScene::new();
         scene.main_view_mut().aspect_ratio =
@@ -295,7 +303,7 @@ impl Renderer {
         // By this time the current context texture might be invalidated.
         // So do it immediately.
         #[cfg(target_arch = "wasm32")]
-        self.device.flush(QueueType::Graphics);
+        self.device.flush();
 
         self.resources.swap_history_resources();
         self.frame += 1;
