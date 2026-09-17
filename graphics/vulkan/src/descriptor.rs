@@ -1110,7 +1110,7 @@ pub(crate) struct VkDescriptorSetBinding {
 
 struct VkDescriptorSetCacheEntry {
     set: Arc<VkDescriptorSet>,
-    used: bool,
+    last_used_with_resets_conter: u64,
 }
 
 #[allow(unused)]
@@ -1132,6 +1132,7 @@ pub(crate) struct DescriptorCaches {
     permanent_pools: DescriptorPools,
     transient_cache: HashMap<Arc<VkDescriptorSetLayout>, Vec<VkDescriptorSetCacheEntry>>,
     permanent_cache: HashMap<Arc<VkDescriptorSetLayout>, Vec<VkDescriptorSetCacheEntry>>,
+    resets_counter: u64,
 }
 
 impl DescriptorCaches {
@@ -1152,45 +1153,37 @@ impl DescriptorCaches {
             },
             transient_cache: HashMap::new(),
             permanent_cache: HashMap::new(),
+            resets_counter: 0u64,
         }
     }
 
     pub(crate) fn reset(&mut self) {
+        self.resets_counter += 1;
         self.clean_permanent_cache();
         if self.cache_mode != CacheMode::None {
             let transient_cache_mut = &mut self.transient_cache;
             transient_cache_mut.clear();
         }
         let transient_pools_mut = &mut self.transient_pools;
-        for (_, entries) in &mut self.transient_cache {
-            for entry in entries {
-                entry.used = false;
-            }
-        }
         transient_pools_mut.next_non_full_pool_index = 0u32;
         for pool in transient_pools_mut.pools.iter_mut() {
             pool.reset();
         }
         let permanent_pools_mut = &mut self.permanent_pools;
-        for (_, entries) in &mut self.permanent_cache {
-            for entry in entries {
-                entry.used = false;
-            }
-        }
         permanent_pools_mut.next_non_full_pool_index = 0u32;
     }
 
-    pub(crate) fn clean_permanent_cache(&mut self) {
-        // TODO: I might need to make this more aggressive because of memory usage.
-
-        if self.cache_mode != CacheMode::Everything {
+    const MAX_RESETS_SET_UNUSED: u64 = 16;
+    fn clean_permanent_cache(&mut self) {
+        if self.resets_counter < Self::MAX_RESETS_SET_UNUSED {
             return;
         }
 
         let cache_mut = &mut self.permanent_cache;
         for entries in cache_mut.values_mut() {
-            entries.retain(|entry| entry.used);
+            entries.retain(|entry| (self.resets_counter - entry.last_used_with_resets_conter) < Self::MAX_RESETS_SET_UNUSED);
         }
+        cache_mut.retain(|_, sets| !sets.is_empty());
     }
 }
 
@@ -1263,7 +1256,7 @@ impl VkBindingManager {
                 .find(|entry| entry.set.is_compatible(layout, bindings))
         });
         if let Some(entry) = &mut entry_opt {
-            entry.used = true;
+            entry.last_used_with_resets_conter = caches.resets_counter;
         }
         entry_opt.map(|entry| entry.set.clone())
     }
@@ -1417,7 +1410,7 @@ impl VkBindingManager {
                     .or_default()
                     .push(VkDescriptorSetCacheEntry {
                         set: new_set.clone(),
-                        used: true,
+                        last_used_with_resets_conter: caches.resets_counter,
                     });
             }
             new_set
