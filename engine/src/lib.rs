@@ -17,9 +17,13 @@ pub mod transform;
 mod input;
 pub use engine::MouseLockPreference;
 //mod physics;
-mod dear_imgui;
-pub use dear_imgui::DearImgui;
+
+#[cfg(not(target_arch = "wasm32"))]
 pub use dear_imgui_rs;
+#[cfg(not(target_arch = "wasm32"))]
+mod dear_imgui;
+#[cfg(not(target_arch = "wasm32"))]
+pub use dear_imgui::DearImgui;
 
 pub use renderer::VolumeDrawableTransparencyMode;
 

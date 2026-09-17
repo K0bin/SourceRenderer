@@ -1,5 +1,6 @@
-mod ui;
 mod uni_project_plugin;
+#[cfg(not(target_arch = "wasm32"))]
+mod ui;
 
 use sourcerenderer_core::{Matrix4, Vec3};
 pub use uni_project_plugin::*;

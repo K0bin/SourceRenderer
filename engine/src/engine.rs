@@ -4,7 +4,6 @@ use std::time::Duration;
 
 use crate::asset::{AssetManager, AssetManagerECSResource, AssetManagerPlugin};
 use crate::convenience_inputs::ConvenienceInputs;
-use crate::dear_imgui::DearImgui;
 use crate::graphics::*;
 use crate::renderer;
 use crate::renderer::RendererType;
@@ -22,6 +21,8 @@ use bevy_transform::TransformPlugin;
 use sourcerenderer_core::Vec2;
 use sourcerenderer_core::console::Console;
 use sourcerenderer_core::platform::{GraphicsPlatform, PlatformIO, Window};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::dear_imgui::DearImgui;
 
 #[derive(Resource)]
 pub struct ConsoleResource(pub Arc<Console>);
@@ -105,6 +106,7 @@ impl Engine {
             .add_plugins(AssetManagerPlugin::<IO>::default())
             .insert_resource(console_resource);
 
+        #[cfg(not(target_arch = "wasm32"))]
         crate::dear_imgui::install(&mut app, window);
 
         renderer::insert_resources::<G>(&mut app, window, renderer_type);
@@ -218,6 +220,7 @@ impl Engine {
         &mut self,
         window_state: WindowState,
     ) {
+        #[cfg(not(target_arch = "wasm32"))]
         self.app
             .world_mut()
             .non_send_mut::<DearImgui>()

@@ -489,7 +489,7 @@ fn imgui_tight_pitch(format: dear_imgui_rs::TextureFormat, width: u32) -> u32 {
 // Copy of dear_imgui_rs::DrawVert with bytemucks Zeroable and Pod
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Zeroable, Pod)]
-pub struct ImguiDrawVert {
+struct ImguiDrawVert {
     pub pos: [f32; 2],
     pub uv: [f32; 2],
     pub col: u32,

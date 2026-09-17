@@ -109,7 +109,7 @@ impl Engine {
 #[wasm_bindgen(js_name = "startEngine")]
 pub async fn start_engine(canvas: OffscreenCanvas) -> Engine {
     utils::set_panic_hook();
-    console_log::init_with_level(log::Level::Info).unwrap();
+    console_log::init_with_level(log::Level::Trace).unwrap();
 
     info!("Initializing platform");
     let platform = WebPlatform::new_on_worker(canvas).await;

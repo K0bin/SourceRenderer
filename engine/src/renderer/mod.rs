@@ -10,6 +10,13 @@ mod renderer_plugin;
 mod renderer_resources;
 mod renderer_scene;
 
+use std::sync::Arc;
+use command::ImguiFrameSnapshot;
+use sourcerenderer_core::gpu::Format;
+use crate::graphics::{BackendTexture, CommandBuffer, Device, TextureView};
+use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
+use crate::renderer::renderer_resources::RendererResources;
+
 pub mod asset;
 pub(crate) mod passes;
 mod vertex;

@@ -444,6 +444,13 @@ fn extract_volume_renderables(
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+fn extract_ui_data(
+    _events: MessageWriter<AppExit>,
+    _renderer: RendererResourceAccessor,) {
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn extract_ui_data(
     mut events: MessageWriter<AppExit>,
     renderer: RendererResourceAccessor,
@@ -637,6 +644,7 @@ mod wasm {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 use crate::dear_imgui::DearImgui;
 use crate::renderer::ecs::VolumeMeshInstance;
 #[cfg(all(target_arch = "wasm32", feature = "render_thread"))]

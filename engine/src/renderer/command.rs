@@ -2,7 +2,11 @@ use crate::engine::WindowState;
 use crate::renderer::drawable::VolumeDrawableTransparencyMode;
 use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;
-use dear_imgui_rs::FrameSnapshot;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(super) use dear_imgui_rs::FrameSnapshot as ImguiFrameSnapshot;
+#[cfg(target_arch = "wasm32")]
+pub(super) type ImguiFrameSnapshot = ();
 
 pub enum RendererCommand {
     RegisterStatic {
@@ -55,5 +59,5 @@ pub enum RendererCommand {
     SetLightmap(String),
     EndFrame,
     WindowChanged(WindowState),
-    UpdateUIData(FrameSnapshot),
+    UpdateUIData(ImguiFrameSnapshot),
 }

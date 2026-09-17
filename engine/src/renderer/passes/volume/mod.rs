@@ -1,7 +1,7 @@
 use crate::asset::{AssetLoaderProgress, AssetType};
 use crate::graphics::{GraphicsContext, *};
 use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
-use crate::renderer::passes::dear_imgui_renderer::DearImguiRenderer;
+use crate::renderer::passes::DearImguiRenderer;
 use crate::renderer::passes::volume::background::BackgroundPass;
 use crate::renderer::passes::volume::compositing::CompositingPass;
 use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
@@ -137,14 +137,18 @@ impl RenderPath for VolumeRenderer {
     fn on_swapchain_changed(&mut self, _swapchain: &Swapchain) {}
 
     fn is_ready(&self, assets: &RendererAssetsReadOnly) -> bool {
-        self.marching_cubes_pass.is_ready(assets)
+        let mut ready = self.marching_cubes_pass.is_ready(assets)
             && self.geometry.is_ready(assets)
             && self.compositing.is_ready(assets)
             && self.background.is_ready(assets)
             && self.ibl_pass.is_ready(assets)
             && self.ssao.is_ready(assets)
-            && self.sss_pass.is_ready(assets)
-            && self.ui_pass.is_ready(assets)
+            && self.sss_pass.is_ready(assets);
+
+        #[cfg(not(target_arch = "wasm32"))]
+        { ready = ready && self.ui_pass.is_ready(assets); }
+
+        ready
     }
 
     fn render(
@@ -300,6 +304,7 @@ impl RenderPath for VolumeRenderer {
                 range: BarrierTextureRange::default(),
             }]);
 
+            #[cfg(not(target_arch = "wasm32"))]
             self.ui_pass.execute(
                 &self.device,
                 &mut cmd_buffer,

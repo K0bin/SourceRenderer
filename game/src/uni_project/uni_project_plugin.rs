@@ -1,4 +1,3 @@
-use crate::uni_project::ui::UIPlugin;
 use crate::uni_project::{MANIX_PATH, TRANSFER_FUNCTION_PATH, manix_transform};
 use crate::{RendererPicker, fps_camera};
 use bevy_app::{App, Plugin};
@@ -6,6 +5,8 @@ use bevy_math::Affine3A;
 use sourcerenderer_engine::VolumeDrawableTransparencyMode;
 use sourcerenderer_engine::renderer::{RendererType, VolumeMeshInstance};
 use sourcerenderer_engine::transform::InterpolatedTransform;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::uni_project::ui::UIPlugin;
 /* TODO:
  * - DLSS/FSR/XeSS/MetalFX
  * - DearImgui controls
@@ -47,6 +48,7 @@ impl Plugin for UniProjectPlugin {
                 InterpolatedTransform(Affine3A::from_mat4(model_matrix)),
             ));
 
+            #[cfg(not(target_arch = "wasm32"))]
             app.add_plugins(UIPlugin);
         }
 

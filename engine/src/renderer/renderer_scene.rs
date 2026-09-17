@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;
-use dear_imgui_rs::FrameSnapshot;
+use super::ImguiFrameSnapshot;
 use log::warn;
 use sourcerenderer_core::Vec3;
 
@@ -82,7 +82,7 @@ pub struct RendererScene {
     point_lights: RendererEntityType<RendererPointLight>,
     directional_lights: RendererEntityType<RendererDirectionalLight>,
     volume_meshes: RendererEntityType<RendererVolumeDrawable>,
-    latest_imgui: Cell<Option<FrameSnapshot>>,
+    latest_imgui: Cell<Option<ImguiFrameSnapshot>>,
     lightmap: Option<TextureHandle>,
 }
 
@@ -258,11 +258,11 @@ impl RendererScene {
         self.volume_meshes.remove(entity);
     }
 
-    pub fn set_ui_data(&self, data: FrameSnapshot) {
+    pub fn set_ui_data(&self, data: ImguiFrameSnapshot) {
         self.latest_imgui.replace(Some(data));
     }
 
-    pub fn take_ui_data(&self) -> Option<FrameSnapshot> {
+    pub fn take_ui_data(&self) -> Option<ImguiFrameSnapshot> {
         self.latest_imgui.take()
     }
 

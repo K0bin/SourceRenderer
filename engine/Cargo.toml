@@ -38,7 +38,6 @@ async-lock = "3.4"
 futures-lite = "2.6"
 parking_lot = "0.12"
 bytemuck = { version = "1.25", features = ["extern_crate_std"] }
-dear-imgui-rs = "0.18"
 itertools = "0.15.0"
 
 bevy_app = "0.19"
@@ -60,6 +59,9 @@ sourcerenderer_vulkan = { path = "../graphics/vulkan" }
 [target.'cfg(any(target_os = "macos"))'.dependencies]
 objc2 = { version = "0.6", features = ["std", "disable-encoding-assertions"] } # disable-encoding-assertions is required otherwise the Metal debugger doesn't work
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+dear-imgui-rs = "0.18"
+
 # Force rand crate to use getrandom with wasm-js feature
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 sourcerenderer_webgpu = { path = "../graphics/webgpu" }
@@ -68,7 +70,8 @@ wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 web-sys = { version = "0.3", features = ["OffscreenCanvas", "Navigator", "DedicatedWorkerGlobalScope", "WorkerNavigator"] }
 js-sys = "0.3"
 wasm-bindgen-futures = "0.4"
-dear-imgui-rs = { version = "0.18", features = ["wasm"] }
+bevy_platform = { version = "0.19", features = ["web"] }
+bevy_app = { version = "0.19", features = ["web"] }
 
 [features]
 default = ["threading"]

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;
 use crossbeam_channel::{Receiver, SendError, Sender, TryRecvError, unbounded};
-use dear_imgui_rs::FrameSnapshot;
+use super::ImguiFrameSnapshot;
 use sourcerenderer_core::Vec3;
 use sourcerenderer_core::console::Console;
 use web_time::{Duration, Instant};
@@ -740,7 +740,7 @@ impl RendererSender {
             .map_err(|_| SendError(()))
     }
 
-    pub fn update_ui_data(&self, snapshot: FrameSnapshot) -> Result<(), SendError<()>> {
+    pub fn update_ui_data(&self, snapshot: ImguiFrameSnapshot) -> Result<(), SendError<()>> {
         let sender = if let Some(sender) = self.sender.as_ref() {
             sender
         } else {
