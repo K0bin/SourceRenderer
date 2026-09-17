@@ -10,8 +10,6 @@ use web_sys::{js_sys::Uint8Array, GpuBuffer, GpuBufferDescriptor, GpuDevice};
 pub struct WebGPUBuffer {
     device: GpuDevice,
     buffer: RefCell<GpuBuffer>,
-    readback_buffer: Option<RefCell<GpuBuffer>>,
-    descriptor: GpuBufferDescriptor,
     rust_memory: RefCell<Option<Box<[u8]>>>,
     retained_memory_limit: u64,
     mappable: bool,
@@ -125,35 +123,9 @@ impl WebGPUBuffer {
             ()
         })?;
 
-        let readback_buffer = if info.usage.gpu_writable()
-            && mappable
-            && usage != (web_sys::gpu_buffer_usage::COPY_DST | web_sys::gpu_buffer_usage::MAP_READ)
-        {
-            // WebGPU does not allow USAGE_MAP_READ with anything except USAGE_COPY_DST.
-            // So we have to keep a second buffer around and copy to that at the end of every command buffer.
-            let readback_descriptor = GpuBufferDescriptor::new(
-                info.size as u32,
-                web_sys::gpu_buffer_usage::COPY_DST | web_sys::gpu_buffer_usage::MAP_READ,
-            );
-            if let Some(name) = name {
-                readback_descriptor.set_label(&format!("{}_readback", name));
-            }
-            readback_descriptor.set_mapped_at_creation(true);
-            Some(RefCell::new(
-                device.create_buffer(&readback_descriptor).map_err(|e| {
-                    log::error!("Failed to create buffer: {:?}", e);
-                    ()
-                })?,
-            ))
-        } else {
-            None
-        };
-
         Ok(Self {
             device: device.clone(),
             buffer: RefCell::new(buffer),
-            readback_buffer,
-            descriptor,
             rust_memory: RefCell::new(rust_memory),
             mappable,
             retained_memory_limit: retained_rust_memory_limit,
@@ -165,11 +137,6 @@ impl WebGPUBuffer {
     #[inline(always)]
     pub(crate) fn handle(&self) -> Ref<'_, GpuBuffer> {
         self.buffer.borrow()
-    }
-
-    #[inline(always)]
-    pub(crate) fn readback_handle(&self) -> Option<Ref<'_, GpuBuffer>> {
-        self.readback_buffer.as_ref().map(|b| b.borrow())
     }
 
     #[inline(always)]
@@ -207,6 +174,13 @@ impl gpu::Buffer for WebGPUBuffer {
         if !invalidate && !self.info.usage.gpu_readable() {
             log::warn!("Mapping a GPU-writeonly buffer (so probably mapping for reading) without invalidating will cause issues.");
         }
+        let buffer_ref = self.buffer.borrow();
+        if invalidate && buffer_ref.usage() != (web_sys::gpu_buffer_usage::COPY_DST | web_sys::gpu_buffer_usage::MAP_READ) {
+            log::error!("Cannot read GPU written buffer on WebGPU.");
+        }
+        if invalidate && buffer_ref.map_state() != web_sys::GpuBufferMapState::Mapped {
+            log::error!("Cannot read unmapped buffer on WebGPU.");
+        }
 
         length = length.min(self.info.size - offset);
         debug_assert!(offset + length <= self.info.size);
@@ -230,7 +204,6 @@ impl gpu::Buffer for WebGPUBuffer {
             *memory_opt = Some(memory_vec.into_boxed_slice());
         }
         let memory = memory_opt.as_mut().unwrap();
-        let entire_buffer_was_already_mapped = retained_memory_size == self.info.size;
         let entire_buffer_mapped = (memory.len() as u64) >= self.info.size;
 
         let memory_slice = if entire_buffer_mapped {
@@ -238,42 +211,6 @@ impl gpu::Buffer for WebGPUBuffer {
         } else {
             &mut memory[..length as usize]
         };
-
-        if invalidate {
-            let mut use_readback_buffer = false;
-            if let Some(readback_buffer) = self.readback_buffer.as_ref() {
-                let buffer = readback_buffer.borrow_mut();
-                if (&*buffer).map_state() == web_sys::GpuBufferMapState::Mapped {
-                    let mapped_range = buffer.get_mapped_range().unwrap();
-                    let uint8_array = Uint8Array::new_with_byte_offset_and_length(
-                        &mapped_range,
-                        offset as u32,
-                        length as u32,
-                    );
-                    uint8_array.copy_to(memory_slice);
-                    use_readback_buffer = true;
-                } else if self.info.usage.gpu_writable() {
-                    panic!("Cannot read back. Buffer either wasn't mapped after writing or is not ready yet.");
-                }
-            }
-
-            if !use_readback_buffer {
-                let buffer = self.buffer.borrow_mut();
-                if (&*buffer).map_state() == web_sys::GpuBufferMapState::Mapped {
-                    let mapped_range = buffer.get_mapped_range().unwrap();
-                    let uint8_array = Uint8Array::new_with_byte_offset_and_length(
-                        &mapped_range,
-                        offset as u32,
-                        length as u32,
-                    );
-                    uint8_array.copy_to(memory_slice);
-                } else if !entire_buffer_was_already_mapped {
-                    panic!(
-                        "Cannot read back. Read only buffer was not entirely retained in memory."
-                    );
-                }
-            }
-        }
 
         Some(memory_slice.as_mut_ptr() as *mut std::ffi::c_void)
     }
@@ -290,7 +227,6 @@ impl gpu::Buffer for WebGPUBuffer {
             log::warn!("Mapping a GPU-readonly buffer (so probably mapped for writing) without flushing will cause issues.");
         }
 
-        let retain_entire_buffer = self.retained_memory_limit == self.info.size;
         let memory = memory_opt.as_mut().unwrap();
 
         if flush {
@@ -321,17 +257,6 @@ impl gpu::Buffer for WebGPUBuffer {
                 self.device
                     .queue()
                     .write_buffer_with_u32_and_u8_slice(&buffer, offset as u32, memory_slice)
-                    .unwrap();
-            }
-            if let Some(readback_buffer) = self.readback_buffer.as_ref() {
-                let readback_buffer = readback_buffer.borrow();
-                self.device
-                    .queue()
-                    .write_buffer_with_u32_and_u8_slice(
-                        &readback_buffer,
-                        offset as u32,
-                        memory_slice,
-                    )
                     .unwrap();
             }
         }
