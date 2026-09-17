@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::sync::Arc;
 
 use web_time::Duration;
@@ -32,7 +33,7 @@ pub struct RenderPathResult {
     pub backbuffer: Option<Arc<Backbuffer>>,
 }
 
-pub trait RenderPath {
+pub trait RenderPath: Any {
     fn is_gpu_driven(&self) -> bool;
     fn write_occlusion_culling_results(&self, frame: u64, bitset: &mut Vec<u32>);
     fn on_swapchain_changed(&mut self, swapchain: &Swapchain);

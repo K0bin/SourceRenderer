@@ -1,4 +1,5 @@
 use crate::graphics::*;
+use crate::renderer::VolumeRendererOptions;
 use crate::renderer::asset::{
     GraphicsPipelineHandle, GraphicsPipelineInfo, PathPipelineShaderStage, RendererAssets,
     RendererAssetsReadOnly,
@@ -12,7 +13,7 @@ use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use bytemuck::{Pod, Zeroable};
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{StencilOp, TexturePlane};
+use sourcerenderer_core::gpu::{SpecConstValue, StencilOp, TexturePlane};
 use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec3UI};
 use std::cell::Ref;
 use std::collections::HashMap;
@@ -52,6 +53,10 @@ pub struct GeometryPass {
     pipeline_non_overlapping: GraphicsPipelineHandle,
     pipeline_transparent: GraphicsPipelineHandle,
     pipeline_transparent_prepass: GraphicsPipelineHandle,
+
+    pipeline_non_raymarch: GraphicsPipelineHandle,
+    pipeline_non_overlapping_non_raymarch: GraphicsPipelineHandle,
+    pipeline_transparent_non_raymarch: GraphicsPipelineHandle,
 }
 
 impl GeometryPass {
@@ -218,11 +223,41 @@ impl GeometryPass {
         };
         let pipeline_transparent = assets.request_graphics_pipeline(&pipeline_transparency_info);
 
+        fn request_with_fs_spec_consts(
+            assets: &RendererAssets,
+            info: &GraphicsPipelineInfo,
+            spec_consts: &HashMap<u32, SpecConstValue>,
+        ) -> GraphicsPipelineHandle {
+            let mut new_pipeline_info = info.clone();
+            new_pipeline_info.fs = Some(info.fs.as_ref().unwrap().with_spec_consts(&spec_consts));
+            assets.request_graphics_pipeline(&new_pipeline_info)
+        }
+
+        let mut raymarch_spec_consts_hashmap = HashMap::<u32, SpecConstValue>::new();
+        raymarch_spec_consts_hashmap.insert(0, SpecConstValue::Bool(false));
+
+        let non_raymarch_pipeline =
+            request_with_fs_spec_consts(assets, &pipeline_info, &raymarch_spec_consts_hashmap);
+        let non_raymarch_non_overlapping_pipeline = request_with_fs_spec_consts(
+            assets,
+            &pipeline_transparency_non_overlapping_info,
+            &raymarch_spec_consts_hashmap,
+        );
+        let non_raymarch_transparency_pipeline = request_with_fs_spec_consts(
+            assets,
+            &pipeline_transparency_info,
+            &raymarch_spec_consts_hashmap,
+        );
+
         Self {
             pipeline,
             pipeline_transparent,
             pipeline_non_overlapping,
             pipeline_transparent_prepass,
+
+            pipeline_non_raymarch: non_raymarch_pipeline,
+            pipeline_non_overlapping_non_raymarch: non_raymarch_non_overlapping_pipeline,
+            pipeline_transparent_non_raymarch: non_raymarch_transparency_pipeline,
         }
     }
 
@@ -288,6 +323,15 @@ impl GeometryPass {
             && assets
                 .get_graphics_pipeline(self.pipeline_transparent_prepass)
                 .is_some()
+            && assets
+                .get_graphics_pipeline(self.pipeline_non_raymarch)
+                .is_some()
+            && assets
+                .get_graphics_pipeline(self.pipeline_non_overlapping_non_raymarch)
+                .is_some()
+            && assets
+                .get_graphics_pipeline(self.pipeline_transparent_non_raymarch)
+                .is_some()
     }
 
     pub(crate) fn execute(
@@ -295,6 +339,7 @@ impl GeometryPass {
         cmd_buffer: &mut CommandBuffer,
         camera_buffer: &TransientBufferSlice,
         params: &RenderPassParameters,
+        options: &VolumeRendererOptions,
         marching_cubes_map: &HashMap<MarchingCubesKey, MarchingCubesInfo>,
     ) {
         cmd_buffer.clear_all_bindings(BindingFrequency::Frequent);
@@ -455,15 +500,27 @@ impl GeometryPass {
 
         let pipeline: &Arc<GraphicsPipeline> = params
             .assets
-            .get_graphics_pipeline(self.pipeline)
+            .get_graphics_pipeline(if options.ray_march_normals {
+                self.pipeline
+            } else {
+                self.pipeline_non_raymarch
+            })
             .expect("Pipeline is not compiled yet");
         let pipeline_transparent: &Arc<GraphicsPipeline> = params
             .assets
-            .get_graphics_pipeline(self.pipeline_transparent)
+            .get_graphics_pipeline(if options.ray_march_normals {
+                self.pipeline_transparent
+            } else {
+                self.pipeline_transparent_non_raymarch
+            })
             .expect("Pipeline is not compiled yet");
         let pipeline_non_overlapping: &Arc<GraphicsPipeline> = params
             .assets
-            .get_graphics_pipeline(self.pipeline_non_overlapping)
+            .get_graphics_pipeline(if options.ray_march_normals {
+                self.pipeline_non_overlapping
+            } else {
+                self.pipeline_non_overlapping_non_raymarch
+            })
             .expect("Pipeline is not compiled yet");
         let pipeline_transparent_prepass: &Arc<GraphicsPipeline> = params
             .assets

@@ -14,6 +14,8 @@ layout (location = 2) in vec3 in_densityMapUV;
 layout (location = 0) out vec4 out_color;
 layout (location = 1) out float out_sss_intensity;
 
+layout(constant_id = 0) const bool rayMarchNormals = true;
+
 layout (push_constant, std430) uniform Params {
     layout (offset = 96) mat4 invModel;
     vec3 f0;
@@ -149,7 +151,7 @@ void main(void) {
 
     vec3 normal;
     float density;
-    if (normalLod != lod) {
+    if (normalLod != lod && rayMarchNormals) {
         vec3 normalLookUpNormalized = rayMarchPositionInMip(in_densityMapUV, normalLod);
         if (dot(normalLookUpNormalized, normalLookUpNormalized) > 0.001) {
             normal = calculateNormal(normalLookUpNormalized, normalLod);

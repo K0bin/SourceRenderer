@@ -4,6 +4,8 @@ use std::time::Duration;
 
 use crate::asset::{AssetManager, AssetManagerECSResource, AssetManagerPlugin};
 use crate::convenience_inputs::ConvenienceInputs;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::dear_imgui::DearImgui;
 use crate::graphics::*;
 use crate::renderer;
 use crate::renderer::RendererType;
@@ -21,8 +23,6 @@ use bevy_transform::TransformPlugin;
 use sourcerenderer_core::Vec2;
 use sourcerenderer_core::console::Console;
 use sourcerenderer_core::platform::{GraphicsPlatform, PlatformIO, Window};
-#[cfg(not(target_arch = "wasm32"))]
-use crate::dear_imgui::DearImgui;
 
 #[derive(Resource)]
 pub struct ConsoleResource(pub Arc<Console>);
@@ -110,7 +110,7 @@ impl Engine {
         crate::dear_imgui::install(&mut app, window);
 
         renderer::insert_resources::<G>(&mut app, window, renderer_type);
-        renderer::install_systems(&mut app);
+        renderer::install_systems(&mut app, renderer_type);
 
         app.add_plugins(game_plugins);
 

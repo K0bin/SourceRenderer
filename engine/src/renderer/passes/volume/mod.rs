@@ -16,6 +16,8 @@ use marching_cubes::MarchingCubesPass;
 use sourcerenderer_core::{Matrix4, Vec2UI, Vec4};
 use std::sync::Arc;
 
+use crate::renderer::VolumeRendererOptions;
+
 mod background;
 mod compositing;
 mod geometry;
@@ -44,6 +46,7 @@ struct CameraBuffer {
 
 pub struct VolumeRenderer {
     device: Arc<Device>,
+    options: VolumeRendererOptions,
     marching_cubes_pass: MarchingCubesPass,
     geometry: GeometryPass,
     ssao: SsaoPass,
@@ -113,6 +116,7 @@ impl VolumeRenderer {
 
         Self {
             device: device.clone(),
+            options: VolumeRendererOptions::default(),
             marching_cubes_pass,
             geometry: geometry_pass,
             ssao,
@@ -122,6 +126,10 @@ impl VolumeRenderer {
             background,
             ui_pass: ui,
         }
+    }
+
+    pub fn update_options(&mut self, options: &VolumeRendererOptions) {
+        self.options = options.clone();
     }
 }
 
@@ -146,7 +154,9 @@ impl RenderPath for VolumeRenderer {
             && self.sss_pass.is_ready(assets);
 
         #[cfg(not(target_arch = "wasm32"))]
-        { ready = ready && self.ui_pass.is_ready(assets); }
+        {
+            ready = ready && self.ui_pass.is_ready(assets);
+        }
 
         ready
     }
@@ -240,6 +250,7 @@ impl RenderPath for VolumeRenderer {
             &mut cmd_buffer,
             &camera_buffer,
             &params,
+            &self.options,
             &marching_cubes_map,
         );
 

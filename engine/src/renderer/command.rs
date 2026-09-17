@@ -45,6 +45,9 @@ pub enum RendererCommand {
         entity: Entity,
         transform: Affine3A,
     },
+    UpdateVolumeRendererOptions {
+        ray_march_normals: bool,
+    },
     UpdateCameraTransform {
         camera_transform: Affine3A,
         fov: f32,

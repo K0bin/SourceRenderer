@@ -1,19 +1,21 @@
+use std::any::Any;
 use std::sync::Arc;
 
+use super::ImguiFrameSnapshot;
 use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;
 use crossbeam_channel::{Receiver, SendError, Sender, TryRecvError, unbounded};
-use super::ImguiFrameSnapshot;
 use sourcerenderer_core::Vec3;
 use sourcerenderer_core::console::Console;
 use web_time::{Duration, Instant};
 
 use super::asset::RendererAssets;
 use super::drawable::{
-    RendererStaticDrawable, RendererVolumeDrawable,
-    make_camera_proj, make_camera_view,
+    RendererStaticDrawable, RendererVolumeDrawable, make_camera_proj, make_camera_view,
 };
-use super::ecs::{DirectionalLightComponent, PointLightComponent, VolumeMeshInstance};
+use super::ecs::{
+    DirectionalLightComponent, PointLightComponent, VolumeMeshInstance, VolumeRendererOptions,
+};
 use super::light::DirectionalLight;
 #[cfg(not(target_arch = "wasm32"))]
 use super::passes::modern::ModernRenderer;
@@ -517,6 +519,22 @@ impl Renderer {
                 RendererCommand::UpdateUIData(snapshot) => {
                     self.scene.set_ui_data(snapshot);
                 }
+                RendererCommand::UpdateVolumeRendererOptions { ray_march_normals } => {
+                    let any_box_ref: &dyn Any = self.render_path.as_ref();
+                    let type_id = any_box_ref.type_id();
+
+                    let any_box: &mut dyn Any = self.render_path.as_mut();
+                    if let Some(volume_renderer) = any_box.downcast_mut::<VolumeRenderer>() {
+                        volume_renderer
+                            .update_options(&VolumeRendererOptions { ray_march_normals });
+                    } else {
+                        log::error!(
+                            "Current renderer doesn't support the received options. Expected: {:?}. Got: {:?}",
+                            "VolumeRenderer",
+                            type_id
+                        );
+                    }
+                }
             }
 
             let message_res = self.receiver.receiver.try_recv();
@@ -736,6 +754,23 @@ impl RendererSender {
                 texture_lod: renderable.volume_texture_lod,
                 transparent: renderable.transparent,
                 render_as_cubes: renderable.render_as_cubes,
+            })
+            .map_err(|_| SendError(()))
+    }
+
+    pub fn update_volume_renderer_options(
+        &self,
+        options: &VolumeRendererOptions,
+    ) -> Result<(), SendError<()>> {
+        let sender = if let Some(sender) = self.sender.as_ref() {
+            sender
+        } else {
+            return Err(SendError(()));
+        };
+
+        sender
+            .send(RendererCommand::UpdateVolumeRendererOptions {
+                ray_march_normals: options.ray_march_normals,
             })
             .map_err(|_| SendError(()))
     }

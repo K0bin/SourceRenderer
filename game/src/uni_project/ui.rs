@@ -7,7 +7,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::Query;
 use bevy_math::Affine3A;
 use sourcerenderer_engine::dear_imgui_rs::{ChildWindow, Condition, ListBox};
-use sourcerenderer_engine::renderer::VolumeMeshInstance;
+use sourcerenderer_engine::renderer::{VolumeMeshInstance, VolumeRendererOptions};
 use sourcerenderer_engine::transform::InterpolatedTransform;
 use sourcerenderer_engine::{DearImgui, VolumeDrawableTransparencyMode};
 
@@ -17,6 +17,7 @@ impl Plugin for UIPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(UIState::default());
         app.add_systems(Update, (volume_meshes_ui_system,));
+        app.add_systems(Update, (renderer_options_ui_system,));
     }
 }
 
@@ -139,5 +140,21 @@ fn volume_meshes_ui_system(
                     }
                 }
             });
+        });
+}
+
+fn renderer_options_ui_system(
+    imgui: NonSendMut<DearImgui>,
+    mut options: ResMut<VolumeRendererOptions>,
+) {
+    let ui = imgui.ui();
+    let window_size = [250.0f32, 100.0f32];
+
+    ui.window("Renderer options##volumerenderer")
+        .size(window_size, Condition::FirstUseEver)
+        .build(|| {
+            ui.text("Ray march normals:");
+            ui.same_line();
+            ui.checkbox("##raymarchnormals", &mut options.ray_march_normals);
         });
 }

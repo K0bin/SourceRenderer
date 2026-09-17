@@ -107,7 +107,17 @@ struct SyncSet;
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 struct ExtractSet;
 
-pub fn install_systems(app: &mut App) {
+pub fn install_systems(app: &mut App, renderer_type: RendererType) {
+    if renderer_type == RendererType::VolumeUniProject {
+        app.insert_resource(VolumeRendererOptions::default());
+        app.add_systems(
+            Last,
+            (extract_volume_renderer_options,)
+                .in_set(ExtractSet)
+                .after(SyncSet),
+        );
+    }
+
     app.add_systems(Last, (begin_frame).in_set(SyncSet));
     app.add_systems(
         Last,
@@ -444,11 +454,20 @@ fn extract_volume_renderables(
     }
 }
 
-#[cfg(target_arch = "wasm32")]
-fn extract_ui_data(
-    _events: MessageWriter<AppExit>,
-    _renderer: RendererResourceAccessor,) {
+fn extract_volume_renderer_options(
+    mut events: MessageWriter<AppExit>,
+    renderer: RendererResourceAccessor,
+    options: Res<VolumeRendererOptions>,
+) {
+    let result = renderer.sender.update_volume_renderer_options(&options);
+
+    if result.is_err() {
+        let _ = events.write(AppExit::from_code(1));
+    }
 }
+
+#[cfg(target_arch = "wasm32")]
+fn extract_ui_data(_events: MessageWriter<AppExit>, _renderer: RendererResourceAccessor) {}
 
 #[cfg(not(target_arch = "wasm32"))]
 fn extract_ui_data(
@@ -644,8 +663,9 @@ mod wasm {
     }
 }
 
+use crate::renderer::ecs::{VolumeMeshInstance, VolumeRendererOptions};
+
 #[cfg(not(target_arch = "wasm32"))]
 use crate::dear_imgui::DearImgui;
-use crate::renderer::ecs::VolumeMeshInstance;
 #[cfg(all(target_arch = "wasm32", feature = "render_thread"))]
 use wasm::start_render_thread;
