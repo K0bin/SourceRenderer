@@ -1182,7 +1182,9 @@ impl DescriptorCaches {
 
         let cache_mut = &mut self.permanent_cache;
         for entries in cache_mut.values_mut() {
-            entries.retain(|entry| (self.resets_counter - entry.last_used_with_resets_conter) < Self::MAX_RESETS_UNUSED);
+            entries.retain(|entry| {
+                (self.resets_counter - entry.last_used_with_resets_conter) < Self::MAX_RESETS_UNUSED
+            });
         }
         cache_mut.retain(|_, sets| !sets.is_empty());
     }
@@ -1263,17 +1265,31 @@ impl VkBindingManager {
     where
         VkBoundResource: BindingCompare<Option<&'a T>>,
     {
-        if caches.cache_mode == CacheMode::TransientOnly || caches.cache_mode == CacheMode::TransientAndPermanent {
-            if let Some(set) = Self::find_compatible_set_cache(layout, bindings, caches.resets_counter, &mut caches.transient_cache) {
+        if caches.cache_mode == CacheMode::TransientOnly
+            || caches.cache_mode == CacheMode::TransientAndPermanent
+        {
+            if let Some(set) = Self::find_compatible_set_cache(
+                layout,
+                bindings,
+                caches.resets_counter,
+                &mut caches.transient_cache,
+            ) {
                 return Some(set);
             }
         }
 
-        if caches.cache_mode != CacheMode::TransientAndPermanent && caches.cache_mode != CacheMode::PermanentOnly {
+        if caches.cache_mode != CacheMode::TransientAndPermanent
+            && caches.cache_mode != CacheMode::PermanentOnly
+        {
             return None;
         }
 
-        if let Some(set) = Self::find_compatible_set_cache(layout, bindings, caches.resets_counter, &mut caches.permanent_cache) {
+        if let Some(set) = Self::find_compatible_set_cache(
+            layout,
+            bindings,
+            caches.resets_counter,
+            &mut caches.permanent_cache,
+        ) {
             if caches.cache_mode == CacheMode::TransientAndPermanent {
                 // Copy it into transient cache so it can be found quickly in the same frame
                 // This is fine because the transient cache will have a shorter lifespan than the permanent one anyway.
@@ -1394,7 +1410,8 @@ impl VkBindingManager {
         let set: Arc<VkDescriptorSet> = if let Some(cached_set) = cached_set {
             cached_set
         } else {
-            let transient = caches.cache_mode == CacheMode::TransientOnly;
+            let transient = caches.cache_mode == CacheMode::TransientOnly
+                || caches.cache_mode == CacheMode::None;
             let pools = if !transient {
                 &mut caches.permanent_pools
             } else {
@@ -1444,7 +1461,8 @@ impl VkBindingManager {
                 if caches.cache_mode == CacheMode::TransientAndPermanent {
                     // Copy the new set into transient cache so it can be found quickly in the same frame
                     // This is fine because the transient cache will have a shorter lifespan than the permanent one anyway.
-                    caches.transient_cache
+                    caches
+                        .transient_cache
                         .entry(layout.clone())
                         .or_default()
                         .push(VkDescriptorSetCacheEntry {
