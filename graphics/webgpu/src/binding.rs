@@ -8,7 +8,7 @@ use js_sys::{JsNullable, Uint8Array};
 use smallvec::SmallVec;
 use sourcerenderer_core::{align_up_64, gpu};
 use std::marker::PhantomData;
-use std::{cell::RefCell, collections::HashMap, hash::Hash, ops::Deref, sync::Arc};
+use std::{collections::HashMap, hash::Hash, ops::Deref, sync::Arc};
 use web_sys::{
     GpuBindGroup, GpuBindGroupDescriptor, GpuBindGroupEntry, GpuBindGroupLayout,
     GpuBindGroupLayoutDescriptor, GpuBindGroupLayoutEntry, GpuBuffer, GpuBufferBinding,
@@ -820,8 +820,9 @@ struct WebGPUBindGroupCacheEntry {
 #[derive(Debug, Clone, Copy, PartialEq, Hash, Eq)]
 enum CacheMode {
     None,
-    PerFrame,
-    Everything,
+    TransientOnly,
+    TransientAndPermanent,
+    PermanentOnly,
 }
 
 const PUSH_CONST_BUMP_ALLOCATOR_BUFFER_SIZE: u64 = 4u64 << 20u64;
@@ -840,7 +841,7 @@ pub(crate) struct BindGroupCaches {
 
 impl BindGroupCaches {
     pub(crate) fn new() -> Self {
-        let cache_mode = CacheMode::Everything;
+        let cache_mode = CacheMode::TransientAndPermanent;
         Self {
             cache_mode,
             transient_cache: HashMap::new(),
@@ -873,7 +874,6 @@ impl BindGroupCaches {
 }
 
 pub(crate) struct WebGPUBindingManager {
-    cache_mode: CacheMode,
     device: GpuDevice,
     current_sets: [Option<Arc<WebGPUBindGroup>>; gpu::NON_BINDLESS_SET_COUNT as usize],
     dirty: DirtyBindGroups,
@@ -884,8 +884,6 @@ pub(crate) struct WebGPUBindingManager {
 
 impl WebGPUBindingManager {
     pub(crate) fn new(device: &GpuDevice, limits: &WebGPULimits) -> Self {
-        let cache_mode = CacheMode::Everything;
-
         let mut bindings: [Vec<WebGPUBoundResource>; gpu::NON_BINDLESS_SET_COUNT as usize] =
             Default::default();
         for set in &mut bindings {
@@ -907,7 +905,6 @@ impl WebGPUBindingManager {
         );
 
         let mut result = Self {
-            cache_mode,
             device: device.clone(),
             current_sets: Default::default(),
             dirty: DirtyBindGroups::all(),
@@ -1122,30 +1119,58 @@ impl WebGPUBindingManager {
             .insert(DirtyBindGroups::from(gpu::BindingFrequency::VeryFrequent));
     }
 
-    fn find_compatible_set<'a, T>(
-        &self,
+    fn find_compatible_set_cache<'a, T>(
         layout: &'a Arc<WebGPUBindGroupLayout>,
         bindings: &'a [T],
-        use_permanent_cache: bool,
-        caches: &mut BindGroupCaches,
+        reset_counter: u64,
+        cache: &mut HashMap<Arc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>,
     ) -> Option<Arc<WebGPUBindGroup>>
     where
         WebGPUBoundResource: BindingCompare<Option<&'a T>>,
     {
-        let cache = if use_permanent_cache {
-            &mut caches.permanent_cache
-        } else {
-            &mut caches.transient_cache
-        };
-
         let mut entry_opt = cache.get_mut(layout).and_then(|sets| {
             sets.iter_mut()
                 .find(|entry| entry.set.is_compatible(layout, bindings))
         });
         if let Some(entry) = &mut entry_opt {
-            entry.last_used_with_resets_conter = caches.resets_counter;
+            entry.last_used_with_resets_conter = reset_counter;
         }
         entry_opt.map(|entry| entry.set.clone())
+    }
+
+    fn find_compatible_set<'a, T>(
+        layout: &'a Arc<WebGPUBindGroupLayout>,
+        bindings: &'a [T],
+        caches: &mut BindGroupCaches,
+    ) -> Option<Arc<WebGPUBindGroup>>
+    where
+        WebGPUBoundResource: BindingCompare<Option<&'a T>>,
+    {
+        if caches.cache_mode == CacheMode::TransientOnly || caches.cache_mode == CacheMode::TransientAndPermanent {
+            if let Some(set) = Self::find_compatible_set_cache(layout, bindings, caches.resets_counter, &mut caches.transient_cache) {
+                return Some(set);
+            }
+        }
+
+        if caches.cache_mode != CacheMode::TransientAndPermanent && caches.cache_mode != CacheMode::PermanentOnly {
+            return None;
+        }
+
+        if let Some(set) = Self::find_compatible_set_cache(layout, bindings, caches.resets_counter, &mut caches.permanent_cache) {
+            if caches.cache_mode == CacheMode::TransientAndPermanent {
+                // Copy it into transient cache so it can be found quickly in the same frame
+                // This is fine because the transient cache will have a shorter lifespan than the permanent one anyway.
+                let sets = caches.permanent_cache.entry(layout.clone()).or_default();
+                sets.push(WebGPUBindGroupCacheEntry {
+                    set: set.clone(),
+                    last_used_with_resets_conter: caches.resets_counter,
+                });
+            }
+
+            Some(set)
+        } else {
+            None
+        }
     }
 
     fn finish_set(
@@ -1246,24 +1271,22 @@ impl WebGPUBindingManager {
         WebGPUBoundResource: From<&'a T>,
     {
         if layout.is_empty() {
-            log::warn!("Skipping bc empty layout");
             return None;
         }
 
-        let transient = self.cache_mode != CacheMode::Everything;
-
-        let cached_set = if self.cache_mode == CacheMode::None {
+        let cached_set = if caches.cache_mode == CacheMode::None {
             None
         } else {
-            self.find_compatible_set(layout, &bindings, !transient, caches)
+            Self::find_compatible_set(layout, &bindings, caches)
         };
         let set: Arc<WebGPUBindGroup> = if let Some(cached_set) = cached_set {
             cached_set
         } else {
+            let transient = caches.cache_mode == CacheMode::TransientOnly;
             let new_set =
-                Arc::new(WebGPUBindGroup::new(&self.device, layout, transient, bindings).unwrap());
+            Arc::new(WebGPUBindGroup::new(&self.device, layout, transient, bindings).unwrap());
 
-            if self.cache_mode != CacheMode::None {
+            if caches.cache_mode != CacheMode::None {
                 let cache = if transient {
                     &mut caches.transient_cache
                 } else {
@@ -1276,6 +1299,18 @@ impl WebGPUBindingManager {
                         set: new_set.clone(),
                         last_used_with_resets_conter: caches.resets_counter,
                     });
+
+                if caches.cache_mode == CacheMode::TransientAndPermanent {
+                    // Copy the new set into transient cache so it can be found quickly in the same frame
+                    // This is fine because the transient cache will have a shorter lifespan than the permanent one anyway.
+                    caches.transient_cache
+                        .entry(layout.clone())
+                        .or_default()
+                        .push(WebGPUBindGroupCacheEntry {
+                            set: new_set.clone(),
+                            last_used_with_resets_conter: caches.resets_counter,
+                        });
+                }
             }
             new_set
         };
