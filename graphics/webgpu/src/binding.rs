@@ -9,6 +9,7 @@ use smallvec::SmallVec;
 use sourcerenderer_core::{align_up_64, gpu};
 use std::marker::PhantomData;
 use std::{collections::HashMap, hash::Hash, ops::Deref, sync::Arc};
+use bytemuck::{cast_slice, Pod};
 use web_sys::{
     GpuBindGroup, GpuBindGroupDescriptor, GpuBindGroupEntry, GpuBindGroupLayout,
     GpuBindGroupLayoutDescriptor, GpuBindGroupLayoutEntry, GpuBuffer, GpuBufferBinding,
@@ -895,11 +896,7 @@ impl WebGPUBindingManager {
 
         let bump_alloc_buffer = Self::create_push_const_buffer(
             device,
-            if crate::buffer::PREFER_DISCARD_OVER_QUEUE_WRITE {
-                8u64
-            } else {
-                PUSH_CONST_BUMP_ALLOCATOR_BUFFER_SIZE
-            },
+            PUSH_CONST_BUMP_ALLOCATOR_BUFFER_SIZE,
             false,
             web_sys::gpu_buffer_usage::UNIFORM | web_sys::gpu_buffer_usage::COPY_DST,
         );
@@ -1024,96 +1021,53 @@ impl WebGPUBindingManager {
         device.create_buffer(&descriptor).unwrap()
     }
 
-    pub(crate) fn set_push_constant_data<T>(
+    pub(crate) fn set_push_constant_data<T: Pod>(
         &mut self,
         data: &[T],
         visible_for_shader_stage: gpu::ShaderType,
     ) {
-        let data_as_bytes = unsafe {
-            std::slice::from_raw_parts(
-                data.as_ptr() as *const u8,
-                data.len() * std::mem::size_of::<T>(),
-            )
-        };
+        let data_as_bytes: &[u8] = cast_slice(data);
 
-        if crate::buffer::PREFER_DISCARD_OVER_QUEUE_WRITE {
-            let aligned_len = align_up_64(data_as_bytes.len() as u64, 4) as usize;
-            let buffer = Self::create_push_const_buffer(
+        let allocator = &mut self.bump_allocator;
+        if allocator.offset + (data_as_bytes.len() as u64)
+            > PUSH_CONST_BUMP_ALLOCATOR_BUFFER_SIZE
+        {
+            allocator.buffer = Self::create_push_const_buffer(
                 &self.device,
-                aligned_len as u64,
-                true,
-                web_sys::gpu_buffer_usage::UNIFORM,
+                PUSH_CONST_BUMP_ALLOCATOR_BUFFER_SIZE,
+                false,
+                web_sys::gpu_buffer_usage::UNIFORM | web_sys::gpu_buffer_usage::COPY_DST,
             );
-            let mapped_range = buffer.get_mapped_range().unwrap();
-            let uint8_array = Uint8Array::new_with_byte_offset_and_length(
-                &mapped_range,
-                0u32,
-                aligned_len as u32,
-            );
-            if aligned_len != data_as_bytes.len() {
-                let mut padded_data = SmallVec::<[u8; 64]>::new();
-                padded_data.copy_from_slice(data_as_bytes);
-                padded_data.resize(aligned_len, 0u8);
-                uint8_array.copy_from(&padded_data);
-            } else {
-                uint8_array.copy_from(&data_as_bytes);
-            }
-            buffer.unmap();
-
-            let binding_index = if visible_for_shader_stage == gpu::ShaderType::FragmentShader {
-                1
-            } else {
-                0
-            };
-            self.bindings[gpu::BindingFrequency::VeryFrequent as usize][binding_index] =
-                WebGPUBoundResource::UniformBuffer(WebGPUBufferBindingInfo {
-                    buffer: buffer,
-                    offset: 0,
-                    length: aligned_len as u64,
-                    _p: PhantomData,
-                });
-        } else {
-            let allocator = &mut self.bump_allocator;
-            if allocator.offset + (data_as_bytes.len() as u64)
-                > PUSH_CONST_BUMP_ALLOCATOR_BUFFER_SIZE
-            {
-                allocator.buffer = Self::create_push_const_buffer(
-                    &self.device,
-                    PUSH_CONST_BUMP_ALLOCATOR_BUFFER_SIZE,
-                    false,
-                    web_sys::gpu_buffer_usage::UNIFORM | web_sys::gpu_buffer_usage::COPY_DST,
-                );
-                allocator.offset = 0;
-            }
-
-            assert_eq!(data_as_bytes.len() % 4, 0);
-            self.device
-                .queue()
-                .write_buffer_with_u32_and_u8_slice(
-                    &allocator.buffer,
-                    allocator.offset as u32,
-                    data_as_bytes,
-                )
-                .unwrap();
-
-            let binding_index = if visible_for_shader_stage == gpu::ShaderType::FragmentShader {
-                1
-            } else {
-                0
-            };
-            self.bindings[gpu::BindingFrequency::VeryFrequent as usize][binding_index] =
-                WebGPUBoundResource::UniformBuffer(WebGPUBufferBindingInfo {
-                    buffer: allocator.buffer.clone(),
-                    offset: allocator.offset,
-                    length: data_as_bytes.len() as u64,
-                    _p: PhantomData,
-                });
-
-            allocator.offset = align_up_64(
-                allocator.offset + (data_as_bytes.len() as u64),
-                self.limits.min_uniform_buffer_offset_alignment as u64,
-            );
+            allocator.offset = 0;
         }
+
+        assert_eq!(data_as_bytes.len() % 4, 0);
+        self.device
+            .queue()
+            .write_buffer_with_u32_and_u8_slice(
+                &allocator.buffer,
+                allocator.offset as u32,
+                data_as_bytes,
+            )
+            .unwrap();
+
+        let binding_index = if visible_for_shader_stage == gpu::ShaderType::FragmentShader {
+            1
+        } else {
+            0
+        };
+        self.bindings[gpu::BindingFrequency::VeryFrequent as usize][binding_index] =
+            WebGPUBoundResource::UniformBuffer(WebGPUBufferBindingInfo {
+                buffer: allocator.buffer.clone(),
+                offset: allocator.offset,
+                length: data_as_bytes.len() as u64,
+                _p: PhantomData,
+            });
+
+        allocator.offset = align_up_64(
+            allocator.offset + (data_as_bytes.len() as u64),
+            self.limits.min_uniform_buffer_offset_alignment as u64,
+        );
 
         self.dirty
             .insert(DirtyBindGroups::from(gpu::BindingFrequency::VeryFrequent));
