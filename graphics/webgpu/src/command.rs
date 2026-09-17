@@ -30,6 +30,7 @@ use web_sys::{
     GpuRenderPassDescriptor, GpuRenderPassEncoder, GpuStoreOp, GpuTexelCopyBufferInfo,
     GpuTexelCopyTextureInfo,
 };
+use crate::binding::BindGroupCaches;
 
 enum WebGPUPassEncoder {
     None,
@@ -671,7 +672,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         binding_manager.clear_all_bindings(frequency);
     }
 
-    unsafe fn finish_binding(&mut self, _pool: &mut WebGPUCommandPool) {
+    unsafe fn finish_binding(&mut self, pool: &mut WebGPUCommandPool) {
         let pipeline_layout = match &self.get_recording().bound_pipeline {
             WebGPUBoundPipeline::Graphics { pipeline_layout } => pipeline_layout.clone(),
             WebGPUBoundPipeline::Compute { pipeline_layout } => pipeline_layout.clone(),
@@ -684,7 +685,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         let binding_infos: [Option<WebGPUBindGroupBinding>; gpu::NON_BINDLESS_SET_COUNT as usize];
         {
             let binding_manager = &mut self.get_recording_mut().binding_manager;
-            binding_infos = binding_manager.finish(&pipeline_layout);
+            binding_infos = binding_manager.finish(&pipeline_layout, &mut pool.bind_group_caches);
 
             for (set_index, binding) in binding_infos.iter().enumerate() {
                 if binding.is_none() {
@@ -1271,6 +1272,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
 pub struct WebGPUCommandPool {
     device: GpuDevice,
     limits: WebGPULimits,
+    bind_group_caches: BindGroupCaches,
     _p: PhantomData<*const std::ffi::c_void>,
 }
 
@@ -1279,6 +1281,7 @@ impl WebGPUCommandPool {
         Self {
             device: device.clone(),
             limits: limits.clone(),
+            bind_group_caches: BindGroupCaches::new(),
             _p: PhantomData,
         }
     }
@@ -1289,5 +1292,7 @@ impl gpu::CommandPool<WebGPUBackend> for WebGPUCommandPool {
         WebGPUCommandBuffer::new(&self.device, &self.limits, name)
     }
 
-    unsafe fn reset(&mut self) {}
+    unsafe fn reset(&mut self) {
+        self.bind_group_caches.reset();
+    }
 }

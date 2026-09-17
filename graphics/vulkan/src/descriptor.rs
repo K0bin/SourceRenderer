@@ -1173,15 +1173,15 @@ impl DescriptorCaches {
         permanent_pools_mut.next_non_full_pool_index = 0u32;
     }
 
-    const MAX_RESETS_SET_UNUSED: u64 = 16;
+    const MAX_RESETS_UNUSED: u64 = 16;
     fn clean_permanent_cache(&mut self) {
-        if self.resets_counter < Self::MAX_RESETS_SET_UNUSED {
+        if self.resets_counter < Self::MAX_RESETS_UNUSED {
             return;
         }
 
         let cache_mut = &mut self.permanent_cache;
         for entries in cache_mut.values_mut() {
-            entries.retain(|entry| (self.resets_counter - entry.last_used_with_resets_conter) < Self::MAX_RESETS_SET_UNUSED);
+            entries.retain(|entry| (self.resets_counter - entry.last_used_with_resets_conter) < Self::MAX_RESETS_UNUSED);
         }
         cache_mut.retain(|_, sets| !sets.is_empty());
     }

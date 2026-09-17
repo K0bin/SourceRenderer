@@ -813,7 +813,7 @@ pub(crate) struct WebGPUBindGroupBinding {
 
 struct WebGPUBindGroupCacheEntry {
     set: Arc<WebGPUBindGroup>,
-    used: bool,
+    last_used_with_resets_conter: u64,
 }
 
 #[allow(unused)]
@@ -831,14 +831,53 @@ struct PushConstBumpAllocator {
     offset: u64,
 }
 
+pub(crate) struct BindGroupCaches {
+    cache_mode: CacheMode,
+    transient_cache: HashMap<Arc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>,
+    permanent_cache: HashMap<Arc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>,
+    resets_counter: u64,
+}
+
+impl BindGroupCaches {
+    pub(crate) fn new() -> Self {
+        let cache_mode = CacheMode::Everything;
+        Self {
+            cache_mode,
+            transient_cache: HashMap::new(),
+            permanent_cache: HashMap::new(),
+            resets_counter: 0u64,
+        }
+    }
+
+    pub(crate) fn reset(&mut self) {
+        self.resets_counter += 1;
+        self.clean_permanent_cache();
+        if self.cache_mode != CacheMode::None {
+            let transient_cache_mut = &mut self.transient_cache;
+            transient_cache_mut.clear();
+        }
+    }
+
+    const MAX_RESETS_UNUSED: u64 = 16;
+    fn clean_permanent_cache(&mut self) {
+        if self.resets_counter < Self::MAX_RESETS_UNUSED {
+            return;
+        }
+
+        let cache_mut = &mut self.permanent_cache;
+        for entries in cache_mut.values_mut() {
+            entries.retain(|entry| (self.resets_counter - entry.last_used_with_resets_conter) < Self::MAX_RESETS_UNUSED);
+        }
+        cache_mut.retain(|_, sets| !sets.is_empty());
+    }
+}
+
 pub(crate) struct WebGPUBindingManager {
     cache_mode: CacheMode,
     device: GpuDevice,
     current_sets: [Option<Arc<WebGPUBindGroup>>; gpu::NON_BINDLESS_SET_COUNT as usize],
     dirty: DirtyBindGroups,
     bindings: [Vec<WebGPUBoundResource>; gpu::NON_BINDLESS_SET_COUNT as usize],
-    transient_cache: RefCell<HashMap<Arc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>>,
-    permanent_cache: RefCell<HashMap<Arc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>>,
     bump_allocator: PushConstBumpAllocator,
     limits: WebGPULimits,
 }
@@ -873,8 +912,6 @@ impl WebGPUBindingManager {
             current_sets: Default::default(),
             dirty: DirtyBindGroups::all(),
             bindings,
-            transient_cache: RefCell::new(HashMap::new()),
-            permanent_cache: RefCell::new(HashMap::new()),
             bump_allocator: PushConstBumpAllocator {
                 buffer: bump_alloc_buffer,
                 offset: 0,
@@ -899,11 +936,6 @@ impl WebGPUBindingManager {
         }
 
         self.current_sets = Default::default();
-        self.clean_permanent_cache();
-        if self.cache_mode != CacheMode::None {
-            let mut transient_cache_mut = self.transient_cache.borrow_mut();
-            transient_cache_mut.clear();
-        }
         self.bump_allocator.offset = 0;
         self.set_push_constant_data(&[0u64], gpu::ShaderType::VertexShader);
         self.set_push_constant_data(&[0u64], gpu::ShaderType::FragmentShader);
@@ -1095,14 +1127,15 @@ impl WebGPUBindingManager {
         layout: &'a Arc<WebGPUBindGroupLayout>,
         bindings: &'a [T],
         use_permanent_cache: bool,
+        caches: &mut BindGroupCaches,
     ) -> Option<Arc<WebGPUBindGroup>>
     where
         WebGPUBoundResource: BindingCompare<Option<&'a T>>,
     {
-        let mut cache = if use_permanent_cache {
-            self.permanent_cache.borrow_mut()
+        let cache = if use_permanent_cache {
+            &mut caches.permanent_cache
         } else {
-            self.transient_cache.borrow_mut()
+            &mut caches.transient_cache
         };
 
         let mut entry_opt = cache.get_mut(layout).and_then(|sets| {
@@ -1110,7 +1143,7 @@ impl WebGPUBindingManager {
                 .find(|entry| entry.set.is_compatible(layout, bindings))
         });
         if let Some(entry) = &mut entry_opt {
-            entry.used = true;
+            entry.last_used_with_resets_conter = caches.resets_counter;
         }
         entry_opt.map(|entry| entry.set.clone())
     }
@@ -1119,6 +1152,7 @@ impl WebGPUBindingManager {
         &mut self,
         pipeline_layout: &WebGPUPipelineLayout,
         frequency: gpu::BindingFrequency,
+        caches: &mut BindGroupCaches,
     ) -> Option<WebGPUBindGroupBinding> {
         let layout_option = pipeline_layout.bind_group_layout(frequency as u32);
         if !self.dirty.contains(DirtyBindGroups::from(frequency)) || layout_option.is_none() {
@@ -1136,7 +1170,7 @@ impl WebGPUBindingManager {
             }
         }
 
-        set = set.or_else(|| self.get_or_create_set(layout, bindings));
+        set = set.or_else(|| self.get_or_create_set(layout, bindings, caches));
         self.current_sets[frequency as usize] = set.clone();
         set.map(|set| self.get_descriptor_set_binding_info(set, bindings))
     }
@@ -1205,6 +1239,7 @@ impl WebGPUBindingManager {
         &self,
         layout: &'a Arc<WebGPUBindGroupLayout>,
         bindings: &'a [T],
+        caches: &mut BindGroupCaches,
     ) -> Option<Arc<WebGPUBindGroup>>
     where
         WebGPUBoundResource: BindingCompare<Option<&'a T>>,
@@ -1220,7 +1255,7 @@ impl WebGPUBindingManager {
         let cached_set = if self.cache_mode == CacheMode::None {
             None
         } else {
-            self.find_compatible_set(layout, &bindings, !transient)
+            self.find_compatible_set(layout, &bindings, !transient, caches)
         };
         let set: Arc<WebGPUBindGroup> = if let Some(cached_set) = cached_set {
             cached_set
@@ -1229,17 +1264,17 @@ impl WebGPUBindingManager {
                 Arc::new(WebGPUBindGroup::new(&self.device, layout, transient, bindings).unwrap());
 
             if self.cache_mode != CacheMode::None {
-                let mut cache = if transient {
-                    self.transient_cache.borrow_mut()
+                let cache = if transient {
+                    &mut caches.transient_cache
                 } else {
-                    self.permanent_cache.borrow_mut()
+                    &mut caches.permanent_cache
                 };
                 cache
                     .entry(layout.clone())
                     .or_default()
                     .push(WebGPUBindGroupCacheEntry {
                         set: new_set.clone(),
-                        used: true
+                        last_used_with_resets_conter: caches.resets_counter,
                     });
             }
             new_set
@@ -1262,6 +1297,7 @@ impl WebGPUBindingManager {
     pub(super) fn finish(
         &mut self,
         pipeline_layout: &WebGPUPipelineLayout,
+        caches: &mut BindGroupCaches,
     ) -> [Option<WebGPUBindGroupBinding>; gpu::NON_BINDLESS_SET_COUNT as usize] {
         if self.dirty.is_empty() {
             return Default::default();
@@ -1270,27 +1306,13 @@ impl WebGPUBindingManager {
         let mut set_bindings: [Option<WebGPUBindGroupBinding>;
             gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
         set_bindings[gpu::BindingFrequency::VeryFrequent as usize] =
-            self.finish_set(pipeline_layout, gpu::BindingFrequency::VeryFrequent);
+            self.finish_set(pipeline_layout, gpu::BindingFrequency::VeryFrequent, caches);
         set_bindings[gpu::BindingFrequency::Frame as usize] =
-            self.finish_set(pipeline_layout, gpu::BindingFrequency::Frame);
+            self.finish_set(pipeline_layout, gpu::BindingFrequency::Frame, caches);
         set_bindings[gpu::BindingFrequency::Frequent as usize] =
-            self.finish_set(pipeline_layout, gpu::BindingFrequency::Frequent);
+            self.finish_set(pipeline_layout, gpu::BindingFrequency::Frequent, caches);
 
         self.dirty = DirtyBindGroups::empty();
         set_bindings
-    }
-
-    fn clean_permanent_cache(&mut self) {
-        // TODO: I might need to make this more aggressive because of memory usage.
-
-        if self.cache_mode != CacheMode::Everything
-        {
-            return;
-        }
-
-        let mut cache_mut = self.permanent_cache.borrow_mut();
-        for entries in cache_mut.values_mut() {
-            entries.retain(|entry| entry.used);
-        }
     }
 }
