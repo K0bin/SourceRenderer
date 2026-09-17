@@ -511,7 +511,7 @@ impl VkPipeline {
 
         if let Some(pipeline_shader) = info.fs.as_ref() {
             let (spec_info, spec_data, spec_map) =
-                unsafe { Self::get_spec_map(info.vs.spec_consts) };
+                unsafe { Self::get_spec_map(&pipeline_shader.spec_consts) };
 
             _fs_spec_info = spec_info;
             _fs_spec_data = Some(spec_data);
