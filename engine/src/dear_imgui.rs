@@ -15,7 +15,6 @@ pub fn install(app: &mut App, window: &impl Window<ActiveBackend>) {
     app.insert_non_send(DearImgui::new(window.width(), window.height()));
     app.add_systems(PreUpdate, (update_input,));
     app.add_systems(PreUpdate, (begin_frame_system,));
-    app.add_systems(Update, (test_ui_system,));
 }
 
 struct FrameWithRef {
@@ -156,15 +155,4 @@ fn update_input(
 
 fn begin_frame_system(mut imgui: NonSendMut<DearImgui>) {
     imgui.begin_frame();
-}
-
-fn test_ui_system(imgui: NonSendMut<DearImgui>) {
-    let ui = imgui.ui();
-    ui.window("Hello World")
-        .position([0.0, 0.0], Condition::FirstUseEver)
-        .size([300.0, 100.0], Condition::FirstUseEver)
-        .build(|| {
-            ui.text("Hello, world!");
-            ui.text("This is Dear ImGui with docking support!");
-        });
 }
