@@ -370,6 +370,7 @@ impl Renderer {
                     transparent,
                     texture_lod: lod,
                     render_as_cubes,
+                    ray_march_normals,
                 } => {
                     self.scene.update_volume_mesh_data(
                         entity,
@@ -377,6 +378,7 @@ impl Renderer {
                         lod,
                         transparent,
                         render_as_cubes,
+                        ray_march_normals,
                     );
                 }
 
@@ -454,6 +456,7 @@ impl Renderer {
                     min_threshold,
                     transparent,
                     render_as_cubes,
+                    ray_march_normals,
                 } => {
                     let (volume_texture_handle, _) = self.assets.asset_manager().request_asset(
                         &texture_path,
@@ -490,6 +493,7 @@ impl Renderer {
                             volume_texture_max: volume_texture_handle_max.into(),
                             transfer_function_texture: transfer_function_texture_handle.into(),
                             render_as_cubes,
+                            ray_march_normals,
                         },
                     );
                 }
@@ -519,14 +523,13 @@ impl Renderer {
                 RendererCommand::UpdateUIData(snapshot) => {
                     self.scene.set_ui_data(snapshot);
                 }
-                RendererCommand::UpdateVolumeRendererOptions { ray_march_normals } => {
+                RendererCommand::UpdateVolumeRendererOptions {} => {
                     let any_box_ref: &dyn Any = self.render_path.as_ref();
                     let type_id = any_box_ref.type_id();
 
                     let any_box: &mut dyn Any = self.render_path.as_mut();
                     if let Some(volume_renderer) = any_box.downcast_mut::<VolumeRenderer>() {
-                        volume_renderer
-                            .update_options(&VolumeRendererOptions { ray_march_normals });
+                        volume_renderer.update_options(&VolumeRendererOptions {});
                     } else {
                         log::error!(
                             "Current renderer doesn't support the received options. Expected: {:?}. Got: {:?}",
@@ -685,6 +688,7 @@ impl RendererSender {
                 texture_lod: renderable.volume_texture_lod,
                 transfer_function_texture_path: renderable.transfer_function_texture_path.clone(),
                 render_as_cubes: renderable.render_as_cubes,
+                ray_march_normals: renderable.ray_march_normals,
             })
             .map_err(|_| SendError(()))
     }
@@ -754,6 +758,7 @@ impl RendererSender {
                 texture_lod: renderable.volume_texture_lod,
                 transparent: renderable.transparent,
                 render_as_cubes: renderable.render_as_cubes,
+                ray_march_normals: renderable.ray_march_normals,
             })
             .map_err(|_| SendError(()))
     }
@@ -769,9 +774,7 @@ impl RendererSender {
         };
 
         sender
-            .send(RendererCommand::UpdateVolumeRendererOptions {
-                ray_march_normals: options.ray_march_normals,
-            })
+            .send(RendererCommand::UpdateVolumeRendererOptions {})
             .map_err(|_| SendError(()))
     }
 

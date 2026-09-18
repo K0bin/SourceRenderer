@@ -39,15 +39,14 @@ pub enum RendererCommand {
         min_threshold: f32,
         transparent: VolumeDrawableTransparencyMode,
         render_as_cubes: bool,
+        ray_march_normals: bool,
     },
     UnregisterVolume(Entity),
     UpdateTransform {
         entity: Entity,
         transform: Affine3A,
     },
-    UpdateVolumeRendererOptions {
-        ray_march_normals: bool,
-    },
+    UpdateVolumeRendererOptions {},
     UpdateCameraTransform {
         camera_transform: Affine3A,
         fov: f32,
@@ -58,6 +57,7 @@ pub enum RendererCommand {
         texture_lod: u32,
         transparent: VolumeDrawableTransparencyMode,
         render_as_cubes: bool,
+        ray_march_normals: bool,
     },
     SetLightmap(String),
     EndFrame,

@@ -37,6 +37,7 @@ pub struct RendererVolumeDrawable {
     pub transparent: VolumeDrawableTransparencyMode,
     pub min_threshold: f32,
     pub render_as_cubes: bool,
+    pub ray_march_normals: bool,
 }
 
 #[derive(Clone)]

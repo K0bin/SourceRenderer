@@ -500,33 +500,34 @@ impl GeometryPass {
 
         let pipeline: &Arc<GraphicsPipeline> = params
             .assets
-            .get_graphics_pipeline(if options.ray_march_normals {
-                self.pipeline
-            } else {
-                self.pipeline_non_raymarch
-            })
+            .get_graphics_pipeline(self.pipeline)
             .expect("Pipeline is not compiled yet");
         let pipeline_transparent: &Arc<GraphicsPipeline> = params
             .assets
-            .get_graphics_pipeline(if options.ray_march_normals {
-                self.pipeline_transparent
-            } else {
-                self.pipeline_transparent_non_raymarch
-            })
+            .get_graphics_pipeline(self.pipeline_transparent)
             .expect("Pipeline is not compiled yet");
         let pipeline_non_overlapping: &Arc<GraphicsPipeline> = params
             .assets
-            .get_graphics_pipeline(if options.ray_march_normals {
-                self.pipeline_non_overlapping
-            } else {
-                self.pipeline_non_overlapping_non_raymarch
-            })
+            .get_graphics_pipeline(self.pipeline_non_overlapping)
             .expect("Pipeline is not compiled yet");
         let pipeline_transparent_prepass: &Arc<GraphicsPipeline> = params
             .assets
             .get_graphics_pipeline(self.pipeline_transparent_prepass)
             .expect("Pipeline is not compiled yet");
-        cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
+
+        let pipeline_non_raymarching: &Arc<GraphicsPipeline> = params
+            .assets
+            .get_graphics_pipeline(self.pipeline_non_raymarch)
+            .expect("Pipeline is not compiled yet");
+        let pipeline_transparent_non_raymarching: &Arc<GraphicsPipeline> = params
+            .assets
+            .get_graphics_pipeline(self.pipeline_transparent_non_raymarch)
+            .expect("Pipeline is not compiled yet");
+        let pipeline_non_overlapping_non_raymarching: &Arc<GraphicsPipeline> = params
+            .assets
+            .get_graphics_pipeline(self.pipeline_non_overlapping_non_raymarch)
+            .expect("Pipeline is not compiled yet");
+
         cmd_buffer.set_viewports(&[Viewport {
             position: Vec2::new(0.0f32, 0.0f32),
             extent: Vec2::new(color_tex_extent.x as f32, color_tex_extent.y as f32),
@@ -539,131 +540,147 @@ impl GeometryPass {
         }]);
         cmd_buffer.set_stencil_reference(1u32);
 
-        cmd_buffer.bind_uniform_buffer(
-            BindingFrequency::Frame,
-            0,
-            BufferRef::Transient(camera_buffer),
-            0,
-            WHOLE_BUFFER,
-        );
+        let mut base_pass = |ray_march_normals: bool| {
+            cmd_buffer.set_pipeline(PipelineBinding::Graphics(if ray_march_normals {
+                pipeline
+            } else {
+                pipeline_non_raymarching
+            }));
 
-        cmd_buffer.bind_sampling_view_and_sampler(
-            BindingFrequency::Frequent,
-            2u32,
-            &env_map_diffuse,
-            resources.linear_sampler(),
-        );
-        cmd_buffer.bind_sampling_view_and_sampler(
-            BindingFrequency::Frequent,
-            3u32,
-            &env_map_specular,
-            resources.linear_sampler(),
-        );
-        cmd_buffer.bind_sampling_view_and_sampler(
-            BindingFrequency::Frequent,
-            4u32,
-            &integration_lut,
-            resources.linear_sampler(),
-        );
-        cmd_buffer.bind_uniform_buffer(
-            BindingFrequency::Frame,
-            0,
-            BufferRef::Transient(camera_buffer),
-            0,
-            WHOLE_BUFFER,
-        );
+            cmd_buffer.bind_uniform_buffer(
+                BindingFrequency::Frame,
+                0,
+                BufferRef::Transient(camera_buffer),
+                0,
+                WHOLE_BUFFER,
+            );
 
-        for drawable in params.scene.scene.volume_mesh_instances() {
-            if drawable.transparent != VolumeDrawableTransparencyMode::Opaque
-                && !(!has_opaque
-                    && drawable.transparent
-                        == VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque)
-            {
-                continue;
-            }
-
-            let mut model_matrix = drawable.transform.into();
-            let lod_scale = (1u32 << drawable.texture_lod) as f32;
-            model_matrix *= Matrix4::from_scale(Vec3::new(lod_scale, lod_scale, lod_scale));
-
-            let volume_texture = params.assets.get_texture(drawable.volume_texture);
-            let volume_texture_base_opt = volume_texture.view.texture();
-            if volume_texture_base_opt.is_none() {
-                continue;
-            }
-            let volume_texture_base = volume_texture_base_opt.unwrap();
-            let volume_texture_info = volume_texture_base.info();
-            let volume_texture_lod_extents = Vec3UI::new(
-                volume_texture_info.width >> drawable.texture_lod,
-                volume_texture_info.height >> drawable.texture_lod,
-                volume_texture_info.depth >> drawable.texture_lod,
+            cmd_buffer.bind_sampling_view_and_sampler(
+                BindingFrequency::Frequent,
+                2u32,
+                &env_map_diffuse,
+                resources.linear_sampler(),
             );
             cmd_buffer.bind_sampling_view_and_sampler(
                 BindingFrequency::Frequent,
-                0u32,
-                &volume_texture.view,
+                3u32,
+                &env_map_specular,
                 resources.linear_sampler(),
             );
-
-            let transfer_function = params
-                .assets
-                .get_texture(drawable.transfer_function_texture);
             cmd_buffer.bind_sampling_view_and_sampler(
                 BindingFrequency::Frequent,
-                1u32,
-                &transfer_function.view,
+                4u32,
+                &integration_lut,
                 resources.linear_sampler(),
             );
-
-            cmd_buffer.set_push_constant_data(
-                &[PushConstantData {
-                    model_matrix,
-                    lod_extents: volume_texture_lod_extents,
-                    threshold: drawable.min_threshold,
-                    lod: drawable.texture_lod,
-                    ..Zeroable::zeroed()
-                }],
-                ShaderType::VertexShader,
-            );
-            cmd_buffer.set_push_constant_data(
-                &[MaterialData {
-                    roughness: 0.6f32,
-                    metalness: 0.3f32,
-                    //roughness: 0.1f32,
-                    //metalness: 0.9f32,
-                    f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
-                    inv_model_matrix: Matrix4::inverse(&model_matrix),
-                    lod: drawable.texture_lod,
-                    width: color_tex_extent.x as f32,
-                    height: color_tex_extent.y as f32,
-                    threshold: drawable.min_threshold,
-                    ..Zeroable::zeroed()
-                }],
-                ShaderType::FragmentShader,
-            );
-            let key = MarchingCubesKey::new(
-                drawable.volume_texture,
-                drawable.texture_lod,
-                drawable.entity,
-            );
-            let buffer_info = marching_cubes_map.get(&key).unwrap();
-            let ibo = resources.access_buffer(
-                cmd_buffer,
-                &buffer_info.buffer_name,
-                BarrierSync::INDEX_INPUT,
-                BarrierAccess::INDEX_READ,
-                HistoryResourceEntry::Current,
+            cmd_buffer.bind_uniform_buffer(
+                BindingFrequency::Frame,
+                0,
+                BufferRef::Transient(camera_buffer),
+                0,
+                WHOLE_BUFFER,
             );
 
-            cmd_buffer.set_index_buffer(BufferRef::Regular(&*ibo), 0u64, IndexFormat::U32);
-            cmd_buffer.finish_binding();
-            cmd_buffer.draw_indexed_indirect(
-                BufferRef::Regular(&*marchingcubes_indirect),
-                buffer_info.indirect_buffer_offset as u64,
-                1u32,
-                std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
-            );
-        }
+            for drawable in params.scene.scene.volume_mesh_instances() {
+                if drawable.transparent != VolumeDrawableTransparencyMode::Opaque
+                    && !(!has_opaque
+                        && drawable.transparent
+                            == VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque)
+                {
+                    continue;
+                }
+
+                if drawable.ray_march_normals != ray_march_normals {
+                    continue;
+                }
+
+                let mut model_matrix = drawable.transform.into();
+                let lod_scale = (1u32 << drawable.texture_lod) as f32;
+                model_matrix *= Matrix4::from_scale(Vec3::new(lod_scale, lod_scale, lod_scale));
+
+                let volume_texture = params.assets.get_texture(drawable.volume_texture);
+                let volume_texture_base_opt = volume_texture.view.texture();
+                if volume_texture_base_opt.is_none() {
+                    continue;
+                }
+                let volume_texture_base = volume_texture_base_opt.unwrap();
+                let volume_texture_info = volume_texture_base.info();
+                let volume_texture_lod_extents = Vec3UI::new(
+                    volume_texture_info.width >> drawable.texture_lod,
+                    volume_texture_info.height >> drawable.texture_lod,
+                    volume_texture_info.depth >> drawable.texture_lod,
+                );
+                cmd_buffer.bind_sampling_view_and_sampler(
+                    BindingFrequency::Frequent,
+                    0u32,
+                    &volume_texture.view,
+                    resources.linear_sampler(),
+                );
+
+                let transfer_function = params
+                    .assets
+                    .get_texture(drawable.transfer_function_texture);
+                cmd_buffer.bind_sampling_view_and_sampler(
+                    BindingFrequency::Frequent,
+                    1u32,
+                    &transfer_function.view,
+                    resources.linear_sampler(),
+                );
+
+                cmd_buffer.set_push_constant_data(
+                    &[PushConstantData {
+                        model_matrix,
+                        lod_extents: volume_texture_lod_extents,
+                        threshold: drawable.min_threshold,
+                        lod: drawable.texture_lod,
+                        ..Zeroable::zeroed()
+                    }],
+                    ShaderType::VertexShader,
+                );
+                cmd_buffer.set_push_constant_data(
+                    &[MaterialData {
+                        roughness: 0.6f32,
+                        metalness: 0.3f32,
+                        //roughness: 0.1f32,
+                        //metalness: 0.9f32,
+                        f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
+                        inv_model_matrix: Matrix4::inverse(&model_matrix),
+                        lod: drawable.texture_lod,
+                        width: color_tex_extent.x as f32,
+                        height: color_tex_extent.y as f32,
+                        threshold: drawable.min_threshold,
+                        ..Zeroable::zeroed()
+                    }],
+                    ShaderType::FragmentShader,
+                );
+                let key = MarchingCubesKey::new(
+                    drawable.volume_texture,
+                    drawable.texture_lod,
+                    drawable.entity,
+                );
+                let buffer_info = marching_cubes_map.get(&key).unwrap();
+                let ibo = resources.access_buffer(
+                    cmd_buffer,
+                    &buffer_info.buffer_name,
+                    BarrierSync::INDEX_INPUT,
+                    BarrierAccess::INDEX_READ,
+                    HistoryResourceEntry::Current,
+                );
+
+                cmd_buffer.set_index_buffer(BufferRef::Regular(&*ibo), 0u64, IndexFormat::U32);
+                cmd_buffer.finish_binding();
+                cmd_buffer.draw_indexed_indirect(
+                    BufferRef::Regular(&*marchingcubes_indirect),
+                    buffer_info.indirect_buffer_offset as u64,
+                    1u32,
+                    std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
+                );
+            }
+        };
+
+        // Iterate over the meshes twice to reduce pipeline binding changes.
+        base_pass(true);
+        base_pass(false);
 
         // Geometry 2 - Non overlapping
 
@@ -677,6 +694,7 @@ impl GeometryPass {
             .collect();
         transparent_drawables.sort_by_key(|d| (d.min_threshold * 1000.0f32) as u32); // good enough
 
+        // Decide pipeline per-mesh here because he have a fixed order.
         for drawable in &transparent_drawables {
             if !has_opaque {
                 break;
@@ -718,7 +736,11 @@ impl GeometryPass {
                 resources.linear_sampler(),
             );
 
-            cmd_buffer.set_pipeline(PipelineBinding::Graphics(pipeline_non_overlapping));
+            cmd_buffer.set_pipeline(PipelineBinding::Graphics(if drawable.ray_march_normals {
+                pipeline_non_overlapping
+            } else {
+                pipeline_non_overlapping_non_raymarching
+            }));
             cmd_buffer.set_push_constant_data(
                 &[PushConstantData {
                     model_matrix,
@@ -771,6 +793,7 @@ impl GeometryPass {
 
         // Geometry 2 - Depth prepass
 
+        // Decide pipeline per-mesh here because he have a fixed order.
         for drawable in &transparent_drawables {
             if drawable.transparent == VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque {
                 cmd_buffer.set_stencil_reference(1u32);
@@ -878,7 +901,11 @@ impl GeometryPass {
                 resources.linear_sampler(),
             );
 
-            cmd_buffer.set_pipeline(PipelineBinding::Graphics(pipeline_transparent));
+            cmd_buffer.set_pipeline(PipelineBinding::Graphics(if drawable.ray_march_normals {
+                pipeline_transparent
+            } else {
+                pipeline_transparent_non_raymarching
+            }));
             cmd_buffer.set_push_constant_data(
                 &[PushConstantData {
                     model_matrix,

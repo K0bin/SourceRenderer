@@ -1,9 +1,9 @@
 use std::cell::Cell;
 use std::collections::HashMap;
 
+use super::ImguiFrameSnapshot;
 use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;
-use super::ImguiFrameSnapshot;
 use log::warn;
 use sourcerenderer_core::Vec3;
 
@@ -210,6 +210,7 @@ impl RendererScene {
         texture_lod: u32,
         transparent: VolumeDrawableTransparencyMode,
         render_as_cubes: bool,
+        ray_march_normals: bool,
     ) {
         let volume_mesh_opt = self.volume_meshes.get_mut(entity);
         if let Some(volume_mesh) = volume_mesh_opt {
@@ -217,6 +218,7 @@ impl RendererScene {
             volume_mesh.texture_lod = texture_lod;
             volume_mesh.transparent = transparent;
             volume_mesh.render_as_cubes = render_as_cubes;
+            volume_mesh.ray_march_normals = ray_march_normals;
             return;
         }
 

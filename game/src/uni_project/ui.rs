@@ -17,7 +17,6 @@ impl Plugin for UIPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(UIState::default());
         app.add_systems(Update, (volume_meshes_ui_system,));
-        app.add_systems(Update, (renderer_options_ui_system,));
     }
 }
 
@@ -74,6 +73,7 @@ fn volume_meshes_ui_system(
                                     threshold_min: 0.95f32,
                                     transparent: VolumeDrawableTransparencyMode::Opaque,
                                     render_as_cubes: false,
+                                    ray_march_normals: true,
                                 },
                                 InterpolatedTransform(Affine3A::from_mat4(manix_transform())),
                             ))
@@ -133,6 +133,13 @@ fn volume_meshes_ui_system(
                             &mut mesh.render_as_cubes,
                         );
 
+                        ui.text("Raymarch normals:");
+                        ui.same_line();
+                        ui.checkbox(
+                            format!("##raymarchnormals{:?}", entity),
+                            &mut mesh.ray_march_normals,
+                        );
+
                         if ui.button("Delete mesh##addmeshbutton") {
                             commands.entity(entity).despawn();
                             state.selected = None;
@@ -140,21 +147,5 @@ fn volume_meshes_ui_system(
                     }
                 }
             });
-        });
-}
-
-fn renderer_options_ui_system(
-    imgui: NonSendMut<DearImgui>,
-    mut options: ResMut<VolumeRendererOptions>,
-) {
-    let ui = imgui.ui();
-    let window_size = [250.0f32, 100.0f32];
-
-    ui.window("Renderer options##volumerenderer")
-        .size(window_size, Condition::FirstUseEver)
-        .build(|| {
-            ui.text("Ray march normals:");
-            ui.same_line();
-            ui.checkbox("##raymarchnormals", &mut options.ray_march_normals);
         });
 }
