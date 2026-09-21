@@ -14,7 +14,7 @@
 
 layout(constant_id = 0) const uint thresholdsCountConst = 0u;
 
-layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
 #include "descriptor_sets.inc.glsl"
 
@@ -140,12 +140,12 @@ void main() {
     if (any(greaterThanEqual(base + uvec3(1u), lodExtents)))
     return;
 
-    uint finalThresholdsCount = thresholdsCountConst == 0 ? thresholdsCount : thresholdsCountConst;
+    uint finalThresholdsCount = thresholdsCountConst == 0u ? thresholdsCount : thresholdsCountConst;
 
     if (!any(greaterThanEqual(gl_LocalInvocationID, gl_WorkGroupSize - uvec3(1u)))) {
-        uvec3 lowResPos = workgroupBase / uvec3(4u);
-        // Workgroup 4x4x4 => +2 mip levels but min/max textures don't have the top mip level, so +1
-        float densityMax = texelFetch(sampler3D(densityImageMax, nearestSampler), ivec3(lowResPos), int(lod + 1u)).x;
+        uvec3 lowResPos = workgroupBase / uvec3(8u);
+        // Workgroup 8x8x8 => +3 mip levels but min/max textures don't have the top mip level, so +2
+        float densityMax = texelFetch(sampler3D(densityImageMax, nearestSampler), ivec3(lowResPos), int(lod + 2u)).x;
         bool empty = true;
         bool full = true;
         for (uint i = 0u; i < finalThresholdsCount; i++) {
@@ -156,7 +156,7 @@ void main() {
         return;
     }
 
-    uint[16u] voxelKeys;
+    uint[thresholdsCountConst == 0u ? 16u : thresholdsCountConst] voxelKeys;
     for (uint i = 0u; i < finalThresholdsCount; i++) {
         voxelKeys[i] = 0u;
     }
@@ -185,7 +185,6 @@ void main() {
 
     if (empty || full)
     return;
-
 
     for (uint j = 0u; j < finalThresholdsCount; j++) {
         uint voxelKey = voxelKeys[j];

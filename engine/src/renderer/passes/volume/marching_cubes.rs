@@ -827,9 +827,9 @@ impl MarchingCubesPass {
 
             if extent.x > 0 && extent.y > 0 && extent.z > 0 {
                 command_buffer.dispatch(
-                    (extent.x + 3u32) / 4u32,
-                    (extent.y + 3u32) / 4u32,
-                    (extent.z + 3u32) / 4u32,
+                    (extent.x + 7u32) / 8u32,
+                    (extent.y + 7u32) / 8u32,
+                    (extent.z + 7u32) / 8u32,
                 );
             }
 
