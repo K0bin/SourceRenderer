@@ -191,22 +191,33 @@ void main() {
         if (voxelKey == 0u || voxelKey == 255u)
         continue;
 
-        uint indexCount = tris[voxelKey][0u];
-        indexCount = min(indexCount, 15u);
-        if (indexCount == 0u)
-        continue;
+        uint indexCount;
+        if (!renderDebugCube) {
+            indexCount = tris[voxelKey][0u];
+            indexCount = min(indexCount, 15u);
+            if (indexCount == 0u)
+            continue;
+        } else {
+            indexCount = 12u * 3u;
+        }
+
+        uint subgroupTotalIndices = subgroupAdd(indexCount);
+        uint subgroupFirstIndex;
+        if (subgroupElect())
+        subgroupFirstIndex = atomicAdd(commands[j].indexCount, subgroupTotalIndices);
+
+        subgroupFirstIndex = subgroupBroadcastFirst(subgroupFirstIndex);
+        uint firstIndex = subgroupFirstIndex + subgroupExclusiveAdd(indexCount);
 
         commands[j].instanceCount = 1u;
 
         if (!renderDebugCube) {
-            uint firstIndex = atomicAdd(commands[j].indexCount, indexCount);
             for (uint i = 0u; i < indexCount && firstIndex + indexCount < maxIndices; i += 3u) {
                 indicesBuffers[j].indices[firstIndex + i + 0u] = buildVertexKey(tris[voxelKey][1u + i + 0u]);
                 indicesBuffers[j].indices[firstIndex + i + 1u] = buildVertexKey(tris[voxelKey][1u + i + 1u]);
                 indicesBuffers[j].indices[firstIndex + i + 2u] = buildVertexKey(tris[voxelKey][1u + i + 2u]);
             }
         } else {
-            uint firstIndex = atomicAdd(commands[j].indexCount, 12u * 3u);
             for (uint i = 0u; i < 12u * 3u && firstIndex + indexCount < maxIndices; i++) {
                 uvec3 vtx = cubePositions[cubeIndices[i / 3u][i % 3u]] + gl_GlobalInvocationID;
                 indicesBuffers[j].indices[firstIndex + i] = vertexKey(vtx, vtx);
