@@ -594,10 +594,6 @@ impl GeometryPass {
                     continue;
                 }
 
-                let mut model_matrix = drawable.transform.into();
-                let lod_scale = (1u32 << drawable.texture_lod) as f32;
-                model_matrix *= Matrix4::from_scale(Vec3::new(lod_scale, lod_scale, lod_scale));
-
                 let volume_texture = params.assets.get_texture(drawable.volume_texture);
                 let volume_texture_base_opt = volume_texture.view.texture();
                 if volume_texture_base_opt.is_none() {
@@ -606,10 +602,18 @@ impl GeometryPass {
                 let volume_texture_base = volume_texture_base_opt.unwrap();
                 let volume_texture_info = volume_texture_base.info();
                 let volume_texture_lod_extents = Vec3UI::new(
-                    volume_texture_info.width >> drawable.texture_lod,
-                    volume_texture_info.height >> drawable.texture_lod,
-                    volume_texture_info.depth >> drawable.texture_lod,
+                    (volume_texture_info.width >> drawable.texture_lod).max(1u32),
+                    (volume_texture_info.height >> drawable.texture_lod).max(1u32),
+                    (volume_texture_info.depth >> drawable.texture_lod).max(1u32),
                 );
+
+                let mut model_matrix = drawable.transform.into();
+                model_matrix *= Matrix4::from_scale(Vec3::new(
+                    (volume_texture_info.width as f32) / (volume_texture_lod_extents.x as f32),
+                    (volume_texture_info.height as f32) / (volume_texture_lod_extents.y as f32),
+                    (volume_texture_info.depth as f32) / (volume_texture_lod_extents.z as f32),
+                ));
+
                 cmd_buffer.bind_sampling_view_and_sampler(
                     BindingFrequency::Frequent,
                     0u32,
@@ -703,10 +707,6 @@ impl GeometryPass {
                 continue;
             }
 
-            let mut model_matrix = drawable.transform.into();
-            let lod_scale = (1u32 << drawable.texture_lod) as f32;
-            model_matrix *= Matrix4::from_scale(Vec3::new(lod_scale, lod_scale, lod_scale));
-
             let volume_texture = params.assets.get_texture(drawable.volume_texture);
             let volume_texture_base_opt = volume_texture.view.texture();
             if volume_texture_base_opt.is_none() {
@@ -715,10 +715,18 @@ impl GeometryPass {
             let volume_texture_base = volume_texture_base_opt.unwrap();
             let volume_texture_info = volume_texture_base.info();
             let volume_texture_lod_extents = Vec3UI::new(
-                volume_texture_info.width >> drawable.texture_lod,
-                volume_texture_info.height >> drawable.texture_lod,
-                volume_texture_info.depth >> drawable.texture_lod,
+                (volume_texture_info.width >> drawable.texture_lod).max(1u32),
+                (volume_texture_info.height >> drawable.texture_lod).max(1u32),
+                (volume_texture_info.depth >> drawable.texture_lod).max(1u32),
             );
+
+            let mut model_matrix = drawable.transform.into();
+            model_matrix *= Matrix4::from_scale(Vec3::new(
+                (volume_texture_info.width as f32) / (volume_texture_lod_extents.x as f32),
+                (volume_texture_info.height as f32) / (volume_texture_lod_extents.y as f32),
+                (volume_texture_info.depth as f32) / (volume_texture_lod_extents.z as f32),
+            ));
+
             cmd_buffer.bind_sampling_view_and_sampler(
                 BindingFrequency::Frequent,
                 0u32,
@@ -801,10 +809,6 @@ impl GeometryPass {
                 cmd_buffer.set_stencil_reference(0u32);
             }
 
-            let mut model_matrix = drawable.transform.into();
-            let lod_scale = (1u32 << drawable.texture_lod) as f32;
-            model_matrix *= Matrix4::from_scale(Vec3::new(lod_scale, lod_scale, lod_scale));
-
             let volume_texture = params.assets.get_texture(drawable.volume_texture);
             let volume_texture_base_opt = volume_texture.view.texture();
             if volume_texture_base_opt.is_none() {
@@ -813,10 +817,17 @@ impl GeometryPass {
             let volume_texture_base = volume_texture_base_opt.unwrap();
             let volume_texture_info = volume_texture_base.info();
             let volume_texture_lod_extents = Vec3UI::new(
-                volume_texture_info.width >> drawable.texture_lod,
-                volume_texture_info.height >> drawable.texture_lod,
-                volume_texture_info.depth >> drawable.texture_lod,
+                (volume_texture_info.width >> drawable.texture_lod).max(1u32),
+                (volume_texture_info.height >> drawable.texture_lod).max(1u32),
+                (volume_texture_info.depth >> drawable.texture_lod).max(1u32),
             );
+
+            let mut model_matrix = drawable.transform.into();
+            model_matrix *= Matrix4::from_scale(Vec3::new(
+                (volume_texture_info.width as f32) / (volume_texture_lod_extents.x as f32),
+                (volume_texture_info.height as f32) / (volume_texture_lod_extents.y as f32),
+                (volume_texture_info.depth as f32) / (volume_texture_lod_extents.z as f32),
+            ));
 
             cmd_buffer.set_pipeline(PipelineBinding::Graphics(pipeline_transparent_prepass));
             cmd_buffer.set_push_constant_data(
@@ -868,10 +879,6 @@ impl GeometryPass {
                 cmd_buffer.set_stencil_reference(0u32);
             }
 
-            let mut model_matrix = drawable.transform.into();
-            let lod_scale = (1u32 << drawable.texture_lod) as f32;
-            model_matrix *= Matrix4::from_scale(Vec3::new(lod_scale, lod_scale, lod_scale));
-
             let volume_texture = params.assets.get_texture(drawable.volume_texture);
             let volume_texture_base_opt = volume_texture.view.texture();
             if volume_texture_base_opt.is_none() {
@@ -880,10 +887,18 @@ impl GeometryPass {
             let volume_texture_base = volume_texture_base_opt.unwrap();
             let volume_texture_info = volume_texture_base.info();
             let volume_texture_lod_extents = Vec3UI::new(
-                volume_texture_info.width >> drawable.texture_lod,
-                volume_texture_info.height >> drawable.texture_lod,
-                volume_texture_info.depth >> drawable.texture_lod,
+                (volume_texture_info.width >> drawable.texture_lod).max(1u32),
+                (volume_texture_info.height >> drawable.texture_lod).max(1u32),
+                (volume_texture_info.depth >> drawable.texture_lod).max(1u32),
             );
+
+            let mut model_matrix = drawable.transform.into();
+            model_matrix *= Matrix4::from_scale(Vec3::new(
+                (volume_texture_info.width as f32) / (volume_texture_lod_extents.x as f32),
+                (volume_texture_info.height as f32) / (volume_texture_lod_extents.y as f32),
+                (volume_texture_info.depth as f32) / (volume_texture_lod_extents.z as f32),
+            ));
+
             cmd_buffer.bind_sampling_view_and_sampler(
                 BindingFrequency::Frequent,
                 0u32,
