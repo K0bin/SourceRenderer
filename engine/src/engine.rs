@@ -34,7 +34,7 @@ pub enum WindowState {
     Fullscreen(u32, u32),
 }
 
-pub const TICK_RATE: u32 = 5;
+pub const TICK_RATE: u32 = 60;
 
 #[derive(PartialEq, Eq)]
 pub enum EngineLoopFuncResult {
