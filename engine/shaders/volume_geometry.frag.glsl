@@ -62,13 +62,17 @@ vec3 calculateNormal(vec3 densityMapUV, uint normalLod) {
 
 
 // targetLod must be smaller (=> higher res) than the current lod in the push constants
-vec3 rayMarchPositionInMip(vec3 startPosNormalized, uint targetLod) {
+vec4 rayMarchPositionInMip(vec3 startPosNormalized, uint targetLod) {
     uint meshLod = lod;
+    // resolution of mip 0
+    uvec3 texSize = textureSize(densityMap, 0);
+    // resolution of the higher res mip
+    uvec3 targetTexSize = uvec3(texSize.x >> targetLod, texSize.y >> targetLod, texSize.z >> targetLod);
+    // resolution of the lower res mip that was used to generate the mesh
+    uvec3 geometryTexSize = uvec3(texSize.x >> meshLod, texSize.y >> meshLod, texSize.z >> meshLod);
 
-    vec3 worldPos = worldSpacePosition(gl_FragCoord.xy / vec2(width, height), 0.0, camera.invViewProj);
+    vec3 worldPos = camera.invView[3].xyz;
     vec3 modelPos = (invModel * vec4(worldPos, 1.0)).xyz;
-    // Half pixel because pixel center when sampling is 0.5
-    modelPos += vec3(0.5);
 
     vec2 ndc = (gl_FragCoord.xy / vec2(width, height)) * 2.0 - 1.0;
     float viewX = ndc.x / camera.proj[0][0];
@@ -77,30 +81,20 @@ vec3 rayMarchPositionInMip(vec3 startPosNormalized, uint targetLod) {
 
     vec4 worldRay = camera.invView * viewRay;
     vec4 modelRay = invModel * worldRay;
-    modelRay = normalize(modelRay);
-
-    // Use normal instead of view ray. More consistent.
-
+    modelRay = normalize(modelRay / vec4(geometryTexSize, 1.0)); // Divide by geometryTexSize because of non-uniform scaling
     vec3 invRay = vec3(1.0 / modelRay.x, 1.0 / modelRay.y, 1.0 / modelRay.z);
 
-    // resolution of mip 0
-    uvec3 texSize = textureSize(densityMap, 0);
-    // resolution of the higher res mip
-    uvec3 targetTexSize = uvec3(texSize.x >> targetLod, texSize.y >> targetLod, texSize.z >> targetLod);
-    // resolution of the lower res mip that was used to generate the mesh
-    uvec3 geometryTexSize = uvec3(texSize.x >> meshLod, texSize.y >> meshLod, texSize.z >> meshLod);
+    vec3 pos1TargetSpace = floor(startPosNormalized * geometryTexSize - 0.5) + 0.5;
+    vec3 pos2TargetSpace = pos1TargetSpace + vec3(1.0);
+    vec3 pos1Normalized = pos1TargetSpace / geometryTexSize;
+    vec3 pos2Normalized = pos2TargetSpace / geometryTexSize;
+    vec3 origin = modelPos.xyz / geometryTexSize;
 
-    // factor to go from lower res to higher res
-    uint lodFactor = 1u << (meshLod - targetLod);
-    // min and max corner of the lower res voxel in the higher res mip
-    vec3 pos1 = floor((startPosNormalized * targetTexSize) / vec3(float(lodFactor))) * float(lodFactor);
-    vec3 pos2 = pos1 + vec3(lodFactor);
-    vec3 origin = modelPos.xyz * float(lodFactor);
+    vec3 bbMin = min(pos1Normalized, pos2Normalized);
+    vec3 bbMax = max(pos1Normalized, pos2Normalized);
 
-    vec3 bbMin = min(pos1, pos2);
-    vec3 bbMax = max(pos1, pos2);
-    bbMin *= -sign(bbMin) * 1.5;
-    bbMax *= 1.5;
+    bbMin -= vec3(1.0) / geometryTexSize;
+    bbMax += vec3(1.0) / geometryTexSize;
 
     vec3 t1 = (bbMin - origin) * invRay;
     vec3 t2 = (bbMax - origin) * invRay;
@@ -113,7 +107,7 @@ vec3 rayMarchPositionInMip(vec3 startPosNormalized, uint targetLod) {
 
     // Calculate intersections with texture box
     vec3 tTex1 = (vec3(0) - origin) * invRay;
-    vec3 tTex2 = (targetTexSize - origin) * invRay;
+    vec3 tTex2 = (vec3(1.0) - origin) * invRay;
 
     vec3 tTexMin = min(tTex1, tTex2);
     vec3 tTexMax = max(tTex1, tTex2);
@@ -127,21 +121,21 @@ vec3 rayMarchPositionInMip(vec3 startPosNormalized, uint targetLod) {
     // tEnter must be <= tExit
     // tExit must be >= 0
     if (tExit < 0.0 || tEnter > tExit)
-    return vec3(0);
+    return vec4(0.0);
 
-    float stepLen = 1.0;
+    float stepLen = 1.0 / length(targetTexSize);
     float t = tEnter;
 
     while (t <= tExit) {
         vec3 pos = origin + t * modelRay.xyz;
-        float density = textureLod(densityMap, pos / vec3(targetTexSize), int(targetLod)).x;
+        float density = textureLod(densityMap, pos, int(targetLod)).x;
         if (density >= threshold)
-        return pos / vec3(targetTexSize);
+        return vec4(pos, density);
 
         t += stepLen;
     }
 
-    return vec3(0);
+    return vec4(0.0);
 }
 
 #include "volume_shading.inc.glsl"
@@ -151,11 +145,11 @@ void main(void) {
 
     vec3 normal;
     float density;
-    if (normalLod != lod && rayMarchNormals) {
-        vec3 normalLookUpNormalized = rayMarchPositionInMip(in_densityMapUV, normalLod);
-        if (dot(normalLookUpNormalized, normalLookUpNormalized) > 0.001) {
-            normal = calculateNormal(normalLookUpNormalized, normalLod);
-            density = textureLod(densityMap, normalLookUpNormalized, int(normalLod)).x;
+    if ((normalLod != lod && rayMarchNormals)) {
+        vec4 normalLookUpNormalizedAndDensity = rayMarchPositionInMip(in_densityMapUV, normalLod);
+        if (normalLookUpNormalizedAndDensity.w >= threshold) {
+            normal = calculateNormal(normalLookUpNormalizedAndDensity.xyz, normalLod);
+            density = normalLookUpNormalizedAndDensity.w;
         } else {
             normal = calculateNormal(in_densityMapUV, lod);
             density = in_density;
