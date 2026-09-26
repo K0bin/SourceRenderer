@@ -10,15 +10,15 @@ layout(location = 1) out vec3 out_worldPosition;
 layout(location = 2) out vec3 out_densityMapUV;
 
 layout(set = DESCRIPTOR_SET_FRAME, binding = 0) uniform CameraUBO {
-  Camera camera;
+    Camera camera;
 };
 
 layout(push_constant) uniform VeryHighFrequencyUbo {
-  mat4 model;
-  //mat4 invModel;
-  uvec3 lodExtents;
-  float threshold;
-  uint lod;
+    mat4 model;
+//mat4 invModel;
+    uvec3 lodExtents;
+    float threshold;
+    uint lod;
 };
 
 layout (set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform sampler3D densityMap;
@@ -26,16 +26,19 @@ layout (set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform sampler3D densityMap
 
 vec4 interpolateVertices(uvec3 pos1, uvec3 pos2) {
     vec3 imgSize = vec3(lodExtents);
-    float value1 = textureLod(densityMap, (vec3(pos1) + vec3(0.5)) / imgSize, lod).x;
-    float value2 = textureLod(densityMap, (vec3(pos2) + vec3(0.5)) / imgSize, lod).x;
+    vec3 fpos1 = vec3(pos1) + 0.5;
+    vec3 fpos2 = vec3(pos2) + 0.5;
+    float value1 = textureLod(densityMap, fpos1 / imgSize, lod).x;
+    float value2 = textureLod(densityMap, fpos2 / imgSize, lod).x;
     if (abs(value1 - threshold) < 0.00001 || abs(value1 - value2) < 0.00001) {
-        return vec4(vec3(pos1), value1);
+        return vec4(fpos1, value1);
     }
     if (abs(value2 - threshold) < 0.00001) {
-        return vec4(vec3(pos2), value2);
+        return vec4(fpos2, value2);
     }
     float a = (threshold - value1) / (value2 - value1);
-    return mix(vec4(pos1, value1), vec4(pos2, value2), a);
+    return mix(vec4(fpos1, value1), vec4(fpos2, value2), a);
+    //return (vec4(fpos1, value1) + vec4(fpos2, value2)) / 2.0; // debug with simple average
 }
 
 
@@ -43,8 +46,8 @@ vec4 vertexPosFromKey(uint vertexKey) {
     uvec3 sizes = uvec3(512u * 2u + 1u);
 
     uvec3 pos = uvec3(vertexKey % sizes.x,
-        (vertexKey / sizes.x) % sizes.y,
-        vertexKey / (sizes.x * sizes.y));
+            (vertexKey / sizes.x) % sizes.y,
+            vertexKey / (sizes.x * sizes.y));
 
     uvec3 pos1 = pos / 2u;
     uvec3 pos2 = pos1 + (pos % 2u);
@@ -59,30 +62,30 @@ vec3 calculateNormal(vec3 densityMapUV, uint normalLod) {
     vec3 singlePixel = vec3(1.0) / imgSize;
 
     normal.x = textureLod(densityMap, densityMapUV - vec3(singlePixel.x, 0, 0), normalLod).x
-                                - textureLod(densityMap, densityMapUV + vec3(singlePixel.x, 0, 0), normalLod).x;
+    - textureLod(densityMap, densityMapUV + vec3(singlePixel.x, 0, 0), normalLod).x;
     normal.y = textureLod(densityMap, densityMapUV - vec3(0, singlePixel.y, 0), normalLod).x
-                                - textureLod(densityMap, densityMapUV + vec3(0, singlePixel.y, 0), normalLod).x;
+    - textureLod(densityMap, densityMapUV + vec3(0, singlePixel.y, 0), normalLod).x;
     normal.z = textureLod(densityMap, densityMapUV - vec3(0, 0, singlePixel.z), normalLod).x
-                                - textureLod(densityMap, densityMapUV + vec3(0, 0, singlePixel.z), normalLod).x;
+    - textureLod(densityMap, densityMapUV + vec3(0, 0, singlePixel.z), normalLod).x;
     return normalize(normal);
 }
 
 
 void main(void) {
-  vec3 densityMapSize = vec3(lodExtents);
-  uint vtxkey = gl_VertexIndex;
+    vec3 densityMapSize = vec3(lodExtents);
+    uint vtxkey = gl_VertexIndex;
 
-  vec4 posAndDensity = vertexPosFromKey(vtxkey);
-  vec3 pos = posAndDensity.xyz;
-  float density = posAndDensity.w;
+    vec4 posAndDensity = vertexPosFromKey(vtxkey);
+    vec3 pos = posAndDensity.xyz;
+    float density = posAndDensity.w;
 
-  vec3 densityMapPosition = (pos + 0.5) / densityMapSize;
-  out_densityMapUV = densityMapPosition;
-  vec3 normal = calculateNormal(densityMapPosition, lod);
+    vec3 densityMapPosition = pos / densityMapSize;
+    out_densityMapUV = densityMapPosition;
+    vec3 normal = calculateNormal(densityMapPosition, lod);
 
-  out_density = density;
+    out_density = density;
 
-  mat4 mvp = camera.viewProj * model;
-  gl_Position = mvp * vec4(pos, 1.0);
-  out_worldPosition = (model * vec4(pos, 1.0)).xyz;
+    mat4 mvp = camera.viewProj * model;
+    gl_Position = mvp * vec4(pos, 1.0);
+    out_worldPosition = (model * vec4(pos, 1.0)).xyz;
 }
