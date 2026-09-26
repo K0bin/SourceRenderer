@@ -414,9 +414,9 @@ impl DearImguiRenderer {
                         command_buffer.set_scissors(&[Scissor {
                             position: Vec2I::new(clip_rect[0] as i32, clip_rect[1] as i32),
                             extent: Vec2UI::new(
-                                ((clip_rect[2] + 0.5f32) as u32)
+                                (clip_rect[2].ceil() as u32)
                                     .min(backbuffer_handle.info().width - (clip_rect[0] as u32)),
-                                ((clip_rect[3] + 0.5f32) as u32)
+                                (clip_rect[3].ceil() as u32)
                                     .min(backbuffer_handle.info().height - (clip_rect[1] as u32)),
                             ),
                         }]);
