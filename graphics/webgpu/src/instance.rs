@@ -1,6 +1,6 @@
-use crate::{WebGPUBackend, adapter::WebGPUAdapter};
+use crate::{WebGPUBackend, WebGPUDevice, adapter::WebGPUAdapter};
 use js_sys::wasm_bindgen::JsCast;
-use js_sys::{global, JsNullable, JsString};
+use js_sys::{JsNullable, JsString, global};
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu;
 use std::cell::RefCell;
@@ -10,7 +10,10 @@ use std::{
     fmt::{Debug, Display},
 };
 use wasm_bindgen_futures::*;
-use web_sys::{DedicatedWorkerGlobalScope, Gpu, GpuAdapter, GpuDevice, GpuDeviceDescriptor, GpuPowerPreference, GpuRequestAdapterOptions, window};
+use web_sys::{
+    DedicatedWorkerGlobalScope, Gpu, GpuAdapter, GpuDevice, GpuDeviceDescriptor,
+    GpuPowerPreference, GpuRequestAdapterOptions, window,
+};
 
 thread_local! {
     static GPU_INIT: RefCell<Option<WebGPUInstanceAsyncInitResult>> = RefCell::new(None);
@@ -95,8 +98,11 @@ impl WebGPUInstance {
         let discrete_device_descriptor = GpuDeviceDescriptor::new();
         let mut discrete_device_features = SmallVec::<[JsString; 4]>::new();
         for feature_res in discrete_adapter.features().values() {
-            // TODO: Filter out a bunch that we never use.
             let feature = feature_res.unwrap();
+            let feature_rust_string = feature.as_string().unwrap();
+            if !WebGPUDevice::used_webgpu_features().contains(&feature_rust_string.as_str()) {
+                continue;
+            }
             discrete_device_features.push(feature);
         }
         discrete_device_descriptor.set_required_features(&discrete_device_features);
@@ -137,8 +143,11 @@ impl WebGPUInstance {
         let integrated_device_descriptor = GpuDeviceDescriptor::new();
         let mut integrated_device_features = SmallVec::<[JsString; 4]>::new();
         for feature_res in integrated_adapter.features().values() {
-            // TODO: Filter out a bunch that we never use.
             let feature = feature_res.unwrap();
+            let feature_rust_string = feature.as_string().unwrap();
+            if !WebGPUDevice::used_webgpu_features().contains(&feature_rust_string.as_str()) {
+                continue;
+            }
             integrated_device_features.push(feature);
         }
         integrated_device_descriptor.set_required_features(&integrated_device_features);
@@ -178,26 +187,28 @@ impl WebGPUInstance {
 
     pub fn new(debug: bool) -> Self {
         GPU_INIT.with_borrow(|init_ref_cell| {
-            init_ref_cell.as_ref().map_or_else(|| Self::new_dummy(), |init|
-            Self {
-                instance: init.instance.clone(),
-                adapters: Some([
-                    WebGPUAdapter::new(
-                        init.discrete_adapter.clone(),
-                        init.discrete_device.clone(),
-                        gpu::AdapterType::Discrete,
-                        debug,
-                    ),
-                    WebGPUAdapter::new(
-                        init.integrated_adapter.clone(),
-                        init.integrated_device.clone(),
-                        gpu::AdapterType::Integrated,
-                        debug,
-                    ),
-                ]),
-                _p: PhantomData,
-            }
-        )})
+            init_ref_cell.as_ref().map_or_else(
+                || Self::new_dummy(),
+                |init| Self {
+                    instance: init.instance.clone(),
+                    adapters: Some([
+                        WebGPUAdapter::new(
+                            init.discrete_adapter.clone(),
+                            init.discrete_device.clone(),
+                            gpu::AdapterType::Discrete,
+                            debug,
+                        ),
+                        WebGPUAdapter::new(
+                            init.integrated_adapter.clone(),
+                            init.integrated_device.clone(),
+                            gpu::AdapterType::Integrated,
+                            debug,
+                        ),
+                    ]),
+                    _p: PhantomData,
+                },
+            )
+        })
     }
 
     fn new_dummy() -> Self {
@@ -209,14 +220,12 @@ impl WebGPUInstance {
     }
 
     pub(crate) fn get_webgpu() -> Gpu {
-        global().dyn_into::<DedicatedWorkerGlobalScope>().map_or_else(
-            |_e| {
-                window().unwrap().navigator().gpu()
-            },
-            |scope| {
-                scope.navigator().gpu()
-            },
-        )
+        global()
+            .dyn_into::<DedicatedWorkerGlobalScope>()
+            .map_or_else(
+                |_e| window().unwrap().navigator().gpu(),
+                |scope| scope.navigator().gpu(),
+            )
     }
 
     #[inline(always)]
