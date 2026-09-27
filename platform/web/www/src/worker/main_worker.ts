@@ -1,4 +1,4 @@
-import {default as initWasm, Engine, InitOutput, startEngine} from "../../../lib/pkg/sourcerenderer_web";
+import {default as initWasm, Engine, InitOutput, startEngine, initWebGPU} from "../../../lib/pkg/sourcerenderer_web";
 
 import {
     CanvasResized,
@@ -51,6 +51,11 @@ let lastFullscreen = false;
 let engine: Engine | null = null;
 
 async function initMain(canvas: OffscreenCanvas) {
+    const supportsThreads = self.crossOriginIsolated;
+    if (!supportsThreads) {
+        console.warn("Threads are not supported.");
+    }
+
     // Values are in WASM pages (64KiB)
     memory = new WebAssembly.Memory({
         initial: 80,
@@ -59,6 +64,10 @@ async function initMain(canvas: OffscreenCanvas) {
     });
     thread
         = await initWasm({module_or_path: undefined, memory: memory});
+
+    if (!supportsThreads) {
+        await initWebGPU();
+    }
 
     if (engine !== null) {
         throw new Error("Engine already initialized.");

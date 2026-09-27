@@ -48,6 +48,10 @@ export function startThreadWorker(
     data: any,
     name: string,
 ) {
+    if (!supportsThreads()) {
+        throw new Error("Cannot start a new thread: Shared memory is not supported.");
+    }
+
     const init: ThreadWorkerInit = {
         module,
         memory,
@@ -77,6 +81,10 @@ export function startThreadWorker(
 
     const worker = new ThreadWorker({name});
     worker.postMessage(msg, transferables);
+}
+
+export function supportsThreads() {
+    return self.crossOriginIsolated;
 }
 
 function isBlink() {
