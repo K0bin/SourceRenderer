@@ -3,6 +3,11 @@ name = "sourcerenderer_game"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = ["uni_project"]
+uni_project = []
+test_game = []
+
 [dependencies]
 sourcerenderer_core = { path = "../core" }
 sourcerenderer_engine = { path = "../engine", default-features = false }

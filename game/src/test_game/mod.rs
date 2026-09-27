@@ -1,6 +1,6 @@
 use std::{marker::PhantomData, sync::Arc};
 
-use crate::{RendererPicker, fps_camera, spinning_cube::SpinningCubePlugin};
+use crate::{RendererPicker, fps_camera};
 use bevy_app::{App, Plugin};
 use sourcerenderer_core::platform::PlatformIO;
 use sourcerenderer_engine::renderer::RendererType;
@@ -8,19 +8,22 @@ use sourcerenderer_engine::{
     Engine,
     asset::{AssetLoadPriority, AssetManager, AssetType, loaders::load_file_gltf_container},
 };
+use spinning_cube::SpinningCubePlugin;
 
-pub struct GamePlugin<IO: PlatformIO>(PhantomData<IO>);
+mod spinning_cube;
 
-unsafe impl<IO: PlatformIO> Send for GamePlugin<IO> {}
-unsafe impl<IO: PlatformIO> Sync for GamePlugin<IO> {}
+pub struct TestGamePlugin<IO: PlatformIO>(PhantomData<IO>);
 
-impl<IO: PlatformIO> Default for GamePlugin<IO> {
+unsafe impl<IO: PlatformIO> Send for TestGamePlugin<IO> {}
+unsafe impl<IO: PlatformIO> Sync for TestGamePlugin<IO> {}
+
+impl<IO: PlatformIO> Default for TestGamePlugin<IO> {
     fn default() -> Self {
         Self(PhantomData)
     }
 }
 
-impl<IO: PlatformIO> Plugin for GamePlugin<IO> {
+impl<IO: PlatformIO> Plugin for TestGamePlugin<IO> {
     fn build(&self, app: &mut App) {
         {
             log::info!("Initializing GamePlugin");
@@ -42,7 +45,7 @@ impl<IO: PlatformIO> Plugin for GamePlugin<IO> {
     }
 }
 
-impl<IO: PlatformIO> RendererPicker for GamePlugin<IO> {
+impl<IO: PlatformIO> RendererPicker for TestGamePlugin<IO> {
     fn pick_renderer() -> RendererType {
         #[cfg(target_arch = "wasm32")]
         {

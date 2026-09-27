@@ -4,9 +4,12 @@ use crate::uni_project::{MANIX_PATH, TRANSFER_FUNCTION_PATH, manix_transform};
 use crate::{RendererPicker, fps_camera};
 use bevy_app::{App, Plugin};
 use bevy_math::Affine3A;
+use sourcerenderer_core::platform::PlatformIO;
 use sourcerenderer_engine::VolumeDrawableTransparencyMode;
 use sourcerenderer_engine::renderer::{RendererType, VolumeMeshInstance};
 use sourcerenderer_engine::transform::InterpolatedTransform;
+use std::marker::PhantomData;
+
 /* TODO:
  * - DLSS/FSR/XeSS/MetalFX
  * - DearImgui controls
@@ -16,10 +19,15 @@ use sourcerenderer_engine::transform::InterpolatedTransform;
  * - optimize marching cubes with min/max lods and indirect dispatch to remove empty/full cells
  */
 
-#[derive(Default)]
-pub struct UniProjectPlugin;
+pub struct UniProjectPlugin<IO: PlatformIO>(PhantomData<IO>);
 
-impl Plugin for UniProjectPlugin {
+impl<IO: PlatformIO> Default for UniProjectPlugin<IO> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<IO: PlatformIO> Plugin for UniProjectPlugin<IO> {
     fn build(&self, app: &mut App) {
         {
             log::info!("Initializing university project plugin");
@@ -58,7 +66,7 @@ impl Plugin for UniProjectPlugin {
     }
 }
 
-impl RendererPicker for UniProjectPlugin {
+impl<IO: PlatformIO> RendererPicker for UniProjectPlugin<IO> {
     fn pick_renderer() -> RendererType {
         RendererType::VolumeUniProject
     }

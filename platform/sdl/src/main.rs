@@ -25,7 +25,7 @@ pub(crate) use sdl_vulkan as sdl_gpu;
 mod sdl_vulkan;
 #[cfg(target_os = "macos")]
 pub(crate) use sdl_vulkan as sdl_gpu;
-use sourcerenderer_game::{GamePlugin, RendererPicker, UniProjectPlugin};
+use sourcerenderer_game::{GamePlugin, RendererPicker};
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 fn autoreleasepool<T, F>(func: F) -> T
@@ -48,8 +48,8 @@ pub fn main() {
     let mut window = platform.create_window();
     let mut engine = Box::new(Engine::run::<_, StdIO, SDLPlatform>(
         &window,
-        UniProjectPlugin::default(),
-        UniProjectPlugin::pick_renderer(),
+        GamePlugin::<StdIO>::default(),
+        GamePlugin::<StdIO>::pick_renderer(),
     ));
 
     'event_loop: loop {
