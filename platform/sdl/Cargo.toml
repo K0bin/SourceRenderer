@@ -6,8 +6,8 @@ edition = "2024"
 build = "build.rs"
 
 [dependencies]
-sdl3 = { version = "0.18", features = ["raw-window-handle"] }
-sdl3-sys = "0.6.8+SDL-3.4.14"
+sdl3 = { version = "0.20.0", features = ["raw-window-handle"] }
+sdl3-sys = "0.7.1+SDL-3.4.16"
 raw-window-handle = "0.6"
 bitset-core = "0.1"
 sourcerenderer_bsp = { path = "../../valve_formats/bsp" }
