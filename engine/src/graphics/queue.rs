@@ -39,16 +39,20 @@ pub(super) struct Queue {
     inner: VecDeque<StoredQueueSubmission>,
     destroyer: Arc<DeferredDestroyer>,
     queue_type: QueueType,
-}
-
-pub(super) struct QueueTracker {
     fence: Arc<Fence>,
     next_counter: AtomicU64,
 }
 
-impl QueueTracker {
-    pub(super) fn new(fence: Fence) -> Self {
+impl Queue {
+    pub(super) fn new(
+        destroyer: &Arc<DeferredDestroyer>,
+        queue_type: QueueType,
+        fence: Fence,
+    ) -> Self {
         Self {
+            inner: VecDeque::new(),
+            queue_type,
+            destroyer: destroyer.clone(),
             fence: Arc::new(fence),
             next_counter: AtomicU64::new(1u64),
         }
@@ -73,20 +77,6 @@ impl QueueTracker {
         let value = self.next_counter.load(Ordering::SeqCst) - 1;
         self.fence.await_value(value);
         value
-    }
-}
-
-impl Queue {
-    pub(super) fn new(
-        destroyer: &Arc<DeferredDestroyer>,
-        queue_type: QueueType,
-        _fence: Fence,
-    ) -> Self {
-        Self {
-            inner: VecDeque::new(),
-            queue_type,
-            destroyer: destroyer.clone(),
-        }
     }
 
     pub(super) fn all_barrier_syncs(queue_type: QueueType) -> BarrierSync {
@@ -124,11 +114,11 @@ impl Queue {
         self.inner.is_empty()
     }
 
-    pub(super) fn submit_counter_bump(&mut self, tracker: &QueueTracker) -> u64 {
-        let value = tracker.next_counter.fetch_add(1u64, Ordering::SeqCst);
+    pub(super) fn submit_counter_bump(&mut self) -> u64 {
+        let value = self.next_counter.fetch_add(1u64, Ordering::SeqCst);
 
         let fence_value = SharedFenceValuePair {
-            fence: tracker.fence.clone(),
+            fence: self.fence.clone(),
             sync_before: Self::all_barrier_syncs(self.queue_type),
             value,
         };
@@ -219,13 +209,9 @@ impl Queue {
         }
     }
 
-    pub(super) fn flush(
-        &mut self,
-        queue: &active_gpu_backend::Queue,
-        tracker: &QueueTracker,
-    ) -> u64 {
+    pub(super) fn flush(&mut self, queue: &active_gpu_backend::Queue) -> u64 {
         if self.inner.is_empty() {
-            return tracker.submitted_counter();
+            return self.submitted_counter();
         }
 
         let mut cmd_buffer_refs =
@@ -349,7 +335,7 @@ impl Queue {
         Self::destroy_cmd_buffers(&self.destroyer, self.inner.drain(..));
 
         self.inner.clear();
-        tracker.submitted_counter()
+        self.submitted_counter()
     }
 
     fn destroy_cmd_buffers(

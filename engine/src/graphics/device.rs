@@ -13,18 +13,9 @@ pub struct Device {
     bindless_slot_allocator: BindlessSlotAllocator,
     transfer: ManuallyDrop<Transfer>,
     prerendered_frames: u32,
-    queues: Mutex<Queues>,
-    graphics_queue_tracker: QueueTracker,
-    compute_queue_tracker: QueueTracker,
-    transfer_queue_tracker: QueueTracker,
-}
-
-// Queue <-> QueueTracker is separated because I want to access the atomics in the latter without
-// taking the mutex
-struct Queues {
-    graphics_queue: Queue,
-    compute_queue: Option<Queue>,
-    transfer_queue: Option<Queue>,
+    graphics_queue: Mutex<Queue>,
+    compute_queue: Option<Mutex<Queue>>,
+    transfer_queue: Option<Mutex<Queue>>,
 }
 
 impl Device {
@@ -43,15 +34,15 @@ impl Device {
 
         let graphics_queue = {
             let fence = Fence::new(&device, &destroyer);
-            Queue::new(&destroyer, QueueType::Graphics, fence)
+            Mutex::new(Queue::new(&destroyer, QueueType::Graphics, fence))
         };
         let compute_queue = device.compute_queue().map(|_| {
             let fence = Fence::new(&device, &destroyer);
-            Queue::new(&destroyer, QueueType::Compute, fence)
+            Mutex::new(Queue::new(&destroyer, QueueType::Compute, fence))
         });
         let transfer_queue = device.transfer_queue().map(|_| {
             let fence = Fence::new(&device, &destroyer);
-            Queue::new(&destroyer, QueueType::Transfer, fence)
+            Mutex::new(Queue::new(&destroyer, QueueType::Transfer, fence))
         });
 
         Self {
@@ -63,14 +54,9 @@ impl Device {
             transfer: ManuallyDrop::new(Transfer::new(&device, &buffer_allocator)),
             buffer_allocator: ManuallyDrop::new(buffer_allocator),
             prerendered_frames,
-            queues: Mutex::new(Queues {
-                graphics_queue,
-                compute_queue,
-                transfer_queue,
-            }),
-            graphics_queue_tracker: QueueTracker::new(Fence::new(&device, &destroyer)),
-            compute_queue_tracker: QueueTracker::new(Fence::new(&device, &destroyer)),
-            transfer_queue_tracker: QueueTracker::new(Fence::new(&device, &destroyer)),
+            graphics_queue,
+            compute_queue,
+            transfer_queue,
         }
     }
 
@@ -419,14 +405,13 @@ impl Device {
 
     pub fn block_until_idle(&self) {
         log::warn!("Block until idle.");
-        let mut queues = self.queues.lock().unwrap();
-        self.flush_locked(&mut queues);
-        self.graphics_queue_tracker.wait_for_idle();
-        if queues.compute_queue.is_some() {
-            self.compute_queue_tracker.wait_for_idle();
+        self.flush();
+        self.graphics_queue.lock().unwrap().wait_for_idle();
+        if let Some(queue) = self.compute_queue.as_ref() {
+            queue.lock().unwrap().wait_for_idle();
         }
-        if queues.transfer_queue.is_some() {
-            self.transfer_queue_tracker.wait_for_idle();
+        if let Some(queue) = self.transfer_queue.as_ref() {
+            queue.lock().unwrap().wait_for_idle();
         }
 
         unsafe {
@@ -435,39 +420,63 @@ impl Device {
     }
 
     pub fn queue_next_counter(&self, queue_type: QueueType) -> u64 {
-        let queue_tracker = match queue_type {
-            QueueType::Graphics => &self.graphics_queue_tracker,
-            QueueType::Compute => &self.compute_queue_tracker,
-            QueueType::Transfer => &self.transfer_queue_tracker,
+        let queue = match queue_type {
+            QueueType::Graphics => &self.graphics_queue,
+            QueueType::Compute => self
+                .compute_queue
+                .as_ref()
+                .expect("Device does not support requested queue type."),
+            QueueType::Transfer => self
+                .transfer_queue
+                .as_ref()
+                .expect("Device does not support requested queue type."),
         };
-        queue_tracker.next_counter()
+        queue.lock().unwrap().next_counter()
     }
 
     pub fn await_queue_counter(&self, queue_type: QueueType, value: u64) {
-        let queue_tracker = match queue_type {
-            QueueType::Graphics => &self.graphics_queue_tracker,
-            QueueType::Compute => &self.compute_queue_tracker,
-            QueueType::Transfer => &self.transfer_queue_tracker,
+        let queue = match queue_type {
+            QueueType::Graphics => &self.graphics_queue,
+            QueueType::Compute => self
+                .compute_queue
+                .as_ref()
+                .expect("Device does not support requested queue type."),
+            QueueType::Transfer => self
+                .transfer_queue
+                .as_ref()
+                .expect("Device does not support requested queue type."),
         };
-        queue_tracker.await_counter(value);
+        queue.lock().unwrap().await_counter(value);
     }
 
     pub fn submitted_queue_counter(&self, queue_type: QueueType) -> u64 {
-        let queue_tracker = match queue_type {
-            QueueType::Graphics => &self.graphics_queue_tracker,
-            QueueType::Compute => &self.compute_queue_tracker,
-            QueueType::Transfer => &self.transfer_queue_tracker,
+        let queue = match queue_type {
+            QueueType::Graphics => &self.graphics_queue,
+            QueueType::Compute => self
+                .compute_queue
+                .as_ref()
+                .expect("Device does not support requested queue type."),
+            QueueType::Transfer => self
+                .transfer_queue
+                .as_ref()
+                .expect("Device does not support requested queue type."),
         };
-        queue_tracker.submitted_counter()
+        queue.lock().unwrap().submitted_counter()
     }
 
     pub fn completed_queue_counter(&self, queue_type: QueueType) -> u64 {
-        let queue_tracker = match queue_type {
-            QueueType::Graphics => &self.graphics_queue_tracker,
-            QueueType::Compute => &self.compute_queue_tracker,
-            QueueType::Transfer => &self.transfer_queue_tracker,
+        let queue = match queue_type {
+            QueueType::Graphics => &self.graphics_queue,
+            QueueType::Compute => self
+                .compute_queue
+                .as_ref()
+                .expect("Device does not support requested queue type."),
+            QueueType::Transfer => self
+                .transfer_queue
+                .as_ref()
+                .expect("Device does not support requested queue type."),
         };
-        queue_tracker.completed_counter()
+        queue.lock().unwrap().completed_counter()
     }
 
     pub fn wait_for(
@@ -477,119 +486,78 @@ impl Device {
         counter: u64,
         wait_before: BarrierSync,
     ) {
-        let mut queues = self.queues.lock().unwrap();
-        match wait_for_queue {
-            QueueType::Graphics => {}
-            QueueType::Compute => {
-                if !queues.compute_queue.is_some() {
-                    panic!("Cannot wait for compute queue, queue is not supported.");
-                }
-            }
-            QueueType::Transfer => {
-                if !queues.transfer_queue.is_some() {
-                    panic!("Cannot wait for transfer queue, queue is not supported.");
-                }
-            }
-        }
         if queue_type == wait_for_queue {
             panic!("Cannot wait for same queue.");
         }
 
-        match queue_type {
-            QueueType::Graphics => {
-                let queue = &mut queues.graphics_queue;
-                match wait_for_queue {
-                    QueueType::Compute => {
-                        queue.wait_for(self.compute_queue_tracker.fence(), counter, wait_before)
-                    }
-                    QueueType::Transfer => {
-                        queue.wait_for(self.transfer_queue_tracker.fence(), counter, wait_before)
-                    }
-                    QueueType::Graphics => unreachable!(),
-                }
-            }
-            QueueType::Compute => {
-                let queue = queues
-                    .compute_queue
-                    .as_mut()
-                    .expect("Device does not support requested queue type.");
-                match wait_for_queue {
-                    QueueType::Compute => unreachable!(),
-                    QueueType::Transfer => {
-                        queue.wait_for(self.transfer_queue_tracker.fence(), counter, wait_before)
-                    }
-                    QueueType::Graphics => {
-                        queue.wait_for(self.graphics_queue_tracker.fence(), counter, wait_before)
-                    }
-                }
-            }
-            QueueType::Transfer => {
-                let queue = queues
-                    .transfer_queue
-                    .as_mut()
-                    .expect("Device does not support requested queue type.");
-                match wait_for_queue {
-                    QueueType::Compute => {
-                        queue.wait_for(self.compute_queue_tracker.fence(), counter, wait_before)
-                    }
-                    QueueType::Transfer => unreachable!(),
-                    QueueType::Graphics => {
-                        queue.wait_for(self.graphics_queue_tracker.fence(), counter, wait_before)
-                    }
-                }
-            }
-        }
+        let wait_for_queue_lock = match wait_for_queue {
+            QueueType::Graphics => self.graphics_queue.lock().unwrap(),
+            QueueType::Compute => self
+                .compute_queue
+                .as_ref()
+                .expect("Cannot wait for compute queue, queue is not supported.")
+                .lock()
+                .unwrap(),
+            QueueType::Transfer => self
+                .transfer_queue
+                .as_ref()
+                .expect("Cannot wait for transfer queue, queue is not supported.")
+                .lock()
+                .unwrap(),
+        };
+        let fence = wait_for_queue_lock.fence();
+
+        let mut queue = match queue_type {
+            QueueType::Graphics => self.graphics_queue.lock().unwrap(),
+            QueueType::Compute => self
+                .compute_queue
+                .as_ref()
+                .expect("Device does not support requested queue type.")
+                .lock()
+                .unwrap(),
+            QueueType::Transfer => self
+                .transfer_queue
+                .as_ref()
+                .expect("Device does not support requested queue type.")
+                .lock()
+                .unwrap(),
+        };
+
+        queue.wait_for(fence, counter, wait_before);
     }
 
     pub fn submit(&self, queue_type: QueueType, cmd_buffer: FinishedCommandBuffer) -> u64 {
-        let mut queues = self.queues.lock().unwrap();
-        match queue_type {
-            QueueType::Graphics => {
-                queues.graphics_queue.submit(cmd_buffer);
-            }
-            QueueType::Compute => {
-                let queue = queues
-                    .compute_queue
-                    .as_mut()
-                    .expect("Device does not support requested queue type.");
-                queue.submit(cmd_buffer);
-            }
-            QueueType::Transfer => {
-                let queue = queues
-                    .transfer_queue
-                    .as_mut()
-                    .expect("Device does not support requested queue type.");
-                queue.submit(cmd_buffer);
-            }
-        }
-        self.queue_next_counter(queue_type)
+        let mut queue = match queue_type {
+            QueueType::Graphics => self.graphics_queue.lock().unwrap(),
+            QueueType::Compute => self
+                .compute_queue
+                .as_ref()
+                .expect("Device does not support requested queue type.")
+                .lock()
+                .unwrap(),
+            QueueType::Transfer => self
+                .transfer_queue
+                .as_ref()
+                .expect("Device does not support requested queue type.")
+                .lock()
+                .unwrap(),
+        };
+        queue.submit(cmd_buffer);
+        queue.next_counter()
     }
 
     pub fn submit_counter_bump(&self, queue_type: QueueType) -> u64 {
-        let mut queues = self.queues.lock().unwrap();
-        let (queue_opt, api_queue_opt, tracker) = match queue_type {
-            QueueType::Graphics => (
-                Some(&mut queues.graphics_queue),
-                Some(self.device.graphics_queue()),
-                &self.graphics_queue_tracker,
-            ),
-            QueueType::Compute => (
-                queues.compute_queue.as_mut(),
-                self.device.compute_queue(),
-                &self.compute_queue_tracker,
-            ),
-            QueueType::Transfer => (
-                queues.transfer_queue.as_mut(),
-                self.device.transfer_queue(),
-                &self.transfer_queue_tracker,
-            ),
+        let queue_opt = match queue_type {
+            QueueType::Graphics => Some(&self.graphics_queue),
+            QueueType::Compute => self.compute_queue.as_ref(),
+            QueueType::Transfer => self.transfer_queue.as_ref(),
         };
 
-        if queue_opt.is_none() || api_queue_opt.is_none() {
-            return 0u64;
+        if let Some(queue) = queue_opt {
+            queue.lock().unwrap().submit_counter_bump()
+        } else {
+            0u64
         }
-        let queue = queue_opt.unwrap();
-        queue.submit_counter_bump(tracker)
     }
 
     pub fn present(
@@ -598,16 +566,15 @@ impl Device {
         swapchain: &Arc<Mutex<Swapchain>>,
         backbuffer: Arc<active_gpu_backend::Backbuffer>,
     ) {
-        let mut queues = self.queues.lock().unwrap();
-        self.flush_locked(&mut queues);
+        self.flush();
 
         let (queue_opt, api_queue_opt) = match queue_type {
             QueueType::Graphics => (
-                Some(&mut queues.graphics_queue),
+                Some(&self.graphics_queue),
                 Some(self.device.graphics_queue()),
             ),
-            QueueType::Compute => (queues.compute_queue.as_mut(), self.device.compute_queue()),
-            QueueType::Transfer => (queues.transfer_queue.as_mut(), self.device.transfer_queue()),
+            QueueType::Compute => (self.compute_queue.as_ref(), self.device.compute_queue()),
+            QueueType::Transfer => (self.transfer_queue.as_ref(), self.device.transfer_queue()),
         };
 
         if queue_opt.is_none() || api_queue_opt.is_none() {
@@ -615,7 +582,7 @@ impl Device {
         }
 
         let api_queue = api_queue_opt.unwrap();
-        let queue = queue_opt.unwrap();
+        let mut queue = queue_opt.unwrap().lock().unwrap();
         queue.present(swapchain, backbuffer, api_queue);
     }
 
@@ -625,19 +592,17 @@ impl Device {
         swapchain: &Arc<Mutex<Swapchain>>,
         backbuffer: &Arc<active_gpu_backend::Backbuffer>,
     ) {
-        let mut queues = self.queues.lock().unwrap();
         let queue_opt = match queue_type {
-            QueueType::Graphics => Some(&mut queues.graphics_queue),
-
-            QueueType::Compute => queues.compute_queue.as_mut(),
-            QueueType::Transfer => queues.transfer_queue.as_mut(),
+            QueueType::Graphics => Some(&self.graphics_queue),
+            QueueType::Compute => self.compute_queue.as_ref(),
+            QueueType::Transfer => self.transfer_queue.as_ref(),
         };
 
         if queue_opt.is_none() {
             panic!("Device does not support requested queue type.");
         }
 
-        let queue = queue_opt.unwrap();
+        let mut queue = queue_opt.unwrap().lock().unwrap();
         queue.acquire_swapchain(swapchain, backbuffer);
     }
 
@@ -647,55 +612,38 @@ impl Device {
         swapchain: &Arc<Mutex<Swapchain>>,
         backbuffer: &Arc<active_gpu_backend::Backbuffer>,
     ) {
-        let mut queues = self.queues.lock().unwrap();
         let queue_opt = match queue_type {
-            QueueType::Graphics => Some(&mut queues.graphics_queue),
-
-            QueueType::Compute => queues.compute_queue.as_mut(),
-            QueueType::Transfer => queues.transfer_queue.as_mut(),
+            QueueType::Graphics => Some(&self.graphics_queue),
+            QueueType::Compute => self.compute_queue.as_ref(),
+            QueueType::Transfer => self.transfer_queue.as_ref(),
         };
 
         if queue_opt.is_none() {
             panic!("Device does not support requested queue type.");
         }
 
-        let queue = queue_opt.unwrap();
+        let mut queue = queue_opt.unwrap().lock().unwrap();
         queue.release_swapchain(swapchain, backbuffer);
     }
 
     pub fn flush(&self) -> u64 {
         self.transfer.submit(self);
-        let mut guard = self.queues.lock().unwrap();
-        self.flush_locked(&mut guard)
-    }
 
-    fn flush_locked(&self, queues: &mut Queues) -> u64 {
-        self.transfer.submit(self);
-
-        let graphics_counter = self.flush_queue(queues, QueueType::Graphics);
-        let compute_counter = self.flush_queue(queues, QueueType::Compute);
-        let transfer_counter = self.flush_queue(queues, QueueType::Transfer);
+        let graphics_counter = self.flush_queue(QueueType::Graphics);
+        let compute_counter = self.flush_queue(QueueType::Compute);
+        let transfer_counter = self.flush_queue(QueueType::Transfer);
 
         graphics_counter.max(compute_counter.max(transfer_counter))
     }
 
-    fn flush_queue(&self, queues: &mut Queues, queue_type: QueueType) -> u64 {
-        let (queue_opt, api_queue_opt, tracker) = match queue_type {
+    fn flush_queue(&self, queue_type: QueueType) -> u64 {
+        let (queue_opt, api_queue_opt) = match queue_type {
             QueueType::Graphics => (
-                Some(&mut queues.graphics_queue),
+                Some(&self.graphics_queue),
                 Some(self.device.graphics_queue()),
-                &self.graphics_queue_tracker,
             ),
-            QueueType::Compute => (
-                queues.compute_queue.as_mut(),
-                self.device.compute_queue(),
-                &self.compute_queue_tracker,
-            ),
-            QueueType::Transfer => (
-                queues.transfer_queue.as_mut(),
-                self.device.transfer_queue(),
-                &self.transfer_queue_tracker,
-            ),
+            QueueType::Compute => (self.compute_queue.as_ref(), self.device.compute_queue()),
+            QueueType::Transfer => (self.transfer_queue.as_ref(), self.device.transfer_queue()),
         };
 
         if queue_opt.is_none() || api_queue_opt.is_none() {
@@ -703,10 +651,10 @@ impl Device {
         }
 
         let api_queue = api_queue_opt.unwrap();
-        let queue = queue_opt.unwrap();
+        let mut queue = queue_opt.unwrap().lock().unwrap();
 
-        queue.submit_counter_bump(tracker);
-        queue.flush(api_queue, tracker)
+        queue.submit_counter_bump();
+        queue.flush(api_queue)
     }
 
     pub fn has_queue(&self, queue_type: QueueType) -> bool {
