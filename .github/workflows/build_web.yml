@@ -1,0 +1,42 @@
+name: Build web target
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y glslang-tools
+
+      - name: Install nightly Rust
+        run: rustup component add rust-src --toolchain nightly-x86_64-unknown-linux-gnu
+
+      - name: Install Wasm Pack
+        run: curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Build Web Rust lib
+        run: wasm-pack build platform/web/lib --target web
+
+      - name: Install npm dependencies
+        working-directory: platform/web/www
+        run: npm ci
+
+      - name: Build Web TypeScript code
+        working-directory: platform/web/www
+        run: npm run build
