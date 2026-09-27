@@ -74,11 +74,9 @@ bevy_platform = { version = "0.19", features = ["web"] }
 bevy_app = { version = "0.19", features = ["web"] }
 
 [features]
-default = ["threading"]
+default = ["ecs_threading"]
 # default = [ ]
 ecs_threading = ["bevy_tasks/multi_threaded"]
-render_thread = []
-threading = ["ecs_threading", "render_thread"]
 profile = ["profiling/profile-with-optick"]
 non_send_gpu = ["sourcerenderer_core/non_send_gpu"]
 non_send_io = ["sourcerenderer_core/non_send_io"]
