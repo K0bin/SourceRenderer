@@ -5,7 +5,7 @@ use crate::{
 };
 use bitflags::bitflags;
 use bytemuck::{Pod, cast_slice};
-use js_sys::{JsNullable, Uint8Array};
+use js_sys::JsNullable;
 use smallvec::SmallVec;
 use sourcerenderer_core::{align_up_64, gpu};
 use std::marker::PhantomData;

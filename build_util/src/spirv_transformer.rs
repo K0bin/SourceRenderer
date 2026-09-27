@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::File, io::Write, ops::Range, process::Command, u32};
+use std::{collections::HashMap, fs::File, io::Write, ops::Range, process::Command};
 
 use sourcerenderer_core::gpu::PER_SET_BINDINGS;
 
@@ -714,9 +714,11 @@ pub fn spirv_separate_combined_image_samplers(
             let words = cast_to_words(spirv);
             words[*var_pos + 1] = mapping.image_ptr_type;
         }
-        assert!(!mappings
-            .iter()
-            .any(|m| m.image_ptr_var == mapping.image_ptr_var));
+        assert!(
+            !mappings
+                .iter()
+                .any(|m| m.image_ptr_var == mapping.image_ptr_var)
+        );
 
         // Insert var for sampler
         assert_eq!(mapping.sampler_ptr_var, u32::MAX);
@@ -760,11 +762,15 @@ pub fn spirv_separate_combined_image_samplers(
         let (_, _, binding_decoration) = binding_decoration_opt.unwrap();
         let (_, _, descriptor_set_decoration) = descriptor_set_decoration_opt.unwrap();
         if binding_decoration.value.is_none() {
-            log::warn!("Found binding decoration for global variable for combined image sampler but no value.");
+            log::warn!(
+                "Found binding decoration for global variable for combined image sampler but no value."
+            );
             continue;
         }
         if descriptor_set_decoration.value.is_none() {
-            log::warn!("Found descriptor set decoration for global variable for combined image sampler but no value.");
+            log::warn!(
+                "Found descriptor set decoration for global variable for combined image sampler but no value."
+            );
             continue;
         }
         last_mapping_mut.image_binding = Some(Binding {
@@ -855,9 +861,11 @@ pub fn spirv_separate_combined_image_samplers(
             let words = cast_to_words(spirv);
             words[*param_pos + 1] = mapping.image_ptr_type;
         }
-        assert!(!mappings
-            .iter()
-            .any(|m| m.image_ptr_var == mapping.image_ptr_var));
+        assert!(
+            !mappings
+                .iter()
+                .any(|m| m.image_ptr_var == mapping.image_ptr_var)
+        );
 
         // Insert param for sampler
         assert_eq!(mapping.sampler_ptr_var, u32::MAX);
