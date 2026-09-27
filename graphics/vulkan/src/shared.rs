@@ -13,7 +13,6 @@ pub struct VkShared {
     descriptor_set_layouts: RwLock<HashMap<VkDescriptorSetLayoutKey, Arc<VkDescriptorSetLayout>>>,
     pipeline_layouts: RwLock<HashMap<VkPipelineLayoutKey, Arc<VkPipelineLayout>>>,
     bindless_texture_descriptor_set: Option<VkBindlessDescriptorSet>,
-    clear_buffer_meta_pipeline: VkPipeline,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Default)]
@@ -43,24 +42,12 @@ impl VkShared {
             None
         };
 
-        let shader_bytes = include_bytes!("../meta_shaders/clear_buffer.comp.json");
-        let packed: gpu::PackedShader = serde_json::from_slice(shader_bytes).unwrap();
-        let shader = VkShader::new(device, &packed, Some("ClearBufferMeta"));
-        let clear_buffer_meta_pipeline =
-            VkPipeline::new_compute_meta(device, &shader, Some("ClearBufferPipeline"));
-
         Self {
             device: device.clone(),
             descriptor_set_layouts: RwLock::new(descriptor_set_layouts),
             pipeline_layouts: RwLock::new(HashMap::new()),
             bindless_texture_descriptor_set,
-            clear_buffer_meta_pipeline,
         }
-    }
-
-    #[inline(always)]
-    pub(super) fn get_clear_buffer_meta_pipeline(&self) -> &VkPipeline {
-        &self.clear_buffer_meta_pipeline
     }
 
     pub(super) fn get_descriptor_set_layout(
