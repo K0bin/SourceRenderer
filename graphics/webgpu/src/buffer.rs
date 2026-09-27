@@ -1,11 +1,11 @@
+use sourcerenderer_core::gpu;
+use std::marker::PhantomData;
 use std::{
     cell::{Ref, RefCell},
     hash::Hash,
 };
-use std::marker::PhantomData;
-use sourcerenderer_core::gpu;
 
-use web_sys::{js_sys::Uint8Array, GpuBuffer, GpuBufferDescriptor, GpuDevice};
+use web_sys::{GpuBuffer, GpuBufferDescriptor, GpuDevice, js_sys::Uint8Array};
 
 pub struct WebGPUBuffer {
     device: GpuDevice,
@@ -89,13 +89,13 @@ impl WebGPUBuffer {
             );
         }
         if info.usage.gpu_writable() && !info.usage.gpu_readable() && !mappable {
-            panic!("The buffer is useless because it can only be written on the GPU but the contents cannot be read anywhere.");
+            panic!(
+                "The buffer is useless because it can only be written on the GPU but the contents cannot be read anywhere."
+            );
         }
 
         retained_rust_memory_limit = retained_rust_memory_limit.min(info.size);
-        if (usage & web_sys::gpu_buffer_usage::MAP_WRITE) == 0
-            && mappable
-        {
+        if (usage & web_sys::gpu_buffer_usage::MAP_WRITE) == 0 && mappable {
             // GpuQueue::writeBuffer requires GpuUsage::COPY_DST
             usage |= web_sys::gpu_buffer_usage::COPY_DST;
         }
@@ -130,7 +130,7 @@ impl WebGPUBuffer {
             mappable,
             retained_memory_limit: retained_rust_memory_limit,
             info: info.clone(),
-            _p: PhantomData
+            _p: PhantomData,
         })
     }
 
@@ -172,10 +172,15 @@ impl gpu::Buffer for WebGPUBuffer {
             return None;
         }
         if !invalidate && !self.info.usage.gpu_readable() {
-            log::warn!("Mapping a GPU-writeonly buffer (so probably mapping for reading) without invalidating will cause issues.");
+            log::warn!(
+                "Mapping a GPU-writeonly buffer (so probably mapping for reading) without invalidating will cause issues."
+            );
         }
         let buffer_ref = self.buffer.borrow();
-        if invalidate && buffer_ref.usage() != (web_sys::gpu_buffer_usage::COPY_DST | web_sys::gpu_buffer_usage::MAP_READ) {
+        if invalidate
+            && buffer_ref.usage()
+                != (web_sys::gpu_buffer_usage::COPY_DST | web_sys::gpu_buffer_usage::MAP_READ)
+        {
             log::error!("Cannot read GPU written buffer on WebGPU.");
         }
         if invalidate && buffer_ref.map_state() != web_sys::GpuBufferMapState::Mapped {
@@ -194,7 +199,13 @@ impl gpu::Buffer for WebGPUBuffer {
         };
         if retained_memory_size < length {
             if cfg!(debug_assertions) {
-                log::trace!("Creating new memory copy of buffer because current one is too small ({:?} bytes). Requested by map operation: {:?} bytes. Buffer size: {:?} bytes, buffer usage: {:?}", retained_memory_size, length, self.info.size, self.info.usage);
+                log::trace!(
+                    "Creating new memory copy of buffer because current one is too small ({:?} bytes). Requested by map operation: {:?} bytes. Buffer size: {:?} bytes, buffer usage: {:?}",
+                    retained_memory_size,
+                    length,
+                    self.info.size,
+                    self.info.usage
+                );
             }
             let mut memory_vec =
                 Vec::<u8>::with_capacity(length.max(self.retained_memory_limit) as usize);
@@ -224,13 +235,15 @@ impl gpu::Buffer for WebGPUBuffer {
             return;
         }
         if !flush && !self.info.usage.gpu_writable() {
-            log::warn!("Mapping a GPU-readonly buffer (so probably mapped for writing) without flushing will cause issues.");
+            log::warn!(
+                "Mapping a GPU-readonly buffer (so probably mapped for writing) without flushing will cause issues."
+            );
         }
 
         let memory = memory_opt.as_mut().unwrap();
 
         if flush {
-            let mut buffer = self.buffer.borrow_mut();
+            let buffer = self.buffer.borrow_mut();
             length = length.min(self.info.size - offset);
             assert!(offset + length <= self.info.size);
             assert!((memory.len() as u64) >= length);
@@ -262,7 +275,13 @@ impl gpu::Buffer for WebGPUBuffer {
         }
         if (memory.len() as u64) > self.retained_memory_limit {
             if cfg!(debug_assertions) {
-                log::trace!("Removing memory copy of buffer ({:?} bytes) because it exceeds limit ({:?} bytes). Buffer size: {:?} bytes, buffer usage: {:?}", memory.len(), self.retained_memory_limit, self.info.size, self.info.usage);
+                log::trace!(
+                    "Removing memory copy of buffer ({:?} bytes) because it exceeds limit ({:?} bytes). Buffer size: {:?} bytes, buffer usage: {:?}",
+                    memory.len(),
+                    self.retained_memory_limit,
+                    self.info.size,
+                    self.info.usage
+                );
             }
             // Free mapping copy
             *memory_opt = None;

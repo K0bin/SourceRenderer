@@ -1,3 +1,4 @@
+use crate::binding::BindGroupCaches;
 use crate::{
     WebGPUBackend, WebGPUBindGroupBinding, WebGPULimits, WebGPUQueryPool,
     binding::{
@@ -21,7 +22,6 @@ use sourcerenderer_core::{
     align_up_32,
     gpu::{self, Buffer as _, Texture as _, TextureView as _},
 };
-use std::collections::{HashSet, hash_set::Iter};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use web_sys::{
@@ -30,7 +30,6 @@ use web_sys::{
     GpuRenderPassDescriptor, GpuRenderPassEncoder, GpuStoreOp, GpuTexelCopyBufferInfo,
     GpuTexelCopyTextureInfo,
 };
-use crate::binding::BindGroupCaches;
 
 enum WebGPUPassEncoder {
     None,
@@ -119,28 +118,6 @@ enum WebGPUCommandBufferHandle {
     Uninit,
 }
 
-#[derive(Clone)]
-pub(crate) struct WebGPUReadbackBufferSync {
-    pub(crate) src: web_sys::GpuBuffer,
-    pub(crate) dst: Option<web_sys::GpuBuffer>,
-    pub(crate) size: u32,
-    _p: PhantomData<*const std::ffi::c_void>,
-}
-
-impl std::hash::Hash for WebGPUReadbackBufferSync {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        WebGPUBuffer::handle_as_usize(&self.src).hash(state);
-    }
-}
-
-impl PartialEq for WebGPUReadbackBufferSync {
-    fn eq(&self, other: &Self) -> bool {
-        self.src == other.src && self.dst == other.dst && self.size == other.size
-    }
-}
-
-impl Eq for WebGPUReadbackBufferSync {}
-
 pub struct WebGPUCommandBuffer {
     handle: WebGPUCommandBufferHandle,
     device: GpuDevice,
@@ -221,7 +198,6 @@ impl WebGPUCommandBuffer {
                 panic!("Command buffer was not begun.")
             }
             WebGPUCommandBufferHandle::Uninit => unreachable!(),
-            _ => panic!("Secondary command buffers aren't supported here"),
         }
     }
 
@@ -253,8 +229,7 @@ impl WebGPURecordingCommandBuffer {
             if let Some(name) = self.name.as_ref() {
                 encoder.set_label(name);
             }
-            self.pass_encoder =
-                WebGPUPassEncoder::Compute(encoder);
+            self.pass_encoder = WebGPUPassEncoder::Compute(encoder);
         }
         if let WebGPUPassEncoder::Compute(encoder) = &self.pass_encoder {
             encoder

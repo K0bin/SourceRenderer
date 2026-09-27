@@ -1,4 +1,3 @@
-use crate::asset::{AssetLoaderProgress, AssetType};
 use crate::graphics::{GraphicsContext, *};
 use crate::renderer::VolumeRendererOptions;
 use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
@@ -256,7 +255,6 @@ impl RenderPath for VolumeRenderer {
             &mut cmd_buffer,
             scene.scene,
             main_view,
-            &camera_buffer,
             &params,
             &ibl_textures,
         );

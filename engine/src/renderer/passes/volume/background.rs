@@ -87,7 +87,6 @@ impl BackgroundPass {
         cmd_buffer: &mut CommandBuffer,
         _scene: &RendererScene,
         _view: &View,
-        camera_buffer: &TransientBufferSlice,
         params: &RenderPassParameters,
         ibl_textures: &ImageBasedLightingTextures,
     ) {

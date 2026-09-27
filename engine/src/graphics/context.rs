@@ -199,10 +199,10 @@ impl GraphicsContext {
         for<'b> F: Fn(&mut CommandBuffer<'b>, &T) -> FinishedCommandBuffer,
         F: Sync,
     {
-        let pool = ComputeTaskPool::get();
         let result: Vec<FinishedCommandBuffer>;
         #[cfg(not(target_arch = "wasm32"))]
         {
+            let pool = ComputeTaskPool::get();
             result = pool.scope(|s| {
                 for element in elements {
                     s.spawn(async {
