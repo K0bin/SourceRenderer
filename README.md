@@ -16,7 +16,7 @@ The original goal was to render CSGO maps, hence the name.
 
 ### Web
 
-* Run `wasm-pack platform/web/lib --target web` in the root directory.
+* Run `wasm-pack build platform/web/lib --target web` in the root directory.
 * Build the tiny web page using `npm run build` in `platform/web/www`.
 * Host the page locally using `npm run dev` in `platform/web/www`.
 
