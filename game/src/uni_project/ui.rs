@@ -7,7 +7,8 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::Query;
 use bevy_math::Affine3A;
 use sourcerenderer_engine::dear_imgui_rs::{ChildWindow, Condition, ListBox};
-use sourcerenderer_engine::renderer::{VolumeMeshInstance, VolumeRendererOptions};
+use sourcerenderer_engine::renderer::VolumeMeshInstance;
+use sourcerenderer_engine::renderer::VolumeRendererOptions;
 use sourcerenderer_engine::transform::InterpolatedTransform;
 use sourcerenderer_engine::{DearImgui, VolumeDrawableTransparencyMode};
 
@@ -16,8 +17,45 @@ pub(super) struct UIPlugin;
 impl Plugin for UIPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(UIState::default());
-        app.add_systems(Update, (volume_meshes_ui_system,));
+        app.add_systems(Update, (volume_meshes_ui_system, pick_hdri_ui_system));
     }
+}
+
+fn pick_hdri_ui_system(
+    imgui: NonSendMut<DearImgui>,
+    mut options: ResMut<VolumeRendererOptions>,
+) {
+    let ui = imgui.ui();
+    let hdris = [
+        ("None", None),
+        ("Blaubeuren Night", Some("assets/BlaubeurenNight1k.hdr")),
+        ("Environment", Some("assets/environment.hdr")),
+        (
+            "Little Paris Eiffel Tower",
+            Some("assets/little_paris_eiffel_tower_4k.hdr"),
+        ),
+    ];
+
+    let mut current_idx = hdris
+        .iter()
+        .position(|(_, path)| *path == options.background_hdri.as_ref().map(|s| s.as_str()))
+        .unwrap_or(0);
+
+    ui.window("Environment##environmentwindow")
+        .position([520.0, 0.0], Condition::FirstUseEver)
+        .size([300.0, 100.0], Condition::FirstUseEver)
+        .build(|| {
+            ui.text("Background HDRI:");
+            ui.set_next_item_width(ui.content_region_avail_width());
+            if ui.combo(
+                "##background_hdri",
+                &mut current_idx,
+                &hdris,
+                |&(name, _)| name.into(),
+            ) {
+                options.background_hdri = hdris[current_idx].1.map(|s| s.to_string());
+            }
+        });
 }
 
 #[derive(Default, Resource)]

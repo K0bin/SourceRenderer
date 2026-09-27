@@ -5,7 +5,7 @@ use crate::renderer::asset::{
     RendererAssetsReadOnly,
 };
 use crate::renderer::drawable::{RendererVolumeDrawable, VolumeDrawableTransparencyMode};
-use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
+use crate::renderer::passes::volume::ibl::ImageBasedLightingTextures;
 use crate::renderer::passes::volume::marching_cubes::{
     MarchingCubesIndirectCall, MarchingCubesInfo, MarchingCubesKey, MarchingCubesPass,
 };
@@ -341,17 +341,16 @@ impl GeometryPass {
         params: &RenderPassParameters,
         options: &VolumeRendererOptions,
         marching_cubes_map: &HashMap<MarchingCubesKey, MarchingCubesInfo>,
+        ibl_textures: &ImageBasedLightingTextures,
     ) {
         cmd_buffer.clear_all_bindings(BindingFrequency::Frequent);
         cmd_buffer.clear_all_bindings(BindingFrequency::VeryFrequent);
 
         let resources = &params.resources;
 
-        if !resources.has_resource(
-            ImageBasedLightingPreparation::FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME,
-        ) || !resources.has_resource(
-            ImageBasedLightingPreparation::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
-        ) {
+        if !resources.has_resource(ibl_textures.filtered_diffuse_environment_map_texture_name)
+            || !resources.has_resource(ibl_textures.filtered_specular_environment_map_teture_name)
+        {
             return;
         }
 
@@ -402,7 +401,7 @@ impl GeometryPass {
 
         let integration_lut = resources.access_view(
             cmd_buffer,
-            ImageBasedLightingPreparation::PREINTEGRATION_MAP_TEXTURE_NAME,
+            ibl_textures.preintegration_nap_texture_name,
             BarrierSync::FRAGMENT_SHADER,
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,
@@ -412,7 +411,7 @@ impl GeometryPass {
         );
         let env_map_diffuse = resources.access_view(
             cmd_buffer,
-            ImageBasedLightingPreparation::FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME,
+            ibl_textures.filtered_diffuse_environment_map_texture_name,
             BarrierSync::FRAGMENT_SHADER,
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,
@@ -420,14 +419,13 @@ impl GeometryPass {
             &TextureViewInfo::default(),
             HistoryResourceEntry::Current,
         );
-        let env_specular_info = resources.texture_info(
-            ImageBasedLightingPreparation::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
-        );
+        let env_specular_info =
+            resources.texture_info(ibl_textures.filtered_specular_environment_map_teture_name);
         let env_specular_mips = env_specular_info.mip_levels;
         std::mem::drop(env_specular_info);
         let env_map_specular = resources.access_view(
             cmd_buffer,
-            ImageBasedLightingPreparation::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
+            ibl_textures.filtered_specular_environment_map_teture_name,
             BarrierSync::FRAGMENT_SHADER,
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,

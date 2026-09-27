@@ -36,5 +36,15 @@ pub struct VolumeMeshInstance {
     pub ray_march_normals: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Default, Resource)]
-pub struct VolumeRendererOptions {}
+#[derive(Clone, Debug, PartialEq, Resource)]
+pub struct VolumeRendererOptions {
+    pub background_hdri: Option<String>,
+}
+
+impl Default for VolumeRendererOptions {
+    fn default() -> Self {
+        Self {
+            background_hdri: None,
+        }
+    }
+}

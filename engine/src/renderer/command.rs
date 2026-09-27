@@ -1,4 +1,5 @@
 use crate::engine::WindowState;
+use crate::renderer::VolumeRendererOptions;
 use crate::renderer::drawable::VolumeDrawableTransparencyMode;
 use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;
@@ -46,7 +47,7 @@ pub enum RendererCommand {
         entity: Entity,
         transform: Affine3A,
     },
-    UpdateVolumeRendererOptions {},
+    UpdateVolumeRendererOptions(VolumeRendererOptions),
     UpdateCameraTransform {
         camera_transform: Affine3A,
         fov: f32,

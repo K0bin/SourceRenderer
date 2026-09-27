@@ -12,35 +12,41 @@ use sourcerenderer_core::gpu::{
 };
 use std::sync::Arc;
 
+pub struct ImageBasedLightingTextures {
+    pub filtered_diffuse_environment_map_texture_name: &'static str,
+    pub filtered_specular_environment_map_teture_name: &'static str,
+    pub preintegration_nap_texture_name: &'static str,
+}
+
 pub struct ImageBasedLightingPreparation {
-    handle: TextureHandle,
+    handle: Option<TextureHandle>,
     project_to_cube_pipeline: ComputePipelineHandle,
     prefilter_diffuse_pipeline: ComputePipelineHandle,
     prefilter_specular_pipeline: ComputePipelineHandle,
     preintegrate_pipeline: ComputePipelineHandle,
     prepared: bool,
+    preintegration_lut_computed: bool, // TODO: Do this in the init buffer. tricky because of pipelines
 }
 
 impl ImageBasedLightingPreparation {
-    pub const ENVIRONMENT_MAP_TEXTURE_NAME: &'static str = "EnvironmentMap";
-    pub const FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME: &'static str =
+    const ENVIRONMENT_MAP_TEXTURE_NAME: &'static str = "EnvironmentMap";
+    const FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME: &'static str =
         "FilteredDiffuseEnvironmentMap";
-    pub const FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME: &'static str =
+    const FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME: &'static str =
         "FilteredSpecularEnvironmentMap";
-    pub const PREINTEGRATION_MAP_TEXTURE_NAME: &'static str = "PreintegrationMap";
+    const PREINTEGRATION_MAP_TEXTURE_NAME: &'static str = "PreintegrationMap";
+
+    const BLANK_FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME: &'static str =
+        "BlankFilteredDiffuseEnvironmentMap";
+    const BLANK_FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME: &'static str =
+        "BlankFilteredSpecularEnvironmentMap";
+
     pub(crate) fn new(
         _device: &Arc<crate::graphics::Device>,
         assets: &RendererAssets,
-        _init_cmd_buffer: &mut crate::graphics::CommandBuffer,
+        init_cmd_buffer: &mut crate::graphics::CommandBuffer,
         resources: &mut RendererResources,
     ) -> Self {
-        let (ibl_map_handle, _) = assets.asset_manager().request_asset(
-            //"assets/little_paris_eiffel_tower_4k.hdr",
-            "assets/BlaubeurenNight1k.hdr",
-            AssetType::Texture,
-            AssetLoadPriority::Normal,
-        );
-
         resources.create_texture(
             Self::PREINTEGRATION_MAP_TEXTURE_NAME,
             &TextureInfo {
@@ -73,13 +79,16 @@ impl ImageBasedLightingPreparation {
             PathPipelineShaderStage::empty_spec_consts("shaders/preintegrate_brdf.comp.json"),
         );
 
+        Self::prepare_blank(init_cmd_buffer, resources);
+
         Self {
-            handle: TextureHandle::from(ibl_map_handle),
+            handle: None,
             project_to_cube_pipeline,
             prefilter_diffuse_pipeline,
             prefilter_specular_pipeline,
             preintegrate_pipeline,
             prepared: false,
+            preintegration_lut_computed: false,
         }
     }
 
@@ -135,13 +144,39 @@ impl ImageBasedLightingPreparation {
                 .is_some()
     }
 
+    pub(crate) fn set_hdri(&mut self, assets: &RendererAssets, path: Option<&str>) {
+        if path.is_none() {
+            self.handle = None;
+            self.prepared = false;
+            return;
+        }
+
+        let (ibl_map_handle, _) = assets.asset_manager().request_asset(
+            path.unwrap(),
+            AssetType::Texture,
+            AssetLoadPriority::Normal,
+        );
+        self.handle = Some(TextureHandle::from(ibl_map_handle));
+        self.prepared = false;
+    }
+
     fn deproject_env_map(
         &mut self,
         cmd_buffer: &mut CommandBuffer,
         pass_params: &mut RenderPassParameters<'_>,
     ) {
+        pass_params
+            .resources
+            .destroy_texture(Self::ENVIRONMENT_MAP_TEXTURE_NAME);
+        pass_params
+            .resources
+            .destroy_texture(Self::FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME);
+        pass_params
+            .resources
+            .destroy_texture(Self::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME);
+
         cmd_buffer.begin_label("Environment Map deprojecting");
-        let texture = pass_params.assets.get_texture_opt(self.handle);
+        let texture = pass_params.assets.get_texture_opt(self.handle.unwrap());
         let texture = texture.unwrap();
         let info = texture.view.texture().unwrap().info();
         let size = info.width.min(info.height);
@@ -186,6 +221,7 @@ impl ImageBasedLightingPreparation {
             },
             HistoryResourceEntry::Current,
         );
+        cmd_buffer.flush_barriers();
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::VeryFrequent,
             0u32,
@@ -320,6 +356,71 @@ impl ImageBasedLightingPreparation {
         cmd_buffer.end_label();
     }
 
+    fn prepare_blank(cmd_buffer: &mut CommandBuffer, resources: &mut RendererResources) {
+        let mut info = TextureInfo {
+            dimension: TextureDimension::Cube,
+            format: Format::RGBA8UNorm,
+            width: 16,
+            height: 16,
+            depth: 1u32,
+            mip_levels: 1u32,
+            array_length: 1u32,
+            samples: SampleCount::Samples1,
+            usage: TextureUsage::SAMPLED | TextureUsage::STORAGE,
+            supports_srgb: false,
+        };
+
+        resources.create_texture(
+            Self::BLANK_FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME,
+            &info,
+            false,
+        );
+
+        info.mip_levels = 32u32 - u32::leading_zeros(info.width);
+        resources.create_texture(
+            Self::BLANK_FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
+            &info,
+            false,
+        );
+
+        let diffuse = resources.access_texture(
+            cmd_buffer,
+            Self::BLANK_FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME,
+            &BarrierTextureRange {
+                base_array_layer: 0u32,
+                base_mip_level: 0u32,
+                mip_level_length: 1u32,
+                array_layer_length: 1u32,
+            },
+            BarrierSync::COMPUTE_SHADER,
+            BarrierAccess::STORAGE_WRITE,
+            TextureLayout::Storage,
+            true,
+            HistoryResourceEntry::Current,
+        );
+        let specular = resources.access_texture(
+            cmd_buffer,
+            Self::BLANK_FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
+            &BarrierTextureRange {
+                base_array_layer: 0u32,
+                base_mip_level: 0u32,
+                mip_level_length: info.mip_levels,
+                array_layer_length: 1u32,
+            },
+            BarrierSync::COMPUTE_SHADER,
+            BarrierAccess::STORAGE_WRITE,
+            TextureLayout::Storage,
+            true,
+            HistoryResourceEntry::Current,
+        );
+        cmd_buffer.flush_barriers();
+
+        cmd_buffer.clear_storage_texture(&diffuse, 0, 0, [0u32, 0u32, 0u32, 0u32]);
+        for mip in 0..info.mip_levels {
+            cmd_buffer.clear_storage_texture(&specular, 0, mip, [0u32, 0u32, 0u32, 0u32]);
+        }
+    }
+
     pub fn execute(
         &mut self,
         cmd_buffer: &mut CommandBuffer,
@@ -328,13 +429,40 @@ impl ImageBasedLightingPreparation {
         cmd_buffer.clear_all_bindings(BindingFrequency::Frequent);
         cmd_buffer.clear_all_bindings(BindingFrequency::VeryFrequent);
 
-        let texture = pass_params.assets.get_texture_opt(self.handle);
-        if texture.is_none() || self.prepared {
+        if !self.preintegration_lut_computed {
+            self.calculate_preintegration_lut(cmd_buffer, pass_params);
+            self.preintegration_lut_computed = true;
+        }
+
+        let texture_ready = self
+            .handle
+            .map(|handle| pass_params.assets.get_texture_opt(handle).is_some())
+            .unwrap_or(false); // If we have no texture, we don't need to do any work here.
+        if !texture_ready || self.prepared {
             return;
         }
         self.deproject_env_map(cmd_buffer, pass_params);
         self.filter_env_map(cmd_buffer, pass_params);
-        self.calculate_preintegration_lut(cmd_buffer, pass_params);
         self.prepared = true;
+    }
+
+    pub fn get_texture(&self) -> ImageBasedLightingTextures {
+        if self.handle.is_none() {
+            ImageBasedLightingTextures {
+                filtered_diffuse_environment_map_texture_name:
+                    Self::BLANK_FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME,
+                filtered_specular_environment_map_teture_name:
+                    Self::BLANK_FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
+                preintegration_nap_texture_name: Self::PREINTEGRATION_MAP_TEXTURE_NAME,
+            }
+        } else {
+            ImageBasedLightingTextures {
+                filtered_diffuse_environment_map_texture_name:
+                    Self::FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME,
+                filtered_specular_environment_map_teture_name:
+                    Self::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
+                preintegration_nap_texture_name: Self::PREINTEGRATION_MAP_TEXTURE_NAME,
+            }
+        }
     }
 }

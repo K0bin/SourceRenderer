@@ -1,5 +1,6 @@
 use crate::asset::{AssetLoaderProgress, AssetType};
 use crate::graphics::{GraphicsContext, *};
+use crate::renderer::VolumeRendererOptions;
 use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::passes::DearImguiRenderer;
 use crate::renderer::passes::volume::background::BackgroundPass;
@@ -15,8 +16,6 @@ use bytemuck::{Pod, Zeroable};
 use marching_cubes::MarchingCubesPass;
 use sourcerenderer_core::{Matrix4, Vec2UI, Vec4};
 use std::sync::Arc;
-
-use crate::renderer::VolumeRendererOptions;
 
 mod background;
 mod compositing;
@@ -116,7 +115,9 @@ impl VolumeRenderer {
 
         Self {
             device: device.clone(),
-            options: VolumeRendererOptions::default(),
+            options: VolumeRendererOptions {
+                background_hdri: None,
+            },
             marching_cubes_pass,
             geometry: geometry_pass,
             ssao,
@@ -128,7 +129,11 @@ impl VolumeRenderer {
         }
     }
 
-    pub fn update_options(&mut self, options: &VolumeRendererOptions) {
+    pub fn update_options(&mut self, options: &VolumeRendererOptions, assets: &RendererAssets) {
+        if self.options.background_hdri != options.background_hdri {
+            self.ibl_pass
+                .set_hdri(assets, options.background_hdri.as_ref().map(|s| s.as_str()));
+        }
         self.options = options.clone();
     }
 }
@@ -213,6 +218,7 @@ impl RenderPath for VolumeRenderer {
             .execute(&mut cmd_buffer, &mut params);
 
         self.ibl_pass.execute(&mut cmd_buffer, &mut params);
+        let ibl_textures = self.ibl_pass.get_texture();
 
         let camera_buffer = cmd_buffer
             .upload_dynamic_data(
@@ -238,12 +244,21 @@ impl RenderPath for VolumeRenderer {
             )
             .unwrap();
 
+        cmd_buffer.bind_uniform_buffer(
+            BindingFrequency::Frame,
+            0,
+            BufferRef::Transient(&camera_buffer),
+            0,
+            WHOLE_BUFFER,
+        );
+
         self.background.execute(
             &mut cmd_buffer,
             scene.scene,
             main_view,
             &camera_buffer,
             &params,
+            &ibl_textures,
         );
 
         self.geometry.execute(
@@ -252,6 +267,7 @@ impl RenderPath for VolumeRenderer {
             &params,
             &self.options,
             &marching_cubes_map,
+            &ibl_textures,
         );
 
         self.ssao.execute(

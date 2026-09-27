@@ -523,13 +523,13 @@ impl Renderer {
                 RendererCommand::UpdateUIData(snapshot) => {
                     self.scene.set_ui_data(snapshot);
                 }
-                RendererCommand::UpdateVolumeRendererOptions {} => {
+                RendererCommand::UpdateVolumeRendererOptions(options) => {
                     let any_box_ref: &dyn Any = self.render_path.as_ref();
                     let type_id = any_box_ref.type_id();
 
                     let any_box: &mut dyn Any = self.render_path.as_mut();
                     if let Some(volume_renderer) = any_box.downcast_mut::<VolumeRenderer>() {
-                        volume_renderer.update_options(&VolumeRendererOptions {});
+                        volume_renderer.update_options(&options, &self.assets);
                     } else {
                         log::error!(
                             "Current renderer doesn't support the received options. Expected: {:?}. Got: {:?}",
@@ -774,7 +774,9 @@ impl RendererSender {
         };
 
         sender
-            .send(RendererCommand::UpdateVolumeRendererOptions {})
+            .send(RendererCommand::UpdateVolumeRendererOptions(
+                options.clone(),
+            ))
             .map_err(|_| SendError(()))
     }
 
