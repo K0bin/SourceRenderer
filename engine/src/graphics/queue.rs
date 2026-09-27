@@ -124,7 +124,7 @@ impl Queue {
         self.inner.is_empty()
     }
 
-    pub(super) fn submit_counter_bump(&mut self, tracker: &QueueTracker) {
+    pub(super) fn submit_counter_bump(&mut self, tracker: &QueueTracker) -> u64 {
         let value = tracker.next_counter.fetch_add(1u64, Ordering::SeqCst);
 
         let fence_value = SharedFenceValuePair {
@@ -136,7 +136,7 @@ impl Queue {
         let last = self.inner.iter_mut().last();
         if let Some(last) = last {
             last.signal_fences.push(fence_value);
-            return;
+            return value;
         }
 
         self.inner.push_back(StoredQueueSubmission {
@@ -146,6 +146,7 @@ impl Queue {
             signal_swapchain: None,
             wait_swapchain: None,
         });
+        value
     }
 
     pub(super) fn wait_for(

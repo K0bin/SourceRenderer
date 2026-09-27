@@ -19,7 +19,7 @@ pub struct GraphicsContext {
     memory_allocator: Arc<MemoryAllocator>,
     current_frame: u64,
     completed_frame: u64,
-    frame_finished_counter_values: [u64; FRAME_COUNT],
+    frame_finished_counter_values: [SmallVec<[QueueFenceValue; 3]>; FRAME_COUNT],
     thread_frames: ManuallyDrop<ThreadLocal<ThreadFrames>>,
     prerendered_frames: u32,
     destroyer: ManuallyDrop<Arc<DeferredDestroyer>>,
@@ -58,7 +58,7 @@ impl GraphicsContext {
             destroyer: ManuallyDrop::new(destroyer.clone()),
             current_frame: 0u64,
             completed_frame: 0u64,
-            frame_finished_counter_values: [1u64; 5],
+            frame_finished_counter_values: Default::default(),
             thread_frames: ManuallyDrop::new(ThreadLocal::new()),
             prerendered_frames,
             global_buffer_allocator: buffer_allocator.clone(),
@@ -93,10 +93,14 @@ impl GraphicsContext {
         let new_frame = self.current_frame;
 
         if new_frame >= self.prerendered_frames as u64 {
-            let counter = self.frame_finished_counter_values
+            let counters = &self.frame_finished_counter_values
                 [(new_frame as usize) % (self.prerendered_frames as usize)];
             self.destroyer.set_counter(new_frame);
-            self.device.await_counter(counter);
+            for &(queue_type, counter) in counters {
+                if counter > 0 {
+                    self.device.await_queue_counter(queue_type, counter);
+                }
+            }
             self.destroyer
                 .destroy_unused(new_frame - (self.prerendered_frames as u64));
             self.global_buffer_allocator.cleanup_unused();
@@ -124,10 +128,25 @@ impl GraphicsContext {
 
     pub fn end_frame(&mut self) {
         assert_eq!(self.current_frame, self.completed_frame + 1);
-        let frame_completed_fence_value = self.device.queue_next_counter(QueueType::Graphics);
+        let mut fences = SmallVec::<[QueueFenceValue; 3]>::new();
+        fences.push((
+            QueueType::Graphics,
+            self.device.submitted_queue_counter(QueueType::Graphics),
+        ));
+        if self.device.has_queue(QueueType::Compute) {
+            fences.push((
+                QueueType::Compute,
+                self.device.submitted_queue_counter(QueueType::Compute),
+            ));
+        }
+        if self.device.has_queue(QueueType::Transfer) {
+            fences.push((
+                QueueType::Transfer,
+                self.device.submitted_queue_counter(QueueType::Transfer),
+            ));
+        }
         self.frame_finished_counter_values
-            [(self.current_frame as usize) % (self.prerendered_frames as usize)] =
-            frame_completed_fence_value;
+            [(self.current_frame as usize) % (self.prerendered_frames as usize)] = fences;
         self.completed_frame += 1;
     }
 
@@ -195,14 +214,16 @@ impl GraphicsContext {
             });
         }
 
-
         #[cfg(target_arch = "wasm32")]
         {
-            result = elements.iter().map(|element| {
-                let mut cmd_buffer = self.get_command_buffer(queue_type);
-                callback(&mut cmd_buffer, element);
-                cmd_buffer.finish()
-            }).collect();
+            result = elements
+                .iter()
+                .map(|element| {
+                    let mut cmd_buffer = self.get_command_buffer(queue_type);
+                    callback(&mut cmd_buffer, element);
+                    cmd_buffer.finish()
+                })
+                .collect();
         }
 
         let wait_fences = self.build_waits(

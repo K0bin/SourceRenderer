@@ -421,22 +421,11 @@ impl Device {
         log::warn!("Block until idle.");
         let mut queues = self.queues.lock().unwrap();
         self.flush_locked(&mut queues);
-        queues
-            .graphics_queue
-            .flush(self.device.graphics_queue(), &self.graphics_queue_tracker);
         self.graphics_queue_tracker.wait_for_idle();
-        if let Some(queue) = queues.compute_queue.as_mut() {
-            queue.flush(
-                self.device.compute_queue().unwrap(),
-                &self.compute_queue_tracker,
-            );
+        if queues.compute_queue.is_some() {
             self.compute_queue_tracker.wait_for_idle();
         }
-        if let Some(queue) = queues.transfer_queue.as_mut() {
-            queue.flush(
-                self.device.compute_queue().unwrap(),
-                &self.transfer_queue_tracker,
-            );
+        if queues.transfer_queue.is_some() {
             self.transfer_queue_tracker.wait_for_idle();
         }
 
@@ -463,17 +452,13 @@ impl Device {
         queue_tracker.await_counter(value);
     }
 
-    pub fn await_counter(&self, value: u64) {
-        let guard = self.queues.lock().unwrap();
-        self.graphics_queue_tracker.await_counter(value);
-        guard
-            .compute_queue
-            .as_ref()
-            .map(|_| self.compute_queue_tracker.await_counter(value));
-        guard
-            .transfer_queue
-            .as_ref()
-            .map(|_| self.transfer_queue_tracker.await_counter(value));
+    pub fn submitted_queue_counter(&self, queue_type: QueueType) -> u64 {
+        let queue_tracker = match queue_type {
+            QueueType::Graphics => &self.graphics_queue_tracker,
+            QueueType::Compute => &self.compute_queue_tracker,
+            QueueType::Transfer => &self.transfer_queue_tracker,
+        };
+        queue_tracker.submitted_counter()
     }
 
     pub fn completed_queue_counter(&self, queue_type: QueueType) -> u64 {
@@ -577,7 +562,34 @@ impl Device {
                 queue.submit(cmd_buffer);
             }
         }
-        self.graphics_queue_tracker.next_counter()
+        self.queue_next_counter(queue_type)
+    }
+
+    pub fn submit_counter_bump(&self, queue_type: QueueType) -> u64 {
+        let mut queues = self.queues.lock().unwrap();
+        let (queue_opt, api_queue_opt, tracker) = match queue_type {
+            QueueType::Graphics => (
+                Some(&mut queues.graphics_queue),
+                Some(self.device.graphics_queue()),
+                &self.graphics_queue_tracker,
+            ),
+            QueueType::Compute => (
+                queues.compute_queue.as_mut(),
+                self.device.compute_queue(),
+                &self.compute_queue_tracker,
+            ),
+            QueueType::Transfer => (
+                queues.transfer_queue.as_mut(),
+                self.device.transfer_queue(),
+                &self.transfer_queue_tracker,
+            ),
+        };
+
+        if queue_opt.is_none() || api_queue_opt.is_none() {
+            return 0u64;
+        }
+        let queue = queue_opt.unwrap();
+        queue.submit_counter_bump(tracker)
     }
 
     pub fn present(
@@ -660,42 +672,9 @@ impl Device {
     fn flush_locked(&self, queues: &mut Queues) -> u64 {
         self.transfer.submit(self);
 
-        let mut all_empty = true;
-        all_empty &= queues.graphics_queue.is_empty();
-        all_empty &= queues.compute_queue.as_ref().map_or(true, |q| q.is_empty());
-        all_empty &= queues
-            .transfer_queue
-            .as_ref()
-            .map_or(true, |q| q.is_empty());
-        if all_empty {
-            return self.graphics_queue_tracker.next_counter().max(1) - 1;
-        }
-
-        // Increase counter for the other queues to keep them sync for the deferred destruction.
-        // This allows us to have one synchronized GPU timeline.
-        // I hope the extra submits don't add too much unnecessary synchronization.
-        queues
-            .graphics_queue
-            .submit_counter_bump(&self.graphics_queue_tracker);
-        queues
-            .compute_queue
-            .as_mut()
-            .map(|q| q.submit_counter_bump(&self.compute_queue_tracker));
-        queues
-            .transfer_queue
-            .as_mut()
-            .map(|q| q.submit_counter_bump(&self.transfer_queue_tracker));
-
         let graphics_counter = self.flush_queue(queues, QueueType::Graphics);
         let compute_counter = self.flush_queue(queues, QueueType::Compute);
         let transfer_counter = self.flush_queue(queues, QueueType::Transfer);
-
-        assert!(compute_counter == 0 || graphics_counter == compute_counter);
-        assert!(transfer_counter == 0 || graphics_counter == transfer_counter);
-        assert_eq!(
-            graphics_counter + 1,
-            self.graphics_queue_tracker.next_counter()
-        );
 
         graphics_counter.max(compute_counter.max(transfer_counter))
     }
@@ -726,6 +705,7 @@ impl Device {
         let api_queue = api_queue_opt.unwrap();
         let queue = queue_opt.unwrap();
 
+        queue.submit_counter_bump(tracker);
         queue.flush(api_queue, tracker)
     }
 

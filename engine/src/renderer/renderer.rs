@@ -259,7 +259,6 @@ impl Renderer {
             &self.assets,
         );
         std::mem::drop(swapchain_guard);
-        self.context.end_frame();
 
         self.device.submit_transfers();
         match render_path_result {
@@ -272,7 +271,7 @@ impl Renderer {
                     );
                 }
 
-                self.device.submit(QueueType::Graphics, result.cmd_buffer);
+                let _ = self.device.submit(QueueType::Graphics, result.cmd_buffer);
 
                 if let Some(backbuffer) = result.backbuffer {
                     self.device.signal_backbuffer(
@@ -291,6 +290,11 @@ impl Renderer {
                     .recreate_swapchain(&mut swapchain_guard, &mut self.resources);
             }
         }
+
+        let _ = self.device.submit_counter_bump(QueueType::Graphics);
+        let _ = self.device.submit_counter_bump(QueueType::Compute);
+        let _ = self.device.submit_counter_bump(QueueType::Transfer);
+        self.context.end_frame();
 
         let c_device = self.device.clone();
         bevy_tasks::ComputeTaskPool::get()
