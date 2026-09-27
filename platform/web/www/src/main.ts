@@ -23,6 +23,10 @@ function main() {
         const msg = event.data as EngineWorkerMessage;
         switch (msg.messageType) {
             case EngineWorkerMessageType.StartRenderThread: {
+                if (!self.crossOriginIsolated) {
+                    throw new Error("Cannot start the render thread: Shared memory is not supported.");
+                }
+
                 const threadMsg = msg.data as ThreadWorkerInit;
                 msg.messageType = EngineWorkerMessageType.InitThread;
                 const renderWorker = new ThreadWorker({name: "RenderThread"});

@@ -5,6 +5,8 @@ use std::sync::{Arc, Condvar, Mutex};
 use js_sys::WebAssembly;
 use wasm_bindgen::prelude::{JsCast as _, JsValue, wasm_bindgen};
 
+use sourcerenderer_webgpu::{WebGPUInstance, WebGPUSurface};
+
 // Wasm thread
 pub mod thread {
     use super::*;
@@ -128,6 +130,9 @@ extern "C" {
         data: JsValue,
         name: &str,
     );
+
+    #[wasm_bindgen(js_name = "supportsThreads")]
+    pub fn supports_threads() -> bool;
 }
 
 #[wasm_bindgen(js_name = "threadFunc")]
@@ -137,4 +142,9 @@ pub async fn thread_func(callback_ptr: usize, data: JsValue) {
     > = std::ptr::without_provenance_mut(callback_ptr);
     let callback = unsafe { Box::from_raw(callback_ptr) };
     callback(data).await;
+}
+
+#[wasm_bindgen(js_name = "initWebGPU")]
+pub async fn init_webgpu() {
+    WebGPUInstance::async_init().await.unwrap();
 }

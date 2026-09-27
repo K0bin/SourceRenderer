@@ -665,8 +665,6 @@ use crate::renderer::ecs::{VolumeMeshInstance, VolumeRendererOptions};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::dear_imgui::DearImgui;
 #[cfg(target_arch = "wasm32")]
-use wasm::start_render_thread;
+use crate::wasm::supports_threads as use_render_thread;
 #[cfg(target_arch = "wasm32")]
-fn use_render_thread() -> bool {
-    false
-}
+use wasm::start_render_thread;
