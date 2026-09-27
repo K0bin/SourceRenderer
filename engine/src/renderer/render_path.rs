@@ -1,12 +1,15 @@
 use std::any::Any;
 use std::sync::Arc;
-
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Duration;
+#[cfg(target_arch = "wasm32")]
 use web_time::Duration;
 
 use super::asset::{RendererAssets, RendererAssetsReadOnly, RendererTexture};
 use super::renderer_resources::RendererResources;
 use super::renderer_scene::RendererScene;
 use crate::graphics::{Backbuffer, BufferRef, GraphicsContext, *};
+use sourcerenderer_core::gpu::GPUMaybeSend;
 
 pub struct SceneInfo<'a> {
     pub scene: &'a RendererScene,
@@ -33,7 +36,7 @@ pub struct RenderPathResult {
     pub backbuffer: Option<Arc<Backbuffer>>,
 }
 
-pub trait RenderPath: Any {
+pub trait RenderPath: Any + GPUMaybeSend {
     fn is_gpu_driven(&self) -> bool;
     fn write_occlusion_culling_results(&self, frame: u64, bitset: &mut Vec<u32>);
     fn on_swapchain_changed(&mut self, swapchain: &Swapchain);

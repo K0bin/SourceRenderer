@@ -846,10 +846,7 @@ impl RendererSender {
     pub fn stop(&mut self) {
         log::trace!("Stopping renderer");
         self.sender = None;
-
-        if cfg!(feature = "render_thread") {
-            self.unblock_game_thread();
-        }
+        self.unblock_game_thread();
     }
 
     pub fn window_changed(&self, window_state: WindowState) {

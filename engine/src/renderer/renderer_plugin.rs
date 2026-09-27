@@ -1,13 +1,16 @@
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
-#[cfg(all(feature = "render_thread", not(target_arch = "wasm32")))]
+#[cfg(not(target_arch = "wasm32"))]
 use std::thread::JoinHandle;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Duration;
 
 use bevy_app::{App, AppExit, Last};
 use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::RemovedComponents;
 use bevy_ecs::message::{Message, MessageWriter};
+#[allow(unused_imports)]
 use bevy_ecs::prelude::{IntoScheduleConfigs, Resource};
 use bevy_ecs::schedule::SystemSet;
 #[allow(unused_imports)]
@@ -20,8 +23,6 @@ use sourcerenderer_core::Vec2UI;
 use sourcerenderer_core::console::Console;
 use sourcerenderer_core::gpu::Surface as _;
 use sourcerenderer_core::platform::{GraphicsPlatform, Window};
-#[cfg(feature = "render_thread")]
-use web_time::Duration;
 
 use super::renderer::{RendererReceiver, RendererSender};
 use super::{DirectionalLightComponent, PointLightComponent, Renderer, StaticRenderableComponent};
@@ -31,9 +32,11 @@ use crate::graphics::{
     APIInstance, ActiveBackend, Adapter, AdapterType, Instance, Surface, Swapchain,
 };
 use crate::transform::InterpolatedTransform;
-#[cfg(all(feature = "render_thread", target_arch = "wasm32"))]
+#[cfg(target_arch = "wasm32")]
 use crate::wasm::thread::JoinHandle;
 use crate::{ActiveCamera, Camera, EngineLoopFuncResult};
+#[cfg(target_arch = "wasm32")]
+use web_time::Duration;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RendererType {
@@ -53,37 +56,31 @@ struct WindowSizeChangedEvent {
 struct WindowMinimized {}
 
 pub fn window_changed(app: &App, window_state: WindowState) {
-    #[cfg(any(feature = "render_thread", not(target_arch = "wasm32")))]
+    #[cfg(not(feature = "non_send_gpu"))]
     let resource = app.world().get_resource::<RendererResourceWrapper>();
-    #[cfg(all(not(feature = "render_thread"), target_arch = "wasm32"))]
-    let resource = app
-        .world()
-        .get_non_send_resource::<RendererResourceWrapper>();
+    #[cfg(feature = "non_send_gpu")]
+    let resource = app.world().get_non_send::<RendererResourceWrapper>();
     if let Some(resource) = resource {
         // It might not be finished initializing yet.
         resource.sender.window_changed(window_state);
     }
 }
 
-#[cfg(any(feature = "render_thread", not(target_arch = "wasm32")))]
+#[cfg(not(feature = "non_send_gpu"))]
 #[derive(Resource)]
 struct RendererResourceWrapper {
     sender: ManuallyDrop<RendererSender>,
     is_saturated: bool,
-
-    #[cfg(not(feature = "render_thread"))]
-    renderer: SyncCell<Renderer>,
-
-    #[cfg(feature = "render_thread")]
-    thread_handle: ManuallyDrop<JoinHandle<()>>,
+    renderer: Option<SyncCell<Renderer>>,
+    thread_handle: Option<JoinHandle<()>>,
 }
 
-#[cfg(all(not(feature = "render_thread"), target_arch = "wasm32"))]
+#[cfg(feature = "non_send_gpu")]
 struct RendererResourceWrapper {
     sender: ManuallyDrop<RendererSender>,
     is_saturated: bool,
-
-    renderer: SyncCell<Renderer>,
+    renderer: Option<SyncCell<Renderer>>,
+    thread_handle: Option<JoinHandle<()>>,
 }
 
 impl Drop for RendererResourceWrapper {
@@ -92,9 +89,8 @@ impl Drop for RendererResourceWrapper {
             ManuallyDrop::drop(&mut self.sender);
         }
 
-        #[cfg(feature = "render_thread")]
-        {
-            let handle = unsafe { ManuallyDrop::take(&mut self.thread_handle) };
+        let handle = self.thread_handle.take();
+        if let Some(handle) = handle {
             handle.join().unwrap();
         }
     }
@@ -135,14 +131,14 @@ pub fn install_systems(app: &mut App, renderer_type: RendererType) {
     app.add_systems(Last, end_frame.after(ExtractSet));
 }
 
-#[cfg(any(feature = "render_thread", not(target_arch = "wasm32")))]
+#[cfg(not(feature = "non_send_gpu"))]
 type RendererResourceAccessor<'a> = Res<'a, RendererResourceWrapper>;
-#[cfg(all(not(feature = "render_thread"), target_arch = "wasm32"))]
+#[cfg(feature = "non_send_gpu")]
 type RendererResourceAccessor<'a> = NonSend<'a, RendererResourceWrapper>;
 
-#[cfg(any(feature = "render_thread", not(target_arch = "wasm32")))]
+#[cfg(not(feature = "non_send_gpu"))]
 type RendererResourceAccessorMut<'a> = ResMut<'a, RendererResourceWrapper>;
-#[cfg(all(not(feature = "render_thread"), target_arch = "wasm32"))]
+#[cfg(feature = "non_send_gpu")]
 type RendererResourceAccessorMut<'a> = NonSendMut<'a, RendererResourceWrapper>;
 
 pub fn insert_resources<P: GraphicsPlatform<ActiveBackend>>(
@@ -155,53 +151,55 @@ pub fn insert_resources<P: GraphicsPlatform<ActiveBackend>>(
 
     let (sender, receiver) = Renderer::new_channel();
 
-    #[cfg(feature = "render_thread")]
-    log::info!("Using a render thread");
-    #[cfg(not(feature = "render_thread"))]
-    log::info!("Running renderer on application thread");
+    let (renderer, join_handle) = if use_render_thread() {
+        log::info!("Using a render thread");
 
-    #[cfg(feature = "render_thread")]
-    let handle = start_render_thread::<P>(
-        window,
-        receiver,
-        &asset_manager_resource.0,
-        &console_resource.0,
-        renderer_type,
-    );
-
-    #[cfg(not(feature = "render_thread"))]
-    let renderer = {
-        let instance = P::create_instance(false).unwrap();
-        let surface = window.create_surface(&instance);
-        create_renderer(
+        let handle = start_render_thread::<P>(
+            window,
             receiver,
-            instance,
-            surface,
-            window.width(),
-            window.height(),
             &asset_manager_resource.0,
             &console_resource.0,
             renderer_type,
+        );
+        (None, Some(handle))
+    } else {
+        log::info!("Running renderer on application thread");
+
+        let instance = P::create_instance(false).unwrap();
+        let surface = window.create_surface(&instance);
+        (
+            Some(create_renderer(
+                receiver,
+                instance,
+                surface,
+                window.width(),
+                window.height(),
+                &asset_manager_resource.0,
+                &console_resource.0,
+                renderer_type,
+            )),
+            None,
         )
     };
 
     let wrapper = RendererResourceWrapper {
         sender: ManuallyDrop::new(sender),
         is_saturated: false,
-
-        #[cfg(not(feature = "render_thread"))]
-        renderer: SyncCell::new(renderer),
-
-        #[cfg(feature = "render_thread")]
-        thread_handle: ManuallyDrop::new(handle),
+        renderer: renderer.map(|r| SyncCell::new(r)),
+        thread_handle: join_handle,
     };
-    #[cfg(any(feature = "render_thread", not(target_arch = "wasm32")))]
+    #[cfg(not(feature = "non_send_gpu"))]
     app.insert_resource(wrapper);
-    #[cfg(all(not(feature = "render_thread"), target_arch = "wasm32"))]
-    app.insert_non_send_resource(wrapper);
+    #[cfg(feature = "non_send_gpu")]
+    app.insert_non_send(wrapper);
 }
 
-#[cfg(all(feature = "render_thread", not(target_arch = "wasm32")))]
+#[cfg(not(target_arch = "wasm32"))]
+fn use_render_thread() -> bool {
+    true
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn start_render_thread<P: GraphicsPlatform<ActiveBackend>>(
     window: &impl Window<ActiveBackend>,
     receiver: RendererReceiver,
@@ -489,7 +487,6 @@ fn extract_ui_data(
 
 #[allow(unused_mut)]
 fn end_frame(mut events: MessageWriter<AppExit>, mut renderer: RendererResourceAccessorMut) {
-    #[cfg(feature = "render_thread")]
     if renderer.is_saturated {
         return;
     }
@@ -501,9 +498,8 @@ fn end_frame(mut events: MessageWriter<AppExit>, mut renderer: RendererResourceA
         }
     }
 
-    #[cfg(not(feature = "render_thread"))]
-    {
-        let frame_result = renderer.renderer.get().render();
+    if let Some(renderer) = renderer.renderer.as_mut() {
+        let frame_result = renderer.get().render();
         if frame_result == EngineLoopFuncResult::Exit {
             let _ = events.write(AppExit::from_code(1));
         }
@@ -514,10 +510,11 @@ fn end_frame(mut events: MessageWriter<AppExit>, mut renderer: RendererResourceA
 fn begin_frame(mut renderer: RendererResourceAccessorMut) {
     // Unblock regularly so the fixed time systems can run.
     // All rendering systems check if the renderer is saturated before sending new commands.
-    #[cfg(feature = "render_thread")]
-    renderer.sender.wait_until_available(Duration::from_micros(
-        1000000u64 / 4u64 / (TICK_RATE as u64),
-    ));
+    if renderer.renderer.is_none() {
+        renderer.sender.wait_until_available(Duration::from_micros(
+            1000000u64 / 4u64 / (TICK_RATE as u64),
+        ));
+    }
 
     // Update saturated only at the beginning of the frame to avoid inconsistent
     // states caused by the renderer suddenly becoming available in the middle of an update.
@@ -569,7 +566,7 @@ fn pick_adapter(adapters: &[Adapter]) -> &Adapter {
     adapters.first().expect("No adapter found")
 }
 
-#[cfg(all(target_arch = "wasm32", feature = "render_thread"))]
+#[cfg(target_arch = "wasm32")]
 mod wasm {
     use std::cell::{Cell, RefCell};
     use std::rc::Rc;
@@ -667,5 +664,9 @@ use crate::renderer::ecs::{VolumeMeshInstance, VolumeRendererOptions};
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::dear_imgui::DearImgui;
-#[cfg(all(target_arch = "wasm32", feature = "render_thread"))]
+#[cfg(target_arch = "wasm32")]
 use wasm::start_render_thread;
+#[cfg(target_arch = "wasm32")]
+fn use_render_thread() -> bool {
+    false
+}
