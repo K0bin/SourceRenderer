@@ -7,7 +7,7 @@ use crate::renderer::asset::{
 };
 use crate::renderer::drawable::View;
 use crate::renderer::passes::volume::GeometryPass;
-use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
+use crate::renderer::passes::volume::ibl::ImageBasedLightingTextures;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use crate::renderer::renderer_scene::RendererScene;
@@ -89,15 +89,14 @@ impl BackgroundPass {
         _view: &View,
         camera_buffer: &TransientBufferSlice,
         params: &RenderPassParameters,
+        ibl_textures: &ImageBasedLightingTextures,
     ) {
         cmd_buffer.clear_all_bindings(BindingFrequency::Frequent);
         cmd_buffer.clear_all_bindings(BindingFrequency::VeryFrequent);
 
         let resources = &params.resources;
 
-        if !resources.has_resource(
-            ImageBasedLightingPreparation::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
-        ) {
+        if !resources.has_resource(ibl_textures.filtered_specular_environment_map_teture_name) {
             return;
         }
 
@@ -116,7 +115,7 @@ impl BackgroundPass {
 
         let env_map_specular = resources.access_view(
             cmd_buffer,
-            ImageBasedLightingPreparation::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
+            ibl_textures.filtered_specular_environment_map_teture_name,
             BarrierSync::FRAGMENT_SHADER,
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,
@@ -162,15 +161,6 @@ impl BackgroundPass {
             position: Vec2I::new(0, 0),
             extent: Vec2UI::new(rt_info.width, rt_info.height),
         }]);
-
-        //let camera_buffer = cmd_buffer.upload_dynamic_data(&[view.proj_matrix * view.view_matrix], BufferUsage::CONSTANT);
-        cmd_buffer.bind_uniform_buffer(
-            BindingFrequency::Frame,
-            0,
-            BufferRef::Transient(camera_buffer),
-            0,
-            WHOLE_BUFFER,
-        );
 
         cmd_buffer.bind_sampling_view_and_sampler(
             BindingFrequency::Frequent,

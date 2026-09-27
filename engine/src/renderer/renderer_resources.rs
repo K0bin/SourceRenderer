@@ -80,32 +80,38 @@ pub struct RendererResources {
 
 impl RendererResources {
     pub fn new(device: &Arc<Device>) -> Self {
-        let nearest_sampler = Arc::new(device.create_sampler(&SamplerInfo {
-            mag_filter: Filter::Nearest,
-            min_filter: Filter::Nearest,
-            mip_filter: Filter::Nearest,
-            address_mode_u: AddressMode::ClampToEdge,
-            address_mode_v: AddressMode::ClampToEdge,
-            address_mode_w: AddressMode::ClampToEdge,
-            mip_bias: 0f32,
-            max_anisotropy: 1f32,
-            compare_op: None,
-            min_lod: 0f32,
-            max_lod: None,
-        }, Some("Nearest")));
-        let linear_sampler = Arc::new(device.create_sampler(&SamplerInfo {
-            mag_filter: Filter::Linear,
-            min_filter: Filter::Linear,
-            mip_filter: Filter::Linear,
-            address_mode_u: AddressMode::ClampToEdge,
-            address_mode_v: AddressMode::ClampToEdge,
-            address_mode_w: AddressMode::ClampToEdge,
-            mip_bias: 0f32,
-            max_anisotropy: 1f32,
-            compare_op: None,
-            min_lod: 0f32,
-            max_lod: None,
-        }, Some("Linear")));
+        let nearest_sampler = Arc::new(device.create_sampler(
+            &SamplerInfo {
+                mag_filter: Filter::Nearest,
+                min_filter: Filter::Nearest,
+                mip_filter: Filter::Nearest,
+                address_mode_u: AddressMode::ClampToEdge,
+                address_mode_v: AddressMode::ClampToEdge,
+                address_mode_w: AddressMode::ClampToEdge,
+                mip_bias: 0f32,
+                max_anisotropy: 1f32,
+                compare_op: None,
+                min_lod: 0f32,
+                max_lod: None,
+            },
+            Some("Nearest"),
+        ));
+        let linear_sampler = Arc::new(device.create_sampler(
+            &SamplerInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                mip_filter: Filter::Linear,
+                address_mode_u: AddressMode::ClampToEdge,
+                address_mode_v: AddressMode::ClampToEdge,
+                address_mode_w: AddressMode::ClampToEdge,
+                mip_bias: 0f32,
+                max_anisotropy: 1f32,
+                compare_op: None,
+                min_lod: 0f32,
+                max_lod: None,
+            },
+            Some("Linear"),
+        ));
 
         Self {
             device: device.clone(),
@@ -153,7 +159,7 @@ impl RendererResources {
             TrackedTextureSubresource::default(),
         );
 
-        self.textures.insert(
+        let old = self.textures.insert(
             name.to_string(),
             AB {
                 a: RefCell::new(TrackedTexture {
@@ -173,6 +179,10 @@ impl RendererResources {
                 }),
             },
         );
+
+        if old.is_some() {
+            log::warn!("Replacing texture {}", name);
+        }
     }
 
     #[allow(unused)]
@@ -183,7 +193,7 @@ impl RendererResources {
         memory_usage: MemoryUsage,
         has_history: bool,
     ) {
-        self.buffers.insert(
+        let old = self.buffers.insert(
             name.to_string(),
             AB {
                 a: RefCell::new(TrackedBuffer {
@@ -206,6 +216,10 @@ impl RendererResources {
                 }),
             },
         );
+
+        if old.is_some() {
+            log::warn!("Replacing buffer {}", name);
+        }
     }
 
     #[inline]

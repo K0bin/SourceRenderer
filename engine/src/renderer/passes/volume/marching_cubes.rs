@@ -525,6 +525,7 @@ impl MarchingCubesPass {
         resolution_multiplied /= 100;
 
         // The theoretical maximum is that every voxel adds 5 triangles, so 15 indices.
+        resources.destroy_buffer(name);
         resources.create_buffer(
             name,
             &BufferInfo {
