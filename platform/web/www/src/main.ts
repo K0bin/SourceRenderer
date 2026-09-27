@@ -6,6 +6,11 @@ let mouseLocked = false;
 let fullscreen = false;
 
 function main() {
+    if (!navigator.gpu) {
+        const div = document.getElementById("no-webgpu") as HTMLDivElement;
+        div.style.display = "block";
+        return;
+    }
     const canvas = document.getElementById("canvas") as HTMLCanvasElement;
     canvas.width = canvas.clientWidth;
     canvas.height = canvas.clientHeight;
