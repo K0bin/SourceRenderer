@@ -1,4 +1,4 @@
-use crate::binding::BindGroupCaches;
+use crate::binding::{BindGroupCaches, CommandBumpAllocator};
 use crate::{
     WebGPUBackend, WebGPUBindGroupBinding, WebGPULimits, WebGPUQueryPool,
     binding::{
@@ -22,7 +22,9 @@ use sourcerenderer_core::{
     align_up_32,
     gpu::{self, Buffer as _, Texture as _, TextureView as _},
 };
+use std::cell::RefCell;
 use std::marker::PhantomData;
+use std::rc::Rc;
 use std::sync::Arc;
 use web_sys::{
     GpuCommandBuffer, GpuCommandEncoder, GpuComputePassEncoder, GpuDevice, GpuExtent3dDict,
@@ -159,7 +161,12 @@ fn store_op_to_webgpu<'a>(
 }
 
 impl WebGPUCommandBuffer {
-    fn new(device: &GpuDevice, limits: &WebGPULimits, name: Option<&str>) -> Self {
+    fn new(
+        device: &GpuDevice,
+        limits: &WebGPULimits,
+        bump_allocator: &Rc<RefCell<CommandBumpAllocator>>,
+        name: Option<&str>,
+    ) -> Self {
         Self {
             device: device.clone(),
             handle: {
@@ -169,7 +176,7 @@ impl WebGPUCommandBuffer {
                 }
                 WebGPUCommandBufferHandle::Reset(WebGPUResetCommandBuffer {
                     command_encoder: cmd_buffer,
-                    binding_manager: WebGPUBindingManager::new(device, limits),
+                    binding_manager: WebGPUBindingManager::new(device, limits, bump_allocator),
                     _p: PhantomData,
                 })
             },
@@ -1182,15 +1189,18 @@ pub struct WebGPUCommandPool {
     device: GpuDevice,
     limits: WebGPULimits,
     bind_group_caches: BindGroupCaches,
+    bump_allocator: Rc<RefCell<CommandBumpAllocator>>,
     _p: PhantomData<*const std::ffi::c_void>,
 }
 
 impl WebGPUCommandPool {
     pub(crate) fn new(device: &GpuDevice, limits: &WebGPULimits) -> Self {
+        let allocator = CommandBumpAllocator::new(device);
         Self {
             device: device.clone(),
             limits: limits.clone(),
             bind_group_caches: BindGroupCaches::new(),
+            bump_allocator: Rc::new(RefCell::new(allocator)),
             _p: PhantomData,
         }
     }
@@ -1198,7 +1208,7 @@ impl WebGPUCommandPool {
 
 impl gpu::CommandPool<WebGPUBackend> for WebGPUCommandPool {
     unsafe fn create_command_buffer(&mut self, name: Option<&str>) -> WebGPUCommandBuffer {
-        WebGPUCommandBuffer::new(&self.device, &self.limits, name)
+        WebGPUCommandBuffer::new(&self.device, &self.limits, &self.bump_allocator, name)
     }
 
     unsafe fn reset(&mut self) {

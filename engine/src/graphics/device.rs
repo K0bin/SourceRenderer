@@ -29,7 +29,11 @@ impl Device {
         let prerendered_frames = if cfg!(not(target_arch = "wasm32")) {
             3
         } else {
-            1 // WebGPU handles synchronization completely.
+            // WebGPU handles synchronization completely.
+            // WebGPU also prevents us from writing to buffers that are in-flight because we
+            // have to use GpuQueue.writeBuffer due to async and WebGPU buffer usage rules.
+            // GpuQueue.writeBuffer happens on the GPU timeline so it only impacts work submitted after it.
+            1
         };
 
         let graphics_queue = {

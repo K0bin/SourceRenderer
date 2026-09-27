@@ -1,5 +1,3 @@
-#[cfg(target_arch = "wasm32")]
-use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
 
@@ -24,9 +22,6 @@ pub struct GraphicsContext {
     prerendered_frames: u32,
     destroyer: ManuallyDrop<Arc<DeferredDestroyer>>,
     global_buffer_allocator: Arc<BufferAllocator>,
-
-    #[cfg(target_arch = "wasm32")]
-    _p: PhantomData<*const u8>, // Remove Send + Sync
 }
 
 struct ThreadFrames(AtomicRefCell<SmallVec<[FrameContext; FRAME_COUNT]>>);
@@ -62,9 +57,6 @@ impl GraphicsContext {
             thread_frames: ManuallyDrop::new(ThreadLocal::new()),
             prerendered_frames,
             global_buffer_allocator: buffer_allocator.clone(),
-
-            #[cfg(target_arch = "wasm32")]
-            _p: PhantomData,
         }
     }
 
@@ -327,8 +319,8 @@ impl Drop for GraphicsContext {
 }
 
 // ThreadFrames is only ever accessed through GraphicsContext.
-// GraphicsContext will be turned !Send + !Sync on Wasm32, so we can make ThreadFrames Send + Sync
-// so ThreadLocal is fine with it.
+// GraphicsContext will be turned !Send + !Sync on Wasm32 by holding the Device,
+// so we can make ThreadFrames Send + Sync to make ThreadLocal happy.
 #[cfg(target_arch = "wasm32")]
 unsafe impl Send for ThreadFrames {}
 #[cfg(target_arch = "wasm32")]
