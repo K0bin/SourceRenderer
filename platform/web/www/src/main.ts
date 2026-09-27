@@ -89,9 +89,17 @@ function main() {
         };
         worker?.postMessage(msg);
     });
-    canvasSizeObserver.observe(canvas, {
-        box: "device-pixel-content-box"
-    });
+    try {
+        canvasSizeObserver.observe(canvas, {
+            box: "device-pixel-content-box"
+        });
+    } catch (_e) {
+        // Safari doesn't support "device-pixel-content-box" and throws a stupid error.
+        // "Type error" despite having nothing to do with types.
+        canvasSizeObserver.observe(canvas, {
+            box: "content-box"
+        });
+    }
 
     canvas.onmousemove = (e) => {
         const msg: EngineWorkerMessage = {
