@@ -1,7 +1,7 @@
 use js_sys::wasm_bindgen::JsValue;
 use sourcerenderer_core::{Matrix4, gpu};
 use std::marker::PhantomData;
-use web_sys::{GpuCanvasConfiguration, GpuCanvasContext, GpuDevice, gpu_texture_usage};
+use web_sys::{gpu_texture_usage, GpuCanvasAlphaMode, GpuCanvasConfiguration, GpuCanvasContext, GpuDevice};
 
 use crate::{
     WebGPUBackend, WebGPUInstance, surface::WebGPUSurface, texture::WebGPUTexture,
@@ -57,6 +57,7 @@ impl WebGPUSwapchain {
 
         let config = GpuCanvasConfiguration::new(device, format_to_webgpu(texture_info.format));
         config.set_usage(gpu_texture_usage::RENDER_ATTACHMENT | gpu_texture_usage::COPY_DST);
+        config.set_alpha_mode(GpuCanvasAlphaMode::Opaque);
         context.configure(&config).unwrap();
 
         Self {

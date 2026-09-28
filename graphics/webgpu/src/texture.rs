@@ -76,6 +76,7 @@ pub(crate) fn texture_dimension_to_webgpu_view(
 pub struct WebGPUTexture {
     texture: GpuTexture,
     info: gpu::TextureInfo,
+    is_imported: bool,
 }
 
 impl PartialEq for WebGPUTexture {
@@ -95,7 +96,9 @@ impl Hash for WebGPUTexture {
 
 impl Drop for WebGPUTexture {
     fn drop(&mut self) {
-        self.texture.destroy();
+        if !self.is_imported {
+            self.texture.destroy();
+        }
     }
 }
 
@@ -198,6 +201,7 @@ impl WebGPUTexture {
         Ok(Self {
             texture,
             info: info.clone(),
+            is_imported: false,
         })
     }
 
@@ -257,7 +261,11 @@ impl WebGPUTexture {
             supports_srgb: false,
         };
 
-        Self { texture, info }
+        Self {
+            texture,
+            info,
+            is_imported: true,
+        }
     }
 
     #[inline(always)]

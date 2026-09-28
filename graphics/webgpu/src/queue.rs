@@ -49,7 +49,9 @@ impl gpu::Queue<WebGPUBackend> for WebGPUQueue {
             for cmd_buffer in submission.command_buffers.iter() {
                 array.push(cmd_buffer.handle().clone());
             }
-            self.queue.submit(&array);
+            if !submission.command_buffers.is_empty() {
+                self.queue.submit(&array);
+            }
             for pair in submission.signal_fences {
                 if pair.fence.value.load(Ordering::Acquire) < pair.value {
                     pair.fence.value.store(pair.value, Ordering::Release);
