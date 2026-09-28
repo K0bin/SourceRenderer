@@ -1,7 +1,7 @@
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
 
-use sourcerenderer_core::gpu::{self, CommandPool as _, Queue as _};
+use sourcerenderer_core::gpu::{self, CommandPool as _, Device as _, Queue as _};
 
 use super::{
     BufferAllocator, DeferredDestroyer, MemoryAllocator, QueryAllocator, TransientBufferAllocator,

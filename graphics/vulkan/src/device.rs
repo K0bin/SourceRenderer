@@ -82,21 +82,6 @@ impl VkDevice {
     pub fn inner(&self) -> &Arc<RawVkDevice> {
         &self.device
     }
-
-    #[inline]
-    pub fn graphics_queue(&self) -> &VkQueue {
-        &self.graphics_queue
-    }
-
-    #[inline]
-    pub fn compute_queue(&self) -> Option<&VkQueue> {
-        self.compute_queue.as_ref()
-    }
-
-    #[inline]
-    pub fn transfer_queue(&self) -> Option<&VkQueue> {
-        self.transfer_queue.as_ref()
-    }
 }
 
 impl gpu::Device<VkBackend> for VkDevice {
