@@ -383,15 +383,15 @@ impl ClearColor {
         }
     }
 
-    pub fn as_i32(&self) -> &[i32] {
+    pub fn transmute_as_i32(&self) -> &[i32] {
         unsafe { std::mem::transmute(&self.color[..]) }
     }
 
-    pub fn as_u32(&self) -> &[u32] {
+    pub fn transmute_as_u32(&self) -> &[u32] {
         unsafe { std::mem::transmute(&self.color[..]) }
     }
 
-    pub fn as_f32(&self) -> &[f32] {
+    pub fn transmute_as_f32(&self) -> &[f32] {
         unsafe { std::mem::transmute(&self.color[..]) }
     }
 }

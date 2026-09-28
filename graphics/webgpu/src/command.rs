@@ -998,8 +998,29 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         for color_rt in renderpass_info.render_targets.iter() {
             let (load_op, clear_color) = load_op_color_to_webgpu(&color_rt.load_op);
             let (store_op, resolve_attachment) = store_op_to_webgpu(&color_rt.store_op);
+            let format = color_rt.view.info().format.unwrap_or(color_rt.view.texture_info().format);
+            let mut max_value = 0u32;
+            if format.is_unorm() || format.is_uint() {
+                let format_bits = format.element_size() * 8u32;
+                max_value = if format_bits != 32u32 { (1u32 << format_bits) - 1u32 } else { u32::MAX };
+            } else if format.is_unorm() || format.is_uint() {
+                let format_bits = format.element_size() * 8u32;
+                max_value = if format_bits != 32u32 { (1u32 << format_bits) - 1u32 } else { u32::MAX };
+                max_value >>= 1u32;
+            }
+            let max_value_f32 = max_value as f32;
             for i in 0..4 {
-                color[i] = js_sys::Number::from(clear_color.as_u32()[i]);
+                if format.is_float() {
+                    color[i] = js_sys::Number::from(clear_color.transmute_as_f32()[i]);
+                } else if format.is_sint() {
+                    color[i] = js_sys::Number::from((clear_color.transmute_as_u32()[i] as f32) / max_value_f32);
+                } else if format.is_uint() {
+                    color[i] = js_sys::Number::from((clear_color.transmute_as_i32()[i] as f32) / max_value_f32);
+                } else if format.is_snorm() {
+                    color[i] = js_sys::Number::from((clear_color.transmute_as_u32()[i] as f32) / max_value_f32);
+                } else if format.is_unorm() {
+                    color[i] = js_sys::Number::from((clear_color.transmute_as_i32()[i] as f32) / max_value_f32);
+                }
             }
             let descriptor = GpuRenderPassColorAttachment::new_with_gpu_texture_view(
                 load_op,

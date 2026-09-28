@@ -38,10 +38,10 @@ fn resolve_mode_to_vk(resolve_mode: gpu::ResolveMode) -> vk::ResolveModeFlags {
 
 fn clear_color_to_vk(clear_color: gpu::ClearColor) -> vk::ClearValue {
     let mut val = vk::ClearValue {
-        color: vk::ClearColorValue { float32: [0f32; 4] },
+        color: vk::ClearColorValue { uint32: [0u32; 4] },
     };
     unsafe {
-        val.color.float32.clone_from_slice(clear_color.as_f32());
+        val.color.uint32.clone_from_slice(clear_color.transmute_as_u32());
     }
     val
 }
