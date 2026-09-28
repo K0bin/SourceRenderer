@@ -383,7 +383,12 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
             alignment = alignment.max(self.limits.min_storage_buffer_offset_alignment);
         }
         gpu::ResourceHeapInfo {
-            dedicated_allocation_preference: gpu::DedicatedAllocationPreference::PreferDedicated,
+            dedicated_allocation_preference: if info.usage.gpu_writable() {
+                // WebGPU does tracking for barriers at the resource level.
+                gpu::DedicatedAllocationPreference::PreferDedicated
+            } else {
+                gpu::DedicatedAllocationPreference::PreferSuballocated
+            },
             memory_type_mask: 1,
             alignment: alignment as u64,
             size: info.size,
