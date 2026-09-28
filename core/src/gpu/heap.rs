@@ -6,7 +6,6 @@ pub enum DedicatedAllocationPreference {
     PreferDedicated,
     DontCare,
     PreferSuballocated,
-    RequireSuballocated,
 }
 
 #[derive(Debug)]

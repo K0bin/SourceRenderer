@@ -168,7 +168,12 @@ impl BufferAllocator {
         let heap_info = self.device.get_buffer_heap_info(info);
         let alignment: u64 = heap_info.alignment;
 
-        if info.size > UNIQUE_ALLOCATION_THRESHOLD {
+        if info.size > UNIQUE_ALLOCATION_THRESHOLD
+            || heap_info.dedicated_allocation_preference
+                == DedicatedAllocationPreference::RequireDedicated
+            || heap_info.dedicated_allocation_preference
+                == DedicatedAllocationPreference::PreferDedicated
+        {
             // Don't do one-off buffers for command lists
             let buffer_and_allocation = BufferAllocator::create_buffer(
                 &self.device,
