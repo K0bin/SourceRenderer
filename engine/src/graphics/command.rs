@@ -1,9 +1,9 @@
-use super::gpu::{self, Buffer as _, CommandBuffer as _};
+use super::gpu::{self, Buffer as _, CommandBuffer as _, CommandPool as _};
 use super::{AccelerationStructure, BottomLevelAccelerationStructureInfo, *};
 use atomic_refcell::AtomicRefMut;
 use bytemuck::{Pod, cast_slice};
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{CommandPool, RenderPassResumeSuspend};
+use sourcerenderer_core::gpu::RenderPassResumeSuspend;
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
@@ -57,8 +57,7 @@ pub enum PipelineBinding<'a> {
     RayTracing(&'a super::RayTracingPipeline),
 }
 pub struct CommandBuffer<'a> {
-    context: AtomicRefMut<'a, FrameContext>,
-    _global_context: &'a GraphicsContext,
+    command_pool: AtomicRefMut<'a, CommandPool>,
     cmd_buffer_handle: ManuallyDrop<active_gpu_backend::CommandBuffer>,
     destroyer: Arc<DeferredDestroyer>,
     active_query_range: Option<QueryRange>,
@@ -115,16 +114,14 @@ impl<'a> Copy for BufferRef<'a> {}
 
 impl<'a> CommandBuffer<'a> {
     pub(super) fn new(
-        global_context: &'a GraphicsContext,
-        mut context: AtomicRefMut<'a, FrameContext>,
+        mut command_pool: AtomicRefMut<'a, CommandPool>,
         destroyer: &Arc<DeferredDestroyer>,
         queue_type: QueueType,
         name: Option<&str>,
     ) -> Self {
-        let handle = unsafe { context.command_pool.create_command_buffer(name) };
+        let handle = unsafe { command_pool.command_pool().create_command_buffer(name) };
         Self {
-            _global_context: global_context,
-            context,
+            command_pool,
             cmd_buffer_handle: ManuallyDrop::new(handle),
             destroyer: destroyer.clone(),
             active_query_range: None,
@@ -139,7 +136,7 @@ impl<'a> CommandBuffer<'a> {
             handle: buffer_handle,
             offset: buffer_offset,
             length: _,
-        } = buffer.deconstruct(self.frame());
+        } = buffer.deconstruct(self.generation());
         unsafe {
             self.cmd_buffer_handle
                 .set_vertex_buffer(index, buffer_handle, buffer_offset + offset);
@@ -151,7 +148,7 @@ impl<'a> CommandBuffer<'a> {
             handle: buffer_handle,
             offset: buffer_offset,
             length: _,
-        } = buffer.deconstruct(self.frame());
+        } = buffer.deconstruct(self.generation());
         unsafe {
             self.cmd_buffer_handle
                 .set_index_buffer(buffer_handle, buffer_offset + offset, format);
@@ -236,7 +233,7 @@ impl<'a> CommandBuffer<'a> {
             handle: draw_buffer_handle,
             offset: draw_buffer_buffer_offset,
             length: _,
-        } = draw_buffer.deconstruct(self.frame());
+        } = draw_buffer.deconstruct(self.generation());
         unsafe {
             self.cmd_buffer_handle.draw_indexed_indirect(
                 draw_buffer_handle,
@@ -258,7 +255,7 @@ impl<'a> CommandBuffer<'a> {
             handle: draw_buffer_handle,
             offset: draw_buffer_buffer_offset,
             length: _,
-        } = draw_buffer.deconstruct(self.frame());
+        } = draw_buffer.deconstruct(self.generation());
         unsafe {
             self.cmd_buffer_handle.draw_indirect(
                 draw_buffer_handle,
@@ -282,12 +279,12 @@ impl<'a> CommandBuffer<'a> {
             handle: draw_buffer_handle,
             offset: draw_buffer_buffer_offset,
             length: _,
-        } = draw_buffer.deconstruct(self.frame());
+        } = draw_buffer.deconstruct(self.generation());
         let BufferHandleRef {
             handle: count_buffer_handle,
             offset: count_buffer_buffer_offset,
             length: _,
-        } = count_buffer.deconstruct(self.frame());
+        } = count_buffer.deconstruct(self.generation());
         unsafe {
             self.cmd_buffer_handle.draw_indexed_indirect_count(
                 draw_buffer_handle,
@@ -313,12 +310,12 @@ impl<'a> CommandBuffer<'a> {
             handle: draw_buffer_handle,
             offset: draw_buffer_buffer_offset,
             length: _,
-        } = draw_buffer.deconstruct(self.frame());
+        } = draw_buffer.deconstruct(self.generation());
         let BufferHandleRef {
             handle: count_buffer_handle,
             offset: count_buffer_buffer_offset,
             length: _,
-        } = count_buffer.deconstruct(self.frame());
+        } = count_buffer.deconstruct(self.generation());
         unsafe {
             self.cmd_buffer_handle.draw_indirect_count(
                 draw_buffer_handle,
@@ -349,7 +346,7 @@ impl<'a> CommandBuffer<'a> {
             handle: draw_buffer_handle,
             offset: draw_buffer_buffer_offset,
             length: _,
-        } = draw_buffer.deconstruct(self.frame());
+        } = draw_buffer.deconstruct(self.generation());
         unsafe {
             self.cmd_buffer_handle.draw_mesh_tasks_indirect(
                 draw_buffer_handle,
@@ -373,12 +370,12 @@ impl<'a> CommandBuffer<'a> {
             handle: draw_buffer_handle,
             offset: draw_buffer_buffer_offset,
             length: _,
-        } = draw_buffer.deconstruct(self.frame());
+        } = draw_buffer.deconstruct(self.generation());
         let BufferHandleRef {
             handle: count_buffer_handle,
             offset: count_buffer_buffer_offset,
             length: _,
-        } = count_buffer.deconstruct(self.frame());
+        } = count_buffer.deconstruct(self.generation());
         unsafe {
             self.cmd_buffer_handle.draw_mesh_tasks_indirect_count(
                 draw_buffer_handle,
@@ -469,7 +466,7 @@ impl<'a> CommandBuffer<'a> {
             handle: buffer_handle,
             offset: buffer_offset,
             length: buffer_length,
-        } = buffer.deconstruct(self.frame());
+        } = buffer.deconstruct(self.generation());
         unsafe {
             self.cmd_buffer_handle.bind_uniform_buffer(
                 frequency,
@@ -494,7 +491,7 @@ impl<'a> CommandBuffer<'a> {
                     handle: buffer_handle,
                     offset: buffer_offset,
                     length: buffer_length,
-                } = b.buffer.deconstruct(self.frame());
+                } = b.buffer.deconstruct(self.generation());
 
                 gpu::BufferArrayEntry {
                     buffer: buffer_handle,
@@ -522,7 +519,7 @@ impl<'a> CommandBuffer<'a> {
             handle: buffer_handle,
             offset: buffer_offset,
             length: buffer_length,
-        } = buffer.deconstruct(self.frame());
+        } = buffer.deconstruct(self.generation());
         unsafe {
             self.cmd_buffer_handle.bind_storage_buffer(
                 frequency,
@@ -547,7 +544,7 @@ impl<'a> CommandBuffer<'a> {
                     handle: buffer_handle,
                     offset: buffer_offset,
                     length: buffer_length,
-                } = b.buffer.deconstruct(self.frame());
+                } = b.buffer.deconstruct(self.generation());
 
                 gpu::BufferArrayEntry {
                     buffer: buffer_handle,
@@ -617,7 +614,7 @@ impl<'a> CommandBuffer<'a> {
     pub fn finish_binding(&mut self) {
         unsafe {
             self.cmd_buffer_handle
-                .finish_binding(&mut self.context.command_pool);
+                .finish_binding(&mut self.command_pool.command_pool());
         }
     }
 
@@ -706,7 +703,7 @@ impl<'a> CommandBuffer<'a> {
             handle: buffer_handle,
             offset: buffer_offset,
             length: _,
-        } = src_buffer.deconstruct(self.frame());
+        } = src_buffer.deconstruct(self.generation());
         unsafe {
             self.cmd_buffer_handle.copy_buffer_to_texture(
                 buffer_handle,
@@ -764,7 +761,7 @@ impl<'a> CommandBuffer<'a> {
             handle: buffer_handle,
             offset: buffer_offset,
             length: buffer_length,
-        } = buffer.deconstruct(self.frame());
+        } = buffer.deconstruct(self.generation());
         unsafe {
             self.cmd_buffer_handle.clear_storage_buffer(
                 buffer_handle,
@@ -783,19 +780,19 @@ impl<'a> CommandBuffer<'a> {
         let required_size = std::mem::size_of_val(data);
         let size = align_up(required_size.max(64), 64);
 
-        let buffer = self.context.transient_buffer_allocator().get_slice(
+        let buffer = self.command_pool.transient_buffer_allocator().get_slice(
             &BufferInfo {
                 size: size as u64,
                 usage,
                 sharing_mode: QueueSharingMode::Exclusive,
             },
             MemoryUsage::MappableGPUMemory,
-            self.frame(),
+            self.generation(),
             None,
         )?;
 
         unsafe {
-            let ptr_void = buffer.map(self.frame(), false).unwrap();
+            let ptr_void = buffer.map(self.generation(), false).unwrap();
 
             if required_size < size {
                 let ptr_u8 = (ptr_void as *mut u8).offset(required_size as isize);
@@ -808,7 +805,7 @@ impl<'a> CommandBuffer<'a> {
                 ptr.copy_from(data_raw.as_ptr(), required_size);
             }
 
-            buffer.unmap(self.frame(), true);
+            buffer.unmap(self.generation(), true);
         }
         Ok(buffer)
     }
@@ -818,9 +815,12 @@ impl<'a> CommandBuffer<'a> {
         info: &BufferInfo,
         usage: MemoryUsage,
     ) -> Result<TransientBufferSlice, OutOfMemoryError> {
-        self.context
-            .transient_buffer_allocator()
-            .get_slice(info, usage, self.frame(), None)
+        self.command_pool.transient_buffer_allocator().get_slice(
+            info,
+            usage,
+            self.generation(),
+            None,
+        )
     }
 
     fn fat_barrier(&mut self) {
@@ -877,7 +877,7 @@ impl<'a> CommandBuffer<'a> {
                         handle: buffer_handle,
                         offset: buffer_offset,
                         length: buffer_length,
-                    } = buffer.deconstruct(self.frame());
+                    } = buffer.deconstruct(self.generation());
                     gpu::Barrier::BufferBarrier {
                         old_sync: *old_sync & Queue::all_barrier_syncs(self.queue_type),
                         new_sync: *new_sync & Queue::all_barrier_syncs(self.queue_type),
@@ -977,7 +977,7 @@ impl<'a> CommandBuffer<'a> {
                 });
 
         self.active_query_range = renderpass_info.query_range.clone();
-        let frame = self.frame();
+        let frame = self.generation();
         unsafe {
             self.cmd_buffer_handle
                 .begin_render_pass(&gpu::RenderPassBeginInfo {
@@ -1003,20 +1003,20 @@ impl<'a> CommandBuffer<'a> {
     }
 
     pub fn preallocate_acceleration_structure_scratch_memory(&mut self, scratch_size: u64) {
-        let scratch_result = self.context.transient_buffer_allocator().get_slice(
+        let scratch_result = self.command_pool.transient_buffer_allocator().get_slice(
             &BufferInfo {
                 size: scratch_size,
                 usage: BufferUsage::ACCELERATION_STRUCTURE_BUILD | BufferUsage::STORAGE,
                 sharing_mode: QueueSharingMode::Exclusive,
             },
             MemoryUsage::GPUMemory,
-            self.frame(),
+            self.generation(),
             None,
         );
 
         if let Ok(scratch) = scratch_result {
-            self.context.acceleration_structure_scratch = Some(scratch);
-            self.context.acceleration_structure_scratch_offset = 0;
+            self.command_pool.acceleration_structure_scratch = Some(scratch);
+            self.command_pool.acceleration_structure_scratch_offset = 0;
         }
     }
 
@@ -1026,7 +1026,7 @@ impl<'a> CommandBuffer<'a> {
         mut use_preallocated_scratch: bool,
     ) -> Option<AccelerationStructure> {
         assert_ne!(info.mesh_parts.len(), 0);
-        let frame = self.frame();
+        let frame = self.generation();
         let core_info = gpu::BottomLevelAccelerationStructureInfo {
             index_format: info.index_format,
             vertex_position_offset: info.vertex_position_offset,
@@ -1042,11 +1042,11 @@ impl<'a> CommandBuffer<'a> {
         };
 
         let size = self
-            .context
+            .command_pool
             .device()
             .get_bottom_level_acceleration_structure_size(&core_info);
         let buffer = self
-            .context
+            .command_pool
             .global_buffer_allocator()
             .get_slice(
                 &BufferInfo {
@@ -1060,17 +1060,20 @@ impl<'a> CommandBuffer<'a> {
             .ok()?;
 
         let reset_scratch_bump_alloc: bool;
-        if let Some(preallocated_scratch) = self.context.acceleration_structure_scratch.as_ref() {
+        if let Some(preallocated_scratch) =
+            self.command_pool.acceleration_structure_scratch.as_ref()
+        {
             // Does the required scratch fit into the entire preallocated scratch buffer?
             // If not, we need to create a one-off buffer.
             use_preallocated_scratch = use_preallocated_scratch
-                && preallocated_scratch.handle(self.frame()).info().size >= size.build_scratch_size;
+                && preallocated_scratch.handle(self.generation()).info().size
+                    >= size.build_scratch_size;
 
             // Does the required scratch fit into the remaining preallocated scratch buffer space?
             // If not, we need to insert a barrier to make the entire space available again.
             let remaining_scratch_with_aligned_offset =
-                preallocated_scratch.handle(self.frame()).info().size
-                    - align_up_64(self.context.acceleration_structure_scratch_offset, 256);
+                preallocated_scratch.handle(self.generation()).info().size
+                    - align_up_64(self.command_pool.acceleration_structure_scratch_offset, 256);
             reset_scratch_bump_alloc = use_preallocated_scratch
                 && remaining_scratch_with_aligned_offset < size.build_scratch_size;
         } else {
@@ -1084,10 +1087,10 @@ impl<'a> CommandBuffer<'a> {
             let preallocated_scratch: &TransientBufferSlice;
             let offset: u64;
             if reset_scratch_bump_alloc {
-                self.context.acceleration_structure_scratch_offset = 0;
+                self.command_pool.acceleration_structure_scratch_offset = 0;
                 offset = size.build_scratch_size;
                 preallocated_scratch = self
-                    .context
+                    .command_pool
                     .acceleration_structure_scratch
                     .as_ref()
                     .unwrap();
@@ -1106,11 +1109,11 @@ impl<'a> CommandBuffer<'a> {
                         }]);
                 }
             } else {
-                offset = align_up_64(self.context.acceleration_structure_scratch_offset, 256);
-                self.context.acceleration_structure_scratch_offset =
+                offset = align_up_64(self.command_pool.acceleration_structure_scratch_offset, 256);
+                self.command_pool.acceleration_structure_scratch_offset =
                     offset + size.build_scratch_size;
                 preallocated_scratch = self
-                    .context
+                    .command_pool
                     .acceleration_structure_scratch
                     .as_ref()
                     .unwrap();
@@ -1118,7 +1121,7 @@ impl<'a> CommandBuffer<'a> {
             (preallocated_scratch, offset)
         } else {
             _owned_scratch = Some(
-                self.context
+                self.command_pool
                     .transient_buffer_allocator()
                     .get_slice(
                         &BufferInfo {
@@ -1127,7 +1130,7 @@ impl<'a> CommandBuffer<'a> {
                             sharing_mode: QueueSharingMode::Exclusive,
                         },
                         MemoryUsage::GPUMemory,
-                        self.frame(),
+                        self.generation(),
                         None,
                     )
                     .ok()?,
@@ -1150,7 +1153,7 @@ impl<'a> CommandBuffer<'a> {
         Some(AccelerationStructure::new(
             acceleration_structure,
             buffer,
-            self.context.destroyer(),
+            self.command_pool.destroyer(),
         ))
     }
 
@@ -1159,7 +1162,7 @@ impl<'a> CommandBuffer<'a> {
         info: &super::rt::TopLevelAccelerationStructureInfo,
         mut use_preallocated_scratch: bool,
     ) -> Option<AccelerationStructure> {
-        let frame = self.frame();
+        let frame = self.generation();
 
         let core_instances: SmallVec<[active_gpu_backend::AccelerationStructureInstance; 16]> =
             info.instances
@@ -1173,13 +1176,13 @@ impl<'a> CommandBuffer<'a> {
                 .collect();
 
         let required_instances_buffer_size = self
-            .context
+            .command_pool
             .device()
             .get_top_level_instances_buffer_size(&core_instances);
         let instances_buffer_size = required_instances_buffer_size.max(16);
 
         let instances_buffer = self
-            .context
+            .command_pool
             .transient_buffer_allocator()
             .get_slice(
                 &BufferInfo {
@@ -1188,23 +1191,23 @@ impl<'a> CommandBuffer<'a> {
                     sharing_mode: QueueSharingMode::Exclusive,
                 },
                 MemoryUsage::MappableGPUMemory,
-                self.frame(),
+                self.generation(),
                 None,
             )
             .ok()?;
         if required_instances_buffer_size < instances_buffer_size {
             unsafe {
-                let ptr = instances_buffer.map(self.frame(), false).unwrap();
+                let ptr = instances_buffer.map(self.generation(), false).unwrap();
                 std::ptr::write_bytes(
                     ptr as *mut u8,
                     0u8,
                     (instances_buffer_size - required_instances_buffer_size) as usize,
                 );
-                instances_buffer.unmap(self.frame(), true);
+                instances_buffer.unmap(self.generation(), true);
             }
         }
 
-        let instance_buffer_handle = instances_buffer.handle(self.frame());
+        let instance_buffer_handle = instances_buffer.handle(self.generation());
         if required_instances_buffer_size != 0 {
             unsafe {
                 self.cmd_buffer_handle.upload_top_level_instances(
@@ -1222,11 +1225,11 @@ impl<'a> CommandBuffer<'a> {
         };
 
         let size = self
-            .context
+            .command_pool
             .device()
             .get_top_level_acceleration_structure_size(&core_info);
         let buffer = self
-            .context
+            .command_pool
             .global_buffer_allocator()
             .get_slice(
                 &BufferInfo {
@@ -1240,17 +1243,20 @@ impl<'a> CommandBuffer<'a> {
             .ok()?;
 
         let reset_scratch_bump_alloc: bool;
-        if let Some(preallocated_scratch) = self.context.acceleration_structure_scratch.as_ref() {
+        if let Some(preallocated_scratch) =
+            self.command_pool.acceleration_structure_scratch.as_ref()
+        {
             // Does the required scratch fit into the entire preallocated scratch buffer?
             // If not, we need to create a one-off buffer.
             use_preallocated_scratch = use_preallocated_scratch
-                && preallocated_scratch.handle(self.frame()).info().size >= size.build_scratch_size;
+                && preallocated_scratch.handle(self.generation()).info().size
+                    >= size.build_scratch_size;
 
             // Does the required scratch fit into the remaining preallocated scratch buffer space?
             // If not, we need to insert a barrier to make the entire space available again.
             let remaining_scratch_with_aligned_offset =
-                preallocated_scratch.handle(self.frame()).info().size
-                    - align_up_64(self.context.acceleration_structure_scratch_offset, 256);
+                preallocated_scratch.handle(self.generation()).info().size
+                    - align_up_64(self.command_pool.acceleration_structure_scratch_offset, 256);
             reset_scratch_bump_alloc = use_preallocated_scratch
                 && remaining_scratch_with_aligned_offset < size.build_scratch_size;
         } else {
@@ -1264,10 +1270,10 @@ impl<'a> CommandBuffer<'a> {
             let preallocated_scratch: &TransientBufferSlice;
             let offset: u64;
             if reset_scratch_bump_alloc {
-                self.context.acceleration_structure_scratch_offset = 0;
+                self.command_pool.acceleration_structure_scratch_offset = 0;
                 offset = size.build_scratch_size;
                 preallocated_scratch = self
-                    .context
+                    .command_pool
                     .acceleration_structure_scratch
                     .as_ref()
                     .unwrap();
@@ -1286,11 +1292,11 @@ impl<'a> CommandBuffer<'a> {
                         }]);
                 }
             } else {
-                offset = align_up_64(self.context.acceleration_structure_scratch_offset, 256);
-                self.context.acceleration_structure_scratch_offset =
+                offset = align_up_64(self.command_pool.acceleration_structure_scratch_offset, 256);
+                self.command_pool.acceleration_structure_scratch_offset =
                     offset + size.build_scratch_size;
                 preallocated_scratch = self
-                    .context
+                    .command_pool
                     .acceleration_structure_scratch
                     .as_ref()
                     .unwrap();
@@ -1298,7 +1304,7 @@ impl<'a> CommandBuffer<'a> {
             (preallocated_scratch, offset)
         } else {
             _owned_scratch = Some(
-                self.context
+                self.command_pool
                     .transient_buffer_allocator()
                     .get_slice(
                         &BufferInfo {
@@ -1307,7 +1313,7 @@ impl<'a> CommandBuffer<'a> {
                             sharing_mode: QueueSharingMode::Exclusive,
                         },
                         MemoryUsage::GPUMemory,
-                        self.frame(),
+                        self.generation(),
                         None,
                     )
                     .ok()?,
@@ -1330,7 +1336,7 @@ impl<'a> CommandBuffer<'a> {
         Some(AccelerationStructure::new(
             acceleration_structure,
             buffer,
-            self.context.destroyer(),
+            self.command_pool.destroyer(),
         ))
     }
 
@@ -1357,13 +1363,13 @@ impl<'a> CommandBuffer<'a> {
     }
 
     #[inline(always)]
-    pub fn frame(&self) -> u64 {
-        self.context.frame()
+    pub fn generation(&self) -> u64 {
+        self.command_pool.frame()
     }
 
     pub fn get_queries(&mut self, query_count: u32) -> Result<QueryRange, OutOfQueriesError> {
-        let frame = self.frame();
-        self.context
+        let frame = self.generation();
+        self.command_pool
             .query_allocator()
             .get_queries(frame, query_count)
     }

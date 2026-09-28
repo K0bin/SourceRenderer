@@ -16,7 +16,7 @@ pub struct TransientBufferSlice {
     buffer: &'static active_gpu_backend::Buffer,
     offset: u64,
     length: u64,
-    frame: u64,
+    generation: u64,
 }
 
 unsafe impl Send for TransientBufferSlice {}
@@ -46,8 +46,8 @@ impl TransientBufferSlice {
     }
 
     #[inline(always)]
-    pub(super) fn handle<'a>(&'a self, frame: u64) -> &'a active_gpu_backend::Buffer {
-        assert_eq!(self.frame, frame);
+    pub(super) fn handle<'a>(&'a self, generation: u64) -> &'a active_gpu_backend::Buffer {
+        assert_eq!(self.generation, generation);
         self.buffer
     }
 
@@ -150,7 +150,7 @@ impl TransientBufferAllocator {
         &self,
         info: &BufferInfo,
         memory_usage: MemoryUsage,
-        frame: u64,
+        generation: u64,
         _name: Option<&str>,
     ) -> Result<TransientBufferSlice, OutOfMemoryError> {
         let heap_info = self.device.get_buffer_heap_info(info);
@@ -181,7 +181,7 @@ impl TransientBufferAllocator {
                 buffer: boxed_buffer_ref,
                 offset: 0,
                 length: info.size,
-                frame,
+                generation,
             };
             return Ok(slice);
         }
@@ -215,7 +215,7 @@ impl TransientBufferAllocator {
                 buffer: unsafe { std::mem::transmute(&sliced_buffer.buffer) },
                 offset: aligned_offset,
                 length: info.size,
-                frame,
+                generation,
             });
 
             let used_up = sliced_buffer.size - sliced_buffer.offset <= BUFFER_FULL_GAP_THRESHOLD;
@@ -251,7 +251,7 @@ impl TransientBufferAllocator {
             buffer: unsafe { extend_lifetime(&sliced_buffer.buffer) },
             offset: 0,
             length: info.size,
-            frame,
+            generation,
         };
         sliced_buffer.offset += info.size;
         matching_buffers.buffers.push(sliced_buffer);

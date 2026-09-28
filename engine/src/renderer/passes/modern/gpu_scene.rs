@@ -2,23 +2,11 @@ use std::collections::HashMap;
 
 use bitflags::bitflags;
 use smallvec::SmallVec;
-use sourcerenderer_core::{
-    Matrix4,
-    Vec3,
-    Vec4,
-};
+use sourcerenderer_core::{Matrix4, Vec3, Vec4};
 
-use crate::asset::{
-    MaterialHandle,
-    MeshHandle,
-    ModelHandle,
-};
+use crate::asset::{MaterialHandle, MeshHandle, ModelHandle};
 use crate::graphics::*;
-use crate::renderer::asset::{
-    RendererAssetsReadOnly,
-    RendererMaterial,
-    RendererMaterialValue,
-};
+use crate::renderer::asset::{RendererAssetsReadOnly, RendererMaterial, RendererMaterialValue};
 use crate::renderer::renderer_scene::RendererScene;
 
 pub const DRAWABLE_CAPACITY: u32 = 4096;
@@ -406,7 +394,7 @@ pub fn upload(
     unsafe {
         profiling::scope!("Copying scene data to VRAM");
 
-        let base_ptr = scene_buffer.map(cmd_buffer.frame(), false).unwrap();
+        let base_ptr = scene_buffer.map(cmd_buffer.generation(), false).unwrap();
 
         let mut ptr = base_ptr.add(scene_offset as usize);
         ptr.copy_from(std::mem::transmute(&local), scene_size as usize);
@@ -435,7 +423,7 @@ pub fn upload(
         ptr = base_ptr.add(lights_offset as usize);
         ptr.copy_from(std::mem::transmute(lights.as_ptr()), lights_size as usize);
 
-        scene_buffer.unmap(cmd_buffer.frame(), true);
+        scene_buffer.unmap(cmd_buffer.generation(), true);
     }
 
     SceneBuffers {
