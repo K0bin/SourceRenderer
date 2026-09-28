@@ -63,7 +63,7 @@ impl TransientBufferSlice {
 }
 
 const BUFFER_SIZE: u64 = 65536;
-const BUFFER_FULL_GAP_THRESHOLD: u64 = 128;
+const BUFFER_FULL_GAP_THRESHOLD: u64 = 32;
 const UNIQUE_ALLOCATION_THRESHOLD: u64 = 8192;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
@@ -158,7 +158,12 @@ impl TransientBufferAllocator {
 
         debug_assert!(UNIQUE_ALLOCATION_THRESHOLD <= BUFFER_SIZE);
 
-        if info.size > UNIQUE_ALLOCATION_THRESHOLD {
+        if info.size > UNIQUE_ALLOCATION_THRESHOLD
+            || heap_info.dedicated_allocation_preference
+                == DedicatedAllocationPreference::RequireDedicated
+            || heap_info.dedicated_allocation_preference
+                == DedicatedAllocationPreference::PreferDedicated
+        {
             // Don't do one-off buffers for command lists
             let BufferAndAllocation { buffer, allocation } = BufferAllocator::create_buffer(
                 &self.device,
@@ -212,7 +217,7 @@ impl TransientBufferAllocator {
 
             slice_opt = Some(TransientBufferSlice {
                 _owned_buffer: None,
-                buffer: unsafe { std::mem::transmute(&sliced_buffer.buffer) },
+                buffer: unsafe { extend_lifetime(&sliced_buffer.buffer) },
                 offset: aligned_offset,
                 length: info.size,
                 generation,
