@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=ToyRenderer
+Comment=Toy renderer
+Exec=sourcerenderer_sdl
+Icon=io.github.k0bin.SourceRenderer
+Terminal=false
+Type=Application
+Categories=Game;3DGraphics;
+StartupNotify=true

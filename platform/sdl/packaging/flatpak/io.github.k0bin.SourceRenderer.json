@@ -1,0 +1,121 @@
+{
+  "app-id": "io.github.k0bin.SourceRenderer",
+  "runtime": "org.freedesktop.Platform",
+  "runtime-version": "26.08",
+  "sdk": "org.freedesktop.Sdk",
+  "sdk-extensions": [
+    "org.freedesktop.Sdk.Extension.rust-stable",
+    "org.freedesktop.Sdk.Extension.llvm22"
+  ],
+  "command": "sourcerenderer",
+  "finish-args": [
+    "--share=ipc",
+    "--socket=x11",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--socket=pulseaudio",
+    "--device=dri",
+    "--filesystem=xdg-documents:ro",
+    "--filesystem=xdg-download:ro"
+  ],
+  "build-options": {
+    "append-path": "/usr/lib/sdk/rust-stable/bin",
+    "env": {
+      "CARGO_HOME": "/run/build/sourcerenderer/cargo",
+      "LIBCLANG_PATH": "/usr/lib/sdk/llvm22/lib",
+      "BINDGEN_EXTRA_CLANG_ARGS": "-I/usr/lib/sdk/llvm22/lib/clang/22/include"
+    }
+  },
+  "modules": [
+    {
+      "name": "sourcerenderer",
+      "buildsystem": "simple",
+      "build-commands": [
+        "/usr/lib/sdk/llvm22/enable.sh",
+        "cargo build --offline --release --manifest-path ./platform/sdl/Cargo.toml",
+        "install -Dm755 platform/sdl/target/release/sourcerenderer_sdl /app/bin/sourcerenderer_sdl",
+        "install -Dm755 platform/sdl/packaging/flatpak/sourcerenderer-wrapper.sh /app/bin/sourcerenderer",
+        "mkdir -p /app/share/sourcerenderer",
+        "cp -r shaders_built /app/share/sourcerenderer/",
+        "install -Dm644 platform/sdl/packaging/flatpak/io.github.k0bin.SourceRenderer.desktop /app/share/applications/io.github.k0bin.SourceRenderer.desktop",
+        "install -Dm644 platform/sdl/packaging/flatpak/io.github.k0bin.SourceRenderer.metainfo.xml /app/share/metainfo/io.github.k0bin.SourceRenderer.metainfo.xml",
+        "install -Dm644 platform/sdl/packaging/flatpak/io.github.k0bin.SourceRenderer.svg /app/share/icons/hicolor/scalable/apps/io.github.k0bin.SourceRenderer.svg"
+      ],
+      "sources": [
+        {
+          "type": "file",
+          "path": "../../../../Cargo.lock",
+          "dest": "platform/sdl"
+        },
+        {
+          "type": "dir",
+          "path": "../../../../engine",
+          "dest": "engine"
+        },
+        {
+          "type": "dir",
+          "path": "../../../../game",
+          "dest": "game"
+        },
+        {
+          "type": "dir",
+          "path": "../../../../platform/sdl",
+          "dest": "platform/sdl",
+          "skip": [
+            "packaging"
+          ]
+        },
+        {
+          "type": "dir",
+          "path": "../../../../platform/sdl/packaging/flatpak",
+          "dest": "platform/sdl/packaging/flatpak",
+          "skip": [
+            ".flatpak-builder",
+            "build"
+          ]
+        },
+        {
+          "type": "dir",
+          "path": "../../../../graphics/vulkan",
+          "dest": "graphics/vulkan"
+        },
+        {
+          "type": "dir",
+          "path": "../../../../graphics/webgpu",
+          "dest": "graphics/webgpu"
+        },
+        {
+          "type": "dir",
+          "path": "../../../../io_util",
+          "dest": "io_util"
+        },
+        {
+          "type": "dir",
+          "path": "../../../../core",
+          "dest": "core"
+        },
+        {
+          "type": "dir",
+          "path": "../../../../vendor/spirv-cross-sys",
+          "dest": "vendor/spirv-cross-sys"
+        },
+        {
+          "type": "dir",
+          "path": "../../../../valve_formats",
+          "dest": "valve_formats"
+        },
+        {
+          "type": "dir",
+          "path": "../../../../quake3_formats",
+          "dest": "quake3_formats"
+        },
+        {
+          "type": "dir",
+          "path": "../../../../build_util",
+          "dest": "build_util"
+        },
+        "cargo-sources.json"
+      ]
+    }
+  ]
+}
