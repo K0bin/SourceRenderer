@@ -71,6 +71,8 @@ fn main() {
     assets_dir.pop();
     assets_dir.pop();
     assets_dir.push("assets");
+    // Should only happen in CI.
+    create_dir_if_necessary(&assets_dir).unwrap();
 
     let mut assets_dest_dir = web_static_dir.clone();
     assets_dest_dir.push("assets");
