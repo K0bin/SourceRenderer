@@ -1,8 +1,8 @@
 {
-    "name": "SourceRenderer",
-    "short_name": "SourceRenderer",
+    "name": "Toy Renderer",
+    "short_name": "Toy",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#fff",
-    "description": "Render Source engine maps in the browser"
+    "description": "Render stuff"
 }
