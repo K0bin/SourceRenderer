@@ -33,9 +33,24 @@ jobs:
       - name: Build Web Rust lib
         run: wasm-pack build platform/web/lib --target web
 
+      - name: LS0
+        run: ls -la ./
+
+      - name: LS1
+        run: ls -la platform/web/www
+
+      - name: LS2
+        run: ls -la platform/web/www/public
+
+      - name: LS2
+        run: ls -la platform/web/www/enginedata
+
       - name: Install npm dependencies
         working-directory: platform/web/www
         run: npm ci
+
+      - name: LS3
+        run: ls -la platform/web/www/dist
 
       - name: Build Web TypeScript code
         working-directory: platform/web/www
