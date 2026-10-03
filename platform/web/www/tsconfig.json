@@ -33,7 +33,8 @@
     "../lib/src/*.ts",
     "../../../engine/src/*.ts",
     "src/worker/main_worker.ts",
-    "src/worker/thread_worker.ts"
+    "src/worker/thread_worker.ts",
+    "src/worker/service_worker.ts"
   ],
   "exclude": []
 }

@@ -1,5 +1,6 @@
 import ThreadWorker from './worker/thread_worker.ts?worker'
 import MainWorker from './worker/main_worker.ts?worker'
+import serviceWorkerUrl from './worker/service_worker.ts?worker&url'
 import {EngineWorkerMessage, EngineWorkerMessageType, ThreadWorkerInit} from "./engine_worker_communication.ts";
 
 let mouseLocked = false;
@@ -157,4 +158,22 @@ function main() {
     canvas.focus();
 }
 
+function registerServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker
+                .register(serviceWorkerUrl, {
+                    type: 'module',
+                })
+                .then((registration) => {
+                    console.log('ServiceWorker registered with scope:', registration.scope);
+                })
+                .catch((error) => {
+                    console.error('ServiceWorker registration failed:', error);
+                });
+        });
+    }
+}
+
+registerServiceWorker();
 main();
