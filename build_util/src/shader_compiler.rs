@@ -124,7 +124,7 @@ fn compile_shader_glsl(
     shader_type: gpu::ShaderType,
     include_debug_info: bool,
     arguments: &HashMap<String, String>,
-) -> Result<Vec<u8>, ()> {
+) -> Result<Box<[u8]>, ()> {
     println!("cargo:rerun-if-changed={}", (file_path).to_str().unwrap());
 
     let mut command = Command::new("glslangValidator");
@@ -192,7 +192,7 @@ fn compile_shader_glsl(
         }
     }
     let _ = std::fs::remove_file(compiled_spv_file_path);
-    Ok(spirv_bytecode)
+    Ok(spirv_bytecode.into_boxed_slice())
 }
 
 struct CallbackInfo {
@@ -1321,16 +1321,15 @@ pub fn compile_shader(
         return;
     }
     let spirv_bytecode = spirv_bytecode_res.unwrap();
-    let spirv_bytecode_boxed = spirv_bytecode.into_boxed_slice();
 
-    let mut metadata = read_metadata(&spirv_bytecode_boxed, shader_name, shader_type);
+    let mut metadata = read_metadata(&spirv_bytecode, shader_name, shader_type);
 
     if output_shading_languages.contains(ShadingLanguage::Msl) {
         if output_file_type == CompiledShaderFileType::Packed {
             panic!("Storing MSL in a packed shader is unsupported.");
         }
         let source = compile_shader_spirv_cross(
-            &spirv_bytecode_boxed,
+            &spirv_bytecode,
             shader_name,
             shader_type,
             &metadata,
@@ -1355,7 +1354,7 @@ pub fn compile_shader(
             panic!("Storing HLSL in a packed shader is unsupported.");
         }
         let source = compile_shader_spirv_cross(
-            &spirv_bytecode_boxed,
+            &spirv_bytecode,
             shader_name,
             shader_type,
             &metadata,
@@ -1372,7 +1371,7 @@ pub fn compile_shader(
     }
     if output_shading_languages.contains(ShadingLanguage::Air) {
         let msl = compile_shader_spirv_cross(
-            &spirv_bytecode_boxed,
+            &spirv_bytecode,
             shader_name,
             shader_type,
             &metadata,
@@ -1396,7 +1395,7 @@ pub fn compile_shader(
     }
     if output_shading_languages.contains(ShadingLanguage::Dxil) {
         let _hlsl = compile_shader_spirv_cross(
-            &spirv_bytecode_boxed,
+            &spirv_bytecode,
             shader_name,
             shader_type,
             &metadata,
@@ -1426,7 +1425,7 @@ pub fn compile_shader(
             panic!("Storing SPIR-V preprocessed for WGSL in a packed shader is unsupported.");
         }
 
-        let mut prepared_spirv = spirv_bytecode_boxed.clone().into_vec();
+        let mut prepared_spirv = spirv_bytecode.clone().into_vec();
         spirv_remove_debug_info(&mut prepared_spirv);
         //spirv_remove_decoration(&mut prepared_spirv, 2); // naga spams warnings about the Block decoration
         spirv_remove_decoration(&mut prepared_spirv, 25); // naga doesn't support NonReadable (writeonly in GLSL)
@@ -1487,10 +1486,10 @@ pub fn compile_shader(
                 file_path,
                 output_dir,
                 ShadingLanguage::SpirV,
-                CompiledShaderType::Bytecode(&spirv_bytecode_boxed),
+                CompiledShaderType::Bytecode(&spirv_bytecode),
             );
         } else if output_file_type == CompiledShaderFileType::Packed {
-            metadata.shader_spirv = spirv_bytecode_boxed;
+            metadata.shader_spirv = spirv_bytecode;
         }
     }
 
