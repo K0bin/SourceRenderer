@@ -7,7 +7,7 @@ edition = "2024"
 cargo_metadata = "0.23"
 pathos = "0.3"
 log = "0.4"
-spirv_cross_sys = { path = "../vendor/spirv-cross-sys", features = ["msl", "hlsl"] }
+spirv_cross_sys = { path = "../vendor/spirv-cross-sys" }
 serde_json = "1.0"
 sourcerenderer_core = { path = "../core" }
 bitflags = "2.13"
