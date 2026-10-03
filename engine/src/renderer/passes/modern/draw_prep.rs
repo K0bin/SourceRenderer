@@ -23,11 +23,13 @@ impl DrawPrepPass {
 
     #[allow(unused)]
     pub fn new(resources: &mut RendererResources, assets: &RendererAssets) -> Self {
+        let culling_path = crate::renderer::get_shader_path("culling.comp");
+        let draw_prep_path = crate::renderer::get_shader_path("draw_prep.comp");
         let culling_pipeline = assets.request_compute_pipeline(
-            PathPipelineShaderStage::empty_spec_consts("shaders/culling.comp.json"),
+            PathPipelineShaderStage::empty_spec_consts(&culling_path),
         );
         let prep_pipeline = assets.request_compute_pipeline(
-            PathPipelineShaderStage::empty_spec_consts("shaders/draw_prep.comp.json"),
+            PathPipelineShaderStage::empty_spec_consts(&draw_prep_path),
         );
         resources.create_buffer(
             Self::VISIBLE_DRAWABLES_BITFIELD_BUFFER,

@@ -26,9 +26,8 @@ impl ClusteringPass {
 
     #[allow(unused)]
     pub fn new(barriers: &mut RendererResources, assets: &RendererAssets) -> Self {
-        let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(
-            "shaders/clustering.comp.json",
-        ));
+        let shader_path = crate::renderer::get_shader_path("clustering.comp");
+        let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(&shader_path));
 
         barriers.create_buffer(
             Self::CLUSTERS_BUFFER_NAME,

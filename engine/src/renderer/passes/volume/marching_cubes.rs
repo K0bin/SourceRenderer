@@ -92,6 +92,8 @@ impl MarchingCubesPass {
         resources: &mut RendererResources,
         assets: &RendererAssets,
     ) -> Self {
+        let shader_path = crate::renderer::get_shader_path("marching_cubes.comp");
+
         // Compile optimized pipelines for 1-3 thresholds
         let mut spec_consts = HashMap::<u32, SpecConstValue>::with_capacity(1);
         let mut pipelines = SmallVec::<[ComputePipelineHandle; 4]>::with_capacity(4);
@@ -99,7 +101,7 @@ impl MarchingCubesPass {
         for i in 0..4 {
             spec_consts.insert(0u32, SpecConstValue::UInt(i));
             pipelines.push(assets.request_compute_pipeline(PathPipelineShaderStage {
-                shader_path: "shaders/marching_cubes.comp.json",
+                shader_path: &shader_path,
                 spec_consts: Some(&spec_consts),
             }));
         }
@@ -108,7 +110,7 @@ impl MarchingCubesPass {
         for i in 0..4 {
             spec_consts.insert(0u32, SpecConstValue::UInt(i));
             cube_pipelines.push(assets.request_compute_pipeline(PathPipelineShaderStage {
-                shader_path: "shaders/marching_cubes.comp.json",
+                shader_path: &shader_path,
                 spec_consts: Some(&spec_consts),
             }));
         }

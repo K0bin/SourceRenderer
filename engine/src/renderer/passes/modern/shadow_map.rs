@@ -93,7 +93,7 @@ impl ShadowMapPass {
             false,
         );
 
-        let vs_path = Path::new("shaders").join(Path::new("shadow_map_bindless.vert.json"));
+        let vs_path = Path::new("shaders").join(Path::new("shadow_map_bindless.vert"));
         let pipeline = assets.request_graphics_pipeline(&GraphicsPipelineInfo {
             vs: PathPipelineShaderStage::empty_spec_consts(vs_path.to_str().unwrap()),
             fs: None,
@@ -140,8 +140,9 @@ impl ShadowMapPass {
             depth_stencil_format: Format::D24S8,
         });
 
+        let draw_prep_path = crate::renderer::get_shader_path("draw_prep.comp");
         let prep_pipeline = assets.request_compute_pipeline(
-            PathPipelineShaderStage::empty_spec_consts("shaders/draw_prep.comp.json"),
+            PathPipelineShaderStage::empty_spec_consts(&draw_prep_path),
         );
 
         let mut cascades =

@@ -34,9 +34,8 @@ impl LightBinningPass {
 
     #[allow(unused)]
     pub fn new(barriers: &mut RendererResources, assets: &RendererAssets) -> Self {
-        let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(
-            "shaders/light_binning.comp.json",
-        ));
+        let shader_path = crate::renderer::get_shader_path("light_binning.comp");
+        let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(&shader_path));
 
         barriers.create_buffer(
             Self::LIGHT_BINNING_BUFFER_NAME,

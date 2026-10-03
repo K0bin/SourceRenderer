@@ -60,11 +60,11 @@ impl Prepass {
         };
         resources.create_texture(Self::DEPTH_TEXTURE_NAME, &depth_info, true);
 
+        let vs_path = crate::renderer::get_shader_path("prepass.vert");
+        let fs_path = crate::renderer::get_shader_path("prepass.frag");
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
-            vs: PathPipelineShaderStage::empty_spec_consts(&("shaders/prepass.vert.json")),
-            fs: Some(PathPipelineShaderStage::empty_spec_consts(
-                "shaders/prepass.frag.json",
-            )),
+            vs: PathPipelineShaderStage::empty_spec_consts(&vs_path),
+            fs: Some(PathPipelineShaderStage::empty_spec_consts(&fs_path)),
             primitive_type: PrimitiveType::Triangles,
             vertex_layout: VertexLayoutInfo {
                 input_assembler: &[InputAssemblerElement {

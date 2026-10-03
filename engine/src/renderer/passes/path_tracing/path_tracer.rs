@@ -39,23 +39,25 @@ impl PathTracerPass {
             true,
         );
 
-        let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(
-            "shaders/path_tracer.comp.json",
-        ));
+        let shader_path = crate::renderer::get_shader_path("path_tracer.comp");
+        let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(&shader_path));
 
-        let sampler = device.create_sampler(&SamplerInfo {
-            mag_filter: Filter::Linear,
-            min_filter: Filter::Linear,
-            mip_filter: Filter::Linear,
-            address_mode_u: AddressMode::Repeat,
-            address_mode_v: AddressMode::Repeat,
-            address_mode_w: AddressMode::Repeat,
-            mip_bias: 0.0,
-            max_anisotropy: 1f32,
-            compare_op: None,
-            min_lod: 0.0,
-            max_lod: None,
-        }, None);
+        let sampler = device.create_sampler(
+            &SamplerInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                mip_filter: Filter::Linear,
+                address_mode_u: AddressMode::Repeat,
+                address_mode_v: AddressMode::Repeat,
+                address_mode_w: AddressMode::Repeat,
+                mip_bias: 0.0,
+                max_anisotropy: 1f32,
+                compare_op: None,
+                min_lod: 0.0,
+                max_lod: None,
+            },
+            None,
+        );
 
         Self { pipeline, sampler }
     }

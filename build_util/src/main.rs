@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use build_util::{compile_shaders, ShadingLanguage};
+use build_util::{ShadingLanguage, compile_shaders};
 
 fn main() {
     // Only used to test it. See the respective build.rs for the actual usage.
@@ -18,7 +18,8 @@ fn main() {
     // Copy shaders over
     let mut shader_dest_dir = manifest_dir.clone();
     shader_dest_dir.pop();
-    shader_dest_dir.push("shaders");
+    shader_dest_dir.push("shaders_built");
+    shader_dest_dir.push(target_tuple::TARGET);
 
     if !shader_dest_dir.exists() {
         std::fs::create_dir_all(&shader_dest_dir)

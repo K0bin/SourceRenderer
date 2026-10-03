@@ -31,3 +31,7 @@ pub use self::light::PointLight;
 pub use self::renderer::Renderer;
 pub use self::renderer_plugin::*;
 pub use self::vertex::Vertex;
+
+fn get_shader_path(shader_name: &str) -> String {
+    format!("shaders_built/{}/{}.json", target_tuple::target!(), shader_name)
+}

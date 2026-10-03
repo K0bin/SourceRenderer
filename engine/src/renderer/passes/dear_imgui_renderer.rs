@@ -25,12 +25,12 @@ impl DearImguiRenderer {
         assets: &RendererAssets,
         rt_format: Format,
     ) -> Self {
+        let vs_path = crate::renderer::get_shader_path("dear_imgui.vert");
+        let fs_path = crate::renderer::get_shader_path("dear_imgui.frag");
         let pipeline =
             assets.request_graphics_pipeline(&crate::renderer::asset::GraphicsPipelineInfo {
-                vs: PathPipelineShaderStage::empty_spec_consts("shaders/dear_imgui.vert.json"),
-                fs: Some(PathPipelineShaderStage::empty_spec_consts(
-                    "shaders/dear_imgui.frag.json",
-                )),
+                vs: PathPipelineShaderStage::empty_spec_consts(&vs_path),
+                fs: Some(PathPipelineShaderStage::empty_spec_consts(&fs_path)),
                 vertex_layout: VertexLayoutInfo {
                     shader_inputs: &[
                         ShaderInputElement {

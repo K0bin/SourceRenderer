@@ -35,35 +35,36 @@ impl SsaoPass {
         Self::create_textures(resources, resolution);
         let noise_texture_view = Self::create_noise_texture(device, 4u32);
 
-        let noise_sampler = device.create_sampler(&SamplerInfo {
-            min_filter: Filter::Nearest,
-            mag_filter: Filter::Nearest,
-            mip_filter: Filter::Nearest,
-            address_mode_u: AddressMode::Repeat,
-            address_mode_v: AddressMode::Repeat,
-            address_mode_w: AddressMode::Repeat,
-            mip_bias: 0.0f32,
-            max_anisotropy: 0.0f32,
-            compare_op: None,
-            min_lod: 0.0f32,
-            max_lod: None,
-        }, None);
+        let noise_sampler = device.create_sampler(
+            &SamplerInfo {
+                min_filter: Filter::Nearest,
+                mag_filter: Filter::Nearest,
+                mip_filter: Filter::Nearest,
+                address_mode_u: AddressMode::Repeat,
+                address_mode_v: AddressMode::Repeat,
+                address_mode_w: AddressMode::Repeat,
+                mip_bias: 0.0f32,
+                max_anisotropy: 0.0f32,
+                compare_op: None,
+                min_lod: 0.0f32,
+                max_lod: None,
+            },
+            None,
+        );
 
-        let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(
-            "shaders/ssao.comp.json",
-        ));
+        let shader_path = crate::renderer::get_shader_path("ssao.comp");
+        let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(&shader_path));
 
         // TODO: Clear history texture
 
         let kernel = Self::create_hemisphere(device, 64u32);
 
-        let blur_pipeline = assets.request_compute_pipeline(
-            PathPipelineShaderStage::empty_spec_consts(if !visibility_buffer {
-                "shaders/ssao_blur.comp.json"
-            } else {
-                "shaders/ssao_blur_vis_buf.comp.json"
-            }),
-        );
+        let blur_shader_path = crate::renderer::get_shader_path(if !visibility_buffer {
+            "ssao_blur.comp"
+        } else {
+            "ssao_blur_vis_buf.comp"
+        });
+        let blur_pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(&blur_shader_path));
 
         Self {
             pipeline,

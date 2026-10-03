@@ -13,3 +13,4 @@ sourcerenderer_core = { path = "../core" }
 bitflags = "2.13"
 simple_logger = "5.2"
 naga = { version = "30.0", features = ["spv-in", "wgsl-out"] }
+target-tuple = "1.0.2"

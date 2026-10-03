@@ -39,6 +39,7 @@ futures-lite = "2.6"
 parking_lot = "0.12"
 bytemuck = { version = "1.25", features = ["extern_crate_std"] }
 itertools = "0.15.0"
+target-tuple = "1.0.2"
 
 bevy_app = "0.19"
 bevy_math = "0.19"

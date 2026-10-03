@@ -26,19 +26,22 @@ impl GeometryPass {
         _init_cmd_buffer: &mut crate::graphics::CommandBuffer,
         resources: &mut RendererResources,
     ) -> Self {
-        let sampler = device.create_sampler(&SamplerInfo {
-            mag_filter: Filter::Linear,
-            min_filter: Filter::Linear,
-            mip_filter: Filter::Linear,
-            address_mode_u: AddressMode::Repeat,
-            address_mode_v: AddressMode::Repeat,
-            address_mode_w: AddressMode::ClampToEdge,
-            mip_bias: 0.0f32,
-            max_anisotropy: 1f32,
-            compare_op: None,
-            min_lod: 0.0f32,
-            max_lod: None,
-        }, None);
+        let sampler = device.create_sampler(
+            &SamplerInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                mip_filter: Filter::Linear,
+                address_mode_u: AddressMode::Repeat,
+                address_mode_v: AddressMode::Repeat,
+                address_mode_w: AddressMode::ClampToEdge,
+                mip_bias: 0.0f32,
+                max_anisotropy: 1f32,
+                compare_op: None,
+                min_lod: 0.0f32,
+                max_lod: None,
+            },
+            None,
+        );
 
         resources.create_texture(
             Self::DEPTH_TEXTURE_NAME,
@@ -57,10 +60,8 @@ impl GeometryPass {
             false,
         );
 
-        let shader_file_extension = "json";
-
-        let vs_path = format!("shaders/web_geometry.web.vert.{}", shader_file_extension);
-        let fs_path = format!("shaders/web_geometry.web.frag.{}", shader_file_extension);
+        let vs_path = crate::renderer::get_shader_path("web_geometry.web.vert");
+        let fs_path = crate::renderer::get_shader_path("web_geometry.web.frag");
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
             vs: PathPipelineShaderStage::empty_spec_consts(&vs_path),
             fs: Some(PathPipelineShaderStage::empty_spec_consts(&fs_path)),

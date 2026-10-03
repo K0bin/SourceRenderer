@@ -107,25 +107,28 @@ impl GeometryPass {
             false,
         );
 
-        let sampler = Arc::new(device.create_sampler(&SamplerInfo {
-            mag_filter: Filter::Linear,
-            min_filter: Filter::Linear,
-            mip_filter: Filter::Linear,
-            address_mode_u: AddressMode::Repeat,
-            address_mode_v: AddressMode::Repeat,
-            address_mode_w: AddressMode::Repeat,
-            mip_bias: 0.0,
-            max_anisotropy: 1f32,
-            compare_op: None,
-            min_lod: 0.0,
-            max_lod: None,
-        }, None));
+        let sampler = Arc::new(device.create_sampler(
+            &SamplerInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                mip_filter: Filter::Linear,
+                address_mode_u: AddressMode::Repeat,
+                address_mode_v: AddressMode::Repeat,
+                address_mode_w: AddressMode::Repeat,
+                mip_bias: 0.0,
+                max_anisotropy: 1f32,
+                compare_op: None,
+                min_lod: 0.0,
+                max_lod: None,
+            },
+            None,
+        ));
 
+        let vs_path = crate::renderer::get_shader_path("geometry_bindless.vert");
+        let fs_path = crate::renderer::get_shader_path("geometry_bindless.frag");
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
-            vs: PathPipelineShaderStage::empty_spec_consts("shaders/geometry_bindless.vert.json"),
-            fs: Some(PathPipelineShaderStage::empty_spec_consts(
-                "shaders/geometry_bindless.frag.json",
-            )),
+            vs: PathPipelineShaderStage::empty_spec_consts(&vs_path),
+            fs: Some(PathPipelineShaderStage::empty_spec_consts(&fs_path)),
             primitive_type: PrimitiveType::Triangles,
             vertex_layout: VertexLayoutInfo {
                 input_assembler: &[InputAssemblerElement {

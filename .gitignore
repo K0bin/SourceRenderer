@@ -50,3 +50,4 @@ build_util/shaders/
 **/build_script_output.txt
 
 shaders/*
+shaders_built/*

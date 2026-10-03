@@ -30,23 +30,25 @@ impl ShadingPass {
         assets: &RendererAssets,
         _init_cmd_buffer: &mut CommandBuffer,
     ) -> Self {
-        let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(
-            "shaders/shading.comp.json",
-        ));
+        let shader_path = crate::renderer::get_shader_path("shading.comp");
+        let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(&shader_path));
 
-        let sampler = Arc::new(device.create_sampler(&SamplerInfo {
-            mag_filter: Filter::Linear,
-            min_filter: Filter::Linear,
-            mip_filter: Filter::Linear,
-            address_mode_u: AddressMode::Repeat,
-            address_mode_v: AddressMode::Repeat,
-            address_mode_w: AddressMode::Repeat,
-            mip_bias: 0.0,
-            max_anisotropy: 1f32,
-            compare_op: None,
-            min_lod: 0.0,
-            max_lod: None,
-        }, None));
+        let sampler = Arc::new(device.create_sampler(
+            &SamplerInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                mip_filter: Filter::Linear,
+                address_mode_u: AddressMode::Repeat,
+                address_mode_v: AddressMode::Repeat,
+                address_mode_w: AddressMode::Repeat,
+                mip_bias: 0.0,
+                max_anisotropy: 1f32,
+                compare_op: None,
+                min_lod: 0.0,
+                max_lod: None,
+            },
+            None,
+        ));
 
         resources.create_texture(
             Self::SHADING_TEXTURE_NAME,
@@ -65,19 +67,22 @@ impl ShadingPass {
             false,
         );
 
-        let shadow_sampler = Arc::new(device.create_sampler(&SamplerInfo {
-            mag_filter: Filter::Linear,
-            min_filter: Filter::Linear,
-            mip_filter: Filter::Linear,
-            address_mode_u: AddressMode::ClampToEdge,
-            address_mode_v: AddressMode::ClampToEdge,
-            address_mode_w: AddressMode::ClampToEdge,
-            mip_bias: 0.0f32,
-            max_anisotropy: 1f32,
-            compare_op: Some(CompareFunc::Less),
-            min_lod: 0f32,
-            max_lod: None,
-        }, None));
+        let shadow_sampler = Arc::new(device.create_sampler(
+            &SamplerInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                mip_filter: Filter::Linear,
+                address_mode_u: AddressMode::ClampToEdge,
+                address_mode_v: AddressMode::ClampToEdge,
+                address_mode_w: AddressMode::ClampToEdge,
+                mip_bias: 0.0f32,
+                max_anisotropy: 1f32,
+                compare_op: Some(CompareFunc::Less),
+                min_lod: 0f32,
+                max_lod: None,
+            },
+            None,
+        ));
 
         Self {
             sampler,

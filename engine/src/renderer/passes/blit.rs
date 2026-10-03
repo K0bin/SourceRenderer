@@ -18,11 +18,11 @@ impl BlitPass {
         assets: &RendererAssets,
         dst_format: Format,
     ) -> Self {
+        let vs_path = crate::renderer::get_shader_path("fullscreen_quad.vert");
+        let fs_path = crate::renderer::get_shader_path("fullscreen_quad.frag");
         let pipeline = assets.request_graphics_pipeline(&GraphicsPipelineInfo {
-            vs: PathPipelineShaderStage::empty_spec_consts("shaders/fullscreen_quad.vert.json"),
-            fs: Some(PathPipelineShaderStage::empty_spec_consts(
-                "shaders/blit.frag.json",
-            )),
+            vs: PathPipelineShaderStage::empty_spec_consts(&vs_path),
+            fs: Some(PathPipelineShaderStage::empty_spec_consts(&fs_path)),
             vertex_layout: VertexLayoutInfo {
                 shader_inputs: &[],
                 input_assembler: &[],

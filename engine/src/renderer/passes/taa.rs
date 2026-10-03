@@ -53,13 +53,12 @@ impl TAAPass {
         assets: &RendererAssets,
         visibility_buffer: bool,
     ) -> Self {
-        let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(
-            if !visibility_buffer {
-                "shaders/taa.comp.json"
-            } else {
-                "shaders/taa_vis_buf.comp.json"
-            },
-        ));
+        let shader_path = if !visibility_buffer {
+            crate::renderer::get_shader_path("taa.comp")
+        } else {
+            crate::renderer::get_shader_path("taa_vis_buf.comp")
+        };
+        let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(&shader_path));
 
         let texture_info = TextureInfo {
             dimension: TextureDimension::Dim2D,

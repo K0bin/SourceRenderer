@@ -20,9 +20,8 @@ impl MotionVectorPass {
         renderer_resolution: Vec2UI,
         assets: &RendererAssets,
     ) -> Self {
-        let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(
-            "shaders/motion_vectors_vis_buf.comp.json",
-        ));
+        let shader_path = crate::renderer::get_shader_path("motion_vectors_vis_buf.comp");
+        let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(&shader_path));
 
         resources.create_texture(
             Self::MOTION_TEXTURE_NAME,
