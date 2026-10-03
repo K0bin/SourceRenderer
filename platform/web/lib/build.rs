@@ -21,7 +21,8 @@ fn main() {
 
     // Copy shaders over
     let mut shader_dest_dir = web_static_dir.clone();
-    shader_dest_dir.push("shaders");
+    shader_dest_dir.push("shaders_built");
+    shader_dest_dir.push("wasm32-unknown-unknown");
 
     if !shader_dest_dir.exists() {
         std::fs::create_dir_all(&shader_dest_dir)
