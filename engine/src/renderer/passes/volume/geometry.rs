@@ -72,8 +72,8 @@ impl GeometryPass {
     ) -> Self {
         Self::create_textures(resources, resolution);
 
-        let vs_path = crate::renderer::get_shader_path("volume_geometry.vert");
-        let fs_path = crate::renderer::get_shader_path("volume_geometry.frag");
+        let vs_path = crate::renderer::shader_path!("volume_geometry.vert");
+        let fs_path = crate::renderer::shader_path!("volume_geometry.frag");
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
             vs: PathPipelineShaderStage::empty_spec_consts(&vs_path),
             fs: Some(PathPipelineShaderStage::empty_spec_consts(&fs_path)),

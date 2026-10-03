@@ -54,9 +54,9 @@ impl TAAPass {
         visibility_buffer: bool,
     ) -> Self {
         let shader_path = if !visibility_buffer {
-            crate::renderer::get_shader_path("taa.comp")
+            crate::renderer::shader_path!("taa.comp")
         } else {
-            crate::renderer::get_shader_path("taa_vis_buf.comp")
+            crate::renderer::shader_path!("taa_vis_buf.comp")
         };
         let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(&shader_path));
 

@@ -3020,6 +3020,7 @@ dependencies = [
  "bevy_utils",
  "bitflags",
  "bitset-core",
+ "build-util",
  "bumpalo",
  "bytemuck",
  "crossbeam-channel",

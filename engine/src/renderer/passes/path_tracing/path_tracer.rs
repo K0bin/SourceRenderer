@@ -39,7 +39,7 @@ impl PathTracerPass {
             true,
         );
 
-        let shader_path = crate::renderer::get_shader_path("path_tracer.comp");
+        let shader_path = crate::renderer::shader_path!("path_tracer.comp");
         let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(&shader_path));
 
         let sampler = device.create_sampler(

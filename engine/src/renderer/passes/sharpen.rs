@@ -22,9 +22,9 @@ impl SharpenPass {
         assets: &RendererAssets,
     ) -> Self {
         let shader_path = if !USE_CAS {
-            crate::renderer::get_shader_path("sharpen.comp")
+            crate::renderer::shader_path!("sharpen.comp")
         } else {
-            crate::renderer::get_shader_path("cas.comp")
+            crate::renderer::shader_path!("cas.comp")
         };
         let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(&shader_path));
 

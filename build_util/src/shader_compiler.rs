@@ -1537,9 +1537,35 @@ fn compile_shader_naga(shader_name: &str, spirv: &[u8]) -> Result<String, ()> {
     Ok(wgsl)
 }
 
+fn target() -> String {
+    std::env::var("TARGET").unwrap_or(target_tuple::target!().to_string())
+}
+
+pub fn setup_shader_path_env(base_path: &Path) -> PathBuf {
+    let buf = get_shader_path(base_path);
+    println!("cargo:rustc-env=SHADERS_BUILT_DIR={}", buf.to_str().unwrap());
+    buf
+}
+
 pub fn get_shader_path(base_path: &Path) -> PathBuf {
     let mut buf = PathBuf::from(base_path);
     buf.push("shaders_built");
-    buf.push(target_tuple::TARGET);
+    buf.push(target());
     buf
+}
+
+pub fn get_shading_languages_for_target(dump_intermediate: bool) -> ShadingLanguage {
+    let mut langs = ShadingLanguage::empty();
+    if dump_intermediate {
+        langs |= ShadingLanguage::SpirVPreprocessedForWgsl;
+    }
+    if target() == "wasm32-unknown-unknown" {
+        langs |= ShadingLanguage::Wgsl;
+        if dump_intermediate {
+            langs |= ShadingLanguage::SpirVPreprocessedForWgsl;
+        }
+    } else {
+        langs |= ShadingLanguage::SpirV;
+    }
+    langs
 }

@@ -64,10 +64,10 @@ impl ImageBasedLightingPreparation {
             false,
         );
 
-        let project_to_pipeline_shader_path = crate::renderer::get_shader_path("project_equirectangular.comp");
-        let prefilter_diffuse_shader_path = crate::renderer::get_shader_path("prefilter_env_map_diffuse.comp");
-        let prefilter_env_map_specular_shader_path = crate::renderer::get_shader_path("prefilter_env_map_specular.comp");
-        let preintegrate_brdf_path = crate::renderer::get_shader_path("preintegrate_brdf.comp");
+        let project_to_pipeline_shader_path = crate::renderer::shader_path!("project_equirectangular.comp");
+        let prefilter_diffuse_shader_path = crate::renderer::shader_path!("prefilter_env_map_diffuse.comp");
+        let prefilter_env_map_specular_shader_path = crate::renderer::shader_path!("prefilter_env_map_specular.comp");
+        let preintegrate_brdf_path = crate::renderer::shader_path!("preintegrate_brdf.comp");
         let project_to_cube_pipeline = assets.request_compute_pipeline(
             PathPipelineShaderStage::empty_spec_consts(&project_to_pipeline_shader_path),
         );

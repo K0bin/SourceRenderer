@@ -28,4 +28,5 @@ export default {
         },
     },
     appType: "spa",
+    preserveSymlinks: true,
 };

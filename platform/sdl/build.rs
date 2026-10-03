@@ -7,57 +7,6 @@ fn main() {
     build_util::build_script_logger::init();
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 
-    // Copy shaders over
-    let mut shader_dest_dir = manifest_dir.clone();
-    for _ in 0..2 {
-        assert!(shader_dest_dir.pop());
-    }
-    shader_dest_dir = get_shader_path(&shader_dest_dir.as_path());
-
-    if !shader_dest_dir.exists() {
-        std::fs::create_dir_all(&shader_dest_dir)
-            .expect("Failed to create shader target directory.");
-    }
-
-    let mut output_shading_languages = ShadingLanguage::SpirV;
-    if env::var("DUMP_SHADERS")
-        .map(|envvar| envvar == "true" || envvar == "True" || envvar == "1")
-        .unwrap_or_default()
-    {
-        output_shading_languages |= ShadingLanguage::Msl | ShadingLanguage::Hlsl;
-    }
-
-    let mut shader_dir = manifest_dir.clone();
-    shader_dir.pop();
-    shader_dir.pop();
-    shader_dir.push("engine");
-    shader_dir.push("shaders");
-
-    compile_shaders(
-        &shader_dir,
-        &shader_dest_dir,
-        true,
-        false,
-        &HashMap::new(),
-        output_shading_languages,
-        |_| true,
-    );
-
-    let mut assets_dest_dir = manifest_dir.clone();
-    assets_dest_dir.push("assets");
-
-    if !assets_dest_dir.exists() {
-        std::fs::create_dir_all(&assets_dest_dir)
-            .expect("Failed to create shader target directory.");
-    }
-
-    let mut assets_dir = manifest_dir.clone();
-    assets_dir.pop();
-    assets_dir.pop();
-    assets_dir.push("engine");
-    assets_dir.push("assets");
-    copy_directory_rec(&assets_dir, &assets_dest_dir, &(|_| true));
-
     // Copy SDL2.dll/SDL3.dll
     let target = env::var("TARGET").unwrap();
     if target.contains("pc-windows") {

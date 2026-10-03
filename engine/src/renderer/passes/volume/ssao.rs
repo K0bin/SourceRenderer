@@ -52,18 +52,18 @@ impl SsaoPass {
             None,
         );
 
-        let shader_path = crate::renderer::get_shader_path("ssao.comp");
+        let shader_path = crate::renderer::shader_path!("ssao.comp");
         let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(&shader_path));
 
         // TODO: Clear history texture
 
         let kernel = Self::create_hemisphere(device, 64u32);
 
-        let blur_shader_path = crate::renderer::get_shader_path(if !visibility_buffer {
-            "ssao_blur.comp"
+        let blur_shader_path = if !visibility_buffer {
+            crate::renderer::shader_path!("ssao_blur.comp")
         } else {
-            "ssao_blur_vis_buf.comp"
-        });
+            crate::renderer::shader_path!("ssao_blur_vis_buf.comp")
+        };
         let blur_pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(&blur_shader_path));
 
         Self {

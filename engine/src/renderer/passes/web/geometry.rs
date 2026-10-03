@@ -60,8 +60,8 @@ impl GeometryPass {
             false,
         );
 
-        let vs_path = crate::renderer::get_shader_path("web_geometry.web.vert");
-        let fs_path = crate::renderer::get_shader_path("web_geometry.web.frag");
+        let vs_path = crate::renderer::shader_path!("web_geometry.web.vert");
+        let fs_path = crate::renderer::shader_path!("web_geometry.web.frag");
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
             vs: PathPipelineShaderStage::empty_spec_consts(&vs_path),
             fs: Some(PathPipelineShaderStage::empty_spec_consts(&fs_path)),

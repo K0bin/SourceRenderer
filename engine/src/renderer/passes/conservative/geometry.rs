@@ -81,8 +81,8 @@ impl GeometryPass {
             None,
         );
 
-        let vs_path = crate::renderer::get_shader_path("textured.vert");
-        let fs_path = crate::renderer::get_shader_path("textured.frag");
+        let vs_path = crate::renderer::shader_path!("textured.vert");
+        let fs_path = crate::renderer::shader_path!("textured.frag");
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
             vs: PathPipelineShaderStage::empty_spec_consts(&vs_path),
             fs: Some(PathPipelineShaderStage::empty_spec_consts(&fs_path)),

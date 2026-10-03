@@ -101,6 +101,11 @@ impl AssetLoader for RawVolumeLoaderTexture {
 
         let values_count = (width as usize) * (height as usize) * (depth as usize);
 
+        if values_count == 0 {
+            log::error!("Failed to load file. 0 words found");
+            return Err(());
+        }
+
         // Load actual data
 
         let mut src_data = Vec::<u16>::with_capacity(values_count);

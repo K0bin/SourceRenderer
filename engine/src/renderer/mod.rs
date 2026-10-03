@@ -1,3 +1,16 @@
+macro_rules! shader_path {
+    ($shader_name:literal) => {{
+        let _ = include_bytes!(concat!(env!("SHADERS_BUILT_DIR"), "/", $shader_name, ".json"));
+        if cfg!(target_arch = "wasm32") {
+            concat!("shaders_built/", $shader_name, ".json")
+        } else {
+            concat!(env!("SHADERS_BUILT_DIR"), "/", $shader_name, ".json")
+        }
+    }};
+}
+
+use shader_path;
+
 mod renderer;
 
 mod command;
@@ -31,7 +44,3 @@ pub use self::light::PointLight;
 pub use self::renderer::Renderer;
 pub use self::renderer_plugin::*;
 pub use self::vertex::Vertex;
-
-fn get_shader_path(shader_name: &str) -> String {
-    format!("shaders_built/{}/{}.json", target_tuple::target!(), shader_name)
-}
