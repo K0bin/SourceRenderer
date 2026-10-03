@@ -1536,3 +1536,10 @@ fn compile_shader_naga(shader_name: &str, spirv: &[u8]) -> Result<String, ()> {
         })?;
     Ok(wgsl)
 }
+
+pub fn get_shader_path(base_path: &Path) -> PathBuf {
+    let mut buf = PathBuf::from(base_path);
+    buf.push("shaders_built");
+    buf.push(target_tuple::TARGET);
+    buf
+}
