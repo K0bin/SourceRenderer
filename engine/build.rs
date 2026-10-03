@@ -3,6 +3,11 @@ use build_util::{setup_shader_path_env, compile_shaders, get_shading_languages_f
 use std::collections::HashMap;
 
 fn main() {
+    build_util::build_script_logger::init_with_filter(|record| {
+        let msg = format!("{}", record.args());
+        !msg.contains("Unknown decoration Block") // bullshit warning by Naga
+    });
+
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
 
     // Compile shaders

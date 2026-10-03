@@ -18,6 +18,7 @@ fn main() {
     web_static_dir.push("www");
     web_static_dir.push("public");
     web_static_dir.push("enginedata");
+    create_dir_if_necessary(&web_static_dir).unwrap();
 
     // Copy shaders over
     let mut shader_dir = manifest_dir.clone();
@@ -36,12 +37,12 @@ fn main() {
             compile_fallback = false;
             if let Ok(target) = std::fs::read_link(&shader_dest_dir) {
                 if target != shader_dir {
-                    println!("cargo::error=\"Found different symlink for shaders. Expected {:?}, Actual: {:?}, compiling again.\"", &shader_dir, &target);
+                    log::warn!("Found different symlink for shaders. Expected {:?}, Actual: {:?}, compiling again.", &shader_dir, &target);
                 }
             }
         }
         if compile_fallback {
-            println!("cargo::error=\"Creating symlink for shaders to {:?} failed: {:?}, compiling again.\"", &shader_dest_dir, &e);
+            log::warn!("Creating symlink for shaders to {:?} failed: {:?}, compiling again.", &shader_dest_dir, &e);
 
             let mut shader_source_dir = manifest_dir.clone();
             shader_source_dir.pop();
