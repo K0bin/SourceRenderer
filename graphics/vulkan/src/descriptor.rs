@@ -155,18 +155,6 @@ impl VkDescriptorSetLayout {
             self.binding_infos[slot as usize].as_ref()
         }
     }
-
-    #[inline(always)]
-    pub(crate) fn is_dynamic_binding(&self, binding_index: u32) -> bool {
-        if binding_index >= self.binding_infos.len() as u32 {
-            false
-        } else if let Some(binding_info) = self.binding_infos[binding_index as usize].as_ref() {
-            binding_info.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
-                || binding_info.descriptor_type == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
-        } else {
-            false
-        }
-    }
 }
 
 impl Drop for VkDescriptorSetLayout {

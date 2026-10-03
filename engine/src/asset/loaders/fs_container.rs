@@ -81,7 +81,7 @@ impl<IO: PlatformIO> FSContainer<IO> {
         let file_watcher = IO::new_file_watcher(sender);
         let asset_mgr_weak = Arc::downgrade(asset_manager);
 
-        if cfg!(feature = "threading") {
+        if cfg!(not(target_arch = "wasm32")) {
             let mut thread_builder = thread::Builder::new();
             thread_builder = thread_builder.name("AssetManagerWatchThread".to_string());
             let _ = thread_builder
