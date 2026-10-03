@@ -27,8 +27,8 @@ impl CompositingPass {
         assets: &RendererAssets,
         swapchain: &crate::graphics::Swapchain,
     ) -> Self {
-        let vs_path = crate::renderer::get_shader_path("fullscreen_quad.vert");
-        let fs_path = crate::renderer::get_shader_path("compositing.frag");
+        let vs_path = crate::renderer::shader_path!("fullscreen_quad.vert");
+        let fs_path = crate::renderer::shader_path!("compositing.frag");
         let pipeline = assets.request_graphics_pipeline(&GraphicsPipelineInfo {
             vs: PathPipelineShaderStage::empty_spec_consts(&vs_path),
             fs: Some(PathPipelineShaderStage::empty_spec_consts(&fs_path)),

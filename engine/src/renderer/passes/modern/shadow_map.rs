@@ -140,7 +140,7 @@ impl ShadowMapPass {
             depth_stencil_format: Format::D24S8,
         });
 
-        let draw_prep_path = crate::renderer::get_shader_path("draw_prep.comp");
+        let draw_prep_path = crate::renderer::shader_path!("draw_prep.comp");
         let prep_pipeline = assets.request_compute_pipeline(
             PathPipelineShaderStage::empty_spec_consts(&draw_prep_path),
         );

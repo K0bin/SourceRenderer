@@ -25,8 +25,8 @@ impl BackgroundPass {
         _init_cmd_buffer: &mut crate::graphics::CommandBuffer,
         _resources: &mut RendererResources,
     ) -> Self {
-        let vs_path = crate::renderer::get_shader_path("fullscreen_quad.vert");
-        let fs_path = crate::renderer::get_shader_path("background.frag");
+        let vs_path = crate::renderer::shader_path!("fullscreen_quad.vert");
+        let fs_path = crate::renderer::shader_path!("background.frag");
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
             vs: PathPipelineShaderStage::empty_spec_consts(&vs_path),
             fs: Some(PathPipelineShaderStage::empty_spec_consts(&fs_path)),

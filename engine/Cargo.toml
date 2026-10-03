@@ -3,6 +3,7 @@ name = "sourcerenderer_engine"
 version = "0.1.0"
 authors = ["Robin Kertels <robin.kertels@gmail.com>"]
 edition = "2024"
+build = "build.rs"
 
 [dependencies]
 num_cpus = "1.16"
@@ -81,3 +82,6 @@ ecs_threading = ["bevy_tasks/multi_threaded"]
 profile = ["profiling/profile-with-optick"]
 non_send_gpu = ["sourcerenderer_core/non_send_gpu"]
 non_send_io = ["sourcerenderer_core/non_send_io"]
+
+[build-dependencies]
+build-util = { path = "../build_util" }

@@ -33,11 +33,11 @@ impl<IO: PlatformIO> Plugin for TestGamePlugin<IO> {
                 load_file_gltf_container::<IO>("bistro_sun.glb", true).await.unwrap()
             });
             asset_manager.request_asset("bistro_sun.glb/scene/Scene", AssetType::Level, AssetLoadPriority::High);*/
-            asset_manager.request_asset(
+            /*asset_manager.request_asset(
                 "FlightHelmet/FlightHelmet.gltf/scene/0",
                 AssetType::Level,
                 AssetLoadPriority::High,
-            );
+            );*/
         }
 
         fps_camera::install(app);

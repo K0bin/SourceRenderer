@@ -7,6 +7,8 @@ use crate::renderer::asset::{
 };
 use crate::renderer::renderer_resources::RendererResources;
 
+use crate::renderer::shader_path;
+
 pub struct BlitPass {
     pipeline_handle: GraphicsPipelineHandle,
 }
@@ -18,11 +20,11 @@ impl BlitPass {
         assets: &RendererAssets,
         dst_format: Format,
     ) -> Self {
-        let vs_path = crate::renderer::get_shader_path("fullscreen_quad.vert");
-        let fs_path = crate::renderer::get_shader_path("fullscreen_quad.frag");
+        let vs_path = crate::renderer::shader_path!("fullscreen_quad.vert");
+        //let fs_path = super::super::shader_path!("fullscreen_quad.frag");
         let pipeline = assets.request_graphics_pipeline(&GraphicsPipelineInfo {
             vs: PathPipelineShaderStage::empty_spec_consts(&vs_path),
-            fs: Some(PathPipelineShaderStage::empty_spec_consts(&fs_path)),
+            fs: None, //Some(PathPipelineShaderStage::empty_spec_consts(&fs_path)),
             vertex_layout: VertexLayoutInfo {
                 shader_inputs: &[],
                 input_assembler: &[],

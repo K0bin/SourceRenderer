@@ -106,7 +106,7 @@ impl OcclusionPass {
             )
             .unwrap();
 
-        let shader_path = crate::renderer::get_shader_path("occlusion.vert");
+        let shader_path = crate::renderer::shader_path!("occlusion.vert");
         let pipeline = shader_manager.request_graphics_pipeline(
             &GraphicsPipelineInfo {
                 vs: PipelineShaderPathStage::empty_spec_consts(&shader_path),

@@ -92,7 +92,7 @@ impl MarchingCubesPass {
         resources: &mut RendererResources,
         assets: &RendererAssets,
     ) -> Self {
-        let shader_path = crate::renderer::get_shader_path("marching_cubes.comp");
+        let shader_path = crate::renderer::shader_path!("marching_cubes.comp");
 
         // Compile optimized pipelines for 1-3 thresholds
         let mut spec_consts = HashMap::<u32, SpecConstValue>::with_capacity(1);

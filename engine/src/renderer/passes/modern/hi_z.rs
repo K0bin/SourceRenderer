@@ -37,11 +37,11 @@ impl HierarchicalZPass {
 
         resources.create_texture(Self::HI_Z_BUFFER_NAME, &texture_info, false);
 
-        let downsampler_path = crate::renderer::get_shader_path("ffx_downsampler.comp");
+        let downsampler_path = crate::renderer::shader_path!("ffx_downsampler.comp");
         let ffx_pipeline = assets.request_compute_pipeline(
             PathPipelineShaderStage::empty_spec_consts(&downsampler_path),
         );
-        let hi_z_path = crate::renderer::get_shader_path("hi_z_copy.comp");
+        let hi_z_path = crate::renderer::shader_path!("hi_z_copy.comp");
         let copy_pipeline = assets.request_compute_pipeline(
             PathPipelineShaderStage::empty_spec_consts(&hi_z_path),
         );

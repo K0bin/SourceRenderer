@@ -44,3 +44,45 @@ where
         });
     }
 }
+
+pub fn create_dir_if_necessary<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
+    let path: &Path = path.as_ref();
+
+    let res = std::fs::create_dir_all(path);
+    if let Err(e) = res {
+        if e.kind() == std::io::ErrorKind::AlreadyExists {
+            return Ok(());
+        }
+        return Err(e);
+    }
+    Ok(())
+}
+
+pub fn create_parent_dir_if_necessary<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
+    let path: &Path = path.as_ref();
+    let mut buf = path.to_path_buf();
+    if !buf.pop() {
+        return Err(std::io::Error::other("Cannot make parent path"));
+    }
+    let res = std::fs::create_dir_all(&buf);
+    if let Err(e) = res {
+        if e.kind() == std::io::ErrorKind::AlreadyExists {
+            return Ok(());
+        }
+        return Err(e);
+    }
+    Ok(())
+}
+
+pub fn symlink_dir<P: AsRef<Path>>(original: P, link: P) -> std::io::Result<()> {
+    #[cfg(target_family = "windows")] {
+        if (&original).is_file() {
+            std::os::windows::fs::symlink_file(&original, &link)
+        } else {
+            std::os::windows::fs::symlink_dir(&original, &link)
+        }
+    }
+    #[cfg(not(target_family = "windows"))] {
+    std::os::unix::fs::symlink(&original, &link)
+    }
+}

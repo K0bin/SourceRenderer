@@ -30,7 +30,7 @@ impl ShadingPass {
         assets: &RendererAssets,
         _init_cmd_buffer: &mut CommandBuffer,
     ) -> Self {
-        let shader_path = crate::renderer::get_shader_path("shading.comp");
+        let shader_path = crate::renderer::shader_path!("shading.comp");
         let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage::empty_spec_consts(&shader_path));
 
         let sampler = Arc::new(device.create_sampler(

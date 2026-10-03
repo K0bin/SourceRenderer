@@ -39,9 +39,9 @@ impl RTShadowPass {
             false,
         );
 
-        let raygen_path = crate::renderer::get_shader_path("shadows.rgen");
-        let chit_path = crate::renderer::get_shader_path("shadows.rchit");
-        let miss_path = crate::renderer::get_shader_path("shadows.rmiss");
+        let raygen_path = crate::renderer::shader_path!("shadows.rgen");
+        let chit_path = crate::renderer::shader_path!("shadows.rchit");
+        let miss_path = crate::renderer::shader_path!("shadows.rmiss");
         let pipeline = assets.request_ray_tracing_pipeline(&RayTracingPipelineInfo {
             ray_gen_shader: PathPipelineShaderStage::empty_spec_consts(&raygen_path),
             closest_hit_shaders: &[PathPipelineShaderStage::empty_spec_consts(&chit_path)],
