@@ -34,8 +34,8 @@ fn main() {
     if let Err(e) = symlink_dir(&shader_dir, &shader_dest_dir) {
         let mut compile_fallback = true;
         if e.kind() == std::io::ErrorKind::AlreadyExists {
-            compile_fallback = false;
             if let Ok(target) = std::fs::read_link(&shader_dest_dir) {
+                compile_fallback = false;
                 if target != shader_dir {
                     log::warn!("Found different symlink for shaders. Expected {:?}, Actual: {:?}, compiling again.", &shader_dir, &target);
                 }
@@ -77,17 +77,19 @@ fn main() {
     if let Err(e) = symlink_dir(&assets_dir, &assets_dest_dir) {
         let mut copy_fallback = true;
         if e.kind() == std::io::ErrorKind::AlreadyExists {
-            copy_fallback = false;
             if let Ok(target) = std::fs::read_link(&assets_dest_dir) {
+                copy_fallback = false;
                 if target != assets_dir {
                     log::warn!("Found different symlink for shaders. Expected {:?}, Actual: {:?}, compiling again.", &assets_dir, &target);
                 }
             }
         }
 
-        log::warn!("Creating symlink for assets to {:?} failed: {:?}, falling back to copying.", &assets_dest_dir, &e);
-        create_dir_if_necessary(&assets_dest_dir).unwrap();
-        copy_directory_rec(&assets_dir, &assets_dest_dir, &(|_| true));
+        if copy_fallback {
+            log::warn!("Creating symlink for assets to {:?} failed: {:?}, falling back to copying.", &assets_dest_dir, &e);
+            create_dir_if_necessary(&assets_dest_dir).unwrap();
+            copy_directory_rec(&assets_dir, &assets_dest_dir, &(|_| true));
+        }
     }
 
     log::logger().flush();
