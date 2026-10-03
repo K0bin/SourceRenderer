@@ -31,3 +31,20 @@ pub use fixed_size_vec::*;
 pub unsafe fn extend_lifetime<'b, T>(r: &'b T) -> &'static T {
     unsafe { std::mem::transmute::<&'b T, &'static T>(r) }
 }
+
+#[proc_macro]
+pub fn file_exists(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    // Extract the string literal from the macro input
+    let input_str = input.to_string();
+    let filename = input_str.trim_matches('"');
+
+    // Check existence relative to the workspace/compilation directory
+    let exists = std::path::Path::new(filename).exists();
+
+    // Return a boolean literal as a token stream
+    if exists {
+        "true".parse().unwrap()
+    } else {
+        "false".parse().unwrap()
+    }
+}

@@ -9,6 +9,23 @@ macro_rules! shader_path {
     }};
 }
 
+#[proc_macro]
+pub fn shader_path(input: proc_macro) -> TokenStream {
+    // Extract the string literal from the macro input
+    let input_str = input.to_string();
+    let filename = input_str.trim_matches('"');
+
+    // Check existence relative to the workspace/compilation directory
+    let exists = Path::new(filename).exists();
+
+    // Return a boolean literal as a token stream
+    if exists {
+        "true".parse().unwrap()
+    } else {
+        "false".parse().unwrap()
+    }
+}
+
 use shader_path;
 
 mod renderer;
