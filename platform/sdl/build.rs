@@ -1,4 +1,4 @@
-use build_util::{ShadingLanguage, compile_shaders, copy_directory_rec};
+use build_util::{ShadingLanguage, compile_shaders, get_shader_path, copy_directory_rec};
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
@@ -12,7 +12,7 @@ fn main() {
     for _ in 0..2 {
         assert!(shader_dest_dir.pop());
     }
-    shader_dest_dir.push("shaders");
+    shader_dest_dir = get_shader_path(&shader_dest_dir.as_path());
 
     if !shader_dest_dir.exists() {
         std::fs::create_dir_all(&shader_dest_dir)
