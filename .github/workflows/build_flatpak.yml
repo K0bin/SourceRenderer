@@ -1,0 +1,37 @@
+name: Build Flatpak
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Flatpak builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+
+      - name: Install Flatpak builder
+        run: flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+
+      - name: Install Python dependencies for flatpak-cargo-generator
+        run: |
+          pip install aiohttp
+          pip install tomlkit
+
+      - name: Run Build Script
+        working-directory: platform/sdl/packaging/flatpak
+        run: ./build.sh
