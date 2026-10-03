@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+    <id>io.github.k0bin.SourceRenderer</id>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>MIT</project_license>
+    <name>ToyRenderer</name>
+    <developer id="io.github.k0bin">
+        <name>Robin Kertels</name>
+    </developer>
+    <summary>Toy renderer</summary>
+    <description>
+        <p>
+            TODO
+        </p>
+    </description>
+    <launchable type="desktop-id">io.github.k0bin.SourceRenderer.desktop</launchable>
+    <url type="homepage">https://github.com/K0bin/SourceRenderer</url>
+    <url type="bugtracker">https://github.com/K0bin/SourceRenderer/issues</url>
+    <categories>
+        <category>Game</category>
+        <category>Graphics</category>
+        <category>3DGraphics</category>
+    </categories>
+    <content_rating type="oars-1.1"/>
+    <releases>
+        <release version="0.1.0" date="2026-10-03"/>
+    </releases>
+</component>

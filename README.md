@@ -20,6 +20,10 @@ The original goal was to render CSGO maps, hence the name.
 * Build the tiny web page using `npm run build` in `platform/web/www`.
 * Host the page locally using `npm run dev` in `platform/web/www`.
 
+### Linux Flatpak
+
+* Run `build.sh` in `platform/sdl/packaging/flatpak`.
+
 ## Features:
 
 * Low level unsafe graphics abstraction
