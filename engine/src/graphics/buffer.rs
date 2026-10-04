@@ -130,25 +130,10 @@ impl BufferSlice {
 
     pub fn write<T: Pod>(&self, device: &active_gpu_backend::Device, src: &[T], buffer_offset: u64) {
         debug_assert!(std::mem::size_of_val(src) as u64 + buffer_offset <= self.length());
-        match self.cpu_access() {
-            BufferCpuAccess::Pointer => unsafe {
-                let ptr_opt = self.map(false);
-                if ptr_opt.is_none() {
-                    unreachable!()
-                }
-                let ptr = ptr_opt.unwrap().offset(buffer_offset as isize);
-                std::ptr::copy_nonoverlapping(src.as_ptr(), std::mem::transmute(ptr), 1);
-                self.unmap(true);
-            }
-            BufferCpuAccess::DeviceWrite => {
-                let src_ptr = src.as_ptr() as *const c_void;
-                unsafe {
-                    device.copy_to_buffer(src_ptr, self.handle(), self.offset() + buffer_offset, self.length());
-                }
-            }
-            BufferCpuAccess::None => {
-                panic!("Buffer cannot be accessed on the CPU");
-            },
+        debug_assert_ne!(self.handle().cpu_access(), BufferCpuAccess::None);
+        let src_ptr = src.as_ptr() as *const c_void;
+        unsafe {
+            device.copy_to_buffer(src_ptr, self.handle(), self.offset() + buffer_offset, self.length().min(std::mem::size_of_val(src) as u64));
         }
     }
 

@@ -87,25 +87,11 @@ impl TransientBufferSlice {
 
     pub fn write<T: Pod>(&self, device: &active_gpu_backend::Device, generation: u64, src: &[T]) {
         let handle = self.handle(generation);
-        match handle.cpu_access() {
-            BufferCpuAccess::Pointer => unsafe {
-                let ptr_opt = self.map(generation, false);
-                if ptr_opt.is_none() {
-                    unreachable!();
-                }
-                let ptr = ptr_opt.unwrap() as *mut T;
-                std::ptr::copy(src.as_ptr(), ptr, 1);
-                self.unmap(generation, true);
-            }
-            BufferCpuAccess::DeviceWrite => {
-                let src_ptr = src.as_ptr() as *const c_void;
-                unsafe {
-                    device.copy_to_buffer(src_ptr, handle, self.offset(), self.length());
-                }
-            }
-            BufferCpuAccess::None => {
-                panic!("Buffer cannot be accessed on the CPU");
-            },
+        let src_ptr = src.as_ptr() as *const c_void;
+        debug_assert!(std::mem::size_of_val(src) <= self.length as usize);
+        debug_assert_ne!(self.handle(generation).cpu_access(), BufferCpuAccess::None);
+        unsafe {
+            device.copy_to_buffer(src_ptr, handle, self.offset(), self.length().min(std::mem::size_of_val(src) as u64));
         }
     }
 }
