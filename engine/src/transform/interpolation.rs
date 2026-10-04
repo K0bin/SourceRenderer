@@ -6,6 +6,7 @@ use bevy_app::{
 };
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
+use bevy_ecs::prelude::ParallelCommands;
 use bevy_ecs::system::{
     Commands,
     Query,
@@ -45,24 +46,49 @@ fn update_previous_global_transform(
     }
 }
 
+#[allow(unused)]
+fn interpolate_transform_matrix_mt(
+    time: Res<Time<Fixed>>,
+    query: Query<(Entity, &PreviousGlobalTransform, &GlobalTransform)>,
+    par_commands: ParallelCommands,
+) {
+    query.par_iter().for_each(|(entity, old_transform, new_transform)| {
+        let (old_scale, old_rotation, old_translation) =
+            old_transform.0.to_scale_rotation_translation();
+        let (new_scale, new_rotation, new_translation) =
+            new_transform.to_scale_rotation_translation();
+        let s = time.overstep_fraction();
+        par_commands.command_scope(|mut commands| {
+            commands.entity(entity).insert(InterpolatedTransform(
+                Affine3A::from_scale_rotation_translation(
+                    old_scale.lerp(new_scale, s),
+                    old_rotation.lerp(new_rotation, s),
+                    old_translation.lerp(new_translation, s),
+                ),
+            ));
+        });
+    });
+}
+
 fn interpolate_transform_matrix(
     time: Res<Time<Fixed>>,
     query: Query<(Entity, &PreviousGlobalTransform, &GlobalTransform)>,
     mut commands: Commands,
 ) {
-    for (entity, old_transform, new_transform) in query.iter() {
+    let batch: Vec<(Entity, InterpolatedTransform)> = query.iter().map(|(entity, old_transform, new_transform)| {
         let (old_scale, old_rotation, old_translation) =
             old_transform.0.to_scale_rotation_translation();
         let (new_scale, new_rotation, new_translation) =
             new_transform.to_scale_rotation_translation();
         let s = time.overstep_fraction();
 
-        commands.entity(entity).insert(InterpolatedTransform(
+        (entity, InterpolatedTransform(
             Affine3A::from_scale_rotation_translation(
                 old_scale.lerp(new_scale, s),
                 old_rotation.lerp(new_rotation, s),
                 old_translation.lerp(new_translation, s),
             ),
-        ));
-    }
+        ))
+    }).collect();
+    commands.insert_batch(batch);
 }
