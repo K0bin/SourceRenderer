@@ -11,7 +11,7 @@ use gltf::material::AlphaMode;
 use gltf::texture::WrappingMode;
 use gltf::{Gltf, Material, Node, Primitive, Scene, Semantic};
 use io_util::RawDataReadAsync;
-use sourcerenderer_core::{Vec2, Vec3, Vec4};
+use sourcerenderer_core::{Matrix4, Vec2, Vec3, Vec4};
 
 use crate::asset::asset_manager::AssetFile;
 use crate::asset::loaded_level::{LevelData, LoadedEntityParent};
@@ -40,26 +40,17 @@ impl GltfLoader {
         world: &mut LevelData,
         asset_mgr: &Arc<AssetManager>,
         parent_entity: Option<usize>,
-        gltf_file_name: &str,
+        gltf_file_path: &str,
         buffer_cache: &mut FixedByteSizeCache<FilePageKey, Box<[u8]>>,
     ) {
         let (translation, rotation, scale) = match node.transform() {
             gltf::scene::Transform::Matrix {
-                matrix: _columns_data,
+                matrix: columns_data,
             } => {
-                //unimplemented!()
-
-                /*let mut matrix = Matrix4::default();
-                for i in 0..matrix.len() {
-                  let column_slice = &columns_data[0];
-                  matrix.column_mut(i).copy_from_slice(column_slice);
-                }
-                matrix*/
-                (
-                    Vec3::new(0.0f32, 0.0f32, 0.0f32),
-                    Vec4::new(0.0f32, 0.0f32, 0.0f32, 0.0f32),
-                    Vec3::new(1.0f32, 1.0f32, 1.0f32),
-                )
+                let mat = Matrix4::from_cols_array_2d(&columns_data);
+                let (scale, rotation, translation) = mat.to_scale_rotation_translation();
+                let (rotation_axis, rotation_angle) = rotation.to_axis_angle();
+                (translation, Vec4::new(rotation_axis.x, rotation_axis.y, rotation_axis.z, rotation_angle), scale)
             }
             gltf::scene::Transform::Decomposed {
                 translation,
@@ -99,7 +90,7 @@ impl GltfLoader {
             let model_name = node
                 .name()
                 .map_or_else(|| node.index().to_string(), |name| name.to_string());
-            let mut mesh_path = gltf_file_name.to_string();
+            let mut mesh_path = gltf_file_path.to_string();
             mesh_path += "/mesh/";
             mesh_path += &model_name;
 
@@ -116,12 +107,12 @@ impl GltfLoader {
                     asset_mgr,
                     &mut vertices,
                     &mut indices,
-                    gltf_file_name,
+                    gltf_file_path,
                     buffer_cache,
                 )
                 .await;
                 let material_path =
-                    GltfLoader::load_material(&primitive.material(), asset_mgr, gltf_file_name);
+                    GltfLoader::load_material(&primitive.material(), asset_mgr, gltf_file_path);
                 materials.push(material_path);
                 let primitive_bounding_box = primitive.bounding_box();
                 if let Some(bounding_box) = &mut bounding_box {
@@ -191,7 +182,7 @@ impl GltfLoader {
                 );
             }
 
-            let mut model_path = gltf_file_name.to_string();
+            let mut model_path = gltf_file_path.to_string();
             model_path += "/model/";
             model_path += &model_name;
             if !asset_mgr.asset_requested(&model_path) {
@@ -269,7 +260,7 @@ impl GltfLoader {
                 world,
                 asset_mgr,
                 Some(entity),
-                gltf_file_name,
+                gltf_file_path,
                 buffer_cache,
             ))
             .await;
@@ -306,12 +297,12 @@ impl GltfLoader {
         asset_mgr: &'a Arc<AssetManager>,
         vertices: &'a mut Vec<Vertex>,
         indices: &'a mut Vec<u32>,
-        gltf_file_name: &'a str,
+        gltf_file_path: &'a str,
         buffer_cache: &'a mut FixedByteSizeCache<FilePageKey, Box<[u8]>>,
     ) {
         fn build_uri<'a>(
-            gltf_file_name: &'a str,
-            gltf_path: &str,
+            gltf_file_path: &'a str,
+            gltf_base_folder_path: &str,
             src: Source<'_>,
             range: Option<(usize, usize)>,
         ) -> (String, usize) {
@@ -319,35 +310,28 @@ impl GltfLoader {
                 Source::Bin => {
                     if let Some((offset, length)) = range {
                         (
-                            format!("{}/buffer/{}-{}", gltf_file_name, offset, length),
+                            format!("{}/buffer/{}-{}", gltf_file_path, offset, length),
                             0,
                         )
                     } else {
                         (
-                            format!("{}/buffer/", gltf_file_name),
+                            format!("{}/buffer/", gltf_file_path),
                             range.map(|(offset, _)| offset).unwrap_or(0),
                         )
                     }
                 }
                 Source::Uri(gltf_uri) => {
-                    if let Some(last_slash_pos) = gltf_path.find('/') {
-                        (
-                            format!("{}/{}", &gltf_path[..last_slash_pos], &gltf_uri),
-                            range.map(|(offset, _)| offset).unwrap_or(0),
-                        )
-                    } else {
-                        (
-                            gltf_uri.to_string(),
-                            range.map(|(offset, _)| offset).unwrap_or(0),
-                        )
-                    }
+                    (
+                        format!("{}/{}", &gltf_base_folder_path, &gltf_uri),
+                        range.map(|(offset, _)| offset).unwrap_or(0),
+                    )
                 }
             }
         }
 
         async fn load_data<'a>(
-            gltf_file_name: &str,
-            gltf_path: &str,
+            gltf_file_path: &str,
+            gltf_base_folder_path: &str,
             asset_mgr: &Arc<AssetManager>,
             buffer_cache: &'a mut FixedByteSizeCache<FilePageKey, Box<[u8]>>,
             view: &View<'_>,
@@ -364,14 +348,14 @@ impl GltfLoader {
             for file_page_index in first_page..=last_page {
                 let relative_page_index = file_page_index - first_page;
                 let (buffer_uri, _) =
-                    build_uri(gltf_file_name, gltf_path, view.buffer().source(), None);
+                    build_uri(gltf_file_path, gltf_base_folder_path, view.buffer().source(), None);
                 let key = (buffer_uri, file_page_index);
 
                 if !buffer_cache.contains_key(&key) {
                     let read_size = FILE_PAGE_SIZE * (READ_AHEAD_PAGE_COUNT + 1);
                     let (page_uri, offset) = build_uri(
-                        gltf_file_name,
-                        gltf_path,
+                        gltf_file_path,
+                        gltf_base_folder_path,
                         view.buffer().source(),
                         Some((file_page_index * FILE_PAGE_SIZE, read_size)),
                     );
@@ -420,10 +404,10 @@ impl GltfLoader {
         }
 
         let index_base = vertices.len() as u32;
-        let gltf_path = if let Some(last_slash) = gltf_file_name.rfind('/') {
-            &gltf_file_name[..last_slash + 1]
+        let gltf_base_folder_path = if let Some(last_slash) = gltf_file_path.rfind('/') {
+            &gltf_file_path[..last_slash + 1]
         } else {
-            gltf_file_name
+            gltf_file_path
         };
 
         {
@@ -431,8 +415,8 @@ impl GltfLoader {
             assert!(positions.sparse().is_none());
             let positions_view = positions.view().unwrap();
             let positions_data = load_data(
-                gltf_file_name,
-                gltf_path,
+                gltf_file_path,
+                gltf_base_folder_path,
                 asset_mgr,
                 buffer_cache,
                 &positions_view,
@@ -449,8 +433,8 @@ impl GltfLoader {
             assert!(normals.sparse().is_none());
             let normals_view = normals.view().unwrap();
             let normals_data = load_data(
-                gltf_file_name,
-                gltf_path,
+                gltf_file_path,
+                gltf_base_folder_path,
                 asset_mgr,
                 buffer_cache,
                 &normals_view,
@@ -467,8 +451,8 @@ impl GltfLoader {
             assert!(texcoords.sparse().is_none());
             let texcoords_view = texcoords.view().unwrap();
             let texcoords_data = load_data(
-                gltf_file_name,
-                gltf_path,
+                gltf_file_path,
+                gltf_base_folder_path,
                 asset_mgr,
                 buffer_cache,
                 &texcoords_view,
@@ -549,7 +533,7 @@ impl GltfLoader {
             assert!(indices_accessor.sparse().is_none());
             let view = indices_accessor.view().unwrap();
 
-            let data = load_data(gltf_file_name, gltf_path, asset_mgr, buffer_cache, &view).await;
+            let data = load_data(gltf_file_path, gltf_base_folder_path, asset_mgr, buffer_cache, &view).await;
             let mut buffer_cursor = Cursor::new(&data);
             buffer_cursor
                 .seek(SeekFrom::Start(indices_accessor.offset() as u64))
@@ -592,16 +576,16 @@ impl GltfLoader {
     fn load_material(
         material: &Material,
         asset_mgr: &Arc<AssetManager>,
-        gltf_file_name: &str,
+        gltf_file_path: &str,
     ) -> String {
-        let gltf_path = if let Some(last_slash) = gltf_file_name.rfind('/') {
-            &gltf_file_name[..last_slash + 1]
+        let gltf_base_folder_path = if let Some(last_slash) = gltf_file_path.rfind('/') {
+            &gltf_file_path[..last_slash + 1]
         } else {
-            gltf_file_name
+            gltf_file_path
         };
         let material_path = format!(
             "{}/material/{}",
-            gltf_file_name.to_string(),
+            gltf_file_path.to_string(),
             material
                 .index()
                 .map_or_else(|| "default".to_string(), |index| index.to_string())
@@ -646,7 +630,7 @@ impl GltfLoader {
                         let file_type = mime_parts[1].to_lowercase();
                         format!(
                             "{}/texture/{}-{}.{}",
-                            gltf_file_name,
+                            gltf_file_path,
                             view.offset(),
                             view.length(),
                             &file_type
@@ -656,11 +640,7 @@ impl GltfLoader {
                         uri,
                         mime_type: _mime_type,
                     } => {
-                        if let Some(last_slash_pos) = gltf_path.find('/') {
-                            format!("{}/{}", &gltf_path[..last_slash_pos], &uri)
-                        } else {
-                            uri.to_string()
-                        }
+                        format!("{}/{}", &gltf_base_folder_path, &uri)
                     }
                 }
             });
@@ -722,6 +702,7 @@ impl AssetLoader for GltfLoader {
             return Ok(());
         }
         let scene_name_start = scene_name_start_opt.unwrap();
+        log::warn!("FILE PATH: {:?}", &path);
         let gltf_name = &path[0..scene_name_start];
 
         for scene in gltf.scenes() {

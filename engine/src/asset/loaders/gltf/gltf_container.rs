@@ -106,7 +106,6 @@ impl<R: AsyncRead + AsyncSeek + Unpin> GltfContainer<R> {
 
 impl<R: AsyncRead + AsyncSeek + Unpin + Send + Sync + 'static> AssetContainer for GltfContainer<R> {
     async fn contains(&self, path: &str) -> bool {
-        log::trace!("Looking for file {:?} in GLTFContainer", path);
         path.starts_with(&self.scene_base_path)
             || path.starts_with(&self.texture_base_path)
             || path.starts_with(&self.buffer_base_path)
