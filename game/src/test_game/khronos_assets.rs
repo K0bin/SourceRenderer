@@ -1,28 +1,16 @@
-use std::marker::PhantomData;
 use std::sync::Arc;
 
-use bevy_app::{App, Plugin, SpawnScene};
-use bevy_ecs::component::Component;
-use bevy_ecs::query::With;
-use bevy_ecs::resource::Resource;
-use bevy_ecs::system::{Commands, Query, Res, ResMut};
-use bevy_input::ButtonInput;
-use bevy_input::keyboard::KeyCode;
-use bevy_transform::components::Transform;
-use sourcerenderer_core::{Quaternion, Vec2, Vec3};
+use bevy_app::App;
 use sourcerenderer_engine::Engine;
-use sourcerenderer_engine::graphics::*;
 
-use sourcerenderer_engine::asset::{AssetLoadPriority, AssetManager, AssetType, MeshRange, Vertex};
-use sourcerenderer_engine::math::BoundingBox;
-use sourcerenderer_engine::renderer::{PointLightComponent, StaticRenderableComponent};
+use sourcerenderer_engine::asset::{AssetLoadPriority, AssetManager, AssetType, LevelHandle};
 
-use bytemuck::box_bytes_of;
 use sourcerenderer_core::platform::PlatformIO;
 use sourcerenderer_engine::asset::loaders::load_file_gltf_container;
 
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[allow(unused)]
 pub enum KhronosAsset {
     ABeautifulGame = 0,
     AlphaBlendModeTest = 1,
@@ -315,7 +303,7 @@ pub const KHRONOS_ASSET_FOLDERS: &[&str] = &[
     "XmpMetadataRoundedCube",
 ];
 
-pub fn load_khronos_model<IO: PlatformIO>(app: &App, asset: KhronosAsset) -> String {
+pub fn load_khronos_model<IO: PlatformIO>(app: &App, asset: KhronosAsset) -> LevelHandle {
     let asset_manager: &Arc<AssetManager> = Engine::get_asset_manager(app);
 
     let name = KHRONOS_ASSET_FOLDERS[asset as u32 as usize];
@@ -327,6 +315,6 @@ pub fn load_khronos_model<IO: PlatformIO>(app: &App, asset: KhronosAsset) -> Str
     });
 
     let scene_path = format!("{}/scene/0", path);
-    asset_manager.request_asset(&scene_path, AssetType::Level, AssetLoadPriority::Normal);
-    scene_path
+    let (handle, _) = asset_manager.request_asset(&scene_path, AssetType::Level, AssetLoadPriority::Normal);
+    handle.into()
 }
