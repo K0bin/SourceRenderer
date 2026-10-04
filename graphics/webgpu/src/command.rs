@@ -644,7 +644,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                 panic!("Must not call finish_binding without a pipeline bound")
             }
         };
-        let dynamic_offsets = &mut pool.offsets;
+        let dynamic_offsets = &mut pool.offsets[..];
         let binding_infos: [Option<WebGPUBindGroupBinding>; gpu::NON_BINDLESS_SET_COUNT as usize];
         {
             let binding_manager = &mut self.get_recording_mut().binding_manager;
@@ -673,10 +673,10 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                     }
                     let binding = binding.as_ref().unwrap();
                     gpu_render_pass_encoder
-                        .set_bind_group_with_u32_array_and_u32_and_dynamic_offsets_data_length(
+                        .set_bind_group_with_u32_slice_and_u32_and_dynamic_offsets_data_length(
                             set_index as u32,
                             Some(binding.set.handle()),
-                            &pool.offsets_js,
+                            dynamic_offsets,
                             gpu::PER_SET_BINDINGS * (set_index as u32),
                             binding.dynamic_offsets.len() as u32,
                         )
@@ -690,10 +690,10 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
                     }
                     let binding = binding.as_ref().unwrap();
                     gpu_compute_pass_encoder
-                        .set_bind_group_with_u32_array_and_u32_and_dynamic_offsets_data_length(
+                        .set_bind_group_with_u32_slice_and_u32_and_dynamic_offsets_data_length(
                             set_index as u32,
                             Some(binding.set.handle()),
-                            &pool.offsets_js,
+                            dynamic_offsets,
                             gpu::PER_SET_BINDINGS * (set_index as u32),
                             binding.dynamic_offsets.len() as u32,
                         )
@@ -1207,24 +1207,20 @@ pub struct WebGPUCommandPool {
     limits: WebGPULimits,
     bind_group_caches: BindGroupCaches,
     bump_allocator: Rc<RefCell<CommandBumpAllocator>>,
-    offsets: Box<[u32]>, // Never change this, offsets_js is a pointer to the data!
-    offsets_js: Uint32Array,
+    offsets: Box<[u32]>,
     _p: PhantomData<*const std::ffi::c_void>,
 }
 
 impl WebGPUCommandPool {
     pub(crate) fn new(device: &GpuDevice, limits: &WebGPULimits) -> Self {
         let allocator = CommandBumpAllocator::new(device);
-        // Prepare a Box and an Uint32Array to that to avoid having to go through getArrayU32FromWasm0 (so getUint32ArrayMemory0 + subarray)
-        let mut offsets = vec![0u32; (gpu::PER_SET_BINDINGS * gpu::NON_BINDLESS_SET_COUNT) as usize].into_boxed_slice();
-        let offsets_js = unsafe { Uint32Array::view_mut_raw(offsets.as_mut_ptr(), offsets.len()) };
+        let offsets = vec![0u32; (gpu::PER_SET_BINDINGS * gpu::NON_BINDLESS_SET_COUNT) as usize].into_boxed_slice();
         Self {
             device: device.clone(),
             limits: limits.clone(),
             bind_group_caches: BindGroupCaches::new(),
             bump_allocator: Rc::new(RefCell::new(allocator)),
             offsets,
-            offsets_js,
             _p: PhantomData,
         }
     }
