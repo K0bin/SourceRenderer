@@ -66,7 +66,8 @@ impl AssetIntegrator {
     ) -> Option<RendererAssetWithHandle> {
         let handle: AssetHandle = handle.into();
         trace!(
-            "Integrating asset: {:?} {:?}",
+            "Integrating asset: {:?} {:?} {:?}",
+            assets.get_path(handle),
             asset_data.asset_type(),
             handle
         );

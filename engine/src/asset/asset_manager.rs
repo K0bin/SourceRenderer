@@ -239,6 +239,11 @@ struct AssetSets {
     ready: HashSet<AssetHandle>,
 }
 
+struct PathMaps {
+    path_to_handle: HashMap<String, AssetHandle>,
+    handle_to_path: HashMap<AssetHandle, String>,
+}
+
 pub struct AssetManager {
     containers: async_lock::RwLock<Vec<Box<dyn ErasedAssetContainer>>>,
     pending_containers: AsyncCounter,
@@ -246,7 +251,7 @@ pub struct AssetManager {
     pending_high_priority_loads: AsyncCounter,
     pending_normal_priority_loads: AsyncCounter,
     loaders: async_lock::RwLock<Vec<Box<dyn ErasedAssetLoader>>>,
-    path_map: Mutex<HashMap<String, AssetHandle>>,
+    path_maps: Mutex<PathMaps>,
     next_asset_handle: AtomicU64,
     asset_sets: Mutex<AssetSets>,
     channels: HashMap<AssetTypeGroup, (Sender<LoadedAssetData>, Receiver<LoadedAssetData>)>,
@@ -264,7 +269,10 @@ impl AssetManager {
         let manager = Arc::new(Self {
             loaders: async_lock::RwLock::new(Vec::new()),
             containers: async_lock::RwLock::new(Vec::new()),
-            path_map: Mutex::new(HashMap::new()),
+            path_maps: Mutex::new(PathMaps {
+                path_to_handle: HashMap::new(),
+                handle_to_path: HashMap::new(),
+            }),
             next_asset_handle: AtomicU64::new(1),
             asset_sets: Mutex::new(Default::default()),
             pending_containers: AsyncCounter::new(0),
@@ -275,6 +283,11 @@ impl AssetManager {
         });
 
         manager
+    }
+
+    pub fn get_asset_path(&self, handle: AssetHandle) -> Option<String> {
+        let path_maps = self.path_maps.lock().unwrap();
+        path_maps.handle_to_path.get(&handle).map(|p| p.clone())
     }
 
     pub fn add_mesh_data(
@@ -365,15 +378,15 @@ impl AssetManager {
         .into()
     }
 
-    pub fn add_container_async(
+    pub fn try_add_container_async(
         self: &Arc<Self>,
-        future: impl Future<Output = impl AssetContainer> + IOMaybeSend + 'static,
+        future: impl Future<Output = std::io::Result<impl AssetContainer>> + IOMaybeSend + 'static,
     ) {
         self.add_container_with_progress_async(future, None);
     }
 
     pub fn add_container(self: &Arc<Self>, container: impl AssetContainer) {
-        self.add_container_with_progress_async(async move { container }, None);
+        self.add_container_with_progress_async(async move { Ok(container) }, None);
     }
 
     pub fn add_container_with_progress(
@@ -381,12 +394,12 @@ impl AssetManager {
         container: impl AssetContainer,
         progress: Option<&Arc<AssetLoaderProgress>>,
     ) {
-        self.add_container_with_progress_async(async move { container }, progress);
+        self.add_container_with_progress_async(async move { Ok(container) }, progress);
     }
 
     pub fn add_container_with_progress_async(
         self: &Arc<Self>,
-        future: impl Future<Output = impl AssetContainer> + IOMaybeSend + 'static,
+        future: impl Future<Output = std::io::Result<impl AssetContainer>> + IOMaybeSend + 'static,
         progress: Option<&Arc<AssetLoaderProgress>>,
     ) {
         self.pending_containers.increment();
@@ -395,7 +408,13 @@ impl AssetManager {
         let c_self = self.clone();
         crate::tasks::spawn_io(async move {
             {
-                let container_box = Box::new(future.await);
+                let container_result = future.await;
+                if container_result.is_err() {
+                    let _count = c_self.pending_containers.decrement();
+                    return;
+                }
+                let container = container_result.unwrap();
+                let container_box = Box::new(container);
                 let mut containers = c_self.containers.write().await;
                 containers.push(container_box);
             }
@@ -468,8 +487,8 @@ impl AssetManager {
     fn reserve_handle(&self, path: &str, asset_type: AssetType) -> AssetHandle {
         let handle = self.reserve_handle_without_path(asset_type);
 
-        let mut path_map = self.path_map.lock().unwrap();
-        let existing = path_map.insert(path.to_string(), handle);
+        let mut path_maps = self.path_maps.lock().unwrap();
+        let existing = path_maps.path_to_handle.insert(path.to_string(), handle);
         if let Some(existing) = existing {
             log::error!(
                 "Already had a handle for the given path: {:?}: {:?}",
@@ -477,6 +496,7 @@ impl AssetManager {
                 existing
             );
         }
+        let _ = path_maps.handle_to_path.insert(handle, path.to_string(),);
 
         log::trace!("Reserving handle {:?} for path {}", handle, path);
         handle
@@ -492,8 +512,8 @@ impl AssetManager {
 
     pub fn request_asset_update(self: &Arc<Self>, path: &str) {
         let handle = {
-            let path_map = self.path_map.lock().unwrap();
-            let handle_opt = path_map.get(path).copied();
+            let path_maps = self.path_maps.lock().unwrap();
+            let handle_opt = path_maps.path_to_handle.get(path).copied();
             if handle_opt.is_none() {
                 return;
             }
@@ -527,16 +547,10 @@ impl AssetManager {
         let handle: AssetHandle = handle.into();
         let path: String;
         {
-            let path_map = self.path_map.lock().unwrap();
-            let path_opt = path_map.iter().find_map(|(entry_path, entry_handle)| {
-                if handle == *entry_handle {
-                    Some(entry_path.to_string())
-                } else {
-                    None
-                }
-            });
+            let path_maps = self.path_maps.lock().unwrap();
+            let path_opt = path_maps.handle_to_path.get(&handle);
             if let Some(entry_path) = path_opt {
-                path = entry_path;
+                path = entry_path.clone();
             } else {
                 log::error!(
                     "Requesting asset by handle: Could not find a path entry for the handle: {:?}",
@@ -783,8 +797,8 @@ impl AssetManager {
 
     pub fn get_or_reserve_handle(&self, path: &str, asset_type: AssetType) -> AssetHandle {
         {
-            let path_map = self.path_map.lock().unwrap();
-            if let Some(handle) = path_map.get(path) {
+            let path_maps = self.path_maps.lock().unwrap();
+            if let Some(handle) = path_maps.path_to_handle.get(path) {
                 if handle.asset_type() != asset_type {
                     log::error!(
                         "An asset of a different type ({:?}) was previously loaded from the path \"{:?}\". Requested asset type now: {:?}",
@@ -802,8 +816,8 @@ impl AssetManager {
 
     pub fn asset_requested(&self, path: &str) -> bool {
         let handle = {
-            let path_map = self.path_map.lock().unwrap();
-            if let Some(handle) = path_map.get(path) {
+            let path_maps = self.path_maps.lock().unwrap();
+            if let Some(handle) = path_maps.path_to_handle.get(path) {
                 *handle
             } else {
                 return false;
@@ -824,8 +838,8 @@ impl AssetManager {
 
     pub fn asset_loaded(&self, path: &str) -> bool {
         let handle = {
-            let path_map = self.path_map.lock().unwrap();
-            if let Some(handle) = path_map.get(path) {
+            let path_maps = self.path_maps.lock().unwrap();
+            if let Some(handle) = path_maps.path_to_handle.get(path) {
                 *handle
             } else {
                 return false;

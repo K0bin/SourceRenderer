@@ -337,6 +337,10 @@ pub struct RendererAssetsReadOnly<'a> {
 }
 
 impl RendererAssetsReadOnly<'_> {
+    pub fn get_path(&self, handle: AssetHandle) -> Option<String> {
+        self.asset_manager.get_asset_path(handle)
+    }
+
     #[inline(always)]
     pub fn get_model(&self, handle: ModelHandle) -> Option<&RendererModel> {
         self.maps.models.get(&handle)
