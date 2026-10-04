@@ -24,7 +24,7 @@ use crate::asset::asset_manager::AssetFile;
 use crate::asset::loaders::gltf::glb;
 use crate::asset::AssetContainer;
 
-pub struct GltfContainer<R: AsyncRead + AsyncSeek + Unpin> {
+pub struct GltfContainer<R: AsyncRead + AsyncSeek + Send + Sync + Unpin> {
     json_offset: u64,
     data_offset: u64,
     data_length: u64,
@@ -49,6 +49,7 @@ pub async fn load_memory_gltf_container<IO: PlatformIO>(
     GltfContainer::<Cursor<Box<[u8]>>>::new(path, Cursor::new(data.into_boxed_slice())).await
 }
 
+#[cfg(not(feature = "non_send_io"))]
 pub async fn load_file_gltf_container<IO: PlatformIO>(
     path: &str,
     external: bool,
@@ -61,7 +62,10 @@ pub async fn load_file_gltf_container<IO: PlatformIO>(
     GltfContainer::<BufReader<IO::File>>::new(path, file).await
 }
 
-impl<R: AsyncRead + AsyncSeek + Unpin> GltfContainer<R> {
+#[cfg(feature = "non_send_io")]
+pub use load_memory_gltf_container as load_file_gltf_container;
+
+impl<R: AsyncRead + AsyncSeek + Send + Sync + Unpin> GltfContainer<R> {
     async fn new(path: &str, mut reader: R) -> IOResult<Self> {
         let header = glb::GlbHeader::read(&mut reader).await?;
 

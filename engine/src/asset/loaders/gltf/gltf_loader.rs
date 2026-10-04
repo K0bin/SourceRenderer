@@ -702,7 +702,6 @@ impl AssetLoader for GltfLoader {
             return Ok(());
         }
         let scene_name_start = scene_name_start_opt.unwrap();
-        log::warn!("FILE PATH: {:?}", &path);
         let gltf_name = &path[0..scene_name_start];
 
         for scene in gltf.scenes() {
