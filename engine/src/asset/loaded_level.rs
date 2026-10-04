@@ -8,18 +8,18 @@ use std::pin::Pin;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::prelude::ChildOf;
-use bevy_ecs::world::World;
+use bevy_ecs::system::Commands;
 use bevy_transform::components::Transform;
 use bumpalo::boxed::Box;
 use bumpalo::collections::Vec;
 use bumpalo::Bump;
-
 use crate::renderer::{
     DirectionalLightComponent,
     PointLightComponent,
     StaticRenderableComponent,
 };
 
+#[derive(Clone)]
 pub struct LoadedEntityParent(pub usize);
 
 pub struct LoadedEntity<'a> {
@@ -120,16 +120,17 @@ impl LevelData {
         self.total_component_count
     }
 
-    pub fn import_into_world(mut self, world: &mut World) {
+
+    pub fn import_into_world(&self, root_entity: Entity, commands: &mut Commands) {
         let mut ecs_entities = Vec::<(Entity, Option<LoadedEntityParent>)>::with_capacity_in(
             self.entities.len(),
             &self.bump,
         );
 
-        for mut loaded_entity in self.entities.drain(..) {
+        for loaded_entity in &self.entities {
             let mut parent = Option::<LoadedEntityParent>::None;
-            let mut entity = world.spawn(());
-            for loaded_component in loaded_entity.components.drain(..) {
+            let mut entity = commands.spawn(());
+            for loaded_component in &loaded_entity.components {
                 let component_type_id = loaded_component.as_ref().type_id();
                 if component_type_id == TypeId::of::<Transform>() {
                     entity.insert(Self::loaded_component_into::<Transform>(loaded_component));
@@ -153,26 +154,28 @@ impl LevelData {
                     panic!("Unsupported type in LevelData");
                 }
             }
-            ecs_entities.push((entity.flush(), parent));
+            ecs_entities.push((entity.id(), parent));
         }
 
-        let mut commands = world.commands();
         for (entity, entity_parent_index_opt) in &ecs_entities {
             if let Some(entity_parent_index) = entity_parent_index_opt {
                 commands
                     .entity(*entity)
                     .insert(ChildOf(ecs_entities[entity_parent_index.0].0));
+            } else {
+                commands
+                    .entity(*entity)
+                    .insert(ChildOf(root_entity));
             }
         }
     }
 
-    fn loaded_component_into<T: Any + Sized>(component: Box<dyn Any>) -> T {
+    fn loaded_component_into<T: Any + Sized + Clone>(component: &Box<dyn Any>) -> T {
         assert!(component.as_ref().is::<T>());
 
         let any_ref = component.as_ref();
         let t_ref = any_ref.downcast_ref::<T>().unwrap();
         let t_ptr = t_ref as *const T;
-        std::mem::forget(component); // The Box is bump allocated so we can just leak its memory.
         unsafe { core::ptr::read(t_ptr) }
     }
 }
