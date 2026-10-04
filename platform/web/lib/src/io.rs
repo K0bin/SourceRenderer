@@ -6,22 +6,29 @@ use std::pin::Pin;
 use std::sync::LazyLock;
 use std::task::{Context, Poll};
 
-use async_task::Task;
 use futures_lite::{AsyncRead, AsyncSeek, FutureExt};
 use sourcerenderer_core::platform::{FileWatcher, PlatformIO};
 
+type FetchFuture = Pin<Box<dyn Future<Output = IOResult<Box<[u8]>>>>>;
+
+struct WebRequest {
+    offset: usize,
+    len: usize,
+    task: FetchFuture,
+}
+
 pub struct WebFetchFile {
-    length: u64,
-    current_position: u64,
+    length: usize,
+    current_position: usize,
     path: Box<Path>,
     data: Option<Box<[u8]>>,
-    task: Option<Task<IOResult<Box<[u8]>>>>,
+    request: Option<WebRequest>,
     _p: PhantomData<*const std::ffi::c_void>,
 }
 
 const MAX_NON_RANGED_FETCH: usize = 2_000_000;
 
-static FILE_LENGTH_CACHE: LazyLock<async_lock::Mutex<HashMap<String, u64>>> =
+static FILE_LENGTH_CACHE: LazyLock<async_lock::Mutex<HashMap<String, usize>>> =
     LazyLock::new(|| async_lock::Mutex::new(HashMap::new()));
 
 impl WebFetchFile {
@@ -39,15 +46,15 @@ impl WebFetchFile {
 
         Ok(Self {
             path: (path.as_ref() as &Path).into(),
-            length: length as u64,
+            length,
             current_position: 0,
             data,
-            task: None,
+            request: None,
             _p: PhantomData,
         })
     }
 
-    async fn fetch_file_length(uri: &str) -> IOResult<u64> {
+    async fn fetch_file_length(uri: &str) -> IOResult<usize> {
         let future = crate::fetch_asset_head(uri);
         let length = future
             .await
@@ -71,7 +78,7 @@ impl WebFetchFile {
             })?
             .as_f64()
             .ok_or_else(|| IOError::new(ErrorKind::Other, "Wrong JS type"))?;
-        Ok(length as u64)
+        Ok(length as usize)
     }
 
     async fn fetch(uri: &str) -> IOResult<Box<[u8]>> {
@@ -96,16 +103,11 @@ impl WebFetchFile {
                 }
             }
         })?;
-        let len = buffer.length() as usize;
-        let mut data = Vec::<u8>::with_capacity(len);
-        unsafe {
-            data.set_len(len);
-        }
-        buffer.copy_to(&mut data[..]);
+        let data = buffer.to_vec();
         Ok(data.into_boxed_slice())
     }
 
-    async fn fetch_range(uri: &str, offset: u64, length: u64) -> IOResult<Box<[u8]>> {
+    async fn fetch_range(uri: &str, offset: u32, length: u32) -> IOResult<Box<[u8]>> {
         log::trace!(
             "Loading range of web file: {:?}, offet: {:?}, length: {:?}",
             uri,
@@ -113,7 +115,7 @@ impl WebFetchFile {
             length
         );
 
-        let future = crate::fetch_asset_range(uri, offset as u32, length as u32);
+        let future = crate::fetch_asset_range(uri, offset, length);
         let buffer_res = future.await;
         let buffer = buffer_res.map_err(|js_val| {
             let response_code_opt = js_val.as_f64();
@@ -148,7 +150,7 @@ impl WebFetchFile {
         Ok(data.into_boxed_slice())
     }
 
-    async fn fetch_file_length_cached(uri: &str) -> IOResult<u64> {
+    async fn fetch_file_length_cached(uri: &str) -> IOResult<usize> {
         // Use global cache for file sizes to avoid redundant HEAD requests
         {
             let cache = FILE_LENGTH_CACHE.lock().await;
@@ -177,32 +179,56 @@ impl AsyncRead for WebFetchFile {
         if self.current_position == self.length || buf.len() == 0 {
             return Poll::Ready(Ok(0usize));
         }
+        let max_len = self.length - self.current_position;
+        let position = self.current_position;
+        let len = (self.length - self.current_position).min(buf.len());
 
         if let Some(data) = self.data.as_ref() {
-            let len = ((self.length - self.current_position) as usize).min(buf.len());
-            let position = self.current_position as usize;
+            let len = max_len.min(buf.len());
             buf[..len].copy_from_slice(&data[position..(position + len)]);
-            self.current_position += len as u64;
+            self.current_position += len;
             return Poll::Ready(Ok(len));
         }
 
-        if let Some(task) = self.task.as_mut() {
-            let data = std::task::ready!(task.poll(cx))?;
-            let len = ((self.length - self.current_position) as usize).min(buf.len());
-            buf[..len].copy_from_slice(&data[..len]);
-            self.current_position += len as u64;
-            self.task = None;
-            return Poll::Ready(Ok(len));
+        if let Some(request) = self.request.as_mut() {
+            if request.offset != position || request.len != len {
+                log::warn!("Cancelling existing request due to different read.");
+                self.request = None;
+            }
         }
 
-        let position = self.current_position;
-        let length = (self.length - position).min(buf.len() as u64);
-        let uri = self.path.as_ref().to_string_lossy().to_string();
+        if self.request.is_none() {
+            let uri = self.path.as_ref().to_string_lossy().to_string();
+            self.request = Some(WebRequest {
+                offset: position,
+                len,
+                task: Box::pin(async move {
+                    let res = Self::fetch_range(&uri, position as u32, len as u32).await;
+                    res
+                })
+            });
+        }
 
-        log::warn!("Spawning a task! {:?} {:?} {:?}", &self.path, position, length);
-        self.task = Some(
-            web_task::spawn_local(async move { Self::fetch_range(&uri, position, length).await })
-        );
+        if let Some(mut request) = self.request.take() {
+            let res = request.task.poll(cx);
+            return match res {
+                Poll::Pending => {
+                    self.request = Some(request);
+                    Poll::Pending
+                }
+                Poll::Ready(data_res) => {
+                    match data_res {
+                        Ok(data) => {
+                            buf[..len].copy_from_slice(&data[..len]);
+                            self.current_position += len;
+                            Poll::Ready(Ok(len))
+                        }
+                        Err(e) => Poll::Ready(Err(e))
+                    }
+                }
+            };
+        }
+
         Poll::Pending
     }
 }
@@ -213,22 +239,25 @@ impl AsyncSeek for WebFetchFile {
         _cx: &mut Context<'_>,
         pos: std::io::SeekFrom,
     ) -> Poll<IOResult<u64>> {
-        self.task = None;
+        if self.request.is_some() {
+            log::warn!("Cancelling existing request due to seeking.");
+        }
+        self.request = None;
 
-        let new_pos: u64 = match pos {
-            std::io::SeekFrom::Start(offset) => offset.min(self.length),
+        let new_pos: usize = match pos {
+            std::io::SeekFrom::Start(offset) => (offset as usize).min(self.length),
             std::io::SeekFrom::End(offset) => {
-                self.length - (offset.max(0i64) as u64).min(self.length)
+                self.length - (offset.max(0i64) as usize).min(self.length)
             }
             std::io::SeekFrom::Current(offset) => {
                 let mut clamped_offset = offset.max(-(self.current_position as i64));
                 clamped_offset = clamped_offset.min((self.length - self.current_position) as i64);
                 let new_offset = (self.current_position as i64) + clamped_offset;
-                new_offset as u64
+                new_offset as usize
             }
         };
         self.current_position = new_pos;
-        Poll::Ready(Ok(new_pos))
+        Poll::Ready(Ok(new_pos as u64))
     }
 }
 
