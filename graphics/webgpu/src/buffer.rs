@@ -40,7 +40,7 @@ impl WebGPUBuffer {
     ) -> Result<Self, ()> {
         // If usage contains MAP_WRITE, it must not contain any other usage flags besides COPY_SRC.
         // If usage contains MAP_READ, it must not contain any other usage flags besides COPY_DST.
-        // Besides that map() is async and the buffer can not be used by the GPU while it is mapped.
+        // Besides that, map() is async and the buffer cannot be used by the GPU while it is mapped.
         // Tons of fun to work around...
 
         let mut usage = 0u32;
@@ -88,7 +88,7 @@ impl WebGPUBuffer {
             );
         }
 
-        if (usage & web_sys::gpu_buffer_usage::MAP_WRITE) == 0 && mappable {
+        if mappable {
             // GpuQueue::writeBuffer requires GpuUsage::COPY_DST
             usage |= web_sys::gpu_buffer_usage::COPY_DST;
         }

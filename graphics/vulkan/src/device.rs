@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use ash::vk;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, Buffer, Device as _, PipelineShaderStage};
+use sourcerenderer_core::gpu::{self, Buffer, BufferCpuAccess, Device as _, PipelineShaderStage};
 
 use super::*;
 
