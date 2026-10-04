@@ -405,7 +405,7 @@ impl GltfLoader {
 
         let index_base = vertices.len() as u32;
         let gltf_base_folder_path = if let Some(last_slash) = gltf_file_path.rfind('/') {
-            &gltf_file_path[..last_slash + 1]
+            &gltf_file_path[..last_slash]
         } else {
             gltf_file_path
         };
@@ -579,7 +579,7 @@ impl GltfLoader {
         gltf_file_path: &str,
     ) -> String {
         let gltf_base_folder_path = if let Some(last_slash) = gltf_file_path.rfind('/') {
-            &gltf_file_path[..last_slash + 1]
+            &gltf_file_path[..last_slash]
         } else {
             gltf_file_path
         };
