@@ -838,7 +838,7 @@ pub(super) struct CommandBumpAllocator {
 
 impl CommandBumpAllocator {
     pub(super) fn new(device: &GpuDevice) -> Self {
-        let buffer = Self::create_buffer(device);
+        let buffer = Self::create_buffer(device, 0);
         Self {
             buffers: smallvec![buffer],
             buffer_index: 0,
@@ -846,11 +846,12 @@ impl CommandBumpAllocator {
         }
     }
 
-    fn create_buffer(device: &GpuDevice) -> GpuBuffer {
+    fn create_buffer(device: &GpuDevice, index: u32) -> GpuBuffer {
         let descriptor = GpuBufferDescriptor::new(
             PUSH_CONST_BUMP_ALLOCATOR_BUFFER_SIZE as u32,
             web_sys::gpu_buffer_usage::UNIFORM | web_sys::gpu_buffer_usage::COPY_DST,
         );
+        descriptor.set_label(&format!("Push constant bump alloc buffer {}", index));
         device.create_buffer(&descriptor).unwrap()
     }
 
@@ -862,15 +863,16 @@ impl CommandBumpAllocator {
         min_alignment: u64,
     ) -> (&GpuBuffer, u64) {
         let data_as_bytes: &[u8] = unsafe { std::slice::from_raw_parts(data as *const u8, length as usize) };
-        let aligned_offset = align_up_64(self.offset, min_alignment);
+        let mut aligned_offset = align_up_64(self.offset, min_alignment);
         let alignment_padding = aligned_offset - self.offset;
 
         assert_eq!(data_as_bytes.len() % 4, 0);
         assert!(data_as_bytes.len() as u64 <= PUSH_CONST_BUMP_ALLOCATOR_BUFFER_SIZE);
 
         if aligned_offset + data_as_bytes.len() as u64 > PUSH_CONST_BUMP_ALLOCATOR_BUFFER_SIZE {
-            self.buffers.push(Self::create_buffer(device));
+            self.buffers.push(Self::create_buffer(device, (self.buffer_index as u32) + 1));
             self.offset = 0;
+            aligned_offset = 0;
             self.buffer_index += 1;
         }
 
