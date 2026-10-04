@@ -1,16 +1,19 @@
 use sourcerenderer_core::gpu;
 use std::marker::PhantomData;
 use std::{
-    cell::{Ref, RefCell},
+    cell::RefCell,
     hash::Hash,
 };
+use std::cell::Cell;
 use std::ffi::c_void;
 use web_sys::{GpuBuffer, GpuBufferDescriptor, GpuDevice};
 use sourcerenderer_core::gpu::BufferCpuAccess;
 
 pub struct WebGPUBuffer {
     device: GpuDevice,
-    buffer: RefCell<GpuBuffer>,
+    buffer: GpuBuffer,
+    rust_memory: RefCell<Option<Box<[u8]>>>,
+    ptr: Cell<*mut c_void>,
     mappable: bool,
     info: gpu::BufferInfo,
     _p: PhantomData<*const std::ffi::c_void>,
@@ -26,7 +29,7 @@ impl Eq for WebGPUBuffer {}
 
 impl Hash for WebGPUBuffer {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        let buffer = self.buffer.borrow();
+        let buffer = &self.buffer;
         Self::handle_as_usize(&buffer).hash(state);
     }
 }
@@ -88,6 +91,8 @@ impl WebGPUBuffer {
             );
         }
 
+        let ptr: *mut c_void = std::ptr::null_mut();
+        let rust_memory: Option<Box<[u8]>> = None;
         if mappable {
             // GpuQueue::writeBuffer requires GpuUsage::COPY_DST
             usage |= web_sys::gpu_buffer_usage::COPY_DST;
@@ -104,7 +109,9 @@ impl WebGPUBuffer {
 
         Ok(Self {
             device: device.clone(),
-            buffer: RefCell::new(buffer),
+            buffer,
+            rust_memory: RefCell::new(rust_memory),
+            ptr: Cell::new(ptr),
             mappable,
             info: info.clone(),
             _p: PhantomData,
@@ -112,8 +119,8 @@ impl WebGPUBuffer {
     }
 
     #[inline(always)]
-    pub(crate) fn handle(&self) -> Ref<'_, GpuBuffer> {
-        self.buffer.borrow()
+    pub(crate) fn handle(&self) -> &GpuBuffer {
+        &self.buffer
     }
 
     #[inline(always)]
@@ -129,8 +136,7 @@ impl WebGPUBuffer {
 
 impl Drop for WebGPUBuffer {
     fn drop(&mut self) {
-        let buffer = self.buffer.borrow();
-        buffer.destroy();
+        self.buffer.destroy();
     }
 }
 
@@ -144,14 +150,54 @@ impl gpu::Buffer for WebGPUBuffer {
     }
 
     fn map_ptr(&self) -> Option<*mut c_void> {
-        None
+        if !self.mappable {
+            return None;
+        }
+        debug_assert!(self.mappable);
+        if cfg!(debug_assertions) {
+            if self.info.size < 4096 {
+                log::warn!("{}\n{}", "Mapping buffers requires keeping a copy of the buffer around in WASM memory.",
+                "This is not worth the overhead for small buffers. Try using Device::copy_to_buffer instead.");
+            }
+        }
+        let mut rust_mem = self.rust_memory.borrow_mut();
+        if rust_mem.is_none() {
+            let rust_memory_vec = vec![0u8; self.info.size as usize];
+            let mut rust_memory_box = rust_memory_vec.into_boxed_slice();
+            let ptr = rust_memory_box.as_mut_ptr() as *mut c_void;
+            self.ptr.replace(ptr);
+            *rust_mem = Some(rust_memory_box)
+        }
+
+        Some(self.ptr.get())
     }
 
     unsafe fn invalidate(
         &self,
         _offset: u64,
         _length: u64,
-    ) {}
+    ) {
+        log::warn!("Reading buffer contents written by the GPU would need a ton of hacks in WebGPU. That's not implemented.");
+    }
 
-    unsafe fn flush(&self, _offset: u64, _length: u64) {}
+    unsafe fn flush(&self, offset: u64, length: u64) {
+        let rust_mem = self.rust_memory.borrow();
+        if rust_mem.is_none() {
+            return;
+        }
+        if cfg!(debug_assertions) {
+            if length < 1024 {
+                log::warn!("Flushing small range. Try using Device::copy_to_buffer instead.");
+            }
+        }
+        let memory = rust_mem.as_ref().unwrap();
+        debug_assert!(offset + length <= self.info.size);
+        debug_assert!((memory.len() as u64) >= length);
+
+        debug_assert_ne!((self.buffer.usage() & web_sys::gpu_buffer_usage::COPY_DST), 0);
+        self.device
+            .queue()
+            .write_buffer_with_u32_and_u8_slice(&self.buffer, offset as u32, &memory[offset as usize..(offset + length) as usize])
+            .unwrap();
+    }
 }

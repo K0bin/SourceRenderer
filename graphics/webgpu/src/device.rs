@@ -113,7 +113,7 @@ impl Default for WebGPULimits {
 pub struct WebGPUDevice {
     device: GpuDevice,
     shared: WebGPUShared,
-    memory_infos: [gpu::MemoryTypeInfo; 1],
+    memory_infos: [gpu::MemoryTypeInfo; 2],
     queue: WebGPUQueue,
     features: WebGPUFeatures,
     limits: WebGPULimits,
@@ -122,13 +122,24 @@ pub struct WebGPUDevice {
 
 impl WebGPUDevice {
     pub(crate) fn new(device: GpuDevice, debug: bool) -> Self {
-        let memory_infos: [gpu::MemoryTypeInfo; 1] = [gpu::MemoryTypeInfo {
-            is_cached: true,
-            is_coherent: false,
-            is_cpu_accessible: true,
-            memory_index: 0,
-            memory_kind: gpu::MemoryKind::VRAM,
-        }];
+        // WebGPU doesn't differentiate between VRAM and RAM and the strict buffer usage, mapping
+        // and access rules always behave the same. We want the engine to give us the information
+        // whether a buffer will be accessed on the CPU or not because of the mapping workarounds.
+        let memory_infos: [gpu::MemoryTypeInfo; 2] = [gpu::MemoryTypeInfo {
+                is_cached: true,
+                is_coherent: false,
+                is_cpu_accessible: false,
+                memory_index: 0,
+                memory_kind: gpu::MemoryKind::VRAM,
+            },
+            gpu::MemoryTypeInfo {
+                is_cached: true,
+                is_coherent: false,
+                is_cpu_accessible: true,
+                memory_index: 0,
+                memory_kind: gpu::MemoryKind::RAM,
+            }
+        ];
 
         if debug {
             log::info!("Initializing device with error callback.");
@@ -350,10 +361,15 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
            Increase it in the constructor and decrease it in the destructor.
         */
         vec![gpu::MemoryInfo {
-            available: (u32::MAX as u64) / 3u64,
-            total: (u32::MAX as u64) / 3u64,
-            memory_kind: gpu::MemoryKind::VRAM,
-        }]
+                available: (u32::MAX as u64) / 4u64,
+                total: (u32::MAX as u64) / 4u64,
+                memory_kind: self.memory_infos[0].memory_kind,
+            },
+             gpu::MemoryInfo {
+                 available: (u32::MAX as u64) / 4u64,
+                 total: (u32::MAX as u64) / 4u64,
+                 memory_kind: self.memory_infos[1].memory_kind,
+             }]
         .into_boxed_slice()
     }
 

@@ -1367,6 +1367,7 @@ impl<'a> Drop for CommandBuffer<'a> {
         if self.finished {
             return;
         }
+        self.command_pool.transient_buffer_allocator().flush_all();
         let cmd_buffer = unsafe { ManuallyDrop::take(&mut self.cmd_buffer_handle) };
         self.destroyer.destroy_command_buffer(cmd_buffer);
     }

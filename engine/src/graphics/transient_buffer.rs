@@ -130,6 +130,12 @@ impl TransientBuffer {
     pub(crate) fn reset(&mut self) {
         self.offset = 0u64;
     }
+
+    pub(crate) fn flush(&mut self) {
+        unsafe {
+            self.buffer.flush(0, self.size);
+        }
+    }
 }
 
 pub(super) struct TransientBufferAllocator {
@@ -143,6 +149,14 @@ pub(super) struct TransientBufferAllocator {
 struct BufferCollection {
     buffers: Vec<Box<TransientBuffer>>,
     first_free_index: usize,
+}
+
+impl BufferCollection {
+    pub fn flush_all(&mut self) {
+        for buffer in &mut self.buffers {
+            buffer.flush();
+        }
+    }
 }
 
 impl Default for BufferCollection {
@@ -295,6 +309,13 @@ impl TransientBufferAllocator {
         sliced_buffer.offset += info.size;
         matching_buffers.buffers.push(sliced_buffer);
         Ok(slice)
+    }
+
+    pub fn flush_all(&self) {
+        let mut inner = self.inner.borrow_mut();
+        for collection in inner.buffer_collections.values_mut() {
+            collection.flush_all();
+        }
     }
 
     pub fn reset(&self) {
