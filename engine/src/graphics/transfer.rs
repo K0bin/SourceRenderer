@@ -4,7 +4,7 @@ use std::collections::{HashSet, VecDeque};
 use std::ffi::c_void;
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
-use sourcerenderer_core::gpu::BufferCpuAccess;
+use sourcerenderer_core::gpu::{Buffer, BufferCpuAccess};
 use super::gpu::{CommandBuffer as _, CommandPool as _, Queue as _, Texture as _};
 use super::{gpu, *};
 use crate::Mutex;
@@ -407,11 +407,15 @@ impl Transfer {
         dst_buffer: &Arc<BufferSlice>,
         dst_offset: u64,
     ) -> bool {
+        if dst_buffer.handle().cpu_access() == BufferCpuAccess::None {
+            return false;
+        }
+
         let actual_len = data
             .len()
             .min(dst_buffer.length() as usize - dst_offset as usize);
         dst_buffer.write(&self.device, &data[..actual_len], dst_offset);
-        false
+        true
     }
 
     pub fn init_texture_from_buffer_async(
