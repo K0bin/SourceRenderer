@@ -8,7 +8,7 @@ use std::fmt::{Debug, Formatter};
 use std::hash::Hash;
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
-
+use bytemuck::Pod;
 use super::*;
 
 pub struct TransientBufferSlice {
@@ -52,13 +52,61 @@ impl TransientBufferSlice {
     }
 
     #[inline(always)]
-    pub unsafe fn map(&self, frame: u64, invalidate: bool) -> Option<*mut c_void> {
-        unsafe { self.handle(frame).map(self.offset, self.length, invalidate) }
+    pub fn cpu_access(&self, generation: u64) -> BufferCpuAccess {
+        self.handle(generation).cpu_access()
     }
 
     #[inline(always)]
-    pub unsafe fn unmap(&self, frame: u64, flush: bool) {
-        unsafe { self.handle(frame).unmap(self.offset, self.length, flush) }
+    pub unsafe fn map(&self, generation: u64, invalidate: bool) -> Option<*mut c_void> {
+        let handle = self.handle(generation);
+        debug_assert!(handle.map_ptr().is_some());
+        debug_assert_eq!(handle.cpu_access(), BufferCpuAccess::Pointer);
+        handle.map_ptr().map(|ptr| {
+            if invalidate {
+                unsafe { handle.invalidate(self.offset, self.length); }
+            }
+
+            unsafe {
+                ptr.offset(self.offset as isize)
+            }
+        })
+    }
+
+    #[inline(always)]
+    pub unsafe fn unmap(&self, generation: u64, flush: bool) {
+        let handle = self.handle(generation);
+        debug_assert!(handle.map_ptr().is_some());
+        debug_assert_eq!(handle.cpu_access(), BufferCpuAccess::Pointer);
+        if !flush || handle.map_ptr().is_none() {
+            return;
+        }
+        unsafe {
+            handle.flush(self.offset, self.length)
+        }
+    }
+
+    pub fn write<T: Pod>(&self, device: &active_gpu_backend::Device, generation: u64, src: &[T]) {
+        let handle = self.handle(generation);
+        match handle.cpu_access() {
+            BufferCpuAccess::Pointer => unsafe {
+                let ptr_opt = self.map(generation, false);
+                if ptr_opt.is_none() {
+                    unreachable!();
+                }
+                let ptr = ptr_opt.unwrap() as *mut T;
+                std::ptr::copy(src.as_ptr(), ptr, 1);
+                self.unmap(generation, true);
+            }
+            BufferCpuAccess::DeviceWrite => {
+                let src_ptr = src.as_ptr() as *const c_void;
+                unsafe {
+                    device.copy_to_buffer(src_ptr, handle, self.offset(), self.length());
+                }
+            }
+            BufferCpuAccess::None => {
+                panic!("Buffer cannot be accessed on the CPU");
+            },
+        }
     }
 }
 

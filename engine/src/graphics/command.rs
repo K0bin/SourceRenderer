@@ -1,9 +1,10 @@
+use std::ffi::c_void;
 use super::gpu::{self, Buffer as _, CommandBuffer as _, CommandPool as _};
 use super::{AccelerationStructure, BottomLevelAccelerationStructureInfo, *};
 use atomic_refcell::AtomicRefMut;
 use bytemuck::{Pod, cast_slice};
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::RenderPassResumeSuspend;
+use sourcerenderer_core::gpu::{BufferCpuAccess, RenderPassResumeSuspend};
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
@@ -186,7 +187,7 @@ impl<'a> CommandBuffer<'a> {
     ) {
         unsafe {
             self.cmd_buffer_handle
-                .set_push_constant_data(data, visible_for_shader_stage);
+                .set_push_constant_data(data.as_ptr() as *const c_void, std::mem::size_of_val(data) as u64, visible_for_shader_stage);
         }
     }
 
@@ -774,6 +775,7 @@ impl<'a> CommandBuffer<'a> {
 
     pub fn upload_dynamic_data<T: Pod>(
         &mut self,
+        device: &Device,
         data: &[T],
         usage: BufferUsage,
     ) -> Result<TransientBufferSlice, OutOfMemoryError> {
@@ -792,20 +794,24 @@ impl<'a> CommandBuffer<'a> {
         )?;
 
         unsafe {
-            let ptr_void = buffer.map(self.generation(), false).unwrap();
+            if buffer.cpu_access(self.generation()) == BufferCpuAccess::Pointer {
+                let ptr_void = buffer.map(self.generation(), false).unwrap();
 
-            if required_size < size {
-                let ptr_u8 = (ptr_void as *mut u8).offset(required_size as isize);
-                std::ptr::write_bytes(ptr_u8, 0u8, size - required_size);
+                if required_size < size {
+                    let ptr_u8 = (ptr_void as *mut u8).offset(required_size as isize);
+                    std::ptr::write_bytes(ptr_u8, 0u8, size - required_size);
+                }
+
+                if required_size != 0 {
+                    let data_raw: &[u8] = cast_slice(data);
+                    let ptr = ptr_void as *mut u8;
+                    ptr.copy_from_nonoverlapping(data_raw.as_ptr(), required_size);
+                }
+
+                buffer.unmap(self.generation(), true);
+            } else {
+                buffer.write(&device.handle(), self.generation(), data);
             }
-
-            if required_size != 0 {
-                let data_raw: &[u8] = cast_slice(data);
-                let ptr = ptr_void as *mut u8;
-                ptr.copy_from(data_raw.as_ptr(), required_size);
-            }
-
-            buffer.unmap(self.generation(), true);
         }
         Ok(buffer)
     }

@@ -57,11 +57,12 @@ impl VkAccelerationStructure {
         let size: u64 = std::mem::size_of_val(&instances) as u64;
         unsafe {
             let ptr = target_buffer
-                .map(target_buffer_offset, size, false)
+                .map_ptr()
                 .expect("Failed to map buffer.")
+                .offset(target_buffer_offset as isize)
                 as *mut vk::AccelerationStructureInstanceKHR;
-            ptr.copy_from(instances.as_ptr(), instances.len());
-            target_buffer.unmap(target_buffer_offset, size, true);
+            ptr.copy_from_nonoverlapping(instances.as_ptr(), instances.len());
+            target_buffer.flush(target_buffer_offset, size);
         }
     }
 

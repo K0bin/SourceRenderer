@@ -253,6 +253,7 @@ impl ModernRenderer {
 
         let setup_buffer = cmd_buf
             .upload_dynamic_data(
+                &self.device,
                 &[SetupBuffer {
                     point_light_count: scene.scene.point_lights().len() as u32,
                     directional_light_count: scene.scene.directional_lights().len() as u32,
@@ -297,7 +298,7 @@ impl ModernRenderer {
             })
             .collect();
         let point_lights_buffer = cmd_buf
-            .upload_dynamic_data(&point_lights, BufferUsage::CONSTANT)
+            .upload_dynamic_data(&self.device, &point_lights, BufferUsage::CONSTANT)
             .unwrap();
         cmd_buf.bind_uniform_buffer(
             BindingFrequency::Frame,
@@ -322,7 +323,7 @@ impl ModernRenderer {
             })
             .collect();
         let directional_lights_buffer = cmd_buf
-            .upload_dynamic_data(&directional_lights, BufferUsage::CONSTANT)
+            .upload_dynamic_data(&self.device, &directional_lights, BufferUsage::CONSTANT)
             .unwrap();
         cmd_buf.bind_uniform_buffer(
             BindingFrequency::Frame,
@@ -355,7 +356,7 @@ impl RenderPath for ModernRenderer {
     #[profiling::function]
     fn render(
         &mut self,
-        _device: &Device,
+        device: &Device,
         context: &mut GraphicsContext,
         swapchain: &mut Swapchain,
         scene: &SceneInfo,
@@ -370,6 +371,7 @@ impl RenderPath for ModernRenderer {
 
         let camera_buffer = cmd_buf
             .upload_dynamic_data(
+                device,
                 &[CameraBuffer {
                     view_proj: main_view.proj_matrix * main_view.view_matrix,
                     inv_proj: main_view.proj_matrix.inverse(),
@@ -542,6 +544,7 @@ impl RenderPath for ModernRenderer {
         let backbuffer_view = swapchain.backbuffer_view(&backbuffer);
         let backbuffer_handle = swapchain.backbuffer_handle(&backbuffer);
         self.geometry_pass.execute(
+            &self.device,
             &mut cmd_buf,
             scene.scene,
             main_view,

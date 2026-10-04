@@ -1,7 +1,7 @@
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
 
-use atomic_refcell::{AtomicRefCell, AtomicRefMut};
+use atomic_refcell::AtomicRefCell;
 use bevy_tasks::ComputeTaskPool;
 use smallvec::SmallVec;
 use thread_local::ThreadLocal;

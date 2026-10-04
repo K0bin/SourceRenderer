@@ -84,10 +84,10 @@ impl LightBinningPass {
             .collect();
 
         let light_info_buffer = cmd_buffer
-            .upload_dynamic_data(&[setup_info], BufferUsage::STORAGE)
+            .upload_dynamic_data(pass_params.device, &[setup_info], BufferUsage::STORAGE)
             .unwrap();
         let point_lights_buffer = cmd_buffer
-            .upload_dynamic_data(&point_lights[..], BufferUsage::STORAGE)
+            .upload_dynamic_data(pass_params.device, &point_lights[..], BufferUsage::STORAGE)
             .unwrap();
 
         cmd_buffer.barrier(&[Barrier::BufferBarrier {

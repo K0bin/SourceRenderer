@@ -4,7 +4,6 @@ use crate::{
     texture::{WebGPUTextureView, format_to_webgpu, texture_dimension_to_webgpu_view},
 };
 use bitflags::bitflags;
-use bytemuck::{Pod, cast_slice};
 use js_sys::JsNullable;
 use smallvec::{SmallVec, smallvec};
 use sourcerenderer_core::{align_up_64, gpu};
@@ -12,6 +11,7 @@ use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::{collections::HashMap, hash::Hash, ops::Deref, sync::Arc};
+use std::ffi::c_void;
 use web_sys::{
     GpuBindGroup, GpuBindGroupDescriptor, GpuBindGroupEntry, GpuBindGroupLayout,
     GpuBindGroupLayoutDescriptor, GpuBindGroupLayoutEntry, GpuBuffer, GpuBufferBinding,
@@ -854,15 +854,15 @@ impl CommandBumpAllocator {
         device.create_buffer(&descriptor).unwrap()
     }
 
-    fn copy_to<T: Pod>(
+    fn copy_to(
         &mut self,
         device: &GpuDevice,
-        data: &[T],
+        data: *const c_void,
+        length: u64,
         min_alignment: u64,
     ) -> (&GpuBuffer, u64) {
-        let data_as_bytes: &[u8] = cast_slice(data);
-        let alignment = (std::mem::align_of::<T>() as u64).max(min_alignment);
-        let aligned_offset = align_up_64(self.offset, alignment);
+        let data_as_bytes: &[u8] = unsafe { std::slice::from_raw_parts(data as *const u8, length as usize) };
+        let aligned_offset = align_up_64(self.offset, min_alignment);
         let alignment_padding = aligned_offset - self.offset;
 
         assert_eq!(data_as_bytes.len() % 4, 0);
@@ -975,8 +975,9 @@ impl WebGPUBindingManager {
             limits: limits.clone(),
         };
 
-        result.set_push_constant_data(&[0u64], gpu::ShaderType::VertexShader);
-        result.set_push_constant_data(&[0u64], gpu::ShaderType::FragmentShader);
+        let zero = [0u8; 8];
+        result.set_push_constant_data(zero.as_ptr() as *const c_void, zero.len() as u64, gpu::ShaderType::VertexShader);
+        result.set_push_constant_data(zero.as_ptr() as *const c_void, zero.len() as u64, gpu::ShaderType::FragmentShader);
 
         result
     }
@@ -993,8 +994,9 @@ impl WebGPUBindingManager {
 
         self.current_sets = Default::default();
         self.bump_allocator.borrow_mut().reset(true);
-        self.set_push_constant_data(&[0u64], gpu::ShaderType::VertexShader);
-        self.set_push_constant_data(&[0u64], gpu::ShaderType::FragmentShader);
+        let zero = [0u8; 8];
+        self.set_push_constant_data(zero.as_ptr() as *const c_void, zero.len() as u64, gpu::ShaderType::VertexShader);
+        self.set_push_constant_data(zero.as_ptr() as *const c_void, zero.len() as u64, gpu::ShaderType::FragmentShader);
     }
 
     pub(crate) fn bind(
@@ -1072,17 +1074,19 @@ impl WebGPUBindingManager {
         self.dirty.insert(DirtyBindGroups::from(frequency));
     }
 
-    pub(crate) fn set_push_constant_data<T: Pod>(
+    pub(crate) fn set_push_constant_data(
         &mut self,
-        data: &[T],
+        data: *const c_void,
+        length: u64,
         visible_for_shader_stage: gpu::ShaderType,
     ) {
-        let data_as_bytes: &[u8] = cast_slice(data);
+        let data_as_bytes: &[u8] = unsafe { std::slice::from_raw_parts(data as *const u8, length as usize) };
 
         let mut bump_alloc = self.bump_allocator.borrow_mut();
         let (buffer, offset) = bump_alloc.copy_to(
             &self.device,
             data,
+            length,
             self.limits.min_uniform_buffer_offset_alignment as u64,
         );
 

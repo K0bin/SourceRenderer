@@ -133,6 +133,7 @@ impl ConservativeRenderer {
 
     fn create_frame_bindings<'a, 'b>(
         &'b self,
+        device: &Device,
         cmd_buf: &'b mut CommandBuffer,
         scene: &'a SceneInfo<'a>,
         swapchain: &'a Swapchain,
@@ -170,6 +171,7 @@ impl ConservativeRenderer {
         }
         let setup_buffer = cmd_buf
             .upload_dynamic_data(
+                device,
                 &[SetupBuffer {
                     point_light_count: scene.scene.point_lights().len() as u32,
                     directional_light_count: scene.scene.directional_lights().len() as u32,
@@ -205,7 +207,7 @@ impl ConservativeRenderer {
             })
             .collect();
         let point_lights_buffer = cmd_buf
-            .upload_dynamic_data(&point_lights, BufferUsage::CONSTANT)
+            .upload_dynamic_data(device, &point_lights, BufferUsage::CONSTANT)
             .unwrap();
         #[repr(C)]
         #[derive(Debug, Clone, Copy, Zeroable, Pod)]
@@ -223,7 +225,7 @@ impl ConservativeRenderer {
             })
             .collect();
         let directional_lights_buffer = cmd_buf
-            .upload_dynamic_data(&directional_lights, BufferUsage::CONSTANT)
+            .upload_dynamic_data(device, &directional_lights, BufferUsage::CONSTANT)
             .unwrap();
 
         FrameBindings {
@@ -271,7 +273,7 @@ impl RenderPath for ConservativeRenderer {
     #[profiling::function]
     fn render(
         &mut self,
-        _device: &Device,
+        device: &Device,
         context: &mut GraphicsContext,
         swapchain: &mut Swapchain,
         scene: &SceneInfo,
@@ -286,6 +288,7 @@ impl RenderPath for ConservativeRenderer {
 
         let camera_buffer = cmd_buf
             .upload_dynamic_data(
+                device,
                 &[CameraBuffer {
                     view_proj: main_view.proj_matrix * main_view.view_matrix,
                     inv_proj: main_view.proj_matrix.inverse(),
@@ -353,6 +356,7 @@ impl RenderPath for ConservativeRenderer {
         };
 
         let frame_bindings = self.create_frame_bindings(
+            device,
             &mut cmd_buf,
             scene,
             swapchain,

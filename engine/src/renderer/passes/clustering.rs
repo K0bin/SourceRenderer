@@ -71,7 +71,7 @@ impl ClusteringPass {
         };
 
         let screen_to_view_cbuffer = command_buffer
-            .upload_dynamic_data(&[screen_to_view], BufferUsage::STORAGE)
+            .upload_dynamic_data(pass_params.device, &[screen_to_view], BufferUsage::STORAGE)
             .unwrap();
         let clusters_buffer = pass_params.resources.access_buffer(
             command_buffer,

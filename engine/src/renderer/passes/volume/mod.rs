@@ -167,7 +167,7 @@ impl RenderPath for VolumeRenderer {
 
     fn render(
         &mut self,
-        _device: &Device,
+        device: &Device,
         context: &mut GraphicsContext,
         swapchain: &mut Swapchain,
         scene: &SceneInfo,
@@ -221,6 +221,7 @@ impl RenderPath for VolumeRenderer {
 
         let camera_buffer = cmd_buffer
             .upload_dynamic_data(
+                device,
                 &[CameraBuffer {
                     view_proj: main_view.proj_matrix * main_view.view_matrix,
                     inv_proj: main_view.proj_matrix.inverse(),

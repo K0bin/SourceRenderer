@@ -1,11 +1,10 @@
+use std::os::raw::c_void;
 use crate::Vec2;
 use crate::Vec2I;
 use crate::Vec2UI;
 use crate::Vec3UI;
 
 use super::*;
-
-use bytemuck::Pod;
 
 use bitflags::bitflags;
 
@@ -108,9 +107,10 @@ pub trait CommandBuffer<B: GPUBackend> {
     );
     unsafe fn set_viewports(&mut self, viewports: &[Viewport]);
     unsafe fn set_scissors(&mut self, scissors: &[Scissor]);
-    unsafe fn set_push_constant_data<T: Pod>(
+    unsafe fn set_push_constant_data(
         &mut self,
-        data: &[T],
+        data: *const c_void,
+        length: u64,
         visible_for_shader_stage: ShaderType,
     );
     unsafe fn draw(

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use ash::vk;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, Device as _, PipelineShaderStage};
+use sourcerenderer_core::gpu::{self, Buffer, Device as _, PipelineShaderStage};
 
 use super::*;
 
@@ -547,6 +547,14 @@ impl gpu::Device<VkBackend> for VkDevice {
                     ..Default::default()
                 })
                 .unwrap();
+        }
+    }
+
+    unsafe fn copy_to_buffer(&self, src: *const c_void, dst: &VkBuffer, offset: u64, length: u64) {
+        unsafe {
+            let ptr = dst.map_ptr().unwrap().offset(offset as isize);
+            ptr.copy_from_nonoverlapping(src, length as usize);
+            dst.flush(offset, length);
         }
     }
 

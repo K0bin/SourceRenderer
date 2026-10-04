@@ -81,7 +81,7 @@ impl RenderPath for WebRenderer {
 
     fn render(
         &mut self,
-        _device: &Device,
+        device: &Device,
         context: &mut GraphicsContext,
         swapchain: &mut Swapchain,
         scene: &SceneInfo,
@@ -95,7 +95,7 @@ impl RenderPath for WebRenderer {
 
         let main_view = &scene.scene.views()[scene.active_view_index];
 
-        /*let camera_buffer = cmd_buffer.upload_dynamic_data(&[CameraBuffer {
+        /*let camera_buffer = cmd_buffer.upload_dynamic_data(device, &[CameraBuffer {
             view_proj: main_view.proj_matrix * main_view.view_matrix,
             inv_proj: main_view.proj_matrix.inverse(),
             view: main_view.view_matrix,
@@ -111,6 +111,7 @@ impl RenderPath for WebRenderer {
 
         let camera_buffer = cmd_buffer
             .upload_dynamic_data(
+                device,
                 &[main_view.proj_matrix * main_view.view_matrix],
                 BufferUsage::CONSTANT,
             )
@@ -120,6 +121,7 @@ impl RenderPath for WebRenderer {
         let backbuffer_view = swapchain.backbuffer_view(&backbuffer);
         let backbuffer_handle = swapchain.backbuffer_handle(&backbuffer);
         self.geometry.execute(
+            device,
             &mut cmd_buffer,
             scene.scene,
             main_view,

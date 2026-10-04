@@ -1,10 +1,9 @@
-use std::ffi::CString;
+use std::ffi::{c_void, CString};
 use std::hash::Hash;
 use std::sync::Arc;
 
 use ash::vk;
 use ash::vk::Handle;
-use bytemuck::{Pod, cast_slice};
 use crossbeam_utils::atomic::AtomicCell;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{
@@ -1290,9 +1289,10 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         }
     }
 
-    unsafe fn set_push_constant_data<T: Pod>(
+    unsafe fn set_push_constant_data(
         &mut self,
-        data: &[T],
+        data: *const c_void,
+        length: u64,
         visible_for_shader_type: gpu::ShaderType,
     ) {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
@@ -1300,7 +1300,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         let range = pipeline_layout
             .push_constant_range(visible_for_shader_type)
             .expect("No push constants set up for shader");
-        let data_u8: &[u8] = cast_slice(data);
+        let data_u8: &[u8] = unsafe { std::slice::from_raw_parts(data as *const u8, length as usize) };
         let len = data_u8.len().min(range.size as usize);
         if cfg!(debug_assertions) {
             /*if data_u8.len() != range.size as usize {
@@ -1313,8 +1313,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             }*/
             if len % 4 != 0 {
                 log::error!(
-                    "Push constant size is not aligned to 4: {:?}. Size: {:?}",
-                    std::any::type_name::<T>(),
+                    "Push constant size is not aligned to 4. Size: {:?}",
                     len
                 );
             }

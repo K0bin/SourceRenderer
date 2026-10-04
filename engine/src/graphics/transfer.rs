@@ -1,10 +1,10 @@
-use bytemuck::BoxBytes;
+use bytemuck::{BoxBytes, Pod};
 use sourcerenderer_core::Vec3UI;
 use std::collections::{HashSet, VecDeque};
 use std::ffi::c_void;
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
-
+use sourcerenderer_core::gpu::BufferCpuAccess;
 use super::gpu::{CommandBuffer as _, CommandPool as _, Queue as _, Texture as _};
 use super::{gpu, *};
 use crate::Mutex;
@@ -12,6 +12,7 @@ use crate::Mutex;
 const DEBUG_FORCE_FAT_BARRIER: bool = false;
 
 pub(crate) struct Transfer {
+    device: Arc<active_gpu_backend::Device>,
     buffer_allocator: Arc<BufferAllocator>,
     inner: Mutex<TransferInner>,
 }
@@ -108,6 +109,7 @@ impl Transfer {
         };
 
         Self {
+            device: device.clone(),
             buffer_allocator: buffer_allocator.clone(),
             inner: Mutex::new(TransferInner {
                 graphics: graphics_commands,
@@ -405,18 +407,10 @@ impl Transfer {
         dst_buffer: &Arc<BufferSlice>,
         dst_offset: u64,
     ) -> bool {
-        unsafe {
-            let actual_len = data
-                .len()
-                .min(dst_buffer.length() as usize - dst_offset as usize);
-            let dst_ptr = dst_buffer.map_part(dst_offset, actual_len as u64, false);
-            if let Some(ptr_void) = dst_ptr {
-                let ptr = ptr_void as *mut u8;
-                ptr.copy_from(data.as_ptr(), actual_len);
-                dst_buffer.unmap_part(dst_offset, actual_len as u64, true);
-                return true;
-            }
-        }
+        let actual_len = data
+            .len()
+            .min(dst_buffer.length() as usize - dst_offset as usize);
+        dst_buffer.write(&self.device, &data[..actual_len], dst_offset);
         false
     }
 
@@ -778,7 +772,7 @@ impl Transfer {
         Some(cmd_buffer)
     }
 
-    fn upload_data<T>(
+    fn upload_data<T: Pod>(
         &self,
         data: &[T],
         length: u64,
@@ -805,22 +799,7 @@ impl Transfer {
             memory_usage,
             None,
         )?;
-
-        unsafe {
-            let ptr_void = slice.map(false).unwrap();
-
-            if required_size < size {
-                let ptr_u8 = (ptr_void as *mut u8).offset(required_size as isize);
-                std::ptr::write_bytes(ptr_u8, 0u8, size - required_size);
-            }
-
-            if required_size != 0 {
-                let ptr = ptr_void as *mut u8;
-                ptr.copy_from(data.as_ptr() as *const u8, required_size);
-            }
-
-            slice.unmap(true);
-        }
+        slice.write(&self.device, data, 0);
         Ok(slice)
     }
 

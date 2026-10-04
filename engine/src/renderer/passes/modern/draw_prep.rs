@@ -127,6 +127,7 @@ impl DrawPrepPass {
             );
             let frustum_buffer = cmd_buffer
                 .upload_dynamic_data(
+                    pass_params.device,
                     &[GPUFrustum {
                         near_half_width: frustum.near_half_width,
                         near_half_height: frustum.near_half_height,
