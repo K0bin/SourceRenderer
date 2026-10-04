@@ -406,7 +406,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
             } else {
                 gpu::DedicatedAllocationPreference::PreferSuballocated
             },
-            memory_type_mask: 1,
+            memory_type_mask: 0b11,
             alignment: alignment as u64,
             size: info.size,
         }
@@ -415,7 +415,7 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
     fn get_texture_heap_info(&self, info: &gpu::TextureInfo) -> gpu::ResourceHeapInfo {
         gpu::ResourceHeapInfo {
             dedicated_allocation_preference: gpu::DedicatedAllocationPreference::PreferDedicated,
-            memory_type_mask: 1,
+            memory_type_mask: 0b11,
             alignment: 4,
             size: (info.width * info.height * info.array_length * (4 * 4)) as u64, // TODO: We just assume RGBA Float32, make this take the format into account properly
         }
