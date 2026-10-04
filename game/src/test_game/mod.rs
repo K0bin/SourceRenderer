@@ -1,16 +1,14 @@
-use std::{marker::PhantomData, sync::Arc};
+use std::marker::PhantomData;
 
 use crate::{RendererPicker, fps_camera};
 use bevy_app::{App, Plugin};
 use sourcerenderer_core::platform::PlatformIO;
 use sourcerenderer_engine::renderer::RendererType;
-use sourcerenderer_engine::{
-    Engine,
-    asset::{AssetLoadPriority, AssetManager, AssetType, loaders::load_file_gltf_container},
-};
 use spinning_cube::SpinningCubePlugin;
+use crate::test_game::khronos_assets::{load_khronos_model, KhronosAsset};
 
 mod spinning_cube;
+mod khronos_assets;
 
 pub struct TestGamePlugin<IO: PlatformIO>(PhantomData<IO>);
 
@@ -25,21 +23,9 @@ impl<IO: PlatformIO> Default for TestGamePlugin<IO> {
 
 impl<IO: PlatformIO> Plugin for TestGamePlugin<IO> {
     fn build(&self, app: &mut App) {
-        {
-            log::info!("Initializing GamePlugin");
-            let asset_manager: &Arc<AssetManager> = Engine::get_asset_manager(app);
-            /*asset_manager.add_container_async(async move {
-                log::info!("Loading GLTF file as container");
-                load_file_gltf_container::<IO>("bistro_sun.glb", true).await.unwrap()
-            });
-            asset_manager.request_asset("bistro_sun.glb/scene/Scene", AssetType::Level, AssetLoadPriority::High);*/
-            /*asset_manager.request_asset(
-                "FlightHelmet/FlightHelmet.gltf/scene/0",
-                AssetType::Level,
-                AssetLoadPriority::High,
-            );*/
-        }
+        log::info!("Initializing GamePlugin");
 
+        load_khronos_model::<IO>(app, KhronosAsset::FlightHelmet);
         fps_camera::install(app);
         app.add_plugins(SpinningCubePlugin);
     }
@@ -53,7 +39,8 @@ impl<IO: PlatformIO> RendererPicker for TestGamePlugin<IO> {
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
-            RendererType::Regular
+            //RendererType::Regular // Broken!
+            RendererType::Compat
         }
     }
 }
