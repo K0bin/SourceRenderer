@@ -1281,7 +1281,7 @@ impl VkBindingManager {
             if caches.cache_mode == CacheMode::TransientAndPermanent {
                 // Copy it into transient cache so it can be found quickly in the same frame
                 // This is fine because the transient cache will have a shorter lifespan than the permanent one anyway.
-                let sets = caches.permanent_cache.entry(layout.clone()).or_default();
+                let sets = caches.transient_cache.entry(layout.clone()).or_default();
                 sets.push(VkDescriptorSetCacheEntry {
                     set: set.clone(),
                     last_used_with_resets_conter: caches.resets_counter,
