@@ -889,7 +889,7 @@ impl CommandBumpAllocator {
         (&self.buffers[self.buffer_index], aligned_offset)
     }
 
-    fn reset(&mut self, trim: bool) {
+    pub(super) fn reset(&mut self, trim: bool) {
         self.offset = 0;
         self.buffer_index = 0;
         if trim {
@@ -995,7 +995,6 @@ impl WebGPUBindingManager {
         }
 
         self.current_sets = Default::default();
-        self.bump_allocator.borrow_mut().reset(true);
         let zero = [0u8; 8];
         self.set_push_constant_data(zero.as_ptr() as *const c_void, zero.len() as u64, gpu::ShaderType::VertexShader);
         self.set_push_constant_data(zero.as_ptr() as *const c_void, zero.len() as u64, gpu::ShaderType::FragmentShader);

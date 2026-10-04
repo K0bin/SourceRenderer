@@ -1232,6 +1232,7 @@ impl gpu::CommandPool<WebGPUBackend> for WebGPUCommandPool {
     }
 
     unsafe fn reset(&mut self) {
+        self.bump_allocator.borrow_mut().reset(true);
         self.bind_group_caches.reset();
     }
 }
