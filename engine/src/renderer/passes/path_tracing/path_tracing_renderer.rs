@@ -195,6 +195,7 @@ impl PathTracingRenderer {
 
         let setup_buffer = cmd_buf
             .upload_dynamic_data(
+                &self.device,
                 &[SetupBuffer {
                     point_light_count: scene.scene.point_lights().len() as u32,
                     directional_light_count: scene.scene.directional_lights().len() as u32,
@@ -239,7 +240,7 @@ impl PathTracingRenderer {
             })
             .collect();
         let point_lights_buffer = cmd_buf
-            .upload_dynamic_data(&point_lights, BufferUsage::CONSTANT)
+            .upload_dynamic_data(&self.device, &point_lights, BufferUsage::CONSTANT)
             .unwrap();
         cmd_buf.bind_uniform_buffer(
             BindingFrequency::Frame,
@@ -264,7 +265,7 @@ impl PathTracingRenderer {
             })
             .collect();
         let directional_lights_buffer = cmd_buf
-            .upload_dynamic_data(&directional_lights, BufferUsage::CONSTANT)
+            .upload_dynamic_data(&self.device, &directional_lights, BufferUsage::CONSTANT)
             .unwrap();
         cmd_buf.bind_uniform_buffer(
             BindingFrequency::Frame,

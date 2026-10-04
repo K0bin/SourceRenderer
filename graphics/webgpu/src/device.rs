@@ -1,3 +1,4 @@
+use std::ffi::c_void;
 use crate::{
     WebGPUBackend, WebGPUBuffer, WebGPUComputePipeline, WebGPUFence, WebGPUGraphicsPipeline,
     WebGPUHeap, WebGPUQueryPool, WebGPUQueue, WebGPUSampler, WebGPUShader, WebGPUShared,
@@ -570,6 +571,14 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
             .write_texture_with_u8_slice_and_gpu_extent_3d_dict(
                 &dst_info, slice, &src_info, &copy_size,
             )
+            .unwrap();
+    }
+
+    unsafe fn copy_to_buffer(&self, src: *const c_void, dst: &WebGPUBuffer, offset: u64, length: u64) {
+        let slice = unsafe { std::slice::from_raw_parts(src as *const u8, length as usize) };
+        self.device
+            .queue()
+            .write_buffer_with_u32_and_u8_slice(&dst.handle(), offset as u32, slice)
             .unwrap();
     }
 

@@ -93,6 +93,13 @@ pub trait Device<B: GPUBackend> {
         texture_layout: TextureLayout,
         region: &MemoryTextureCopyRegion,
     );
+    unsafe fn copy_to_buffer(
+        &self,
+        src: *const c_void,
+        dst: &B::Buffer,
+        offset: u64,
+        length: u64,
+    );
     unsafe fn transition_texture(&self, dst: &B::Texture, transition: &CPUTextureTransition<'_, B>);
     fn graphics_queue(&self) -> &B::Queue;
     fn compute_queue(&self) -> Option<&B::Queue>;

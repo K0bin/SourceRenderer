@@ -148,6 +148,7 @@ impl GeometryPass {
 
     pub(crate) fn execute(
         &mut self,
+        device: &Device,
         cmd_buffer: &mut CommandBuffer,
         scene: &RendererScene,
         view: &View,
@@ -213,7 +214,7 @@ impl GeometryPass {
             extent: Vec2UI::new(width, height),
         }]);
 
-        //let camera_buffer = cmd_buffer.upload_dynamic_data(&[view.proj_matrix * view.view_matrix], BufferUsage::CONSTANT);
+        //let camera_buffer = cmd_buffer.upload_dynamic_data(device, &[view.proj_matrix * view.view_matrix], BufferUsage::CONSTANT);
         cmd_buffer.bind_uniform_buffer(
             BindingFrequency::Frame,
             0,

@@ -492,7 +492,7 @@ impl GeometryPass {
                                 None => {}
                             }
                             let material_info_buffer = command_buffer
-                                .upload_dynamic_data(&[material_info], BufferUsage::CONSTANT)
+                                .upload_dynamic_data(pass_params.device, &[material_info], BufferUsage::CONSTANT)
                                 .unwrap();
                             command_buffer.bind_uniform_buffer(
                                 BindingFrequency::VeryFrequent,

@@ -164,7 +164,7 @@ impl Prepass {
             ..Zeroable::zeroed()
         };
         let transform_constant_buffer = cmd_buffer
-            .upload_dynamic_data(&[per_frame], BufferUsage::CONSTANT)
+            .upload_dynamic_data(pass_params.device, &[per_frame], BufferUsage::CONSTANT)
             .unwrap();
 
         let assets = pass_params.assets;

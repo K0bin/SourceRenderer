@@ -5,7 +5,7 @@ use std::sync::Arc;
 use ash::vk::{self, Handle as _};
 use smallvec::SmallVec;
 use sourcerenderer_core::{align_down_64, align_up_64, gpu};
-
+use sourcerenderer_core::gpu::BufferCpuAccess;
 use super::*;
 
 pub struct VkBuffer {
@@ -283,35 +283,43 @@ impl gpu::Buffer for VkBuffer {
         &self.info
     }
 
-    unsafe fn map(&self, offset: u64, length: u64, invalidate: bool) -> Option<*mut c_void> {
-        let map_ptr = self.map_ptr?;
-        if invalidate && !self.is_coherent {
-            let aligned_offset = align_down_64(
-                offset + self.memory_offset,
-                self.device.properties.limits.non_coherent_atom_size as u64,
-            );
-            let aligned_end = align_up_64(
-                (offset + length).min(self.info.size),
-                self.device.properties.limits.non_coherent_atom_size as u64,
-            );
-            let aligned_length = aligned_end - aligned_offset;
-
-            unsafe {
-                self.device
-                    .invalidate_mapped_memory_ranges(&[vk::MappedMemoryRange {
-                        memory: self.memory,
-                        offset: aligned_offset,
-                        size: aligned_length,
-                        ..Default::default()
-                    }])
-                    .unwrap();
-            }
-        }
-        Some(unsafe { map_ptr.add(offset as usize) })
+    fn cpu_access(&self) -> BufferCpuAccess {
+        BufferCpuAccess::Pointer
     }
 
-    unsafe fn unmap(&self, offset: u64, length: u64, flush: bool) {
-        if self.map_ptr.is_none() || !flush || self.is_coherent {
+    fn map_ptr(&self) -> Option<*mut c_void> {
+        self.map_ptr
+    }
+
+    unsafe fn invalidate(&self, offset: u64, length: u64) {
+        if self.map_ptr.is_none() || self.is_coherent {
+            return;
+        }
+
+        let aligned_offset = align_down_64(
+            offset + self.memory_offset,
+            self.device.properties.limits.non_coherent_atom_size as u64,
+        );
+        let aligned_end = align_up_64(
+            (offset + length).min(self.info.size),
+            self.device.properties.limits.non_coherent_atom_size as u64,
+        );
+        let aligned_length = aligned_end - aligned_offset;
+
+        unsafe {
+            self.device
+                .invalidate_mapped_memory_ranges(&[vk::MappedMemoryRange {
+                    memory: self.memory,
+                    offset: aligned_offset,
+                    size: aligned_length,
+                    ..Default::default()
+                }])
+                .unwrap();
+        }
+    }
+
+    unsafe fn flush(&self, offset: u64, length: u64) {
+        if self.map_ptr.is_none() || self.is_coherent {
             return;
         }
 

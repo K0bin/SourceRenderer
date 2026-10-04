@@ -230,7 +230,7 @@ impl DearImguiRenderer {
                     let texture = texture_view.texture().unwrap();
                     for rect in rects {
                         let data_buffer = command_buffer
-                            .upload_dynamic_data(&rect.data, BufferUsage::COPY_SRC)
+                            .upload_dynamic_data(device, &rect.data, BufferUsage::COPY_SRC)
                             .unwrap();
 
                         command_buffer.copy_buffer_to_texture(
@@ -378,11 +378,11 @@ impl DearImguiRenderer {
             };
 
             let vtx_buffer = command_buffer
-                .upload_dynamic_data(pod_data, BufferUsage::VERTEX)
+                .upload_dynamic_data(device, pod_data, BufferUsage::VERTEX)
                 .unwrap();
 
             let idx_buffer = command_buffer
-                .upload_dynamic_data(&draw_list.idx[..], BufferUsage::INDEX)
+                .upload_dynamic_data(device, &draw_list.idx[..], BufferUsage::INDEX)
                 .unwrap();
 
             command_buffer.set_vertex_buffer(0, BufferRef::Transient(&vtx_buffer), 0);

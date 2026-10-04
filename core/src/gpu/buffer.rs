@@ -45,9 +45,17 @@ pub struct BufferInfo {
     pub sharing_mode: QueueSharingMode,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum BufferCpuAccess {
+    None,
+    Pointer,
+    DeviceWrite,
+}
+
 pub trait Buffer: Hash + PartialEq + Eq {
     fn info(&self) -> &BufferInfo;
-
-    unsafe fn map(&self, offset: u64, length: u64, invalidate: bool) -> Option<*mut c_void>;
-    unsafe fn unmap(&self, offset: u64, length: u64, flush: bool);
+    fn cpu_access(&self) -> BufferCpuAccess;
+    fn map_ptr(&self) -> Option<*mut c_void>;
+    unsafe fn invalidate(&self, offset: u64, length: u64);
+    unsafe fn flush(&self, offset: u64, length: u64);
 }

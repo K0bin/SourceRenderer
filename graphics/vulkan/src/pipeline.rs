@@ -1410,7 +1410,7 @@ impl VkPipeline {
         .into_boxed_slice();
 
         let sbt = buffer;
-        let map = unsafe { sbt.map(buffer_offset, size, false).unwrap() as *mut u8 };
+        let map = unsafe { sbt.map_ptr().unwrap().offset(buffer_offset as isize) as *mut u8 };
 
         let mut src_offset = 0u64;
         let mut dst_offset = 0u64;
@@ -1472,7 +1472,7 @@ impl VkPipeline {
         }
 
         unsafe {
-            sbt.unmap(buffer_offset, size, true);
+            sbt.flush(buffer_offset, size);
         }
 
         Self {

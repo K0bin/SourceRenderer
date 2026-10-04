@@ -4,14 +4,13 @@ use std::{
     cell::{Ref, RefCell},
     hash::Hash,
 };
-
-use web_sys::{GpuBuffer, GpuBufferDescriptor, GpuDevice, js_sys::Uint8Array};
+use std::ffi::c_void;
+use web_sys::{GpuBuffer, GpuBufferDescriptor, GpuDevice};
+use sourcerenderer_core::gpu::BufferCpuAccess;
 
 pub struct WebGPUBuffer {
     device: GpuDevice,
     buffer: RefCell<GpuBuffer>,
-    rust_memory: RefCell<Option<Box<[u8]>>>,
-    retained_memory_limit: u64,
     mappable: bool,
     info: gpu::BufferInfo,
     _p: PhantomData<*const std::ffi::c_void>,
@@ -45,7 +44,6 @@ impl WebGPUBuffer {
         // Tons of fun to work around...
 
         let mut usage = 0u32;
-        let mut retained_rust_memory_limit = 0u64;
         if info.usage.contains(gpu::BufferUsage::VERTEX) {
             usage |= web_sys::gpu_buffer_usage::VERTEX;
         }
@@ -76,10 +74,6 @@ impl WebGPUBuffer {
         if info.usage == gpu::BufferUsage::COPY_DST && mappable {
             usage = web_sys::gpu_buffer_usage::COPY_DST | web_sys::gpu_buffer_usage::MAP_READ;
         }
-        if info.usage == gpu::BufferUsage::CONSTANT && mappable {
-            // Allocating new Rust memory for every single map operation is too slow.
-            retained_rust_memory_limit = 256;
-        }
         if !info.usage.gpu_writable()
             && !mappable
             && !info.usage.contains(gpu::BufferUsage::INITIAL_COPY)
@@ -94,30 +88,15 @@ impl WebGPUBuffer {
             );
         }
 
-        retained_rust_memory_limit = retained_rust_memory_limit.min(info.size);
         if (usage & web_sys::gpu_buffer_usage::MAP_WRITE) == 0 && mappable {
             // GpuQueue::writeBuffer requires GpuUsage::COPY_DST
             usage |= web_sys::gpu_buffer_usage::COPY_DST;
         }
-        let rust_memory = if retained_rust_memory_limit != 0 {
-            let mut rust_memory_vec = Vec::with_capacity(info.size as usize);
-            rust_memory_vec.resize(retained_rust_memory_limit as usize, 0);
-            Some(rust_memory_vec.into_boxed_slice())
-        } else {
-            Option::<Box<[u8]>>::None
-        };
 
         let descriptor = GpuBufferDescriptor::new(info.size as u32, usage);
         if let Some(name) = name {
             descriptor.set_label(name);
         }
-        let mapped_at_creation = mappable
-            && !info.usage.gpu_writable()
-            && info.usage.contains(gpu::BufferUsage::INITIAL_COPY);
-        assert!(!mapped_at_creation || info.size % 4 == 0);
-        // Mapping at creation would mean we'd have to guarantee it gets unmapped to make it usable on the GPU which would involve lots of tracking.
-        // We'll only do it for buffers with INITIAL_COPY and just assume those will get mapped & unmapped at least once before they get used on the GPU.
-        descriptor.set_mapped_at_creation(false);
         let buffer = device.create_buffer(&descriptor).map_err(|e| {
             log::error!("Failed to create buffer: {:?}", e);
             ()
@@ -126,9 +105,7 @@ impl WebGPUBuffer {
         Ok(Self {
             device: device.clone(),
             buffer: RefCell::new(buffer),
-            rust_memory: RefCell::new(rust_memory),
             mappable,
-            retained_memory_limit: retained_rust_memory_limit,
             info: info.clone(),
             _p: PhantomData,
         })
@@ -162,129 +139,19 @@ impl gpu::Buffer for WebGPUBuffer {
         &self.info
     }
 
-    unsafe fn map(
+    fn cpu_access(&self) -> BufferCpuAccess {
+        BufferCpuAccess::DeviceWrite
+    }
+
+    fn map_ptr(&self) -> Option<*mut c_void> {
+        None
+    }
+
+    unsafe fn invalidate(
         &self,
-        offset: u64,
-        mut length: u64,
-        invalidate: bool,
-    ) -> Option<*mut std::ffi::c_void> {
-        if !self.mappable {
-            return None;
-        }
-        if !invalidate && !self.info.usage.gpu_readable() {
-            log::warn!(
-                "Mapping a GPU-writeonly buffer (so probably mapping for reading) without invalidating will cause issues."
-            );
-        }
-        let buffer_ref = self.buffer.borrow();
-        if invalidate
-            && buffer_ref.usage()
-                != (web_sys::gpu_buffer_usage::COPY_DST | web_sys::gpu_buffer_usage::MAP_READ)
-        {
-            log::error!("Cannot read GPU written buffer on WebGPU.");
-        }
-        if invalidate && buffer_ref.map_state() != web_sys::GpuBufferMapState::Mapped {
-            log::error!("Cannot read unmapped buffer on WebGPU.");
-        }
+        _offset: u64,
+        _length: u64,
+    ) {}
 
-        length = length.min(self.info.size - offset);
-        debug_assert!(offset + length <= self.info.size);
-
-        let mut memory_opt: std::cell::RefMut<'_, Option<Box<[u8]>>> =
-            self.rust_memory.borrow_mut();
-        let retained_memory_size = if let Some(memory) = memory_opt.as_mut() {
-            memory.len() as u64
-        } else {
-            0u64
-        };
-        if retained_memory_size < length {
-            if cfg!(debug_assertions) {
-                log::trace!(
-                    "Creating new memory copy of buffer because current one is too small ({:?} bytes). Requested by map operation: {:?} bytes. Buffer size: {:?} bytes, buffer usage: {:?}",
-                    retained_memory_size,
-                    length,
-                    self.info.size,
-                    self.info.usage
-                );
-            }
-            let mut memory_vec =
-                Vec::<u8>::with_capacity(length.max(self.retained_memory_limit) as usize);
-            unsafe {
-                memory_vec.set_len(length.max(self.retained_memory_limit) as usize);
-            }
-            *memory_opt = Some(memory_vec.into_boxed_slice());
-        }
-        let memory = memory_opt.as_mut().unwrap();
-        let entire_buffer_mapped = (memory.len() as u64) >= self.info.size;
-
-        let memory_slice = if entire_buffer_mapped {
-            &mut memory[offset as usize..offset as usize + length as usize]
-        } else {
-            &mut memory[..length as usize]
-        };
-
-        Some(memory_slice.as_mut_ptr() as *mut std::ffi::c_void)
-    }
-
-    unsafe fn unmap(&self, offset: u64, mut length: u64, flush: bool) {
-        let mut memory_opt: std::cell::RefMut<'_, Option<Box<[u8]>>> =
-            self.rust_memory.borrow_mut();
-        if memory_opt.is_none() {
-            assert!(self.mappable);
-            // Buffer wasn't mapped
-            return;
-        }
-        if !flush && !self.info.usage.gpu_writable() {
-            log::warn!(
-                "Mapping a GPU-readonly buffer (so probably mapped for writing) without flushing will cause issues."
-            );
-        }
-
-        let memory = memory_opt.as_mut().unwrap();
-
-        if flush {
-            let buffer = self.buffer.borrow_mut();
-            length = length.min(self.info.size - offset);
-            assert!(offset + length <= self.info.size);
-            assert!((memory.len() as u64) >= length);
-
-            let entire_buffer_mapped = (memory.len() as u64) >= self.info.size;
-
-            let memory_slice = if entire_buffer_mapped {
-                &memory[offset as usize..offset as usize + length as usize]
-            } else {
-                &memory[..length as usize]
-            };
-
-            if buffer.map_state() == web_sys::GpuBufferMapState::Mapped {
-                let mapped_range = buffer.get_mapped_range().unwrap();
-                let uint8_array = Uint8Array::new_with_byte_offset_and_length(
-                    &mapped_range,
-                    offset as u32,
-                    length as u32,
-                );
-                uint8_array.copy_from(memory_slice);
-                buffer.unmap();
-            } else {
-                assert_ne!((buffer.usage() & web_sys::gpu_buffer_usage::COPY_DST), 0);
-                self.device
-                    .queue()
-                    .write_buffer_with_u32_and_u8_slice(&buffer, offset as u32, memory_slice)
-                    .unwrap();
-            }
-        }
-        if (memory.len() as u64) > self.retained_memory_limit {
-            if cfg!(debug_assertions) {
-                log::trace!(
-                    "Removing memory copy of buffer ({:?} bytes) because it exceeds limit ({:?} bytes). Buffer size: {:?} bytes, buffer usage: {:?}",
-                    memory.len(),
-                    self.retained_memory_limit,
-                    self.info.size,
-                    self.info.usage
-                );
-            }
-            // Free mapping copy
-            *memory_opt = None;
-        }
-    }
+    unsafe fn flush(&self, _offset: u64, _length: u64) {}
 }

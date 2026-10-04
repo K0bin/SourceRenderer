@@ -108,6 +108,7 @@ impl CompositingPass {
         }
         let setup_ubo = cmd_buffer
             .upload_dynamic_data(
+                params.device,
                 &[Setup {
                     gamma: 2.2f32,
                     exposure: 0.01f32,

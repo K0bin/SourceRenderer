@@ -91,7 +91,7 @@ impl SharpenPass {
             .unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         let sharpen_setup_ubo = cmd_buffer
-            .upload_dynamic_data(&[0.3f32], BufferUsage::CONSTANT)
+            .upload_dynamic_data(pass_params.device, &[0.3f32], BufferUsage::CONSTANT)
             .unwrap();
         cmd_buffer.bind_uniform_buffer(
             BindingFrequency::VeryFrequent,

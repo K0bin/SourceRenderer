@@ -390,13 +390,13 @@ impl GeometryPass {
             });
         }
         let per_frame_buffer = cmd_buffer
-            .upload_dynamic_data(&[per_frame], BufferUsage::CONSTANT)
+            .upload_dynamic_data(device, &[per_frame], BufferUsage::CONSTANT)
             .unwrap();
         let point_light_buffer = cmd_buffer
-            .upload_dynamic_data(&point_lights[..], BufferUsage::STORAGE)
+            .upload_dynamic_data(device, &point_lights[..], BufferUsage::STORAGE)
             .unwrap();
         let directional_light_buffer = cmd_buffer
-            .upload_dynamic_data(&directional_lights[..], BufferUsage::STORAGE)
+            .upload_dynamic_data(device, &directional_lights[..], BufferUsage::STORAGE)
             .unwrap();
 
         cmd_buffer.bind_uniform_buffer(

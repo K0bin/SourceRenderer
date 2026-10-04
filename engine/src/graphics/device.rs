@@ -216,22 +216,7 @@ impl Device {
             None,
         )?;
 
-        unsafe {
-            let ptr_void = slice.map(false).unwrap();
-
-            if required_size < size {
-                let ptr_u8 = (ptr_void as *mut u8).offset(required_size as isize);
-                std::ptr::write_bytes(ptr_u8, 0u8, size - required_size);
-            }
-
-            if required_size != 0 {
-                let ptr = ptr_void as *mut u8;
-                let data_u8: &[u8] = cast_slice(data);
-                ptr.copy_from(data_u8.as_ptr(), std::mem::size_of_val(data));
-            }
-
-            slice.unmap(true);
-        }
+        slice.write(self.handle(), data, 0);
         Ok(slice)
     }
 

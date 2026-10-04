@@ -10,7 +10,6 @@ use crate::{
     stubs::WebGPUAccelerationStructure,
     texture::{WebGPUTexture, WebGPUTextureView, format_to_webgpu},
 };
-use bytemuck::Pod;
 use core::panic;
 use js_sys::wasm_bindgen::JsCast;
 use js_sys::{JsNullable, JsString, Uint32Array, wasm_bindgen::JsValue};
@@ -23,6 +22,7 @@ use sourcerenderer_core::{
     gpu::{self, Buffer as _, Texture as _, TextureView as _},
 };
 use std::cell::RefCell;
+use std::ffi::c_void;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -355,17 +355,16 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         );
     }
 
-    unsafe fn set_push_constant_data<T>(
+    unsafe fn set_push_constant_data(
         &mut self,
-        data: &[T],
+        data: *const c_void,
+        length: u64,
         visible_for_shader_stage: gpu::ShaderType,
-    ) where
-        T: 'static + Pod,
-    {
+    ) {
         let cmd_buffer = self.get_recording_mut();
         cmd_buffer
             .binding_manager
-            .set_push_constant_data(data, visible_for_shader_stage);
+            .set_push_constant_data(data, length, visible_for_shader_stage);
     }
 
     unsafe fn draw(

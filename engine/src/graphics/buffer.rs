@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use bytemuck::Pod;
 use log::trace;
-
+use sourcerenderer_core::gpu::BufferCpuAccess;
 use super::gpu::{Buffer as _, Heap as _};
 use super::*;
 
@@ -64,56 +64,91 @@ impl BufferSlice {
         invalidate: bool,
     ) -> Option<*mut c_void> {
         debug_assert!(self.buffer_allocation.range.length >= offset + length);
+        if invalidate {
+            unsafe {
+                self.handle().invalidate(
+                    self.buffer_allocation.range.offset + offset,
+                    length,
+                )
+            }
+        }
         unsafe {
-            self.handle().map(
-                self.buffer_allocation.range.offset + offset,
-                length,
-                invalidate,
-            )
+            self.handle().map_ptr().map(|ptr| ptr.offset(offset as isize))
         }
     }
 
     #[inline(always)]
     pub unsafe fn unmap_part(&self, offset: u64, length: u64, flush: bool) {
         debug_assert!(self.buffer_allocation.range.length >= offset + length);
+        if !flush {
+            return;
+        }
         unsafe {
             self.handle()
-                .unmap(self.buffer_allocation.range.offset + offset, length, flush)
+                .flush(self.buffer_allocation.range.offset + offset, length)
         }
+    }
+
+    #[inline(always)]
+    pub fn cpu_access(&self) -> BufferCpuAccess {
+        self.handle().cpu_access()
     }
 
     #[inline(always)]
     pub unsafe fn map(&self, invalidate: bool) -> Option<*mut c_void> {
-        unsafe {
-            self.handle().map(
-                self.buffer_allocation.range.offset,
-                self.buffer_allocation.range.length,
-                invalidate,
-            )
-        }
+        debug_assert!(self.handle().map_ptr().is_some());
+        debug_assert_eq!(self.handle().cpu_access(), BufferCpuAccess::Pointer);
+        self.handle().map_ptr().map(|ptr| {
+            if invalidate {
+                unsafe {
+                    self.handle().invalidate(
+                        self.buffer_allocation.range.offset,
+                        self.buffer_allocation.range.length,
+                    );
+                }
+            }
+            unsafe {
+                ptr.offset(self.buffer_allocation.range.offset as isize)
+            }
+        })
     }
 
     #[inline(always)]
     pub unsafe fn unmap(&self, flush: bool) {
+        debug_assert!(self.handle().map_ptr().is_some());
+        debug_assert_eq!(self.handle().cpu_access(), BufferCpuAccess::Pointer);
+        if !flush || self.handle().map_ptr().is_none() {
+            return;
+        }
         unsafe {
-            self.handle().unmap(
+            self.handle().flush(
                 self.buffer_allocation.range.offset,
                 self.buffer_allocation.range.length,
-                flush,
             );
         }
     }
 
-    pub fn write<T: Pod>(&self, src: &T) -> Option<()> {
-        unsafe {
-            let ptr_opt = self.map(false);
-            if ptr_opt.is_none() {
-                return None;
+    pub fn write<T: Pod>(&self, device: &active_gpu_backend::Device, src: &[T], buffer_offset: u64) {
+        debug_assert!(std::mem::size_of_val(src) as u64 + buffer_offset <= self.length());
+        match self.cpu_access() {
+            BufferCpuAccess::Pointer => unsafe {
+                let ptr_opt = self.map(false);
+                if ptr_opt.is_none() {
+                    unreachable!()
+                }
+                let ptr = ptr_opt.unwrap().offset(buffer_offset as isize);
+                std::ptr::copy_nonoverlapping(src.as_ptr(), std::mem::transmute(ptr), 1);
+                self.unmap(true);
             }
-            let ptr = ptr_opt.unwrap();
-            std::ptr::copy(src, std::mem::transmute(ptr), 1);
-            self.unmap(true);
-            return Some(());
+            BufferCpuAccess::DeviceWrite => {
+                let src_ptr = src.as_ptr() as *const c_void;
+                unsafe {
+                    device.copy_to_buffer(src_ptr, self.handle(), self.offset() + buffer_offset, self.length());
+                }
+            }
+            BufferCpuAccess::None => {
+                panic!("Buffer cannot be accessed on the CPU");
+            },
         }
     }
 
@@ -222,10 +257,10 @@ impl BufferAllocator {
         let chunk = Chunk::new(buffer_and_allocation, sliced_buffer_info.size);
         let allocation = chunk.allocate(info.size, alignment).unwrap();
         matching_chunks.push(chunk);
-        return Ok(Arc::new(BufferSlice {
+        Ok(Arc::new(BufferSlice {
             buffer_allocation: ManuallyDrop::new(allocation),
             destroyer: self.destroyer.clone(),
-        }));
+        }))
     }
 
     pub(super) fn create_buffer(
@@ -302,7 +337,7 @@ impl BufferAllocator {
                 )
             }?;
             Ok(BufferAndAllocation {
-                buffer: buffer,
+                buffer,
                 allocation: Some(allocation),
             })
         }

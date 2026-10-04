@@ -797,7 +797,7 @@ impl MarchingCubesPass {
             }
 
             let thresholds_buffer = command_buffer
-                .upload_dynamic_data(&thresholds, BufferUsage::CONSTANT)
+                .upload_dynamic_data(pass_params.device, &thresholds, BufferUsage::CONSTANT)
                 .unwrap();
 
             command_buffer.bind_uniform_buffer(
