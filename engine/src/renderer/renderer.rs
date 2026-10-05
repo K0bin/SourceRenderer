@@ -260,6 +260,7 @@ impl Renderer {
         );
         std::mem::drop(swapchain_guard);
 
+        self.context.flush_buffer_writes();
         self.device.submit_transfers();
         match render_path_result {
             Ok(result) => {

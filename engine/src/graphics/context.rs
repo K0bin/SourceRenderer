@@ -101,9 +101,7 @@ impl GraphicsContext {
         new_frame
     }
 
-    pub fn end_frame(&mut self) {
-        assert_eq!(self.current_frame, self.completed_frame + 1);
-
+    pub fn flush_buffer_writes(&mut self) {
         // Flush all transient buffers
         // - Makes Vulkan non-coherent memory of the buffer available to the device.
         // - On WebGPU it does the actual copy. Doing one big copy here means less work for the
@@ -114,6 +112,10 @@ impl GraphicsContext {
             let command_pool = frame.command_pool.borrow_mut();
             command_pool.transient_buffer_allocator().flush_all();
         }
+    }
+
+    pub fn end_frame(&mut self) {
+        assert_eq!(self.current_frame, self.completed_frame + 1);
 
         let mut fences = SmallVec::<[QueueFenceValue; 3]>::new();
         fences.push((
