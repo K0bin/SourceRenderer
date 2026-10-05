@@ -171,11 +171,8 @@ impl LevelData {
     }
 
     fn loaded_component_into<T: Any + Sized + Clone>(component: &Box<dyn Any>) -> T {
-        assert!(component.as_ref().is::<T>());
-
         let any_ref = component.as_ref();
         let t_ref = any_ref.downcast_ref::<T>().unwrap();
-        let t_ptr = t_ref as *const T;
-        unsafe { core::ptr::read(t_ptr) }
+        t_ref.clone()
     }
 }
