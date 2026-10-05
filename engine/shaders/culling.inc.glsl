@@ -336,7 +336,7 @@ bool checkVisibilityAgainstFrustum(Frustum frustum, GPUBoundingBox aabb, Camera 
   // U x A_i
   {
     for (uint i = 0; i < 3; i++) {
-      vec3 m = vec3(obb.axes[i].z, 0, -obb.axes[i].y);
+      vec3 m = vec3(obb.axes[i].z, 0, -obb.axes[i].x);
       float moX = abs(m.x);
       float moY = 0;
       float moZ = m.z;

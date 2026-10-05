@@ -214,7 +214,7 @@ impl Frustum {
         // U x A_i
         {
             for i in 0..3 {
-                let m = Vec3::new(obb.axes[i].z, 0f32, -obb.axes[i].y);
+                let m = Vec3::new(obb.axes[i].z, 0f32, -obb.axes[i].x);
                 let mo_x = m.x.abs();
                 let mo_y = 0f32;
                 let mo_z = m.z;
