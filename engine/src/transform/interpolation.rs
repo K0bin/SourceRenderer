@@ -1,12 +1,7 @@
-use bevy_app::{
-    App,
-    FixedPostUpdate,
-    Plugin,
-    PostUpdate,
-};
+use bevy_app::{App, FixedPostUpdate, FixedPreUpdate, Plugin, PostUpdate};
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::prelude::ParallelCommands;
+use bevy_ecs::prelude::{Added, Changed, IntoScheduleConfigs, Or, ParallelCommands};
 use bevy_ecs::system::{
     Commands,
     Query,
@@ -30,13 +25,27 @@ pub struct InterpolationPlugin;
 
 impl Plugin for InterpolationPlugin {
     fn build(&self, app: &mut App) {
+        app.add_systems(FixedPostUpdate, add_previous_global_transform);
         app.add_systems(FixedPostUpdate, update_previous_global_transform);
         app.add_systems(PostUpdate, interpolate_transform_matrix);
     }
 }
 
+// Add PreviousGlobalTransform component, so we build an InterPolatedTransform later
+// without a frame of latency.
+fn add_previous_global_transform(
+    query: Query<(Entity, &GlobalTransform), Added<GlobalTransform>>,
+    mut commands: Commands,
+) {
+    for (entity, transform) in query.iter() {
+        commands
+            .entity(entity)
+            .insert(PreviousGlobalTransform(transform.affine()));
+    }
+}
+
 fn update_previous_global_transform(
-    query: Query<(Entity, &GlobalTransform)>,
+    query: Query<(Entity, &GlobalTransform), Changed<GlobalTransform>>,
     mut commands: Commands,
 ) {
     for (entity, transform) in query.iter() {
@@ -49,7 +58,7 @@ fn update_previous_global_transform(
 #[allow(unused)]
 fn interpolate_transform_matrix_mt(
     time: Res<Time<Fixed>>,
-    query: Query<(Entity, &PreviousGlobalTransform, &GlobalTransform)>,
+    query: Query<(Entity, &PreviousGlobalTransform, &GlobalTransform), Or<(Added<GlobalTransform>, Added<PreviousGlobalTransform>, Changed<GlobalTransform>)>>,
     par_commands: ParallelCommands,
 ) {
     query.par_iter().for_each(|(entity, old_transform, new_transform)| {
@@ -72,7 +81,7 @@ fn interpolate_transform_matrix_mt(
 
 fn interpolate_transform_matrix(
     time: Res<Time<Fixed>>,
-    query: Query<(Entity, &PreviousGlobalTransform, &GlobalTransform)>,
+    query: Query<(Entity, &PreviousGlobalTransform, &GlobalTransform), Or<(Added<GlobalTransform>, Changed<GlobalTransform>, Added<PreviousGlobalTransform>)>>,
     mut commands: Commands,
 ) {
     let batch: Vec<(Entity, InterpolatedTransform)> = query.iter().map(|(entity, old_transform, new_transform)| {
