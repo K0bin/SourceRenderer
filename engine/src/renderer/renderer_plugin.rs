@@ -6,7 +6,7 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use bevy_app::{App, AppExit, Last};
-use bevy_ecs::change_detection::DetectChanges;
+use bevy_ecs::change_detection::{DetectChanges, Tick};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::RemovedComponents;
 use bevy_ecs::message::{Message, MessageWriter};
@@ -15,6 +15,7 @@ use bevy_ecs::prelude::{IntoScheduleConfigs, Resource};
 use bevy_ecs::schedule::SystemSet;
 #[allow(unused_imports)]
 use bevy_ecs::system::{NonSend, NonSendMut, Query, Res, ResMut};
+use bevy_ecs::system::SystemChangeTick;
 use bevy_ecs::world::Ref;
 #[allow(unused_imports)]
 use bevy_platform::cell::SyncCell;
@@ -70,6 +71,7 @@ pub fn window_changed(app: &App, window_state: WindowState) {
 #[derive(Resource)]
 struct RendererResourceWrapper {
     sender: ManuallyDrop<RendererSender>,
+    last_unsaturated_tick: Tick,
     is_saturated: bool,
     renderer: Option<SyncCell<Renderer>>,
     thread_handle: Option<JoinHandle<()>>,
@@ -78,6 +80,7 @@ struct RendererResourceWrapper {
 #[cfg(feature = "non_send_gpu")]
 struct RendererResourceWrapper {
     sender: ManuallyDrop<RendererSender>,
+    last_unsaturated_tick: Tick,
     is_saturated: bool,
     renderer: Option<SyncCell<Renderer>>,
     thread_handle: Option<JoinHandle<()>>,
@@ -184,6 +187,7 @@ pub fn insert_resources<P: GraphicsPlatform<ActiveBackend>>(
 
     let wrapper = RendererResourceWrapper {
         sender: ManuallyDrop::new(sender),
+        last_unsaturated_tick: Tick::default(),
         is_saturated: false,
         renderer: renderer.map(|r| SyncCell::new(r)),
         thread_handle: join_handle,
@@ -308,7 +312,7 @@ fn extract_static_renderables(
             if result.is_err() {
                 let _ = events.write(AppExit::from_code(1));
             }
-        } else if !renderer.is_saturated {
+        } else if !renderer.is_saturated && transform.is_changed_after(renderer.last_unsaturated_tick) {
             let result = renderer.sender.update_transform(entity, transform.0);
 
             if result.is_err() {
@@ -348,7 +352,7 @@ fn extract_point_lights(
             if result.is_err() {
                 let _ = events.write(AppExit::from_code(1));
             }
-        } else if !renderer.is_saturated {
+        } else if !renderer.is_saturated && transform.is_changed_after(renderer.last_unsaturated_tick) {
             let result = renderer.sender.update_transform(entity, transform.0);
 
             if result.is_err() {
@@ -387,7 +391,7 @@ fn extract_directional_lights(
             if result.is_err() {
                 let _ = events.write(AppExit::from_code(1));
             }
-        } else if !renderer.is_saturated {
+        } else if !renderer.is_saturated && transform.is_changed_after(renderer.last_unsaturated_tick) {
             let result = renderer.sender.update_transform(entity, transform.0);
 
             if result.is_err() {
@@ -422,7 +426,7 @@ fn extract_volume_renderables(
             if result.is_err() {
                 let _ = events.write(AppExit::from_code(1));
             }
-        } else if !renderer.is_saturated {
+        } else if !renderer.is_saturated && transform.is_changed_after(renderer.last_unsaturated_tick) {
             let result = renderer
                 .sender
                 .update_volume_thresholds(entity, &renderable);
@@ -486,10 +490,12 @@ fn extract_ui_data(
 }
 
 #[allow(unused_mut)]
-fn end_frame(mut events: MessageWriter<AppExit>, mut renderer: RendererResourceAccessorMut) {
+fn end_frame(mut events: MessageWriter<AppExit>, mut renderer: RendererResourceAccessorMut, tick: SystemChangeTick) {
     if renderer.is_saturated {
         return;
     }
+
+    renderer.last_unsaturated_tick = tick.this_run();
 
     if !renderer.is_saturated {
         let result = renderer.sender.end_frame();
