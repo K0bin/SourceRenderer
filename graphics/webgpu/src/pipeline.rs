@@ -2,8 +2,9 @@ use js_sys::JsNullable;
 use log::warn;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu;
-use std::{hash::Hash, sync::Arc};
+use std::hash::Hash;
 use std::marker::PhantomData;
+use std::rc::Rc;
 use web_sys::{
     GpuBlendComponent, GpuBlendFactor, GpuBlendOperation, GpuBlendState, GpuColorTargetState,
     GpuCompareFunction, GpuComputePipeline, GpuComputePipelineDescriptor, GpuCullMode,
@@ -125,7 +126,7 @@ impl gpu::Shader for WebGPUShader {
 
 pub struct WebGPUGraphicsPipeline {
     pipeline: GpuRenderPipeline,
-    layout: Arc<WebGPUPipelineLayout>,
+    layout: Rc<WebGPUPipelineLayout>,
     _p: PhantomData<*const std::ffi::c_void>
 }
 
@@ -493,7 +494,7 @@ impl WebGPUGraphicsPipeline {
     }
 
     #[inline(always)]
-    pub fn layout(&self) -> &Arc<WebGPUPipelineLayout> {
+    pub fn layout(&self) -> &Rc<WebGPUPipelineLayout> {
         &self.layout
     }
 }
@@ -501,7 +502,7 @@ impl WebGPUGraphicsPipeline {
 pub struct WebGPUComputePipeline {
     pipeline: GpuComputePipeline,
     resources: [Box<[gpu::Resource]>; gpu::NON_BINDLESS_SET_COUNT as usize],
-    layout: Arc<WebGPUPipelineLayout>,
+    layout: Rc<WebGPUPipelineLayout>,
     _p: PhantomData<*const std::ffi::c_void>
 }
 
@@ -629,7 +630,7 @@ impl WebGPUComputePipeline {
     }
 
     #[inline(always)]
-    pub fn layout(&self) -> &Arc<WebGPUPipelineLayout> {
+    pub fn layout(&self) -> &Rc<WebGPUPipelineLayout> {
         &self.layout
     }
 }

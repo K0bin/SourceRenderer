@@ -2,8 +2,9 @@ use smallvec::SmallVec;
 use std::marker::PhantomData;
 use std::{
     collections::HashMap,
-    sync::{Arc, RwLock},
+    sync::RwLock,
 };
+use std::rc::Rc;
 use web_sys::GpuDevice;
 
 use crate::binding::{WebGPUBindGroupEntryInfo, WebGPUBindGroupLayout, WebGPUPipelineLayout};
@@ -16,8 +17,8 @@ pub type WebGPUPipelineLayoutKey = [WebGPUBindGroupLayoutKey; gpu::NON_BINDLESS_
 
 pub struct WebGPUShared {
     device: GpuDevice,
-    bind_group_layouts: RwLock<HashMap<WebGPUBindGroupLayoutKey, Arc<WebGPUBindGroupLayout>>>,
-    pipeline_layouts: RwLock<HashMap<WebGPUPipelineLayoutKey, Arc<WebGPUPipelineLayout>>>,
+    bind_group_layouts: RwLock<HashMap<WebGPUBindGroupLayoutKey, Rc<WebGPUBindGroupLayout>>>,
+    pipeline_layouts: RwLock<HashMap<WebGPUPipelineLayoutKey, Rc<WebGPUPipelineLayout>>>,
     _p: PhantomData<*const std::ffi::c_void>,
 }
 
@@ -35,7 +36,7 @@ impl WebGPUShared {
     pub(crate) fn get_bind_group_layout(
         &self,
         layout_key: &WebGPUBindGroupLayoutKey,
-    ) -> Arc<WebGPUBindGroupLayout> {
+    ) -> Rc<WebGPUBindGroupLayout> {
         {
             let cache = self.bind_group_layouts.read().unwrap();
             if let Some(layout) = cache.get(layout_key) {
@@ -49,11 +50,11 @@ impl WebGPUShared {
         }
 
         let bind_group_layout =
-            Arc::new(WebGPUBindGroupLayout::new(layout_key, &self.device).unwrap());
+            Rc::new(WebGPUBindGroupLayout::new(layout_key, &self.device).unwrap());
 
         let mut cache: std::sync::RwLockWriteGuard<
             '_,
-            HashMap<SmallVec<[WebGPUBindGroupEntryInfo; 32]>, Arc<WebGPUBindGroupLayout>>,
+            HashMap<SmallVec<[WebGPUBindGroupEntryInfo; 32]>, Rc<WebGPUBindGroupLayout>>,
         > = self.bind_group_layouts.write().unwrap();
         cache.insert(layout_key.clone(), bind_group_layout.clone());
         bind_group_layout
@@ -63,7 +64,7 @@ impl WebGPUShared {
     pub(super) fn get_pipeline_layout(
         &self,
         layout_key: &WebGPUPipelineLayoutKey,
-    ) -> Arc<WebGPUPipelineLayout> {
+    ) -> Rc<WebGPUPipelineLayout> {
         {
             let cache = self.pipeline_layouts.read().unwrap();
             if let Some(layout) = cache.get(layout_key) {
@@ -72,7 +73,7 @@ impl WebGPUShared {
         }
 
         assert!(layout_key.len() <= gpu::NON_BINDLESS_SET_COUNT as usize);
-        let mut bind_group_layouts: [Option<Arc<WebGPUBindGroupLayout>>;
+        let mut bind_group_layouts: [Option<Rc<WebGPUBindGroupLayout>>;
             gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
         for i in 0..layout_key.len() {
             let set_key = &layout_key[i];
@@ -80,7 +81,7 @@ impl WebGPUShared {
         }
 
         let pipeline_layout =
-            Arc::new(WebGPUPipelineLayout::new(&self.device, &bind_group_layouts));
+            Rc::new(WebGPUPipelineLayout::new(&self.device, &bind_group_layouts));
         let mut cache = self.pipeline_layouts.write().unwrap();
         cache.insert(layout_key.clone(), pipeline_layout.clone());
         pipeline_layout

@@ -12,7 +12,7 @@ use crate::{
 };
 use core::panic;
 use js_sys::wasm_bindgen::JsCast;
-use js_sys::{wasm_bindgen::JsValue, JsNullable, JsString, Uint32Array};
+use js_sys::{wasm_bindgen::JsValue, JsNullable, JsString};
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{
     Barrier, BarrierSync, BindingFrequency, BufferArrayEntry, SplitBarrierWait,
@@ -21,11 +21,9 @@ use sourcerenderer_core::{
     align_up_32,
     gpu::{self, Buffer as _, Texture as _, TextureView as _},
 };
-use std::cell::RefCell;
 use std::ffi::c_void;
 use std::marker::PhantomData;
 use std::rc::Rc;
-use std::sync::Arc;
 use web_sys::{
     GpuCommandBuffer, GpuCommandEncoder, GpuComputePassEncoder, GpuDevice, GpuExtent3dDict,
     GpuIndexFormat, GpuLoadOp, GpuRenderPassColorAttachment, GpuRenderPassDepthStencilAttachment,
@@ -55,10 +53,10 @@ impl Drop for WebGPUPassEncoder {
 
 enum WebGPUBoundPipeline {
     Graphics {
-        pipeline_layout: Arc<WebGPUPipelineLayout>,
+        pipeline_layout: Rc<WebGPUPipelineLayout>,
     },
     Compute {
-        pipeline_layout: Arc<WebGPUPipelineLayout>,
+        pipeline_layout: Rc<WebGPUPipelineLayout>,
     },
     None,
 }

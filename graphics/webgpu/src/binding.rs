@@ -8,7 +8,8 @@ use js_sys::JsNullable;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu;
 use std::marker::PhantomData;
-use std::{collections::HashMap, hash::Hash, ops::Deref, sync::Arc};
+use std::{collections::HashMap, hash::Hash, ops::Deref};
+use std::rc::Rc;
 use web_sys::{
     GpuBindGroup, GpuBindGroupDescriptor, GpuBindGroupEntry, GpuBindGroupLayout,
     GpuBindGroupLayoutDescriptor, GpuBindGroupLayoutEntry, GpuBuffer, GpuBufferBinding,
@@ -208,16 +209,16 @@ impl Eq for WebGPUBindGroupLayout {}
 
 pub struct WebGPUPipelineLayout {
     layout: GpuPipelineLayout,
-    bind_group_layouts: [Option<Arc<WebGPUBindGroupLayout>>; gpu::NON_BINDLESS_SET_COUNT as usize],
+    bind_group_layouts: [Option<Rc<WebGPUBindGroupLayout>>; gpu::NON_BINDLESS_SET_COUNT as usize],
     _p: PhantomData<*const std::ffi::c_void>,
 }
 
 impl WebGPUPipelineLayout {
     pub(crate) fn new(
         device: &GpuDevice,
-        bind_group_layouts: &[Option<Arc<WebGPUBindGroupLayout>>],
+        bind_group_layouts: &[Option<Rc<WebGPUBindGroupLayout>>],
     ) -> Self {
-        let mut owned_bind_group_layouts: [Option<Arc<WebGPUBindGroupLayout>>;
+        let mut owned_bind_group_layouts: [Option<Rc<WebGPUBindGroupLayout>>;
             gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
         let mut bind_group_layouts_js: [JsNullable<GpuBindGroupLayout>;
             gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
@@ -240,14 +241,14 @@ impl WebGPUPipelineLayout {
         &self.layout
     }
 
-    pub(crate) fn bind_group_layout(&self, index: u32) -> Option<&Arc<WebGPUBindGroupLayout>> {
+    pub(crate) fn bind_group_layout(&self, index: u32) -> Option<&Rc<WebGPUBindGroupLayout>> {
         self.bind_group_layouts[index as usize].as_ref()
     }
 }
 
 pub struct WebGPUBindGroup {
     bind_group: GpuBindGroup,
-    layout: Arc<WebGPUBindGroupLayout>,
+    layout: Rc<WebGPUBindGroupLayout>,
     is_transient: bool,
     bindings: SmallVec<[WebGPUBoundResource; DEFAULT_PER_SET_PREALLOCATED_SIZE]>,
     _p: PhantomData<*const std::ffi::c_void>,
@@ -256,7 +257,7 @@ pub struct WebGPUBindGroup {
 impl WebGPUBindGroup {
     fn new<'a, T>(
         device: &GpuDevice,
-        layout: &Arc<WebGPUBindGroupLayout>,
+        layout: &Rc<WebGPUBindGroupLayout>,
         is_transient: bool,
         bindings: &'a [T],
     ) -> Result<Self, ()>
@@ -333,7 +334,7 @@ impl WebGPUBindGroup {
 
     pub(crate) fn is_compatible<'a, T>(
         &self,
-        layout: &'a Arc<WebGPUBindGroupLayout>,
+        layout: &'a Rc<WebGPUBindGroupLayout>,
         bindings: &'a [T],
     ) -> bool
     where
@@ -807,12 +808,12 @@ impl BindingCompare<Option<&WebGPUBoundResourceRefInternal<'_>>> for WebGPUBound
 }
 
 pub(crate) struct WebGPUBindGroupBinding {
-    pub(crate) set: Arc<WebGPUBindGroup>,
+    pub(crate) set: Rc<WebGPUBindGroup>,
     pub(crate) dynamic_offsets: SmallVec<[u64; 4]>,
 }
 
 struct WebGPUBindGroupCacheEntry {
-    set: Arc<WebGPUBindGroup>,
+    set: Rc<WebGPUBindGroup>,
     last_used_with_resets_conter: u64,
 }
 
@@ -827,8 +828,8 @@ enum CacheMode {
 
 pub(crate) struct BindGroupCaches {
     cache_mode: CacheMode,
-    transient_cache: HashMap<Arc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>,
-    permanent_cache: HashMap<Arc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>,
+    transient_cache: HashMap<Rc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>,
+    permanent_cache: HashMap<Rc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>,
     resets_counter: u64,
 }
 
@@ -870,7 +871,7 @@ impl BindGroupCaches {
 
 pub(crate) struct WebGPUBindingManager {
     device: GpuDevice,
-    current_sets: [Option<Arc<WebGPUBindGroup>>; gpu::NON_BINDLESS_SET_COUNT as usize],
+    current_sets: [Option<Rc<WebGPUBindGroup>>; gpu::NON_BINDLESS_SET_COUNT as usize],
     dirty: DirtyBindGroups,
     bindings: [Vec<WebGPUBoundResource>; gpu::NON_BINDLESS_SET_COUNT as usize],
     limits: WebGPULimits,
@@ -982,11 +983,11 @@ impl WebGPUBindingManager {
     }
 
     fn find_compatible_set_cache<'a, T>(
-        layout: &'a Arc<WebGPUBindGroupLayout>,
+        layout: &'a Rc<WebGPUBindGroupLayout>,
         bindings: &'a [T],
         reset_counter: u64,
-        cache: &mut HashMap<Arc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>,
-    ) -> Option<Arc<WebGPUBindGroup>>
+        cache: &mut HashMap<Rc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>,
+    ) -> Option<Rc<WebGPUBindGroup>>
     where
         WebGPUBoundResource: BindingCompare<Option<&'a T>>,
     {
@@ -1001,10 +1002,10 @@ impl WebGPUBindingManager {
     }
 
     fn find_compatible_set<'a, T>(
-        layout: &'a Arc<WebGPUBindGroupLayout>,
+        layout: &'a Rc<WebGPUBindGroupLayout>,
         bindings: &'a [T],
         caches: &mut BindGroupCaches,
-    ) -> Option<Arc<WebGPUBindGroup>>
+    ) -> Option<Rc<WebGPUBindGroup>>
     where
         WebGPUBoundResource: BindingCompare<Option<&'a T>>,
     {
@@ -1061,7 +1062,7 @@ impl WebGPUBindingManager {
         }
         let layout = layout_option.unwrap();
 
-        let mut set: Option<Arc<WebGPUBindGroup>> = None;
+        let mut set: Option<Rc<WebGPUBindGroup>> = None;
         let bindings =
             &self.bindings[frequency as usize][..(layout.max_used_binding() + 1) as usize];
         if let Some(current_set) = &self.current_sets[frequency as usize] {
@@ -1078,7 +1079,7 @@ impl WebGPUBindingManager {
 
     fn get_descriptor_set_binding_info(
         &self,
-        set: Arc<WebGPUBindGroup>,
+        set: Rc<WebGPUBindGroup>,
         bindings: &[WebGPUBoundResource],
     ) -> WebGPUBindGroupBinding {
         let mut set_binding = WebGPUBindGroupBinding {
@@ -1138,10 +1139,10 @@ impl WebGPUBindingManager {
 
     pub fn get_or_create_set<'a, T>(
         &self,
-        layout: &'a Arc<WebGPUBindGroupLayout>,
+        layout: &'a Rc<WebGPUBindGroupLayout>,
         bindings: &'a [T],
         caches: &mut BindGroupCaches,
-    ) -> Option<Arc<WebGPUBindGroup>>
+    ) -> Option<Rc<WebGPUBindGroup>>
     where
         WebGPUBoundResource: BindingCompare<Option<&'a T>>,
         WebGPUBoundResource: From<&'a T>,
@@ -1155,13 +1156,13 @@ impl WebGPUBindingManager {
         } else {
             Self::find_compatible_set(layout, &bindings, caches)
         };
-        let set: Arc<WebGPUBindGroup> = if let Some(cached_set) = cached_set {
+        let set: Rc<WebGPUBindGroup> = if let Some(cached_set) = cached_set {
             cached_set
         } else {
             let transient = caches.cache_mode == CacheMode::TransientOnly
                 || caches.cache_mode == CacheMode::None;
             let new_set =
-                Arc::new(WebGPUBindGroup::new(&self.device, layout, transient, bindings).unwrap());
+                Rc::new(WebGPUBindGroup::new(&self.device, layout, transient, bindings).unwrap());
 
             if caches.cache_mode != CacheMode::None {
                 let cache = if transient {
