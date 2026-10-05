@@ -289,55 +289,15 @@ impl WebGPUGraphicsPipeline {
 
         let mut bind_group_layout_keys: [WebGPUBindGroupLayoutKey;
             gpu::NON_BINDLESS_SET_COUNT as usize] = Default::default();
-        let entry = WebGPUBindGroupEntryInfo {
-            name: "VS_PushConsts".to_string(),
-            shader_stage: web_sys::gpu_shader_stage::VERTEX,
-            index: 0,
-            writable: false,
-            resource_type: gpu::ResourceType::UniformBuffer,
-            has_dynamic_offset: true,
-            sampling_type: gpu::SamplingType::Float,
-            texture_dimension: gpu::TextureDimension::Dim1D,
-            is_multisampled: false,
-            storage_format: gpu::Format::Unknown,
-            struct_size: info.vs.shader.push_constant_size,
-            _p: PhantomData
-        };
-        bind_group_layout_keys[gpu::BindingFrequency::VeryFrequent as usize].push(entry);
-        let entry = WebGPUBindGroupEntryInfo {
-            name: "FS_PushConsts".to_string(),
-            shader_stage: web_sys::gpu_shader_stage::FRAGMENT,
-            index: 1,
-            writable: false,
-            resource_type: gpu::ResourceType::UniformBuffer,
-            has_dynamic_offset: true,
-            sampling_type: gpu::SamplingType::Float,
-            texture_dimension: gpu::TextureDimension::Dim1D,
-            is_multisampled: false,
-            storage_format: gpu::Format::Unknown,
-            struct_size: info
-                .fs
-                .as_ref()
-                .map(|fs| fs.shader.push_constant_size)
-                .unwrap_or(8),
-            _p: PhantomData
-        };
-        bind_group_layout_keys[gpu::BindingFrequency::VeryFrequent as usize].push(entry);
 
-        let mut uniform_dynamic_offsets_count = 2u32;
+        let mut uniform_dynamic_offsets_count = 0u32;
         let mut storage_dynamic_offsets_count = 0u32;
 
         for (set_index, shader_set) in info.vs.shader.bindings.iter().enumerate() {
             let set = &mut bind_group_layout_keys[set_index];
-            let push_const_binding_offset =
-                if set_index == gpu::BindingFrequency::VeryFrequent as usize {
-                    2
-                } else {
-                    0
-                };
             for binding in shader_set {
                 let existing_binding_option = set.iter_mut().find(|existing_binding| {
-                    existing_binding.index == binding.index + push_const_binding_offset
+                    existing_binding.index == binding.index
                 });
                 if let Some(existing_binding) = existing_binding_option {
                     assert_eq!(existing_binding.resource_type, binding.resource_type);
@@ -353,7 +313,6 @@ impl WebGPUGraphicsPipeline {
                     existing_binding.shader_stage |= binding.shader_stage;
                 } else {
                     let mut adjusted_binding = binding.clone();
-                    adjusted_binding.index += push_const_binding_offset;
                     adjusted_binding.has_dynamic_offset = match binding.resource_type {
                         gpu::ResourceType::UniformBuffer => {
                             let dynamic = uniform_dynamic_offsets_count

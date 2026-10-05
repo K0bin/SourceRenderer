@@ -1,4 +1,4 @@
-use crate::binding::{BindGroupCaches, CommandBumpAllocator};
+use crate::binding::BindGroupCaches;
 use crate::{
     WebGPUBackend, WebGPUBindGroupBinding, WebGPULimits, WebGPUQueryPool,
     binding::{
@@ -164,7 +164,6 @@ impl WebGPUCommandBuffer {
     fn new(
         device: &GpuDevice,
         limits: &WebGPULimits,
-        bump_allocator: &Rc<RefCell<CommandBumpAllocator>>,
         name: Option<&str>,
     ) -> Self {
         Self {
@@ -176,7 +175,7 @@ impl WebGPUCommandBuffer {
                 }
                 WebGPUCommandBufferHandle::Reset(WebGPUResetCommandBuffer {
                     command_encoder: cmd_buffer,
-                    binding_manager: WebGPUBindingManager::new(device, limits, bump_allocator),
+                    binding_manager: WebGPUBindingManager::new(device, limits),
                     _p: PhantomData,
                 })
             },
@@ -357,14 +356,11 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
 
     unsafe fn set_push_constant_data(
         &mut self,
-        data: *const c_void,
-        length: u64,
-        visible_for_shader_stage: gpu::ShaderType,
+        _data: *const c_void,
+        _length: u64,
+        _visible_for_shader_stage: gpu::ShaderType,
     ) {
-        let cmd_buffer = self.get_recording_mut();
-        cmd_buffer
-            .binding_manager
-            .set_push_constant_data(data, length, visible_for_shader_stage);
+        todo!("Implement WebGPU immediates!")
     }
 
     unsafe fn draw(
@@ -1206,20 +1202,17 @@ pub struct WebGPUCommandPool {
     device: GpuDevice,
     limits: WebGPULimits,
     bind_group_caches: BindGroupCaches,
-    bump_allocator: Rc<RefCell<CommandBumpAllocator>>,
     offsets: Box<[u32]>,
     _p: PhantomData<*const std::ffi::c_void>,
 }
 
 impl WebGPUCommandPool {
     pub(crate) fn new(device: &GpuDevice, limits: &WebGPULimits) -> Self {
-        let allocator = CommandBumpAllocator::new(device);
         let offsets = vec![0u32; (gpu::PER_SET_BINDINGS * gpu::NON_BINDLESS_SET_COUNT) as usize].into_boxed_slice();
         Self {
             device: device.clone(),
             limits: limits.clone(),
             bind_group_caches: BindGroupCaches::new(),
-            bump_allocator: Rc::new(RefCell::new(allocator)),
             offsets,
             _p: PhantomData,
         }
@@ -1228,11 +1221,10 @@ impl WebGPUCommandPool {
 
 impl gpu::CommandPool<WebGPUBackend> for WebGPUCommandPool {
     unsafe fn create_command_buffer(&mut self, name: Option<&str>) -> WebGPUCommandBuffer {
-        WebGPUCommandBuffer::new(&self.device, &self.limits, &self.bump_allocator, name)
+        WebGPUCommandBuffer::new(&self.device, &self.limits, name)
     }
 
     unsafe fn reset(&mut self) {
-        self.bump_allocator.borrow_mut().reset(true);
         self.bind_group_caches.reset();
     }
 }

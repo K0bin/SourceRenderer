@@ -828,79 +828,6 @@ enum CacheMode {
     PermanentOnly,
 }
 
-const PUSH_CONST_BUMP_ALLOCATOR_BUFFER_SIZE: u64 = 1u64 << 20u64;
-
-pub(super) struct CommandBumpAllocator {
-    buffers: SmallVec<[GpuBuffer; 1]>,
-    buffer_index: usize,
-    offset: u64,
-}
-
-impl CommandBumpAllocator {
-    pub(super) fn new(device: &GpuDevice) -> Self {
-        let buffer = Self::create_buffer(device, 0);
-        Self {
-            buffers: smallvec![buffer],
-            buffer_index: 0,
-            offset: 0,
-        }
-    }
-
-    fn create_buffer(device: &GpuDevice, index: u32) -> GpuBuffer {
-        let descriptor = GpuBufferDescriptor::new(
-            PUSH_CONST_BUMP_ALLOCATOR_BUFFER_SIZE as u32,
-            web_sys::gpu_buffer_usage::UNIFORM | web_sys::gpu_buffer_usage::COPY_DST,
-        );
-        descriptor.set_label(&format!("Push constant bump alloc buffer {}", index));
-        device.create_buffer(&descriptor).unwrap()
-    }
-
-    fn copy_to(
-        &mut self,
-        device: &GpuDevice,
-        data: *const c_void,
-        length: u64,
-        min_alignment: u64,
-    ) -> (&GpuBuffer, u64) {
-        let data_as_bytes: &[u8] = unsafe { std::slice::from_raw_parts(data as *const u8, length as usize) };
-        let mut aligned_offset = align_up_64(self.offset, min_alignment);
-        let alignment_padding = aligned_offset - self.offset;
-
-        assert_eq!(data_as_bytes.len() % 4, 0);
-        assert!(data_as_bytes.len() as u64 <= PUSH_CONST_BUMP_ALLOCATOR_BUFFER_SIZE);
-
-        if aligned_offset + data_as_bytes.len() as u64 > PUSH_CONST_BUMP_ALLOCATOR_BUFFER_SIZE {
-            self.buffers.push(Self::create_buffer(device, (self.buffer_index as u32) + 1));
-            self.offset = 0;
-            aligned_offset = 0;
-            self.buffer_index += 1;
-        }
-
-        device
-            .queue()
-            .write_buffer_with_u32_and_u8_slice(
-                &self.buffers[self.buffer_index],
-                aligned_offset as u32,
-                data_as_bytes,
-            )
-            .unwrap();
-
-        self.offset += alignment_padding + data_as_bytes.len() as u64;
-        (&self.buffers[self.buffer_index], aligned_offset)
-    }
-
-    pub(super) fn reset(&mut self, trim: bool) {
-        self.offset = 0;
-        self.buffer_index = 0;
-        if trim {
-            for idx in (1..self.buffers.len()).rev() {
-                self.buffers.remove(idx);
-            }
-            self.buffers.shrink_to_fit();
-        }
-    }
-}
-
 pub(crate) struct BindGroupCaches {
     cache_mode: CacheMode,
     transient_cache: HashMap<Arc<WebGPUBindGroupLayout>, Vec<WebGPUBindGroupCacheEntry>>,
@@ -950,14 +877,12 @@ pub(crate) struct WebGPUBindingManager {
     dirty: DirtyBindGroups,
     bindings: [Vec<WebGPUBoundResource>; gpu::NON_BINDLESS_SET_COUNT as usize],
     limits: WebGPULimits,
-    bump_allocator: Rc<RefCell<CommandBumpAllocator>>,
 }
 
 impl WebGPUBindingManager {
     pub(crate) fn new(
         device: &GpuDevice,
         limits: &WebGPULimits,
-        bump_allocator: &Rc<RefCell<CommandBumpAllocator>>,
     ) -> Self {
         let mut bindings: [Vec<WebGPUBoundResource>; gpu::NON_BINDLESS_SET_COUNT as usize] =
             Default::default();
@@ -968,20 +893,13 @@ impl WebGPUBindingManager {
             );
         }
 
-        let mut result = Self {
+        Self {
             device: device.clone(),
             current_sets: Default::default(),
             dirty: DirtyBindGroups::all(),
             bindings,
-            bump_allocator: bump_allocator.clone(),
             limits: limits.clone(),
-        };
-
-        let zero = [0u8; 8];
-        result.set_push_constant_data(zero.as_ptr() as *const c_void, zero.len() as u64, gpu::ShaderType::VertexShader);
-        result.set_push_constant_data(zero.as_ptr() as *const c_void, zero.len() as u64, gpu::ShaderType::FragmentShader);
-
-        result
+        }
     }
 
     pub(crate) fn reset(&mut self) {
@@ -995,9 +913,6 @@ impl WebGPUBindingManager {
         }
 
         self.current_sets = Default::default();
-        let zero = [0u8; 8];
-        self.set_push_constant_data(zero.as_ptr() as *const c_void, zero.len() as u64, gpu::ShaderType::VertexShader);
-        self.set_push_constant_data(zero.as_ptr() as *const c_void, zero.len() as u64, gpu::ShaderType::FragmentShader);
     }
 
     pub(crate) fn bind(
@@ -1006,13 +921,7 @@ impl WebGPUBindingManager {
         slot: u32,
         binding: WebGPUBoundResourceRef,
     ) -> bool {
-        let adjusted_slot = slot * 2
-            + if frequency == gpu::BindingFrequency::VeryFrequent {
-                2
-            } else {
-                0
-            };
-
+        let adjusted_slot = slot * 2;
         let mut internal_binding_2 = WebGPUBoundResourceRefInternal::None;
         let internal_binding = match binding {
             WebGPUBoundResourceRef::None => WebGPUBoundResourceRefInternal::None,
@@ -1073,39 +982,6 @@ impl WebGPUBindingManager {
         let bindings_table = &mut self.bindings[frequency as usize];
         *bindings_table = Default::default();
         self.dirty.insert(DirtyBindGroups::from(frequency));
-    }
-
-    pub(crate) fn set_push_constant_data(
-        &mut self,
-        data: *const c_void,
-        length: u64,
-        visible_for_shader_stage: gpu::ShaderType,
-    ) {
-        let data_as_bytes: &[u8] = unsafe { std::slice::from_raw_parts(data as *const u8, length as usize) };
-
-        let mut bump_alloc = self.bump_allocator.borrow_mut();
-        let (buffer, offset) = bump_alloc.copy_to(
-            &self.device,
-            data,
-            length,
-            self.limits.min_uniform_buffer_offset_alignment as u64,
-        );
-
-        let binding_index = if visible_for_shader_stage == gpu::ShaderType::FragmentShader {
-            1
-        } else {
-            0
-        };
-        self.bindings[gpu::BindingFrequency::VeryFrequent as usize][binding_index] =
-            WebGPUBoundResource::UniformBuffer(WebGPUBufferBindingInfo {
-                buffer: buffer.clone(),
-                offset,
-                length: data_as_bytes.len() as u64,
-                _p: PhantomData,
-            });
-
-        self.dirty
-            .insert(DirtyBindGroups::from(gpu::BindingFrequency::VeryFrequent));
     }
 
     fn find_compatible_set_cache<'a, T>(

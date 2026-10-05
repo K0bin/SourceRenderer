@@ -20,9 +20,13 @@ layout(set = DESCRIPTOR_SET_FRAME, binding = 0) uniform CameraUBO {
   mat4 viewProj;
 } camera;
 
-layout(push_constant) uniform VeryHighFrequencyUbo {
-  mat4 model;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform VeryHighFrequencyUbo {
+    mat4 model;
 };
+
+/*layout(push_constant) uniform VeryHighFrequencyUbo {
+  mat4 model;
+};*/
 
 void main(void) {
   vec4 pos = vec4(in_pos, 1.0);

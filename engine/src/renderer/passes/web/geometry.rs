@@ -227,10 +227,10 @@ impl GeometryPass {
         let parts = &view.drawable_parts;
         for part in parts {
             let drawable = &drawables[part.drawable_index];
-            cmd_buffer.set_push_constant_data(
+            /*cmd_buffer.set_push_constant_data(
                 &[Matrix4::from(drawable.transform)],
                 ShaderType::VertexShader,
-            );
+            );*/
             let model = assets.get_model(drawable.model);
             if model.is_none() {
                 log::debug!("Skipping draw because of missing model");
@@ -269,6 +269,11 @@ impl GeometryPass {
                     );
                 }
             }
+
+            let model_data = cmd_buffer.upload_dynamic_data(device,
+                                                            &[Matrix4::from(drawable.transform)],
+                BufferUsage::CONSTANT).unwrap();
+            cmd_buffer.bind_uniform_buffer(BindingFrequency::VeryFrequent, 0, BufferRef::Transient(&model_data), 0, WHOLE_BUFFER);
             cmd_buffer.finish_binding();
 
             cmd_buffer.set_vertex_buffer(
