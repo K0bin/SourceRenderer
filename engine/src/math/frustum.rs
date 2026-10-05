@@ -25,74 +25,47 @@ pub struct Frustum {
 impl Frustum {
     pub fn new(z_near: f32, z_far: f32, fov: f32, aspect_ratio: f32) -> Self {
         let near_half_width = (fov / 2f32).tan() * z_near;
-        let near_half_height = near_half_width * aspect_ratio;
+        let near_half_height = near_half_width / aspect_ratio;
         Self {
             near_half_width,
             near_half_height,
-            z_near: -z_near,
-            z_far: -z_far,
+            z_near,
+            z_far,
         }
     }
 
     pub fn intersects(&self, bounding_box: &BoundingBox, model_view: &Matrix4) -> bool {
-        let model_view = *model_view;
-        let mut corners = [
-            (model_view
-                * Vec4::new(
-                    bounding_box.min.x,
-                    bounding_box.min.y,
-                    bounding_box.min.z,
-                    1f32,
-                ))
-            .xyz(),
-            (model_view
-                * Vec4::new(
-                    bounding_box.max.x,
-                    bounding_box.min.y,
-                    bounding_box.min.z,
-                    1f32,
-                ))
-            .xyz(),
-            (model_view
-                * Vec4::new(
-                    bounding_box.min.x,
-                    bounding_box.max.y,
-                    bounding_box.min.z,
-                    1f32,
-                ))
-            .xyz(),
-            (model_view
-                * Vec4::new(
-                    bounding_box.min.x,
-                    bounding_box.min.y,
-                    bounding_box.max.z,
-                    1f32,
-                ))
-            .xyz(),
-        ];
+        let model_space_center = (bounding_box.min + bounding_box.max) * 0.5;
+        let model_space_extents = (bounding_box.max - bounding_box.min) * 0.5;
 
-        // The algorithm assumes a right hand frustum, so just invert z in view space
-        for corner in &mut corners {
-            corner.z = -corner.z;
-        }
+        // Transform center to view space
+        let center = (model_view * Vec4::new(model_space_center.x, model_space_center.y, model_space_center.z, 1.0)).xyz();
 
-        let axes = [
-            corners[1] - corners[0],
-            corners[2] - corners[0],
-            corners[3] - corners[0],
-        ];
-        let center = corners[0] + 0.5f32 * (axes[0] + axes[1] + axes[2]);
-        let extents = Vec3::new(axes[0].length(), axes[1].length(), axes[2].length());
+        // Directly extract axes from the view matrix
+        let axis_x = model_view.col(0).xyz();
+        let axis_y = model_view.col(1).xyz();
+        let axis_z = model_view.col(2).xyz();
+
+        let len_x = axis_x.length();
+        let len_y = axis_y.length();
+        let len_z = axis_z.length();
+
+        // Normalize per axis without NaN
+        const EPSILON: f32 = 1e-6;
         let normalized_axes = [
-            axes[0] / extents.x,
-            axes[1] / extents.y,
-            axes[2] / extents.z,
+            if len_x > EPSILON { axis_x / len_x } else { Vec3::new(1.0, 0.0, 0.0) },
+            if len_y > EPSILON { axis_y / len_y } else { Vec3::new(0.0, 1.0, 0.0) },
+            if len_z > EPSILON { axis_z / len_z } else { Vec3::new(0.0, 0.0, 1.0) },
         ];
-        let half_extents = extents * 0.5f32;
+
         let obb = OrientedBoundingBox {
             axes: normalized_axes,
             center,
-            extents: half_extents,
+            extents: Vec3::new(
+                model_space_extents.x * len_x,
+                model_space_extents.y * len_y,
+                model_space_extents.z * len_z,
+            ),
         };
 
         // frustum near and far planes
@@ -104,8 +77,8 @@ impl Frustum {
             }
             let obb_min = mo_c - radius;
             let obb_max = mo_c + radius;
-            let tau_0 = self.z_far;
-            let tau_1 = self.z_near;
+            let tau_0 = self.z_near;
+            let tau_1 = self.z_far;
 
             if obb_min > tau_1 || obb_max < tau_0 {
                 return false;
@@ -247,10 +220,10 @@ impl Frustum {
         {
             for axis in &obb.axes {
                 let m = [
-                    Vec3::new(-self.near_half_width, 0.0f32, self.z_near).cross(*axis),
-                    Vec3::new(self.near_half_width, 0.0f32, self.z_near).cross(*axis),
-                    Vec3::new(0f32, self.near_half_height, self.z_near).cross(*axis),
-                    Vec3::new(0f32, -self.near_half_height, self.z_near).cross(*axis),
+                    Vec3::new(-self.near_half_width,  self.near_half_height, self.z_near).cross(*axis), // Top-Left
+                    Vec3::new( self.near_half_width,  self.near_half_height, self.z_near).cross(*axis), // Top-Right
+                    Vec3::new(-self.near_half_width, -self.near_half_height, self.z_near).cross(*axis), // Bottom-Left
+                    Vec3::new( self.near_half_width, -self.near_half_height, self.z_near).cross(*axis), // Bottom-Right
                 ];
                 for m in m.iter() {
                     let mo_x = m.x.abs();
