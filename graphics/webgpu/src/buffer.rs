@@ -146,7 +146,7 @@ impl gpu::Buffer for WebGPUBuffer {
     }
 
     fn cpu_access(&self) -> BufferCpuAccess {
-        BufferCpuAccess::DeviceWrite
+        BufferCpuAccess::Pointer
     }
 
     fn map_ptr(&self) -> Option<*mut c_void> {
