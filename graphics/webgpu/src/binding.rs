@@ -5,17 +5,14 @@ use crate::{
 };
 use bitflags::bitflags;
 use js_sys::JsNullable;
-use smallvec::{SmallVec, smallvec};
-use sourcerenderer_core::{align_up_64, gpu};
-use std::cell::RefCell;
+use smallvec::SmallVec;
+use sourcerenderer_core::gpu;
 use std::marker::PhantomData;
-use std::rc::Rc;
 use std::{collections::HashMap, hash::Hash, ops::Deref, sync::Arc};
-use std::ffi::c_void;
 use web_sys::{
     GpuBindGroup, GpuBindGroupDescriptor, GpuBindGroupEntry, GpuBindGroupLayout,
     GpuBindGroupLayoutDescriptor, GpuBindGroupLayoutEntry, GpuBuffer, GpuBufferBinding,
-    GpuBufferBindingLayout, GpuBufferBindingType, GpuBufferDescriptor, GpuDevice,
+    GpuBufferBindingLayout, GpuBufferBindingType, GpuDevice,
     GpuPipelineLayout, GpuPipelineLayoutDescriptor, GpuSampler, GpuSamplerBindingLayout,
     GpuSamplerBindingType, GpuStorageTextureAccess, GpuStorageTextureBindingLayout,
     GpuTextureBindingLayout, GpuTextureSampleType, GpuTextureView,
