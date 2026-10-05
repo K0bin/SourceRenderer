@@ -4,7 +4,7 @@ rustflags = [
     # Enable WebGPU
     "--cfg", "web_sys_unstable_apis",
     # Enable features for threads
-    "-Ctarget-feature=+atomics,+bulk-memory,+mutable-globals",
+    "-Ctarget-feature=+atomics,+bulk-memory,+mutable-globals,+simd128",
     "-Clink-arg=--import-memory",
     "-Clink-arg=--shared-memory",
     # Fix build with threads
