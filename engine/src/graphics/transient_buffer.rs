@@ -57,32 +57,15 @@ impl TransientBufferSlice {
     }
 
     #[inline(always)]
-    pub unsafe fn map(&self, generation: u64, invalidate: bool) -> Option<*mut c_void> {
+    pub unsafe fn map(&self, generation: u64) -> Option<*mut c_void> {
         let handle = self.handle(generation);
         debug_assert!(handle.map_ptr().is_some());
         debug_assert_eq!(handle.cpu_access(), BufferCpuAccess::Pointer);
         handle.map_ptr().map(|ptr| {
-            if invalidate {
-                unsafe { handle.invalidate(self.offset, self.length); }
-            }
-
             unsafe {
                 ptr.offset(self.offset as isize)
             }
         })
-    }
-
-    #[inline(always)]
-    pub unsafe fn unmap(&self, generation: u64, flush: bool) {
-        let handle = self.handle(generation);
-        debug_assert!(handle.map_ptr().is_some());
-        debug_assert_eq!(handle.cpu_access(), BufferCpuAccess::Pointer);
-        if !flush || handle.map_ptr().is_none() {
-            return;
-        }
-        unsafe {
-            handle.flush(self.offset, self.length)
-        }
     }
 
     pub fn write<T: Pod>(&self, device: &active_gpu_backend::Device, generation: u64, src: &[T]) {
@@ -90,8 +73,17 @@ impl TransientBufferSlice {
         let src_ptr = src.as_ptr() as *const c_void;
         debug_assert!(std::mem::size_of_val(src) <= self.length as usize);
         debug_assert_ne!(self.handle(generation).cpu_access(), BufferCpuAccess::None);
-        unsafe {
-            device.copy_to_buffer(src_ptr, handle, self.offset(), self.length().min(std::mem::size_of_val(src) as u64));
+
+        if self.handle(generation).cpu_access() == BufferCpuAccess::DeviceWrite {
+            unsafe {
+                device.copy_to_buffer(src_ptr, handle, self.offset(), self.length().min(std::mem::size_of_val(src) as u64));
+            }
+        } else {
+            let mut map_ptr = handle.map_ptr().unwrap();
+            unsafe {
+                map_ptr = map_ptr.offset(self.offset as isize);
+                std::ptr::copy_nonoverlapping(src.as_ptr(), map_ptr.cast(), src.len());
+            }
         }
     }
 }

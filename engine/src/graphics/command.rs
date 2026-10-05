@@ -1184,13 +1184,12 @@ impl<'a> CommandBuffer<'a> {
             .ok()?;
         if required_instances_buffer_size < instances_buffer_size {
             unsafe {
-                let ptr = instances_buffer.map(self.generation(), false).unwrap();
+                let ptr = instances_buffer.map(self.generation()).unwrap();
                 std::ptr::write_bytes(
                     ptr as *mut u8,
                     0u8,
                     (instances_buffer_size - required_instances_buffer_size) as usize,
                 );
-                instances_buffer.unmap(self.generation(), true);
             }
         }
 
