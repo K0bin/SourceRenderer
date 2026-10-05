@@ -513,15 +513,19 @@ impl Renderer {
                     self.scene.set_lightmap(Some(handle.into()));
                 }
                 RendererCommand::WindowChanged(window_state) => match window_state {
-                    WindowState::Fullscreen(width, height) => {
-                        let mut swapchain = self.swapchain.lock().unwrap();
-                        swapchain.size_changed(width, height);
-                        self.scene.main_view_mut().aspect_ratio = (width as f32) / (height as f32);
-                    }
+                    WindowState::Fullscreen(width, height) |
                     WindowState::Window(width, height) => {
                         let mut swapchain = self.swapchain.lock().unwrap();
                         swapchain.size_changed(width, height);
-                        self.scene.main_view_mut().aspect_ratio = (width as f32) / (height as f32);
+
+                        let main_view = self.scene.main_view_mut();
+                        main_view.aspect_ratio = (width as f32) / (height as f32);
+                        main_view.proj_matrix = make_camera_proj(
+                            main_view.camera_fov,
+                            main_view.aspect_ratio,
+                            main_view.near_plane,
+                            main_view.far_plane,
+                        );
                     }
                     WindowState::Minimized => {}
                 },
