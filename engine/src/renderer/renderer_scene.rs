@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use super::ImguiFrameSnapshot;
 use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;
+use bitflags::bitflags;
 use log::warn;
 use sourcerenderer_core::Vec3;
 
@@ -76,8 +77,19 @@ impl<T> RendererEntityType<T> {
     }
 }
 
+bitflags! {
+      #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+      pub struct EntityUsage : u32 {
+        const StaticMesh        = 0b0001;
+        const PointLight        = 0b0010;
+        const DirectionalLight  = 0b0100;
+        const VolumeMesh        = 0b1000;
+      }
+}
+
 pub struct RendererScene {
     views: Vec<View>,
+    entity_usages: HashMap<Entity, EntityUsage>,
     static_meshes: RendererEntityType<RendererStaticDrawable>,
     point_lights: RendererEntityType<RendererPointLight>,
     directional_lights: RendererEntityType<RendererDirectionalLight>,
@@ -90,6 +102,7 @@ impl RendererScene {
     pub fn new() -> Self {
         Self {
             views: vec![View::default()],
+            entity_usages: HashMap::new(),
             static_meshes: RendererEntityType::new(),
             point_lights: RendererEntityType::new(),
             volume_meshes: RendererEntityType::new(),
@@ -157,50 +170,67 @@ impl RendererScene {
     }
 
     pub fn add_static_drawable(&mut self, entity: Entity, static_drawable: RendererStaticDrawable) {
+        *self.entity_usages.entry(entity).or_insert(EntityUsage::empty()) |= EntityUsage::StaticMesh;
         self.static_meshes.add(entity, static_drawable);
     }
 
     pub fn remove_static_drawable(&mut self, entity: Entity) {
+        let entry = self.entity_usages.entry(entity);
+        if let std::collections::hash_map::Entry::Occupied(mut usages) = entry {
+            usages.get_mut().remove(EntityUsage::StaticMesh);
+            if *usages.get() == EntityUsage::empty() {
+                usages.remove();
+            }
+        }
         self.static_meshes.remove(entity);
     }
 
     pub fn update_transform(&mut self, entity: Entity, transform: Affine3A) {
-        let entry_opt = self.static_meshes.get_mut(entity);
-        if let Some(entry) = entry_opt {
-            entry.transform = transform;
+        let usages_opt = self.entity_usages.get(&entity);
+        if usages_opt.is_none() {
+            warn!(
+                "Found no entity on the renderer for ecs entity: {:?}",
+                entity
+            );
+
             return;
         }
-
-        let entry_opt = self.point_lights.get_mut(entity);
-        if let Some(entry) = entry_opt {
-            entry.position = transform.transform_point3(Vec3::new(0f32, 0f32, 0f32));
-            return;
+        let usages = usages_opt.unwrap();
+        if usages.is_empty() {
+            warn!(
+                "Entity is in the map but with empty usage flags: {:?}",
+                entity
+            );
+            unreachable!();
         }
 
-        let entry_opt = self.directional_lights.get_mut(entity);
-        if let Some(entry) = entry_opt {
-            entry.direction = transform.transform_vector3(Vec3::new(0f32, 0f32, 1f32));
-            return;
+        if usages.contains(EntityUsage::StaticMesh) {
+            let entry_opt = self.static_meshes.get_mut(entity);
+            if let Some(entry) = entry_opt {
+                entry.transform = transform;
+            }
         }
 
-        let entry_opt = self.volume_meshes.get_mut(entity);
-        if let Some(entry) = entry_opt {
-            entry.transform = transform;
-            return;
+        if usages.contains(EntityUsage::PointLight) {
+            let entry_opt = self.point_lights.get_mut(entity);
+            if let Some(entry) = entry_opt {
+                entry.position = transform.transform_point3(Vec3::new(0f32, 0f32, 0f32));
+            }
         }
 
-        let static_drawable = self.static_meshes.get_mut(entity);
-        if let Some(static_drawable) = static_drawable {
-            static_drawable.transform = transform;
-            return;
+        if usages.contains(EntityUsage::DirectionalLight) {
+            let entry_opt = self.directional_lights.get_mut(entity);
+            if let Some(entry) = entry_opt {
+                entry.direction = transform.transform_vector3(Vec3::new(0f32, 0f32, 1f32));
+            }
         }
 
-        warn!(
-            "Found no entity on the renderer for ecs entity: {:?}",
-            entity
-        );
-
-        debug_assert!(false); // debug unreachable
+        if usages.contains(EntityUsage::VolumeMesh) {
+            let entry_opt = self.volume_meshes.get_mut(entity);
+            if let Some(entry) = entry_opt {
+                entry.transform = transform;
+            }
+        }
     }
 
     pub fn update_volume_mesh_data(
@@ -231,6 +261,7 @@ impl RendererScene {
     }
 
     pub fn add_point_light(&mut self, entity: Entity, light: PointLight) {
+        *self.entity_usages.entry(entity).or_insert(EntityUsage::empty()) |= EntityUsage::PointLight;
         self.point_lights.add(
             entity,
             RendererPointLight::new(light.position, light.intensity),
@@ -238,10 +269,18 @@ impl RendererScene {
     }
 
     pub fn remove_point_light(&mut self, entity: Entity) {
+        let entry = self.entity_usages.entry(entity);
+        if let std::collections::hash_map::Entry::Occupied(mut usages) = entry {
+            usages.get_mut().remove(EntityUsage::PointLight);
+            if *usages.get() == EntityUsage::empty() {
+                usages.remove();
+            }
+        }
         self.point_lights.remove(entity);
     }
 
     pub fn add_directional_light(&mut self, entity: Entity, light: DirectionalLight) {
+        *self.entity_usages.entry(entity).or_insert(EntityUsage::empty()) |= EntityUsage::DirectionalLight;
         self.directional_lights.add(
             entity,
             RendererDirectionalLight::new(light.direction, light.intensity),
@@ -249,14 +288,29 @@ impl RendererScene {
     }
 
     pub fn remove_directional_light(&mut self, entity: Entity) {
+        let entry = self.entity_usages.entry(entity);
+        if let std::collections::hash_map::Entry::Occupied(mut usages) = entry {
+            usages.get_mut().remove(EntityUsage::DirectionalLight);
+            if *usages.get() == EntityUsage::empty() {
+                usages.remove();
+            }
+        }
         self.directional_lights.remove(entity);
     }
 
     pub fn add_volume_drawable(&mut self, entity: Entity, volume_drawable: RendererVolumeDrawable) {
+        *self.entity_usages.entry(entity).or_insert(EntityUsage::empty()) |= EntityUsage::VolumeMesh;
         self.volume_meshes.add(entity, volume_drawable);
     }
 
     pub fn remove_volume_drawable(&mut self, entity: Entity) {
+        let entry = self.entity_usages.entry(entity);
+        if let std::collections::hash_map::Entry::Occupied(mut usages) = entry {
+            usages.get_mut().remove(EntityUsage::VolumeMesh);
+            if *usages.get() == EntityUsage::empty() {
+                usages.remove();
+            }
+        }
         self.volume_meshes.remove(entity);
     }
 
