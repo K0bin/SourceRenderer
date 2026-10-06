@@ -22,22 +22,26 @@
 #define ENV_MAP_DIFFUSE_IMG_NAME envMapDiffuse
 #endif
 
+#ifndef LINEAR_SAMPLER_NAME
+#define LINEAR_SAMPLER_NAME samplerLinear
+#endif
+
 #include "pbr.inc.glsl"
 #include "camera.inc.glsl"
 
 vec3 approximateSpecularIBL(vec3 specularColor, float roughness, vec3 normal, vec3 viewDir) {
     float normalDotViewDir = clamp(dot(normal, viewDir), 0.0, 1.0);
     vec3 reflectionDir = 2.0 * dot(viewDir, normal) * normal - viewDir;
-    vec3 prefilteredSpecular = textureLod(ENV_MAP_SPECULAR_IMG_NAME, reflectionDir, float(textureQueryLevels(ENV_MAP_SPECULAR_IMG_NAME)) * roughness).xyz;
-    vec2 preintegrated = textureLod(INTEGRATION_LUT_IMG_NAME, vec2(normalDotViewDir, roughness), 0).xy;
+    vec3 prefilteredSpecular = textureLod(samplerCube(ENV_MAP_SPECULAR_IMG_NAME, LINEAR_SAMPLER_NAME), reflectionDir, float(textureQueryLevels(samplerCube(ENV_MAP_SPECULAR_IMG_NAME, LINEAR_SAMPLER_NAME))) * roughness).xyz;
+    vec2 preintegrated = textureLod(sampler2D(INTEGRATION_LUT_IMG_NAME, LINEAR_SAMPLER_NAME), vec2(normalDotViewDir, roughness), 0).xy;
     return prefilteredSpecular * (specularColor * preintegrated.x + preintegrated.y);
 }
 
 vec4 shadeFragment(float densityNormalized, vec3 worldPosition, vec3 normal, out float sssIntensity) {
-    vec3 albedo = texture(TRANSFER_FUNCTION_IMG_NAME, vec2(densityNormalized * 0.6 + 0.4, 0.8 + 0.5 * 0.25)).rgb;
+    vec3 albedo = texture(sampler2D(TRANSFER_FUNCTION_IMG_NAME, LINEAR_SAMPLER_NAME), vec2(densityNormalized * 0.6 + 0.4, 0.8 + 0.5 * 0.25)).rgb;
     albedo.r = mix(albedo.r, albedo.g, 0.3);
 
-    float roughness = texture(TRANSFER_FUNCTION_IMG_NAME, vec2(densityNormalized * 0.3, 0.1 + 0.5 * 0.25)).r + 0.35;
+    float roughness = texture(sampler2D(TRANSFER_FUNCTION_IMG_NAME, LINEAR_SAMPLER_NAME), vec2(densityNormalized * 0.3, 0.1 + 0.5 * 0.25)).r + 0.35;
     //roughness = 9999.0;
 
     vec3 radiance = vec3(0.0);
@@ -51,7 +55,7 @@ vec4 shadeFragment(float densityNormalized, vec3 worldPosition, vec3 normal, out
     // Image based lighting (diffuse)
     vec3 rhoDiffuse = (1.0 - metalness) * albedo;
     rhoDiffuse *= vec3(1.0) - f0;
-    radiance += rhoDiffuse * texture(ENV_MAP_DIFFUSE_IMG_NAME, normal).rgb;
+    radiance += rhoDiffuse * texture(samplerCube(ENV_MAP_DIFFUSE_IMG_NAME, LINEAR_SAMPLER_NAME), normal).rgb;
 
     // Image based lighting (specular)
     radiance += approximateSpecularIBL(f0, roughness, normal, viewDir);

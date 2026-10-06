@@ -19,7 +19,7 @@ struct VkDrawIndexedIndirectCommand {
   uint firstInstance;
 };
 
-#include "frame_set.inc.glsl"
+#include "frame_set_modern.inc.glsl"
 
 layout(std430, set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0, std430) readonly restrict buffer visibleBuffer {
   uint visibleBitmasks[];

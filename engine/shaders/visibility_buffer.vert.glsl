@@ -7,7 +7,7 @@ layout(location = 0) in vec3 in_pos;
 layout(location = 0) out flat uint out_drawIndex;
 layout(location = 1) out flat uint out_firstIndex;
 
-#include "frame_set.inc.glsl"
+#include "frame_set_modern.inc.glsl"
 
 invariant gl_Position;
 

@@ -6,13 +6,14 @@
 #include "descriptor_sets.inc.glsl"
 #include "camera.inc.glsl"
 
-#include "frame_set.inc.glsl"
+#include "frame_set_modern.inc.glsl"
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform accelerationStructureEXT topLevelAS;
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 1, rgba8) uniform image2D image;
 
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform sampler2D depthMap;
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 3) uniform sampler2D noise;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform texture2D depthMap;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 3) uniform texture2D noise;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 4) uniform sampler noiseSampler;
 
 layout(location = 0) rayPayloadEXT float hitValue;
 
@@ -35,7 +36,7 @@ mat4 rotationMatrix(vec3 axis, float angle) {
 #define SUN_ANGLE 0.53
 
 vec3 randomRotateDirection(vec3 dir, float randomDegrees) {
-  vec3 noiseSample = textureLod(noise, vec2(gl_LaunchIDEXT.xy) / vec2(textureSize(noise, 0)) + vec2(0.5), 0).xyz;
+  vec3 noiseSample = textureLod(sampler2D(noise, samplerLinear), vec2(gl_LaunchIDEXT.xy) / vec2(textureSize(sampler2D(noise, samplerLinear), 0)) + vec2(0.5), 0).xyz;
   vec3 rotationVec = normalize(noiseSample * 2.0 - 1.0);
   rotationVec *= randomDegrees * (PI / 180.0);
   mat4 rotation = rotationMatrix(vec3(1, 0, 0), rotationVec.x) * rotationMatrix(vec3(0, 1, 0), rotationVec.y) * rotationMatrix(vec3(0, 0, 1), rotationVec.z);
@@ -52,8 +53,8 @@ void main() {
   vec2 d = inUV * 2.0 - 1.0;
 
   mat4 invViewProj = camera.invView * camera.invProj;
-  vec3 normal = reconstructNormalCS(depthMap, inUV, invViewProj);
-  vec3 origin = worldSpacePosition(inUV, texture(depthMap, inUV).r, invViewProj);
+  vec3 normal = reconstructNormalCS(depthMap, noiseSampler, inUV, invViewProj);
+  vec3 origin = worldSpacePosition(inUV, texture(sampler2D(depthMap, noiseSampler), inUV).r, invViewProj);
   origin += 0.1 * normal;
 
   uint rayFlags = gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT;

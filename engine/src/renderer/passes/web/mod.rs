@@ -95,7 +95,7 @@ impl RenderPath for WebRenderer {
 
         let main_view = &scene.scene.views()[scene.active_view_index];
 
-        /*let camera_buffer = cmd_buffer.upload_dynamic_data(device, &[CameraBuffer {
+        let camera_buffer = cmd_buffer.upload_dynamic_data(device, &[CameraBuffer {
             view_proj: main_view.proj_matrix * main_view.view_matrix,
             inv_proj: main_view.proj_matrix.inverse(),
             view: main_view.view_matrix,
@@ -107,15 +107,17 @@ impl RenderPath for WebRenderer {
             z_far: main_view.far_plane,
             aspect_ratio: main_view.aspect_ratio,
             fov: main_view.camera_fov
-        }], BufferUsage::CONSTANT).unwrap();*/
+        }], BufferUsage::CONSTANT).unwrap();
 
-        let camera_buffer = cmd_buffer
-            .upload_dynamic_data(
-                device,
-                &[main_view.proj_matrix * main_view.view_matrix],
-                BufferUsage::CONSTANT,
-            )
-            .unwrap();
+        cmd_buffer.bind_uniform_buffer(
+            BindingFrequency::Frame,
+            0,
+            BufferRef::Transient(&camera_buffer),
+            0,
+            WHOLE_BUFFER,
+        );
+        cmd_buffer.bind_sampler(BindingFrequency::Frame, 1, resources.linear_sampler());
+        cmd_buffer.bind_sampler(BindingFrequency::Frame, 2, resources.nearest_sampler());
 
         let assets_read = assets.read();
         let backbuffer_view = swapchain.backbuffer_view(&backbuffer);
@@ -125,7 +127,6 @@ impl RenderPath for WebRenderer {
             &mut cmd_buffer,
             scene.scene,
             main_view,
-            &camera_buffer,
             resources,
             &backbuffer_view,
             backbuffer_handle,

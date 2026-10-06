@@ -6,6 +6,7 @@
 #include "pbr.inc.glsl"
 #include "camera.inc.glsl"
 #include "util.inc.glsl"
+#include "frame_set_volume.inc.glsl"
 
 layout (location = 0) in float in_density;
 layout (location = 1) in vec3 in_worldPosition;
@@ -27,32 +28,28 @@ layout (push_constant, std430) uniform Params {
     float height;
 };
 
-layout (set = DESCRIPTOR_SET_FRAME, binding = 0) uniform CameraUBO {
-    Camera camera;
-};
-
-layout (set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform sampler3D densityMap;
-layout (set = DESCRIPTOR_SET_FREQUENT, binding = 1) uniform sampler2D transferFunction;
-layout (set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform samplerCube envMapDiffuse;
-layout (set = DESCRIPTOR_SET_FREQUENT, binding = 3) uniform samplerCube envMapSpecular;
-layout (set = DESCRIPTOR_SET_FREQUENT, binding = 4) uniform sampler2D integrationLUT;
+layout (set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform texture3D densityMap;
+layout (set = DESCRIPTOR_SET_FREQUENT, binding = 1) uniform texture2D transferFunction;
+layout (set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform textureCube envMapDiffuse;
+layout (set = DESCRIPTOR_SET_FREQUENT, binding = 3) uniform textureCube envMapSpecular;
+layout (set = DESCRIPTOR_SET_FREQUENT, binding = 4) uniform texture2D integrationLUT;
 
 
 vec3 calculateGradient(vec3 densityMapUV, uint normalLod) {
     vec3 normal = vec3(0.0);
 
-    vec3 imgSize = vec3(textureSize(densityMap, int(normalLod)));
+    vec3 imgSize = vec3(textureSize(sampler3D(densityMap, samplerNearest), int(normalLod)));
     vec3 singlePixel = vec3(1.0) / imgSize;
     vec3 singlePixelX = vec3(singlePixel.x, 0, 0);
     vec3 singlePixelY = vec3(0, singlePixel.y, 0);
     vec3 singlePixelZ = vec3(0, 0, singlePixel.z);
 
-    normal.x = textureLod(densityMap, densityMapUV - singlePixelX, normalLod).x
-    - textureLod(densityMap, densityMapUV + singlePixelX, normalLod).x;
-    normal.y = textureLod(densityMap, densityMapUV - singlePixelY, normalLod).x
-    - textureLod(densityMap, densityMapUV + singlePixelY, normalLod).x;
-    normal.z = textureLod(densityMap, densityMapUV - singlePixelZ, normalLod).x
-    - textureLod(densityMap, densityMapUV + singlePixelZ, normalLod).x;
+    normal.x = textureLod(sampler3D(densityMap, samplerLinear), densityMapUV - singlePixelX, normalLod).x
+    - textureLod(sampler3D(densityMap, samplerLinear), densityMapUV + singlePixelX, normalLod).x;
+    normal.y = textureLod(sampler3D(densityMap, samplerLinear), densityMapUV - singlePixelY, normalLod).x
+    - textureLod(sampler3D(densityMap, samplerLinear), densityMapUV + singlePixelY, normalLod).x;
+    normal.z = textureLod(sampler3D(densityMap, samplerLinear), densityMapUV - singlePixelZ, normalLod).x
+    - textureLod(sampler3D(densityMap, samplerLinear), densityMapUV + singlePixelZ, normalLod).x;
     return normal;
 }
 
@@ -65,7 +62,7 @@ vec3 calculateNormal(vec3 densityMapUV, uint normalLod) {
 vec4 rayMarchPositionInMip(vec3 startPosNormalized, uint targetLod) {
     uint meshLod = lod;
     // resolution of mip 0
-    uvec3 texSize = textureSize(densityMap, 0);
+    uvec3 texSize = textureSize(sampler3D(densityMap, samplerNearest), 0);
     // resolution of the higher res mip
     uvec3 targetTexSize = uvec3(texSize.x >> targetLod, texSize.y >> targetLod, texSize.z >> targetLod);
     // resolution of the lower res mip that was used to generate the mesh
@@ -128,7 +125,7 @@ vec4 rayMarchPositionInMip(vec3 startPosNormalized, uint targetLod) {
 
     while (t <= tExit) {
         vec3 pos = origin + t * modelRay.xyz;
-        float density = textureLod(densityMap, pos, int(targetLod)).x;
+        float density = textureLod(sampler3D(densityMap, samplerNearest), pos, int(targetLod)).x;
         if (density >= threshold)
         return vec4(pos, density);
 

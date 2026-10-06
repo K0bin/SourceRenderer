@@ -3,6 +3,7 @@
 #extension GL_GOOGLE_include_directive : enable
 
 #include "descriptor_sets.inc.glsl"
+#include "frame_set_volume.inc.glsl"
 
 layout(location = 0) in vec3 in_pos;
 layout(location = 1) in vec2 in_uv;
@@ -15,10 +16,6 @@ layout(location = 0) out vec3 out_worldPosition;
 layout(location = 1) out vec3 out_normal;
 layout(location = 2) out vec2 out_uv;
 layout(location = 3) out vec2 out_lightmap_uv;
-
-layout(set = DESCRIPTOR_SET_FRAME, binding = 0) uniform CameraUBO {
-  mat4 viewProj;
-} camera;
 
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform VeryHighFrequencyUbo {
     mat4 model;

@@ -181,31 +181,27 @@ impl TAAPass {
             .get_compute_pipeline(self.pipeline)
             .unwrap();
         cmd_buf.set_pipeline(PipelineBinding::Compute(&pipeline));
-        cmd_buf.bind_sampling_view_and_sampler(
+        cmd_buf.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             0,
             &*output_srv,
-            pass_params.resources.linear_sampler(),
         );
-        cmd_buf.bind_sampling_view_and_sampler(
+        cmd_buf.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             1,
             &*taa_history_srv,
-            pass_params.resources.linear_sampler(),
         );
         cmd_buf.bind_storage_texture(BindingFrequency::VeryFrequent, 2, &*taa_uav);
-        cmd_buf.bind_sampling_view_and_sampler(
+        cmd_buf.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             3,
             &*depth_srv,
-            pass_params.resources.linear_sampler(),
         );
         if !visibility_buffer {
-            cmd_buf.bind_sampling_view_and_sampler(
+            cmd_buf.bind_sampling_view(
                 BindingFrequency::VeryFrequent,
                 4,
                 &motion_srv.unwrap(),
-                pass_params.resources.nearest_sampler(),
             );
         } else {
             cmd_buf.bind_storage_texture(BindingFrequency::VeryFrequent, 4, &id_view.unwrap());

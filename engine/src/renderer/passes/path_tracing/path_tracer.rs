@@ -108,10 +108,14 @@ impl PathTracerPass {
         );
         cmd_buffer.bind_storage_texture(BindingFrequency::Frequent, 1, &*texture_uav);
         cmd_buffer.bind_storage_texture(BindingFrequency::Frequent, 4, &*&texture_uav_history);
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::Frequent,
             2,
             blue_noise,
+        );
+        cmd_buffer.bind_sampler(
+            BindingFrequency::Frequent,
+            3,
             blue_noise_sampler,
         );
         cmd_buffer.bind_sampler(BindingFrequency::VeryFrequent, 3, &self.sampler);

@@ -10,6 +10,7 @@ layout(local_size_x = 8, local_size_y = 1, local_size_z = 8) in;
 #include "descriptor_sets.inc.glsl"
 #include "util.inc.glsl"
 #include "camera.inc.glsl"
+#include "frame_set_modern.inc.glsl"
 
 struct VolumeTileAABB{
   vec4 minPoint;
@@ -23,10 +24,6 @@ layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, std430) buffer setupBuff
   uvec2 screenDimensions;
   float zNear;
   float zFar;
-};
-
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2, std140) uniform CameraUBO {
-  Camera camera;
 };
 
 // Function prototypes

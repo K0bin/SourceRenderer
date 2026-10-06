@@ -145,11 +145,10 @@ impl DrawPrepPass {
                 0,
                 WHOLE_BUFFER,
             );
-            cmd_buffer.bind_sampling_view_and_sampler(
+            cmd_buffer.bind_sampling_view(
                 BindingFrequency::VeryFrequent,
                 2,
                 &*hi_z,
-                pass_params.resources.nearest_sampler(),
             );
             let culling_pipeline = pass_params
                 .assets

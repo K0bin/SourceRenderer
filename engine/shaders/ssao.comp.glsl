@@ -8,16 +8,15 @@ layout(local_size_x = 8,
 
 #include "descriptor_sets.inc.glsl"
 #include "camera.inc.glsl"
+#include "frame_set_common.inc.glsl"
 
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0, std140) uniform SSAOKernel {
   vec4 samples[16];
 };
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform sampler2D noise;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform sampler2D depthMap;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3, std140) uniform CameraUBO {
-  Camera camera;
-};
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 4, r16f) uniform writeonly image2D outputTexture;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform texture2D noise;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform texture2D depthMap;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3, r16f) uniform writeonly image2D outputTexture;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 4) uniform sampler noiseSampler;
 
 #define CS
 #include "util.inc.glsl"
@@ -37,12 +36,12 @@ void main() {
 
   vec2 texCoord = (vec2(outputPx) + 0.5) / vec2(outputSize);
 
-  float depth = textureLod(depthMap, texCoord, 0).x;
+  float depth = textureLod(sampler2D(depthMap, samplerLinear), texCoord, 0).x;
   vec3 fragPos = viewSpacePosition(texCoord, depth, camera.invProj);
-  vec3 normal = reconstructViewSpaceNormalCS(depthMap, texCoord, camera.invProj);
+  vec3 normal = reconstructViewSpaceNormalCS(depthMap, samplerLinear, texCoord, camera.invProj);
 
-  vec2 noiseScale = textureSize(depthMap, 0) / textureSize(noise, 0);
-  vec2 noiseXY = texture(noise, texCoord * noiseScale).xy * 2.0 - 1.0;
+  vec2 noiseScale = textureSize(sampler2D(depthMap, samplerLinear), 0) / textureSize(sampler2D(noise, noiseSampler), 0);
+  vec2 noiseXY = texture(sampler2D(noise, noiseSampler), texCoord * noiseScale).xy * 2.0 - 1.0;
   vec3 randomVec = normalize(vec3(noiseXY, 0.0));
 
   vec3 tangent = normalize(randomVec - normal * dot(randomVec, normal));
@@ -65,7 +64,7 @@ void main() {
     offset.xy /= offset.w;
     offset.xy = offset.xy * 0.5 + 0.5;
 
-    float sampleDepth = textureLod(depthMap, offset.xy, 0).x;
+    float sampleDepth = textureLod(sampler2D(depthMap, samplerLinear), offset.xy, 0).x;
     float sampleZ = linearizeDepth(sampleDepth, camera.zNear, camera.zFar);
 
     float rangeCheck = smoothstep(0.0, 1.0, radius / abs(fragPos.z - sampleZ));

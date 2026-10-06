@@ -13,20 +13,20 @@ layout(location = 2) in vec2 in_lightmap_uv;
 
 layout(location = 0) out vec4 out_color;
 
-#include "frame_set.inc.glsl"
+#include "frame_set_modern.inc.glsl"
 
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform sampler2D albedo;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform sampler2D roughness_map;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform sampler2D metalness_map;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform texture2D albedo;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform texture2D roughness_map;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform texture2D metalness_map;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3) uniform MaterialBuffer {
   vec4 albedo_color;
   float roughness_factor;
   float metalness_factor;
   uint albedoTextureIndex;
 } material;
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform sampler2D lightmap;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform texture2D lightmap;
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 1) uniform sampler albedoSampler;
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform sampler2D shadows;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform texture2D shadows;
 
 struct Cluster {
   vec4 minPoint;
@@ -37,7 +37,7 @@ layout (std430, set = DESCRIPTOR_SET_FREQUENT, binding = 3) readonly buffer ligh
   uint lightBitmasks[];
 };
 
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 4) uniform sampler2D ssao;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 4) uniform texture2D ssao;
 
 #ifdef DEBUG
 layout(std430, set = DESCRIPTOR_SET_FREQUENT, binding = 5, std430) readonly buffer clusterAABB {
@@ -69,9 +69,9 @@ void main(void) {
     }
   #endif
 
-  float roughness = material.roughness_factor * texture(roughness_map, uv).r;
-  float metalness = material.metalness_factor * texture(metalness_map, uv).r;
-  vec3 albedo = material.albedo_color.rgb * texture(albedo, uv).rgb;
+  float roughness = material.roughness_factor * texture(sampler2D(roughness_map, albedoSampler), uv).r;
+  float metalness = material.metalness_factor * texture(sampler2D(metalness_map, albedoSampler), uv).r;
+  vec3 albedo = material.albedo_color.rgb * texture(sampler2D(albedo, albedoSampler), uv).rgb;
 
   vec3 viewDir = normalize(camera.position.xyz - in_worldPosition.xyz);
   vec3 f0 = vec3(0.04);
@@ -80,14 +80,14 @@ void main(void) {
   vec2 fullscreenTexCoord = vec2(gl_FragCoord.x / rtSize.x, gl_FragCoord.y / rtSize.y);
   vec3 lighting = vec3(0);
   lighting += vec3(0.3); // ambient
-  lighting += texture(lightmap, in_lightmap_uv).xyz;
-  lighting *= texture(ssao, fullscreenTexCoord).rrr;
+  lighting += texture(sampler2D(lightmap, albedoSampler), in_lightmap_uv).xyz;
+  lighting *= texture(sampler2D(ssao, albedoSampler), fullscreenTexCoord).rrr;
 
   for (uint i = 0; i < directionalLightCount; i++) {
     DirectionalLight light = directionalLights[i];
     vec3 lightContribution = pbr(-light.directionAndIntensity.xyz, viewDir, normal, f0, albedo, vec3(light.directionAndIntensity.w), roughness, metalness);
     if (i == 0) {
-      lightContribution *= texture(shadows, fullscreenTexCoord).rrr;
+      lightContribution *= texture(sampler2D(shadows, albedoSampler), fullscreenTexCoord).rrr;
     }
     lighting += lightContribution;
   }

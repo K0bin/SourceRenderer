@@ -9,10 +9,11 @@ layout(local_size_x = 8,
 #include "camera.inc.glsl"
 
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) writeonly uniform image2D outputTexture;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform sampler2D colorTexture;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform sampler2D depthTexture;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform texture2D colorTexture;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform texture2D depthTexture;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 5) uniform sampler linearSampler;
 
-#include "frame_set.inc.glsl"
+#include "frame_set_modern.inc.glsl"
 
 #define CS
 #include "ssr.inc.glsl"
@@ -43,9 +44,9 @@ void main() {
 
   SSRConfig config = SSRConfig(30, 0.5, 10, 0.2);
   vec2 reflectionTexCoord;
-  float reflectionIntensity = reflectScreenspace(depthTexture, texCoord, camera, config, roughness, reflectionTexCoord);
+  float reflectionIntensity = reflectScreenspace(depthTexture, linearSampler, texCoord, camera, config, roughness, reflectionTexCoord);
   if (reflectionIntensity > 0.01) {
-    vec3 reflection = textureLod(colorTexture, reflectionTexCoord, 0).xyz;
+    vec3 reflection = textureLod(sampler2D(colorTexture, linearSampler), reflectionTexCoord, 0).xyz;
     imageStore(outputTexture, storageTexCoord, vec4(reflection, reflectionIntensity));
   } else {
     imageStore(outputTexture, storageTexCoord, vec4(0.0, 0.0, 0.0, 0.0));

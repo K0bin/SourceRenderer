@@ -189,10 +189,6 @@ impl VkDescriptorPool {
         // TODO figure out proper numbers
         let pool_sizes = [
             vk::DescriptorPoolSize {
-                ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                descriptor_count: 256,
-            },
-            vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::SAMPLED_IMAGE,
                 descriptor_count: 256,
             },
@@ -303,12 +299,8 @@ impl VkDescriptorSet {
             let stored: VkBoundResource = binding.into();
             match &stored {
                 VkBoundResource::SampledTexture(_)
-                | VkBoundResource::StorageTexture(_)
-                | VkBoundResource::SampledTextureAndSampler(_, _) => {
+                | VkBoundResource::StorageTexture(_) => {
                     image_write_count += 1;
-                }
-                VkBoundResource::SampledTextureAndSamplerArray(entries) => {
-                    image_write_count += entries.len();
                 }
                 VkBoundResource::SampledTextureArray(entries) => {
                     image_write_count += entries.len();
@@ -581,43 +573,6 @@ impl VkDescriptorSet {
                     write.descriptor_type = vk::DescriptorType::SAMPLED_IMAGE;
                     write.descriptor_count = textures.len() as u32;
                 }
-                VkBoundResource::SampledTextureAndSampler(texture, sampler) => {
-                    let texture_info = vk::DescriptorImageInfo {
-                        image_view: *texture,
-                        sampler: *sampler,
-                        image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                    };
-                    image_writes.push(texture_info);
-                    write.p_image_info = unsafe {
-                        image_writes
-                            .as_ptr()
-                            .offset(image_writes.len() as isize - 1)
-                    };
-                    write.descriptor_type = vk::DescriptorType::COMBINED_IMAGE_SAMPLER;
-                }
-                VkBoundResource::SampledTextureAndSamplerArray(textures_and_samplers) => {
-                    assert!(
-                        binding_info.count == 0
-                            || binding_info.count == textures_and_samplers.len() as u32
-                    );
-                    assert!(textures_and_samplers.len() <= MAX_DESCRIPTOR_ARRAY_SIZE as usize);
-
-                    for (texture, sampler) in textures_and_samplers {
-                        let texture_info = vk::DescriptorImageInfo {
-                            image_view: *texture,
-                            sampler: *sampler,
-                            image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                        };
-                        image_writes.push(texture_info);
-                    }
-                    write.p_image_info = unsafe {
-                        image_writes.as_ptr().offset(
-                            image_writes.len() as isize - textures_and_samplers.len() as isize,
-                        )
-                    };
-                    write.descriptor_type = vk::DescriptorType::SAMPLED_IMAGE;
-                    write.descriptor_count = textures_and_samplers.len() as u32;
-                }
                 VkBoundResource::Sampler(sampler) => {
                     let texture_info = vk::DescriptorImageInfo {
                         image_view: vk::ImageView::null(),
@@ -744,10 +699,6 @@ pub(crate) enum VkBoundResource {
     StorageTextureArray(SmallVec<[vk::ImageView; DEFAULT_DESCRIPTOR_ARRAY_SIZE]>),
     SampledTexture(vk::ImageView),
     SampledTextureArray(SmallVec<[vk::ImageView; DEFAULT_DESCRIPTOR_ARRAY_SIZE]>),
-    SampledTextureAndSampler(vk::ImageView, vk::Sampler),
-    SampledTextureAndSamplerArray(
-        SmallVec<[(vk::ImageView, vk::Sampler); DEFAULT_DESCRIPTOR_ARRAY_SIZE]>,
-    ),
     Sampler(vk::Sampler),
     AccelerationStructure(vk::AccelerationStructureKHR),
 }
@@ -770,8 +721,6 @@ pub(crate) enum VkBoundResourceRef<'a> {
     StorageTextureArray(&'a [vk::ImageView]),
     SampledTexture(vk::ImageView),
     SampledTextureArray(&'a [vk::ImageView]),
-    SampledTextureAndSampler(vk::ImageView, vk::Sampler),
-    SampledTextureAndSamplerArray(&'a [(vk::ImageView, vk::Sampler)]),
     Sampler(vk::Sampler),
     AccelerationStructure(vk::AccelerationStructureKHR),
 }
@@ -790,9 +739,6 @@ impl From<&VkBoundResourceRef<'_>> for VkBoundResource {
             VkBoundResourceRef::StorageBuffer(info) => VkBoundResource::StorageBuffer(info.clone()),
             VkBoundResourceRef::StorageTexture(view) => VkBoundResource::StorageTexture(*view),
             VkBoundResourceRef::SampledTexture(view) => VkBoundResource::SampledTexture(*view),
-            VkBoundResourceRef::SampledTextureAndSampler(view, sampler) => {
-                VkBoundResource::SampledTextureAndSampler(*view, *sampler)
-            }
             VkBoundResourceRef::Sampler(sampler) => VkBoundResource::Sampler(*sampler),
             VkBoundResourceRef::AccelerationStructure(accel) => {
                 VkBoundResource::AccelerationStructure(*accel)
@@ -818,16 +764,6 @@ impl From<&VkBoundResourceRef<'_>> for VkBoundResource {
             }
             VkBoundResourceRef::SampledTextureArray(arr) => {
                 VkBoundResource::SampledTextureArray(arr.iter().map(|a| *a).collect())
-            }
-            VkBoundResourceRef::SampledTextureAndSamplerArray(arr) => {
-                VkBoundResource::SampledTextureAndSamplerArray(
-                    arr.iter()
-                        .map(|(t, s)| {
-                            let tuple: (vk::ImageView, vk::Sampler) = (*t, *s);
-                            tuple
-                        })
-                        .collect(),
-                )
             }
         }
     }
@@ -1045,10 +981,6 @@ impl PartialEq<VkBoundResourceRef<'_>> for VkBoundResource {
             (VkBoundResource::SampledTexture(old), VkBoundResourceRef::SampledTexture(new)) => {
                 old == new
             }
-            (
-                VkBoundResource::SampledTextureAndSampler(old_tex, old_sampler),
-                VkBoundResourceRef::SampledTextureAndSampler(new_tex, new_sampler),
-            ) => old_tex == new_tex && old_sampler == new_sampler,
             (VkBoundResource::Sampler(old_sampler), VkBoundResourceRef::Sampler(new_sampler)) => {
                 old_sampler == new_sampler
             }
@@ -1072,14 +1004,6 @@ impl PartialEq<VkBoundResourceRef<'_>> for VkBoundResource {
                 VkBoundResource::StorageTextureArray(old),
                 VkBoundResourceRef::StorageTextureArray(new),
             ) => old.iter().zip(new.iter()).all(|(old, new)| old == new),
-            (
-                VkBoundResource::SampledTextureAndSamplerArray(old),
-                VkBoundResourceRef::SampledTextureAndSamplerArray(new),
-            ) => old.iter().zip(new.iter()).all(
-                |((old_texture, old_sampler), (new_texture, new_sampler))| {
-                    old_texture == new_texture && old_sampler == new_sampler
-                },
-            ),
             _ => false,
         }
     }

@@ -10,7 +10,7 @@ layout(local_size_x = 8,
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) writeonly uniform image2D outputTexture;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, r32ui) readonly uniform uimage2D primitiveIds;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2, rg16) readonly uniform image2D barycentrics;
-#include "frame_set.inc.glsl"
+#include "frame_set_modern.inc.glsl"
 #include "vis_buf.inc.glsl"
 
 void main() {

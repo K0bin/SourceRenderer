@@ -99,16 +99,19 @@ impl RTShadowPass {
             acceleration_structure,
         );
         cmd_buffer.bind_storage_texture(BindingFrequency::Frequent, 1, &*texture_uav);
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::Frequent,
             2,
             &*depth,
-            pass_params.resources.linear_sampler(),
         );
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::Frequent,
             3,
             blue_noise,
+        );
+        cmd_buffer.bind_sampler(
+            BindingFrequency::Frequent,
+            4,
             blue_noise_sampler,
         );
         let info = texture_uav.texture().unwrap().info();

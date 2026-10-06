@@ -485,21 +485,6 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         );
     }
 
-    unsafe fn bind_sampling_view_and_sampler(
-        &mut self,
-        frequency: gpu::BindingFrequency,
-        binding: u32,
-        texture: &VkTextureView,
-        sampler: &VkSampler,
-    ) {
-        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        self.descriptor_manager.bind(
-            frequency,
-            binding,
-            VkBoundResourceRef::SampledTextureAndSampler(texture.view_handle(), sampler.handle()),
-        );
-    }
-
     unsafe fn bind_uniform_buffer(
         &mut self,
         frequency: gpu::BindingFrequency,
@@ -1053,24 +1038,6 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
             frequency,
             binding,
             VkBoundResourceRef::AccelerationStructure(acceleration_structure.handle()),
-        );
-    }
-
-    unsafe fn bind_sampling_view_and_sampler_array(
-        &mut self,
-        frequency: gpu::BindingFrequency,
-        binding: u32,
-        textures_and_samplers: &[(&VkTextureView, &VkSampler)],
-    ) {
-        debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
-        let handles: SmallVec<[(vk::ImageView, vk::Sampler); 8]> = textures_and_samplers
-            .iter()
-            .map(|(tv, s)| (tv.view_handle(), s.handle()))
-            .collect();
-        self.descriptor_manager.bind(
-            frequency,
-            binding,
-            VkBoundResourceRef::SampledTextureAndSamplerArray(&handles),
         );
     }
 

@@ -15,7 +15,7 @@ layout(location = 0) out vec3 out_worldPosition;
 layout(location = 1) out vec2 out_uv;
 layout(location = 2) out vec2 out_lightmap_uv;
 
-#include "frame_set.inc.glsl"
+#include "frame_set_modern.inc.glsl"
 
 layout(push_constant) uniform VeryHighFrequencyUbo {
   mat4 model;

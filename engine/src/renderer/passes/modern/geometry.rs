@@ -399,14 +399,6 @@ impl GeometryPass {
             .upload_dynamic_data(device, &directional_lights[..], BufferUsage::STORAGE)
             .unwrap();
 
-        cmd_buffer.bind_uniform_buffer(
-            BindingFrequency::Frequent,
-            3,
-            BufferRef::Transient(&per_frame_buffer),
-            0,
-            WHOLE_BUFFER,
-        );
-
         let pipeline = assets.get_graphics_pipeline(self.pipeline).unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         cmd_buffer.set_viewports(&[Viewport {
@@ -420,61 +412,30 @@ impl GeometryPass {
             extent: Vec2UI::new(rtv_info.width, rtv_info.height),
         }]);
 
-        //command_buffer.bind_storage_buffer(BindingFrequency::Frequent, 7, clusters);
-        cmd_buffer.bind_uniform_buffer(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::Frequent,
             0,
-            BufferRef::Regular(camera_buffer),
-            0,
-            WHOLE_BUFFER,
+            &lightmap.view,
         );
-        cmd_buffer.bind_storage_buffer(
-            BindingFrequency::Frequent,
-            1,
-            BufferRef::Transient(&point_light_buffer),
-            0,
-            WHOLE_BUFFER,
-        );
-        cmd_buffer.bind_storage_buffer(
+        cmd_buffer.bind_sampler(BindingFrequency::Frequent, 1, &self.sampler);
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::Frequent,
             2,
+            &shadows,
+        );
+        cmd_buffer.bind_storage_buffer(
+            BindingFrequency::Frequent,
+            3,
             BufferRef::Regular(light_bitmask_buffer),
             0,
             WHOLE_BUFFER,
         );
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::Frequent,
             4,
-            &ssao,
-            &self.sampler,
+            &ssao
         );
-        cmd_buffer.bind_storage_buffer(
-            BindingFrequency::Frequent,
-            5,
-            BufferRef::Transient(&directional_light_buffer),
-            0,
-            WHOLE_BUFFER,
-        );
-        cmd_buffer.bind_sampling_view_and_sampler(
-            BindingFrequency::Frequent,
-            6,
-            &lightmap.view,
-            &self.sampler,
-        );
-        cmd_buffer.bind_sampler(BindingFrequency::Frequent, 7, &self.sampler);
-        cmd_buffer.bind_sampling_view_and_sampler(
-            BindingFrequency::Frequent,
-            8,
-            &shadows,
-            &self.sampler,
-        );
-        cmd_buffer.bind_storage_buffer(
-            BindingFrequency::Frequent,
-            9,
-            BufferRef::Transient(gpu_scene),
-            0,
-            WHOLE_BUFFER,
-        );
+        //cmd_buffer.bind_storage_buffer(BindingFrequency::Frequent, 5, clusters);
 
         cmd_buffer.set_vertex_buffer(0, BufferRef::Regular(vertex_buffer), 0);
         cmd_buffer.set_index_buffer(BufferRef::Regular(index_buffer), 0, IndexFormat::U32);

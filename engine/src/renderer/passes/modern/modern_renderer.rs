@@ -13,10 +13,7 @@ use super::sharpen::SharpenPass;
 use super::ssao::SsaoPass;
 use super::taa::TAAPass;
 use super::visibility_buffer::VisibilityBufferPass;
-use crate::graphics::{
-    BindingFrequency, BufferRef, BufferUsage, CommandBuffer, Device, GraphicsContext, QueueType,
-    Swapchain, SwapchainError, TextureInfo, WHOLE_BUFFER,
-};
+use crate::graphics::{BindingFrequency, BufferRef, BufferUsage, CommandBuffer, Device, GraphicsContext, QueueType, Sampler, Swapchain, SwapchainError, TextureInfo, WHOLE_BUFFER};
 use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::passes::modern::gpu_scene::SceneBuffers;
 use crate::renderer::render_path::{
@@ -128,6 +125,8 @@ impl ModernRenderer {
         cmd_buf: &mut CommandBuffer,
         scene: &SceneInfo,
         swapchain: &Swapchain,
+        linear_sampler: &Sampler,
+        nearest_sampler: &Sampler,
         gpu_scene_buffers: SceneBuffers,
         camera_buffer: BufferRef,
         camera_history_buffer: BufferRef,
@@ -136,74 +135,77 @@ impl ModernRenderer {
     ) {
         let view = &scene.scene.views()[scene.active_view_index];
 
+        cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 0, camera_buffer, 0, WHOLE_BUFFER);
+        cmd_buf.bind_sampler(BindingFrequency::Frame, 1, linear_sampler);
+        cmd_buf.bind_sampler(BindingFrequency::Frame, 2, nearest_sampler);
+
+        cmd_buf.bind_uniform_buffer(
+            BindingFrequency::Frame,
+            3,
+            camera_history_buffer,
+            0,
+            WHOLE_BUFFER,
+        );
+
         cmd_buf.bind_storage_buffer(
             BindingFrequency::Frame,
-            0,
+            4,
             BufferRef::Transient(&gpu_scene_buffers.buffer),
             gpu_scene_buffers.scene_buffer.offset,
             gpu_scene_buffers.scene_buffer.length,
         );
         cmd_buf.bind_storage_buffer(
             BindingFrequency::Frame,
-            1,
+            5,
             BufferRef::Transient(&gpu_scene_buffers.buffer),
             gpu_scene_buffers.draws_buffer.offset,
             gpu_scene_buffers.draws_buffer.length,
         );
         cmd_buf.bind_storage_buffer(
             BindingFrequency::Frame,
-            2,
+            6,
             BufferRef::Transient(&gpu_scene_buffers.buffer),
             gpu_scene_buffers.meshes_buffer.offset,
             gpu_scene_buffers.meshes_buffer.length,
         );
         cmd_buf.bind_storage_buffer(
             BindingFrequency::Frame,
-            3,
+            7,
             BufferRef::Transient(&gpu_scene_buffers.buffer),
             gpu_scene_buffers.drawables_buffer.offset,
             gpu_scene_buffers.drawables_buffer.length,
         );
         cmd_buf.bind_storage_buffer(
             BindingFrequency::Frame,
-            4,
+            8,
             BufferRef::Transient(&gpu_scene_buffers.buffer),
             gpu_scene_buffers.parts_buffer.offset,
             gpu_scene_buffers.parts_buffer.length,
         );
         cmd_buf.bind_storage_buffer(
             BindingFrequency::Frame,
-            5,
+            9,
             BufferRef::Transient(&gpu_scene_buffers.buffer),
             gpu_scene_buffers.materials_buffer.offset,
             gpu_scene_buffers.materials_buffer.length,
         );
         cmd_buf.bind_storage_buffer(
             BindingFrequency::Frame,
-            6,
+            10,
             BufferRef::Transient(&gpu_scene_buffers.buffer),
             gpu_scene_buffers.lights_buffer.offset,
             gpu_scene_buffers.lights_buffer.length,
         );
-
-        cmd_buf.bind_uniform_buffer(BindingFrequency::Frame, 7, camera_buffer, 0, WHOLE_BUFFER);
-        cmd_buf.bind_uniform_buffer(
-            BindingFrequency::Frame,
-            8,
-            camera_history_buffer,
-            0,
-            WHOLE_BUFFER,
-        );
         cmd_buf.bind_storage_buffer(
             BindingFrequency::Frame,
-            9,
+            11,
             scene.vertex_buffer,
             0,
             WHOLE_BUFFER,
         );
         cmd_buf.bind_storage_buffer(
             BindingFrequency::Frame,
-            10,
+            12,
             scene.index_buffer,
             0,
             WHOLE_BUFFER,
@@ -277,7 +279,7 @@ impl ModernRenderer {
             .unwrap();
         cmd_buf.bind_uniform_buffer(
             BindingFrequency::Frame,
-            11,
+            13,
             BufferRef::Transient(&setup_buffer),
             0,
             WHOLE_BUFFER,
@@ -287,6 +289,7 @@ impl ModernRenderer {
         struct PointLight {
             position: Vec3,
             intensity: f32,
+            radius: f32,
         }
         let point_lights: SmallVec<[PointLight; 16]> = scene
             .scene
@@ -295,6 +298,7 @@ impl ModernRenderer {
             .map(|l| PointLight {
                 position: l.position,
                 intensity: l.intensity,
+                radius: l.intensity * 0.3,
             })
             .collect();
         let point_lights_buffer = cmd_buf
@@ -302,7 +306,7 @@ impl ModernRenderer {
             .unwrap();
         cmd_buf.bind_uniform_buffer(
             BindingFrequency::Frame,
-            12,
+            14,
             BufferRef::Transient(&point_lights_buffer),
             0,
             WHOLE_BUFFER,
@@ -327,7 +331,7 @@ impl ModernRenderer {
             .unwrap();
         cmd_buf.bind_uniform_buffer(
             BindingFrequency::Frame,
-            13,
+            15,
             BufferRef::Transient(&directional_lights_buffer),
             0,
             WHOLE_BUFFER,
@@ -405,6 +409,8 @@ impl RenderPath for ModernRenderer {
             &mut cmd_buf,
             scene,
             swapchain,
+            resources.linear_sampler(),
+            resources.nearest_sampler(),
             scene_buffers,
             BufferRef::Transient(&camera_buffer),
             BufferRef::Transient(camera_history_buffer),
@@ -548,7 +554,6 @@ impl RenderPath for ModernRenderer {
             &mut cmd_buf,
             scene.scene,
             main_view,
-            &camera_buffer,
             resources,
             &backbuffer_view,
             backbuffer_handle,

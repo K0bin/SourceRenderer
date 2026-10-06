@@ -76,9 +76,6 @@ impl VkShader {
                         gpu::ResourceType::SampledTexture => vk::DescriptorType::SAMPLED_IMAGE,
                         gpu::ResourceType::StorageTexture => vk::DescriptorType::STORAGE_IMAGE,
                         gpu::ResourceType::Sampler => vk::DescriptorType::SAMPLER,
-                        gpu::ResourceType::CombinedTextureSampler => {
-                            vk::DescriptorType::COMBINED_IMAGE_SAMPLER
-                        }
                         gpu::ResourceType::AccelerationStructure => {
                             vk::DescriptorType::ACCELERATION_STRUCTURE_KHR
                         }
@@ -1561,15 +1558,13 @@ impl gpu::ComputePipeline for VkPipeline {
                 name: i.name.as_str(),
                 binding_type: match i.descriptor_type {
                     vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
-                    | vk::DescriptorType::STORAGE_BUFFER => gpu::BindingType::StorageTexture,
+                    | vk::DescriptorType::STORAGE_BUFFER => gpu::BindingType::StorageBuffer,
                     vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
                     | vk::DescriptorType::UNIFORM_BUFFER => gpu::BindingType::ConstantBuffer,
                     vk::DescriptorType::STORAGE_IMAGE => gpu::BindingType::StorageTexture,
                     vk::DescriptorType::SAMPLED_IMAGE => gpu::BindingType::SampledTexture,
                     vk::DescriptorType::SAMPLER => gpu::BindingType::Sampler,
-                    vk::DescriptorType::COMBINED_IMAGE_SAMPLER => {
-                        gpu::BindingType::TextureAndSampler
-                    }
+                    vk::DescriptorType::COMBINED_IMAGE_SAMPLER => unreachable!(),
                     _ => unreachable!(),
                 },
             })

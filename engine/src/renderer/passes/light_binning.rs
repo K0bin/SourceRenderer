@@ -121,37 +121,23 @@ impl LightBinningPass {
             .get_compute_pipeline(self.light_binning_pipeline)
             .unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
-        cmd_buffer.bind_uniform_buffer(
-            BindingFrequency::VeryFrequent,
-            0,
-            BufferRef::Transient(camera_buffer),
-            0,
-            WHOLE_BUFFER,
-        );
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
-            1,
+            0,
             BufferRef::Regular(&*clusters_buffer),
             0,
             WHOLE_BUFFER,
         );
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
-            2,
-            BufferRef::Transient(&light_info_buffer),
-            0,
-            WHOLE_BUFFER,
-        );
-        cmd_buffer.bind_storage_buffer(
-            BindingFrequency::VeryFrequent,
-            3,
+            1,
             BufferRef::Transient(&point_lights_buffer),
             0,
             WHOLE_BUFFER,
         );
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
-            4,
+            2,
             BufferRef::Regular(&*light_bitmask_buffer),
             0,
             WHOLE_BUFFER,

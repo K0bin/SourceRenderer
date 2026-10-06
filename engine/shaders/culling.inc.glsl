@@ -30,10 +30,10 @@ layout(std140, set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform frustumU
   Frustum frustum;
 };
 #ifdef OCCLUSION_CULLING
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform sampler2D hiZ;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform texture2D hiZ;
 #endif
 
-#include "frame_set.inc.glsl"
+#include "frame_set_modern.inc.glsl"
 
 shared uint[2] visible;
 
@@ -141,7 +141,7 @@ bool checkOcclusion(GPUBoundingBox aabb, Camera camera, mat4 modelTransform) {
   maxCorner.xy = maxCorner.xy * 0.5 + 0.5;
   maxCorner.y = 1 - maxCorner.y;
 
-  vec2 mip0texSize = vec2(textureSize(hiZ, 0));
+  vec2 mip0texSize = vec2(textureSize(sampler2D(hiZ, samplerNearest), 0));
   vec2 dist = (maxCorner.xy - minCorner.xy) * mip0texSize;
   float maxDist = max(dist.x, dist.y);
   float mip = ceil(log2(maxDist));
@@ -149,10 +149,10 @@ bool checkOcclusion(GPUBoundingBox aabb, Camera camera, mat4 modelTransform) {
 
   #ifndef MIN_MAX_SAMPLER
   vec4 depths = vec4(
-    textureLod(hiZ, vec2(minCorner.x, minCorner.y), mip).x,
-    textureLod(hiZ, vec2(maxCorner.x, minCorner.y), mip).x,
-    textureLod(hiZ, vec2(maxCorner.x, maxCorner.y), mip).x,
-    textureLod(hiZ, vec2(minCorner.x, maxCorner.y), mip).x
+    textureLod(sampler2D(hiZ, samplerNearest), vec2(minCorner.x, minCorner.y), mip).x,
+    textureLod(sampler2D(hiZ, samplerNearest), vec2(maxCorner.x, minCorner.y), mip).x,
+    textureLod(sampler2D(hiZ, samplerNearest), vec2(maxCorner.x, maxCorner.y), mip).x,
+    textureLod(sampler2D(hiZ, samplerNearest), vec2(minCorner.x, maxCorner.y), mip).x
   );
 
   float maxDepth = max(max(depths.x, depths.y), max(depths.z, depths.w));

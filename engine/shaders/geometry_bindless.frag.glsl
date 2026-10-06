@@ -9,6 +9,7 @@
 #include "descriptor_sets.inc.glsl"
 #include "gpu_scene.inc.glsl"
 #include "camera.inc.glsl"
+#include "frame_set_modern.inc.glsl"
 
 layout(location = 0) in vec3 in_worldPosition;
 layout(location = 1) in vec2 in_uv;
@@ -17,30 +18,26 @@ layout(location = 3) in flat uint in_materialIndex;
 
 layout(location = 0) out vec4 out_color;
 
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform sampler2D lightmap;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform sampler albedoSampler;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform sampler2D shadows;
-layout(set = DESCRIPTOR_SET_TEXTURES_BINDLESS, binding = 0) uniform texture2D albedo_global[];
-
 struct Cluster {
   vec4 minPoint;
   vec4 maxPoint;
 };
 
+layout(set = DESCRIPTOR_SET_TEXTURES_BINDLESS, binding = 0) uniform texture2D albedo_global[];
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform texture2D lightmap;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform sampler albedoSampler;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform texture2D shadows;
 layout (std430, set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3) readonly buffer lightBitmasksBuffer {
   uint lightBitmasks[];
 };
-
-
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 4) uniform sampler2D ssao;
-
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 4) uniform texture2D ssao;
 #ifdef DEBUG
 layout(std430, set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 5, std430) readonly buffer clusterAABB {
   Cluster clusters[];
 };
 #endif
 
-#include "frame_set.inc.glsl"
+#include "frame_set_modern.inc.glsl"
 
 #define FS
 #include "util.inc.glsl"
@@ -78,9 +75,9 @@ void main(void) {
 
   vec3 lighting = vec3(0);
   lighting += 0.3;
-  lighting += texture(lightmap, in_lightmap_uv).xyz;
-  lighting *= texture(ssao, vec2(gl_FragCoord.x / rtSize.x, gl_FragCoord.y / rtSize.y)).rrr;
-  lighting *= texture(shadows, vec2(gl_FragCoord.x / rtSize.x, gl_FragCoord.y / rtSize.y)).rrr;
+  lighting += texture(sampler2D(lightmap, albedoSampler), in_lightmap_uv).xyz;
+  lighting *= texture(sampler2D(ssao, samplerLinear), vec2(gl_FragCoord.x / rtSize.x, gl_FragCoord.y / rtSize.y)).rrr;
+  lighting *= texture(sampler2D(shadows, samplerLinear), vec2(gl_FragCoord.x / rtSize.x, gl_FragCoord.y / rtSize.y)).rrr;
   lighting += 0.3;
 
   for (uint i = 0; i < directionalLightCount; i++) {

@@ -441,7 +441,6 @@ pub enum BindingType {
     SampledTexture,
     ConstantBuffer,
     Sampler,
-    TextureAndSampler,
 }
 
 #[derive(Debug)]

@@ -505,33 +505,6 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         );
     }
 
-    unsafe fn bind_sampling_view_and_sampler(
-        &mut self,
-        frequency: gpu::BindingFrequency,
-        binding: u32,
-        texture: &WebGPUTextureView,
-        sampler: &WebGPUSampler,
-    ) {
-        let binding_manager = &mut self.get_recording_mut().binding_manager;
-        binding_manager.bind(
-            frequency,
-            binding,
-            WebGPUBoundResourceRef::SampledTextureAndSampler(
-                WebGPUHashableTextureView::from(texture),
-                WebGPUHashableSampler::from(sampler),
-            ),
-        );
-    }
-
-    unsafe fn bind_sampling_view_and_sampler_array(
-        &mut self,
-        _frequency: gpu::BindingFrequency,
-        _binding: u32,
-        _textures_and_samplers: &[(&WebGPUTextureView, &WebGPUSampler)],
-    ) {
-        panic!("WebGPU does not support binding arrays");
-    }
-
     unsafe fn bind_storage_view_array(
         &mut self,
         _frequency: gpu::BindingFrequency,

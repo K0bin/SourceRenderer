@@ -22,8 +22,9 @@ layout(local_size_x = 8,
 #define CS
 #include "descriptor_sets.inc.glsl"
 #include "util.inc.glsl"
+#include "frame_set_common.inc.glsl"
 
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform samplerCube envMap;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform textureCube envMap;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, rgba8) uniform coherent writeonly imageCube outputTexture;
 
 // from http://holger.dammertz.org/stuff/notes_HammersleyOnHemisphere.html
@@ -102,7 +103,7 @@ void main(void) {
 		vec3 hemisphereDir = sampleHemisphere(uniformRandomSamples.x, uniformRandomSamples.y);
 		vec3 worldSpaceDir = normalMat * hemisphereDir;
 
-		irradiance += textureLod(envMap, worldSpaceDir, 0).rgb;
+		irradiance += textureLod(samplerCube(envMap, samplerLinear), worldSpaceDir, 0).rgb;
 	}
 	irradiance /= vec3(NumSamples);
 

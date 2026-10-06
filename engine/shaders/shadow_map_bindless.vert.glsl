@@ -12,7 +12,7 @@ layout(push_constant) uniform VeryHighFrequencyUbo {
     mat4 viewProj;
 };
 
-#include "frame_set.inc.glsl"
+#include "frame_set_modern.inc.glsl"
 
 invariant gl_Position;
 

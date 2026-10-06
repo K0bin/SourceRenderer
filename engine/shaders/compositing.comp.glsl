@@ -6,16 +6,16 @@ layout(local_size_x = 8,
        local_size_z = 1) in;
 
 #include "descriptor_sets.inc.glsl"
+#include "frame_set_modern.inc.glsl"
 
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform writeonly image2D outputTexture;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform sampler2D frame;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform sampler2D ssr;
-// layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3) uniform sampler2D ssao;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform texture2D frame;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform texture2D ssr;
+// layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3) uniform texture2D ssao;
 
 #define CS
 #include "util.inc.glsl"
 
-// #include "frame_set.inc.glsl"
 
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3, std140) uniform ConfigUBO {
   float gamma;
@@ -38,8 +38,8 @@ void main() {
     return;
   }
   vec2 texCoord = vec2((float(storageTexCoord.x) + 0.5) / float(texSize.x), (float(storageTexCoord.y) + 0.5) / float(texSize.y));
-  vec3 color = texture(frame, texCoord).xyz;
-  vec4 reflection = texture(ssr, texCoord);
+  vec3 color = texture(sampler2D(frame, samplerLinear), texCoord).xyz;
+  vec4 reflection = texture(sampler2D(ssr, samplerLinear), texCoord);
   color = mix(color, reflection.xyz, reflection.w);
 
   color *= exposure;

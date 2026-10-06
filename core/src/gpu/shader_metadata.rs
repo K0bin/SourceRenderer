@@ -12,7 +12,6 @@ pub enum ResourceType {
     SampledTexture,
     StorageTexture,
     Sampler,
-    CombinedTextureSampler,
     AccelerationStructure,
 }
 

@@ -211,7 +211,6 @@ impl SsaoPass {
         cmd_buffer: &mut CommandBuffer,
         pass_params: &RenderPassParameters<'_>,
         depth_name: &str,
-        camera: &TransientBufferSlice,
     ) {
         cmd_buffer.clear_all_bindings(BindingFrequency::Frequent);
         cmd_buffer.clear_all_bindings(BindingFrequency::VeryFrequent);
@@ -252,26 +251,22 @@ impl SsaoPass {
             0,
             WHOLE_BUFFER,
         );
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             1,
             &self.noise_texture_view,
-            &self.noise_sampler,
         );
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             2,
             &*depth_srv,
-            pass_params.resources.linear_sampler(),
         );
-        cmd_buffer.bind_uniform_buffer(
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 3, &*ssao_uav);
+        cmd_buffer.bind_sampler(
             BindingFrequency::VeryFrequent,
-            3,
-            BufferRef::Transient(camera),
-            0,
-            WHOLE_BUFFER,
+            4,
+            &self.noise_sampler,
         );
-        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 4, &*ssao_uav);
         cmd_buffer.finish_binding();
         let ssao_info = ssao_uav.texture().unwrap().info();
         cmd_buffer.dispatch(
@@ -324,16 +319,19 @@ impl SsaoPass {
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buffer.flush_barriers();
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0u32, &smoothed_ssao_view);
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             1u32,
             &ssao_sampling_view,
-            pass_params.resources.linear_sampler(),
         );
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             2u32,
             &smoothed_ssao_history_view,
+        );
+        cmd_buffer.bind_sampler(
+            BindingFrequency::VeryFrequent,
+            5u32,
             pass_params.resources.linear_sampler(),
         );
         cmd_buffer.finish_binding();

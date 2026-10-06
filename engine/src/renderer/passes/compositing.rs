@@ -119,17 +119,15 @@ impl CompositingPass {
             .unwrap();
 
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0, &output);
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             1,
             &input_image,
-            params.resources.linear_sampler(),
         );
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             2,
             &ssr,
-            params.resources.linear_sampler(),
         );
         cmd_buffer.bind_uniform_buffer(
             BindingFrequency::VeryFrequent,

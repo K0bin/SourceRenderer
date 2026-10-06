@@ -70,7 +70,7 @@ impl WebGPUShader {
                         gpu::ShaderType::ComputeShader => web_sys::gpu_shader_stage::COMPUTE,
                         _ => panic!("Unsupported shader type in WebGPU"),
                     },
-                    index: binding.binding * 2,
+                    index: binding.binding,
                     writable: binding.writable,
                     resource_type: binding.resource_type,
                     has_dynamic_offset: false,
@@ -81,18 +81,6 @@ impl WebGPUShader {
                     struct_size: binding.struct_size,
                     _p: PhantomData
                 };
-                if binding.resource_type == gpu::ResourceType::CombinedTextureSampler {
-                    binding_info.resource_type = gpu::ResourceType::SampledTexture;
-                    let sampler_binding_info = WebGPUBindGroupEntryInfo {
-                        name: format!("{}_sampler", &binding_info.name),
-                        resource_type: gpu::ResourceType::Sampler,
-                        writable: false,
-                        has_dynamic_offset: false,
-                        index: binding_info.index + 1,
-                        ..binding_info.clone()
-                    };
-                    binding_infos[set_index].push(sampler_binding_info);
-                }
                 binding_infos[set_index].push(binding_info);
             }
         }
@@ -649,9 +637,6 @@ impl gpu::ComputePipeline for WebGPUComputePipeline {
                         gpu::ResourceType::SampledTexture => gpu::BindingType::SampledTexture,
                         gpu::ResourceType::StorageTexture => gpu::BindingType::StorageTexture,
                         gpu::ResourceType::Sampler => gpu::BindingType::Sampler,
-                        gpu::ResourceType::CombinedTextureSampler => {
-                            gpu::BindingType::TextureAndSampler
-                        }
                         gpu::ResourceType::AccelerationStructure => unimplemented!(),
                     },
                 });

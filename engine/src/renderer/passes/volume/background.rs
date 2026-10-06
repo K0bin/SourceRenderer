@@ -159,11 +159,10 @@ impl BackgroundPass {
             extent: Vec2UI::new(rt_info.width, rt_info.height),
         }]);
 
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::Frequent,
             0u32,
             &env_map_specular,
-            resources.linear_sampler(),
         );
         cmd_buffer.finish_binding();
         cmd_buffer.draw(3u32, 1u32, 0u32, 0u32);

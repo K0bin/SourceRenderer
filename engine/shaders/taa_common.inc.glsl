@@ -3,18 +3,18 @@ layout(local_size_x = 8,
        local_size_z = 1) in;
 
 #include "descriptor_sets.inc.glsl"
+#include "frame_set_modern.inc.glsl"
 
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform sampler2D frame;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform sampler2D history; // NEEDS LINEAR SAMPLER!
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform texture2D frame;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform texture2D history; // NEEDS LINEAR SAMPLER!
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2, rgba8) uniform writeonly image2D outputTexture;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3) uniform sampler2D depthMap;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3) uniform texture2D depthMap;
 
 #ifndef VISIBILITY_BUFFER
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 4) uniform sampler2D motionTex;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 4) uniform texture2D motionTex;
 #else
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 4, r32ui) readonly uniform uimage2D primitiveIds;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 5, rg16) readonly uniform image2D barycentrics;
-#include "frame_set.inc.glsl"
 #include "vis_buf.inc.glsl"
 #endif
 
@@ -34,7 +34,7 @@ vec3 historyClamp(vec3 color, vec2 texCoord, ivec2 textureSize, vec3 historyColo
     if (coord.x < 0.0 || coord.x > 1.0 || coord.y < 0.0 || coord.y > 1.0) {
       continue;
     }
-    vec3 sampleColor = texture(frame, coord).xyz;
+    vec3 sampleColor = texture(sampler2D(frame, samplerLinear), coord).xyz;
     neighborMax = max(neighborMax, sampleColor);
     neighborMin = min(neighborMin, sampleColor);
   }
@@ -43,7 +43,7 @@ vec3 historyClamp(vec3 color, vec2 texCoord, ivec2 textureSize, vec3 historyColo
     if (coord.x < 0.0 || coord.x > 1.0 || coord.y < 0.0 || coord.y > 1.0) {
       continue;
     }
-    vec3 sampleColor = texture(frame, coord).xyz;
+    vec3 sampleColor = texture(sampler2D(frame, samplerLinear), coord).xyz;
     neighborMax = max(neighborMax, sampleColor);
     neighborMin = min(neighborMin, sampleColor);
   }
@@ -52,21 +52,21 @@ vec3 historyClamp(vec3 color, vec2 texCoord, ivec2 textureSize, vec3 historyColo
     if (coord.x < 0.0 || coord.x > 1.0 || coord.y < 0.0 || coord.y > 1.0) {
       continue;
     }
-    vec3 sampleColor = texture(frame, coord).xyz;
+    vec3 sampleColor = texture(sampler2D(frame, samplerLinear), coord).xyz;
     neighborMax = max(neighborMax, sampleColor);
     neighborMin = min(neighborMin, sampleColor);
   }
   return clamp(historyColor, neighborMin, neighborMax);
 }
 
-vec2 chooseTexCoordClosestToCamera(sampler2D depthMap, vec2 texCoord) {
-  uvec2 texSize = textureSize(depthMap, 0);
+vec2 chooseTexCoordClosestToCamera(texture2D depthMap, sampler depthSampler, vec2 texCoord) {
+  uvec2 texSize = textureSize(sampler2D(depthMap, depthSampler), 0);
   float minDepth = 1;
   vec2 minTexCoord = texCoord;
   for (uint x = -1; x <= 1; x++) {
     for (uint y = -1; y <= 1; y++) {
       vec2 samplePos = texCoord + vec2(float(x), float(y)) * vec2(texSize);
-      float depthSample = textureLod(depthMap, samplePos, 0).x;
+      float depthSample = textureLod(sampler2D(depthMap, depthSampler), samplePos, 0).x;
       if (depthSample < minDepth) {
         minDepth = depthSample;
         minTexCoord = samplePos;
@@ -78,11 +78,11 @@ vec2 chooseTexCoordClosestToCamera(sampler2D depthMap, vec2 texCoord) {
 
 #define CATMULL_ROM_IGNORE_CORNERS
 // https://gist.github.com/TheRealMJP/c83b8c0f46b63f3a88a5986f4fa982b1
-vec3 catmullRom(sampler2D tex, vec2 texCoord) {
+vec3 catmullRom(texture2D tex, sampler samp, vec2 texCoord) {
   // We're going to sample a a 4x4 grid of texels surrounding the target UV coordinate. We'll do this by rounding
   // down the sample location to get the exact center of our "starting" texel. The starting texel will be at
   // location [1, 1] in the grid, where [0, 0] is the top left corner.
-  vec2 texSize = textureSize(tex, 0);
+  vec2 texSize = textureSize(sampler2D(tex, samp), 0);
   vec2 samplePos = texCoord * texSize;
   vec2 texPosCenter = floor(samplePos - 0.5) + 0.5;
 
@@ -113,19 +113,19 @@ vec3 catmullRom(sampler2D tex, vec2 texCoord) {
   texPos12 /= texSize;
 
   vec3 result = vec3(0.0);
-  result += textureLod(tex, vec2(texPos12.x, texPos0.y), 0.0).xyz * w12.x * w0.y;
+  result += textureLod(sampler2D(tex, samp), vec2(texPos12.x, texPos0.y), 0.0).xyz * w12.x * w0.y;
 
-  result += textureLod(tex, vec2(texPos0.x, texPos12.y), 0.0).xyz * w0.x * w12.y;
-  result += textureLod(tex, vec2(texPos12.x, texPos12.y), 0.0).xyz * w12.x * w12.y;
-  result += textureLod(tex, vec2(texPos3.x, texPos12.y), 0.0).xyz * w3.x * w12.y;
+  result += textureLod(sampler2D(tex, samp), vec2(texPos0.x, texPos12.y), 0.0).xyz * w0.x * w12.y;
+  result += textureLod(sampler2D(tex, samp), vec2(texPos12.x, texPos12.y), 0.0).xyz * w12.x * w12.y;
+  result += textureLod(sampler2D(tex, samp), vec2(texPos3.x, texPos12.y), 0.0).xyz * w3.x * w12.y;
 
-  result += textureLod(tex, vec2(texPos12.x, texPos3.y), 0.0).xyz * w12.x * w3.y;
+  result += textureLod(sampler2D(tex, samp), vec2(texPos12.x, texPos3.y), 0.0).xyz * w12.x * w3.y;
 
   #ifndef CATMULL_ROM_IGNORE_CORNERS
-  result += textureLod(tex, vec2(texPos0.x, texPos0.y), 0.0).xyz * w0.x * w0.y;
-  result += textureLod(tex, vec2(texPos3.x, texPos0.y), 0.0).xyz * w3.x * w0.y;
-  result += textureLod(tex, vec2(texPos0.x, texPos3.y), 0.0).xyz * w0.x * w3.y;
-  result += textureLod(tex, vec2(texPos3.x, texPos3.y), 0.0).xyz * w3.x * w3.y;
+  result += textureLod(sampler2D(tex, samp), vec2(texPos0.x, texPos0.y), 0.0).xyz * w0.x * w0.y;
+  result += textureLod(sampler2D(tex, samp), vec2(texPos3.x, texPos0.y), 0.0).xyz * w3.x * w0.y;
+  result += textureLod(sampler2D(tex, samp), vec2(texPos0.x, texPos3.y), 0.0).xyz * w0.x * w3.y;
+  result += textureLod(sampler2D(tex, samp), vec2(texPos3.x, texPos3.y), 0.0).xyz * w3.x * w3.y;
   #endif
 
   // Ignore the corner samples. (Filmic SMAA: Sharp Morphological and Temporal Antialiasing, Jorge Jimenez)
@@ -134,17 +134,17 @@ vec3 catmullRom(sampler2D tex, vec2 texCoord) {
 }
 
 void main() {
-    ivec2 texSize = textureSize(frame, 0);
+    ivec2 texSize = textureSize(sampler2D(frame, samplerLinear), 0);
     if (gl_GlobalInvocationID.x >= texSize.x || gl_GlobalInvocationID.y >= texSize.y) {
       return;
     }
     vec2 texCoord = vec2((float(gl_GlobalInvocationID.x) + 0.5) / float(texSize.x), (float(gl_GlobalInvocationID.y) + 0.5) / float(texSize.y));
     ivec2 storageTexCoord = ivec2(int(gl_GlobalInvocationID.x), int(gl_GlobalInvocationID.y));
-    vec3 color = textureLod(frame, texCoord, 0).xyz;
+    vec3 color = textureLod(sampler2D(frame, samplerLinear), texCoord, 0).xyz;
 
-    vec2 motionTexCoord = chooseTexCoordClosestToCamera(depthMap, texCoord);
+    vec2 motionTexCoord = chooseTexCoordClosestToCamera(depthMap, samplerLinear, texCoord);
 #ifndef VISIBILITY_BUFFER
-    vec2 motion = textureLod(motionTex, motionTexCoord, 0).xy;
+    vec2 motion = textureLod(sampler2D(motionTex, samplerNearest), motionTexCoord, 0).xy;
 #else
   uint id = imageLoad(primitiveIds, storageTexCoord).x;
   vec2 barycentricsXY = imageLoad(barycentrics, storageTexCoord).xy;
@@ -158,7 +158,7 @@ void main() {
       return;
     }
 
-    vec3 historyColor = catmullRom(history, historyTexCoord);
+    vec3 historyColor = catmullRom(history, samplerLinear, historyTexCoord);
     vec3 clampedHistoryColor = historyClamp(color, texCoord, texSize, historyColor);
     vec3 clampDiff = abs(clampedHistoryColor) / abs(historyColor);
 

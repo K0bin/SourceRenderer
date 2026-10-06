@@ -3,6 +3,7 @@
 #extension GL_GOOGLE_include_directive : enable
 
 #include "descriptor_sets.inc.glsl"
+#include "frame_set_common.inc.glsl"
 
 const float PI = 3.14159265359;
 
@@ -13,8 +14,8 @@ layout(location = 3) in vec2 in_lightmap_uv;
 
 layout(location = 0) out vec4 out_color;
 
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform sampler2D albedo;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform texture2D albedo;
 
 void main(void) {
-  out_color = texture(albedo, in_uv);
+  out_color = texture(sampler2D(albedo, samplerLinear), in_uv);
 }
