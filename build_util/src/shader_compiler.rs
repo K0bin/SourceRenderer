@@ -398,20 +398,13 @@ fn read_metadata(
 
     unsafe fn read_resources(
         compiler: spirv_cross_sys::spvc_compiler,
+        spv_resources_ptr: spirv_cross_sys::spvc_resources,
         spv_resource_type: spirv_cross_sys::spvc_resource_type,
         resource_type: gpu::ResourceType,
         can_be_writable: bool,
         resources: &mut [Vec<gpu::Resource>; gpu::NON_BINDLESS_SET_COUNT as usize],
         uses_bindless_texture_set: &mut bool,
     ) {
-        let mut spv_resources_ptr: spirv_cross_sys::spvc_resources = std::ptr::null_mut();
-        unsafe {
-            spirv_cross_sys::spvc_compiler_create_shader_resources(
-                compiler,
-                &mut spv_resources_ptr,
-            );
-        }
-
         let spv_resources = unsafe {
             let mut resources_list: *const spirv_cross_sys::spvc_reflected_resource =
                 std::ptr::null();
@@ -614,8 +607,17 @@ fn read_metadata(
 
     // RESOURCES
     unsafe {
+        let mut spv_resources_ptr: spirv_cross_sys::spvc_resources = std::ptr::null_mut();
+        unsafe {
+            spirv_cross_sys::spvc_compiler_create_shader_resources(
+                compiler,
+                &mut spv_resources_ptr,
+            );
+        }
+
         read_resources(
             compiler,
+            spv_resources_ptr,
             spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_SEPARATE_IMAGE,
             gpu::ResourceType::SampledTexture,
             false,
@@ -624,6 +626,7 @@ fn read_metadata(
         );
         read_resources(
             compiler,
+            spv_resources_ptr,
             spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_SEPARATE_SAMPLERS,
             gpu::ResourceType::Sampler,
             false,
@@ -632,6 +635,7 @@ fn read_metadata(
         );
         read_resources(
             compiler,
+            spv_resources_ptr,
             spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_SUBPASS_INPUT,
             gpu::ResourceType::SubpassInput,
             false,
@@ -640,6 +644,7 @@ fn read_metadata(
         );
         read_resources(
             compiler,
+            spv_resources_ptr,
             spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_UNIFORM_BUFFER,
             gpu::ResourceType::UniformBuffer,
             false,
@@ -648,6 +653,7 @@ fn read_metadata(
         );
         read_resources(
             compiler,
+            spv_resources_ptr,
             spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_STORAGE_BUFFER,
             gpu::ResourceType::StorageBuffer,
             true,
@@ -656,6 +662,7 @@ fn read_metadata(
         );
         read_resources(
             compiler,
+            spv_resources_ptr,
             spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_STORAGE_IMAGE,
             gpu::ResourceType::StorageTexture,
             true,
@@ -664,6 +671,7 @@ fn read_metadata(
         );
         read_resources(
             compiler,
+            spv_resources_ptr,
             spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_ACCELERATION_STRUCTURE,
             gpu::ResourceType::AccelerationStructure,
             false,
