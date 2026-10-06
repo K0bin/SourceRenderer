@@ -8,6 +8,11 @@ fn main() {
         !msg.contains("Unknown decoration Block") // bullshit warning by Naga
     });
 
+    if std::env::var("CARGO_CFG_TARGET_ARCH").unwrap() == "wasm32" {
+        // Enabling non-send features on WASM
+        println!("cargo:rustc-cfg=non_send_gpu");
+    }
+
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
 
     // Compile shaders
