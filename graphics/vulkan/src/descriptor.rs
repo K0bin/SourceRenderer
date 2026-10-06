@@ -1053,7 +1053,7 @@ impl DescriptorCaches {
         let transient_pool = Arc::new(VkDescriptorPool::new(device, true));
         let permanent_pool = Arc::new(VkDescriptorPool::new(device, false));
 
-        let cache_mode = CacheMode::None;
+        let cache_mode = CacheMode::TransientOnly;
         Self {
             cache_mode,
             transient_pools: crate::descriptor::DescriptorPools {
