@@ -426,17 +426,21 @@ fn extract_volume_renderables(
             if result.is_err() {
                 let _ = events.write(AppExit::from_code(1));
             }
-        } else if !renderer.is_saturated && transform.is_changed_after(renderer.last_unsaturated_tick) {
-            let result = renderer
-                .sender
-                .update_volume_thresholds(entity, &renderable);
-            if result.is_err() {
-                let _ = events.write(AppExit::from_code(1));
+        } else if !renderer.is_saturated {
+            if renderable.is_changed_after(renderer.last_unsaturated_tick) {
+                let result = renderer
+                    .sender
+                    .update_volume_thresholds(entity, &renderable);
+                if result.is_err() {
+                    let _ = events.write(AppExit::from_code(1));
+                }
             }
 
-            let result = renderer.sender.update_transform(entity, transform.0);
-            if result.is_err() {
-                let _ = events.write(AppExit::from_code(1));
+            if transform.is_changed_after(renderer.last_unsaturated_tick) {
+                let result = renderer.sender.update_transform(entity, transform.0);
+                if result.is_err() {
+                    let _ = events.write(AppExit::from_code(1));
+                }
             }
         }
     }
