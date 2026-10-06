@@ -152,7 +152,6 @@ impl GeometryPass {
         cmd_buffer: &mut CommandBuffer,
         scene: &RendererScene,
         view: &View,
-        camera_buffer: &TransientBufferSlice,
         resources: &RendererResources,
         backbuffer: &Arc<TextureView>,
         backbuffer_handle: &BackendTexture,
@@ -214,15 +213,6 @@ impl GeometryPass {
             extent: Vec2UI::new(width, height),
         }]);
 
-        //let camera_buffer = cmd_buffer.upload_dynamic_data(device, &[view.proj_matrix * view.view_matrix], BufferUsage::CONSTANT);
-        cmd_buffer.bind_uniform_buffer(
-            BindingFrequency::Frame,
-            0,
-            BufferRef::Transient(camera_buffer),
-            0,
-            WHOLE_BUFFER,
-        );
-
         let drawables = scene.static_drawables();
         let parts = &view.drawable_parts;
         for part in parts {
@@ -251,21 +241,19 @@ impl GeometryPass {
                 RendererMaterialValue::Texture(handle) => {
                     let texture = assets.get_texture(*handle);
                     let albedo_view = &texture.view;
-                    cmd_buffer.bind_sampling_view_and_sampler(
+                    cmd_buffer.bind_sampling_view(
                         BindingFrequency::Frequent,
                         0,
                         albedo_view,
-                        &self.sampler,
                     );
                 }
                 _ => {
                     let texture = assets.get_placeholder_texture_white();
                     let albedo_view = &texture.view;
-                    cmd_buffer.bind_sampling_view_and_sampler(
+                    cmd_buffer.bind_sampling_view(
                         BindingFrequency::Frequent,
                         0,
                         albedo_view,
-                        &self.sampler,
                     );
                 }
             }

@@ -234,24 +234,21 @@ impl SSSPass {
             .unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buffer.flush_barriers();
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             0,
             &*color_view,
-            &self.linear_sampler,
         );
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             4,
             &*sss_intensity_view,
-            &self.linear_sampler,
         );
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &*sss_temp_uav);
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             2,
             &*depth_srv,
-            &self.linear_sampler,
         );
         cmd_buffer.bind_uniform_buffer(
             BindingFrequency::VeryFrequent,
@@ -308,11 +305,10 @@ impl SSSPass {
             HistoryResourceEntry::Current,
         );
 
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             0,
             &*sss_temp_srv,
-            &self.linear_sampler,
         );
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &*sss_uav);
         cmd_buffer.finish_binding();

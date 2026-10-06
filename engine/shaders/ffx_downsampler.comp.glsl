@@ -4,12 +4,14 @@
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 #include "descriptor_sets.inc.glsl"
+#include "frame_set_modern.inc.glsl"
 
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform sampler2D inputTexture;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform texture2D inputTexture;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, r32f) uniform coherent image2D outputTexture[12];
 layout(std430, set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2, std430) restrict buffer counterBuffer {
   uint spdCounterGlobal;
 };
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3) uniform sampler maxSampler;
 
  layout(push_constant) uniform SpdConstants {
   uint mips; // needed to opt out earlier if mips are < 12
@@ -33,7 +35,7 @@ vec2 invInputSize;
 
 AF4 SpdLoadSourceImage(ASU2 p, AU1 slice) {
   AF2 texCoord = p * invInputSize + invInputSize;
-  return textureLod(inputTexture, texCoord, 0);
+  return textureLod(sampler2D(inputTexture, maxSampler), texCoord, 0);
 }
 
 AF4 SpdLoad(ASU2 p, AU1 slice) {
@@ -68,7 +70,7 @@ AF4 SpdReduce4(AF4 v0, AF4 v1, AF4 v2, AF4 v3){return max(max(v0, v1), max(v2, v
 #include "ffx_spd.h"
 
 void main() {
-  inputSize = textureSize(inputTexture, 0);
+  inputSize = textureSize(sampler2D(inputTexture, maxSampler), 0);
   invInputSize = 1 / inputSize;
 
   // Call the downsampling function

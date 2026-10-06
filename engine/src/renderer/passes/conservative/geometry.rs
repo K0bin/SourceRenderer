@@ -307,7 +307,7 @@ impl GeometryPass {
                         extent: Vec2UI::new(width, height),
                     }]);
 
-                    command_buffer.bind_sampling_view_and_sampler(
+                    command_buffer.bind_sampling_view(
                         BindingFrequency::Frequent,
                         0,
                         if let Some(lightmap) = lightmap {
@@ -315,15 +315,13 @@ impl GeometryPass {
                         } else {
                             &assets.get_placeholder_texture_white().view
                         },
-                        &self.sampler,
                     );
                     command_buffer.bind_sampler(BindingFrequency::Frequent, 1, &self.sampler);
                     if let Some(shadows) = shadows {
-                        command_buffer.bind_sampling_view_and_sampler(
+                        command_buffer.bind_sampling_view(
                             BindingFrequency::Frequent,
                             2,
                             &shadows,
-                            &self.sampler,
                         );
                     }
                     command_buffer.bind_storage_buffer(
@@ -333,11 +331,10 @@ impl GeometryPass {
                         0,
                         WHOLE_BUFFER,
                     );
-                    command_buffer.bind_sampling_view_and_sampler(
+                    command_buffer.bind_sampling_view(
                         BindingFrequency::Frequent,
                         4,
                         &ssao,
-                        &self.sampler,
                     );
                     command_buffer.bind_storage_buffer(
                         BindingFrequency::Frequent,
@@ -420,34 +417,30 @@ impl GeometryPass {
                                 ..Zeroable::zeroed()
                             };
 
-                            command_buffer.bind_sampling_view_and_sampler(
+                            command_buffer.bind_sampling_view(
                                 BindingFrequency::VeryFrequent,
                                 0,
                                 &assets.get_placeholder_texture_white().view,
-                                &self.sampler,
                             );
-                            command_buffer.bind_sampling_view_and_sampler(
+                            command_buffer.bind_sampling_view(
                                 BindingFrequency::VeryFrequent,
                                 1,
                                 &assets.get_placeholder_texture_white().view,
-                                &self.sampler,
                             );
-                            command_buffer.bind_sampling_view_and_sampler(
+                            command_buffer.bind_sampling_view(
                                 BindingFrequency::VeryFrequent,
                                 2,
                                 &assets.get_placeholder_texture_white().view,
-                                &self.sampler,
                             );
 
                             let albedo_value = material.get("albedo").unwrap();
                             match albedo_value {
                                 RendererMaterialValue::Texture(handle) => {
                                     let albedo_view = &assets.get_texture(*handle).view;
-                                    command_buffer.bind_sampling_view_and_sampler(
+                                    command_buffer.bind_sampling_view(
                                         BindingFrequency::VeryFrequent,
                                         0,
                                         albedo_view,
-                                        &self.sampler,
                                     );
                                     material_info.albedo_texture_index = 0;
                                 }
@@ -458,11 +451,10 @@ impl GeometryPass {
                             match roughness_value {
                                 Some(RendererMaterialValue::Texture(handle)) => {
                                     let roughness_view = &assets.get_texture(*handle).view;
-                                    command_buffer.bind_sampling_view_and_sampler(
+                                    command_buffer.bind_sampling_view(
                                         BindingFrequency::VeryFrequent,
                                         1,
                                         roughness_view,
-                                        &self.sampler,
                                     );
                                 }
                                 Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
@@ -478,11 +470,10 @@ impl GeometryPass {
                                         .get_texture_opt(*handle)
                                         .unwrap_or(assets.get_placeholder_texture_black())
                                         .view;
-                                    command_buffer.bind_sampling_view_and_sampler(
+                                    command_buffer.bind_sampling_view(
                                         BindingFrequency::VeryFrequent,
                                         2,
                                         metalness_view,
-                                        &self.sampler,
                                     );
                                 }
                                 Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),

@@ -224,11 +224,10 @@ impl ImageBasedLightingPreparation {
             HistoryResourceEntry::Current,
         );
         cmd_buffer.flush_barriers();
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             0u32,
             &texture.view,
-            pass_params.resources.linear_sampler(),
         );
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1u32, &cube);
         cmd_buffer.finish_binding();
@@ -300,11 +299,10 @@ impl ImageBasedLightingPreparation {
             },
             HistoryResourceEntry::Current,
         );
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             0u32,
             &cube,
-            pass_params.resources.linear_sampler(),
         );
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1u32, &filtered_cube);
         cmd_buffer.finish_binding();

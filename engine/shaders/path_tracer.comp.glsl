@@ -19,7 +19,7 @@ layout(local_size_x = 8,
 #include "descriptor_sets.inc.glsl"
 #include "camera.inc.glsl"
 
-#include "frame_set.inc.glsl"
+#include "frame_set_modern.inc.glsl"
 #include "gpu_scene.inc.glsl"
 #include "vis_buf.inc.glsl"
 #include "vertex.inc.glsl"
@@ -27,7 +27,8 @@ layout(local_size_x = 8,
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform accelerationStructureEXT topLevelAS;
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 1, rgba8) uniform coherent writeonly image2D image;
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform sampler2D noise;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform texture2D noise;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 3) uniform sampler noiseSampler;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3) uniform sampler linearSampler;
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 4, rgba8) uniform readonly image2D historyImage;
 layout(set = DESCRIPTOR_SET_TEXTURES_BINDLESS, binding = 0) uniform texture2D albedo_global[1024];
@@ -252,7 +253,7 @@ vec3 randomBlueNoise(uint iteration) {
     texCoord += vec2((iteration % 7) * 0.3, float(iteration / 7) * 0.3);
     texCoord = mod(texCoord, vec2(1.0));
 
-    return texture(noise, texCoord).xyz;
+    return texture(sampler2D(noise, noiseSampler), texCoord).xyz;
 }
 
 // Hash Functions for GPU Rendering, Jarzynski et al.

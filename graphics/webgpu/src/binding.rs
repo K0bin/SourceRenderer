@@ -19,7 +19,7 @@ use web_sys::{
     GpuTextureBindingLayout, GpuTextureSampleType, GpuTextureView,
 };
 
-pub(crate) const WEBGPU_BIND_COUNT_PER_SET: u32 = gpu::PER_SET_BINDINGS * 2 + 2;
+pub(crate) const WEBGPU_BIND_COUNT_PER_SET: u32 = gpu::PER_SET_BINDINGS;
 const DEFAULT_DESCRIPTOR_ARRAY_SIZE: usize = 4usize;
 const DEFAULT_PER_SET_PREALLOCATED_SIZE: usize = 8usize;
 
@@ -130,7 +130,6 @@ impl WebGPUBindGroupLayout {
                     ));
                     entry.set_texture(&texture_binding);
                 }
-                gpu::ResourceType::CombinedTextureSampler => unreachable!(),
                 gpu::ResourceType::Sampler => {
                     let sampler = GpuSamplerBindingLayout::new();
                     sampler.set_type(GpuSamplerBindingType::Filtering);
@@ -485,8 +484,6 @@ pub(crate) enum WebGPUBoundResourceRef<'a> {
     StorageTextureArray(&'a [WebGPUHashableTextureView]),
     SampledTexture(WebGPUHashableTextureView),
     SampledTextureArray(&'a [WebGPUHashableTextureView]),
-    SampledTextureAndSampler(WebGPUHashableTextureView, WebGPUHashableSampler),
-    SampledTextureAndSamplerArray(&'a [(WebGPUHashableTextureView, WebGPUHashableSampler)]),
     Sampler(WebGPUHashableSampler),
 }
 
@@ -919,8 +916,7 @@ impl WebGPUBindingManager {
         slot: u32,
         binding: WebGPUBoundResourceRef,
     ) -> bool {
-        let adjusted_slot = slot * 2;
-        let mut internal_binding_2 = WebGPUBoundResourceRefInternal::None;
+        let internal_binding_2 = WebGPUBoundResourceRefInternal::None;
         let internal_binding = match binding {
             WebGPUBoundResourceRef::None => WebGPUBoundResourceRefInternal::None,
             WebGPUBoundResourceRef::UniformBuffer(buffer) => {
@@ -947,13 +943,6 @@ impl WebGPUBindingManager {
             WebGPUBoundResourceRef::SampledTextureArray(texture_arr) => {
                 WebGPUBoundResourceRefInternal::SampledTextureArray(texture_arr)
             }
-            WebGPUBoundResourceRef::SampledTextureAndSampler(texture, sampler) => {
-                internal_binding_2 = WebGPUBoundResourceRefInternal::Sampler(sampler);
-                WebGPUBoundResourceRefInternal::SampledTexture(texture)
-            }
-            WebGPUBoundResourceRef::SampledTextureAndSamplerArray(_texture_and_sampler_arr) => {
-                unimplemented!()
-            }
             WebGPUBoundResourceRef::Sampler(sampler) => {
                 WebGPUBoundResourceRefInternal::Sampler(sampler)
             }
@@ -961,7 +950,7 @@ impl WebGPUBindingManager {
 
         let bindings_table = &mut self.bindings[frequency as usize];
         let (existing_binding_slice, existing_binding_slice_2) =
-            bindings_table.split_at_mut(adjusted_slot as usize + 1);
+            bindings_table.split_at_mut(slot as usize + 1);
         let existing_binding = existing_binding_slice.last_mut().unwrap();
         let existing_binding_2 = existing_binding_slice_2.first_mut().unwrap();
 

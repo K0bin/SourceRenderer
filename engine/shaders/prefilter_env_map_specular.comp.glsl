@@ -6,7 +6,6 @@
 // MIT Licensed
 
 #extension GL_GOOGLE_include_directive : enable
-#extension GL_EXT_ray_query : enable
 #extension GL_EXT_nonuniform_qualifier : enable
 #extension GL_KHR_shader_subgroup_vote : enable
 #extension GL_KHR_shader_subgroup_arithmetic : enable
@@ -22,12 +21,13 @@ layout(local_size_x = 8,
 #define CS
 #include "descriptor_sets.inc.glsl"
 #include "util.inc.glsl"
+#include "frame_set_common.inc.glsl"
 
 layout(push_constant, std430) uniform Params {
     float roughness;
 };
 
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform samplerCube envMap;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform textureCube envMap;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, rgba8) uniform coherent writeonly imageCube outputTexture;
 
 // from http://holger.dammertz.org/stuff/notes_HammersleyOnHemisphere.html
@@ -103,7 +103,7 @@ void main(void) {
 		vec3 lightDir = 2.0 * dot(view, halfway) * halfway - view;
         float normalDotLight = clamp(dot(normal, lightDir), 0.0, 1.0);
         if (normalDotLight > 0.0) {
-		    irradiance += normalDotLight * textureLod(envMap, lightDir, 0).rgb;
+		    irradiance += normalDotLight * textureLod(samplerCube(envMap, samplerLinear), lightDir, 0).rgb;
 		    totalWeight += normalDotLight;
         }
 	}

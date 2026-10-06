@@ -146,11 +146,10 @@ impl HierarchicalZPass {
             .get_compute_pipeline(self.copy_pipeline)
             .unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&copy_pipeline));
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             0,
             &src_texture,
-            pass_params.resources.nearest_sampler(),
         );
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &dst_mip0);
         cmd_buffer.flush_barriers();
@@ -202,11 +201,10 @@ impl HierarchicalZPass {
             .get_compute_pipeline(self.ffx_pipeline)
             .unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&ffx_pipeline));
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             0,
             &src_texture,
-            &self.sampler,
         );
         cmd_buffer.bind_storage_view_array(BindingFrequency::VeryFrequent, 1, &texture_refs);
         cmd_buffer.bind_storage_buffer(

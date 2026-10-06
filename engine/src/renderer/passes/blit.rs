@@ -93,10 +93,14 @@ impl BlitPass {
             max_depth: 1f32,
         }]);
 
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             0,
             src_view,
+        );
+        cmd_buffer.bind_sampler(
+            BindingFrequency::VeryFrequent,
+            1,
             sampler,
         );
         cmd_buffer.finish_binding();

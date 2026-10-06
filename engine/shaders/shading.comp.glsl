@@ -28,12 +28,13 @@ layout (set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 5) readonly buffer lightBi
   uint lightBitmasks[];
 };
 
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 6) uniform sampler2D lightmap;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 7) uniform sampler2D shadows;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 8) uniform sampler2D ssao;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 9) uniform sampler2DArrayShadow shadowMaps;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 6) uniform texture2D lightmap;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 7) uniform texture2D shadows;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 8) uniform texture2D ssao;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 9) uniform texture2DArray shadowMaps;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 10) uniform samplerShadow shadowSampler;
 
-#include "frame_set.inc.glsl"
+#include "frame_set_modern.inc.glsl"
 
 #ifdef DEBUG
 struct Cluster {
@@ -91,15 +92,15 @@ void main() {
 
   vec3 lighting = vec3(0);
   lighting += vec3(0.3); // ambient
-  lighting += texture(lightmap, vertex.lightmapUv).xyz;
-  lighting *= texture(ssao, texCoord).rrr;
+  lighting += texture(sampler2D(lightmap, samplerLinear), vertex.lightmapUv).xyz;
+  lighting *= texture(sampler2D(ssao, samplerLinear), texCoord).rrr;
 
   for (uint i = 0; i < directionalLightCount; i++) {
     DirectionalLight light = directionalLights[i];
     vec3 lightContribution = pbr(-light.directionAndIntensity.xyz, viewDir, normal, f0, albedo, vec3(light.directionAndIntensity.w), roughness, metalness);
 
     if (i == 0) {
-      lightContribution *= texture(shadows, texCoord).rrr;
+      lightContribution *= texture(sampler2D(shadows, samplerLinear), texCoord).rrr;
       uint cascadeIndex = cascadeCount;
       for (uint j = 0; j < cascadeCount; j++) {
         ShadowCascade cascade = cascades[j];
@@ -118,7 +119,7 @@ void main() {
 
         vec3 coord = vec3(lightSpacePos.xy, cascadeIndex);
         if (coord.x >= 0.0 && coord.x < 1.0 && coord.y >= 0.0 && coord.y < 1.0) {
-          vec4 shadowGather = textureGather(shadowMaps, coord, lightSpacePos.z);
+          vec4 shadowGather = textureGather(sampler2DArrayShadow(shadowMaps, shadowSampler), coord, lightSpacePos.z);
           lightContribution *= dot(shadowGather, vec4(0.25, 0.25, 0.25, 0.25));
         }
       }

@@ -23,12 +23,7 @@ mod renderer_plugin;
 mod renderer_resources;
 mod renderer_scene;
 
-use crate::graphics::{BackendTexture, CommandBuffer, Device, TextureView};
-use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
-use crate::renderer::renderer_resources::RendererResources;
 use command::ImguiFrameSnapshot;
-use sourcerenderer_core::gpu::Format;
-use std::sync::Arc;
 
 pub mod asset;
 pub(crate) mod passes;

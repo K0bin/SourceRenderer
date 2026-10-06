@@ -4,12 +4,9 @@
 
 #include "descriptor_sets.inc.glsl"
 #include "camera.inc.glsl"
+#include "frame_set_modern.inc.glsl"
 
 layout(location = 0) in vec3 in_pos;
-
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0, std140) uniform CameraUBO {
-  Camera camera;
-};
 
 layout(push_constant) uniform VeryHighFrequencyUbo {
   mat4 model;

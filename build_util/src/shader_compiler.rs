@@ -632,14 +632,6 @@ fn read_metadata(
         );
         read_resources(
             compiler,
-            spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_SAMPLED_IMAGE,
-            gpu::ResourceType::CombinedTextureSampler,
-            false,
-            &mut resources,
-            &mut uses_bindless_texture_set,
-        );
-        read_resources(
-            compiler,
             spirv_cross_sys::spvc_resource_type_SPVC_RESOURCE_TYPE_SUBPASS_INPUT,
             gpu::ResourceType::SubpassInput,
             false,
@@ -981,12 +973,6 @@ fn compile_shader_spirv_cross(
                         gpu::ResourceType::Sampler => {
                             msl_binding.msl_sampler = sampler_count;
                             sampler_count += resource.array_size;
-                        }
-                        gpu::ResourceType::CombinedTextureSampler => {
-                            msl_binding.msl_sampler = sampler_count;
-                            msl_binding.msl_texture = texture_count;
-                            sampler_count += resource.array_size;
-                            texture_count += resource.array_size;
                         }
                     }
                     spirv_cross_sys::spvc_compiler_msl_add_resource_binding(
@@ -1429,17 +1415,6 @@ pub fn compile_shader(
         spirv_remove_debug_info(&mut prepared_spirv);
         //spirv_remove_decoration(&mut prepared_spirv, 2); // naga spams warnings about the Block decoration
         spirv_remove_decoration(&mut prepared_spirv, 25); // naga doesn't support NonReadable (writeonly in GLSL)
-        spirv_remap_bindings(&mut prepared_spirv, |binding| Binding {
-            descriptor_set: binding.descriptor_set,
-            binding: binding.binding * 2,
-        });
-        spirv_separate_combined_image_samplers(
-            &mut prepared_spirv,
-            Some(|image_binding: &Binding| Binding {
-                descriptor_set: image_binding.descriptor_set,
-                binding: image_binding.binding + 1,
-            }),
-        );
 
         if output_shading_languages.contains(ShadingLanguage::SpirVPreprocessedForWgsl) {
             write_shader(

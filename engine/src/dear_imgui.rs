@@ -1,11 +1,11 @@
 use crate::WindowState;
 use crate::engine::MousePosition;
 use crate::graphics::ActiveBackend;
-use bevy_app::{App, PreUpdate, Update};
+use bevy_app::{App, PreUpdate};
 use bevy_ecs::system::{NonSendMut, Res};
 use bevy_input::ButtonInput;
 use bevy_input::mouse::MouseButton;
-use dear_imgui_rs::{BackendFlags, Condition, FrameSnapshot, FrameToken};
+use dear_imgui_rs::{BackendFlags, FrameSnapshot, FrameToken};
 use sourcerenderer_core::platform::Window;
 use std::cell::{RefCell, RefMut};
 use std::marker::PhantomPinned;

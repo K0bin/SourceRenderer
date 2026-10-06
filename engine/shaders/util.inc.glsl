@@ -47,15 +47,15 @@ vec2 unjitterTextureUv(vec2 uv, vec2 jitterPx) {
 
 #ifdef CS
 // TODO: https://wickedengine.net/2019/09/22/improved-normal-reconstruction-from-depth/
-vec3 reconstructNormalCS(sampler2D depth, vec2 uv, mat4 invViewProj) {
-  vec2 depthSize = textureSize(depth, 0);
+vec3 reconstructNormalCS(texture2D depth, sampler depthSampler, vec2 uv, mat4 invViewProj) {
+  vec2 depthSize = textureSize(sampler2D(depth, depthSampler), 0);
   vec2 depthTexelSize = 1.0 / depthSize;
   vec2 uv0 = uv;
   vec2 uv1 = uv + vec2(1.0, 0.0) * depthTexelSize;
   vec2 uv2 = uv + vec2(0.0, 1.0) * depthTexelSize;
-  float depth0 = textureLod(depth, uv0, 0).x;
-  float depth1 = textureLod(depth, uv1, 0).x;
-  float depth2 = textureLod(depth, uv2, 0).x;
+  float depth0 = textureLod(sampler2D(depth, depthSampler), uv0, 0).x;
+  float depth1 = textureLod(sampler2D(depth, depthSampler), uv1, 0).x;
+  float depth2 = textureLod(sampler2D(depth, depthSampler), uv2, 0).x;
 
   vec3 pos0 = worldSpacePosition(uv0, depth0, invViewProj);
   vec3 pos1 = worldSpacePosition(uv1, depth1, invViewProj);
@@ -63,9 +63,9 @@ vec3 reconstructNormalCS(sampler2D depth, vec2 uv, mat4 invViewProj) {
   return normalize(cross(pos1 - pos0, pos2 - pos0));
 }
 
-vec3 reconstructViewSpaceNormalCS(sampler2D depth, vec2 uv, mat4 invProj) {
+vec3 reconstructViewSpaceNormalCS(texture2D depth, sampler depthSampler, vec2 uv, mat4 invProj) {
   // same idea as viewSpacePosition
-  return reconstructNormalCS(depth, uv, invProj);
+  return reconstructNormalCS(depth, depthSampler, uv, invProj);
 }
 #endif
 

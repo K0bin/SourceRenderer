@@ -17,7 +17,7 @@ layout(location = 1) out vec2 out_uv;
 layout(location = 2) out vec2 out_lightmap_uv;
 layout(location = 3) out flat uint out_materialIndex;
 
-#include "frame_set.inc.glsl"
+#include "frame_set_modern.inc.glsl"
 
 invariant gl_Position;
 

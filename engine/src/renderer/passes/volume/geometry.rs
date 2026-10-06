@@ -543,38 +543,20 @@ impl GeometryPass {
                 pipeline_non_raymarching
             }));
 
-            cmd_buffer.bind_uniform_buffer(
-                BindingFrequency::Frame,
-                0,
-                BufferRef::Transient(camera_buffer),
-                0,
-                WHOLE_BUFFER,
-            );
-
-            cmd_buffer.bind_sampling_view_and_sampler(
+            cmd_buffer.bind_sampling_view(
                 BindingFrequency::Frequent,
                 2u32,
                 &env_map_diffuse,
-                resources.linear_sampler(),
             );
-            cmd_buffer.bind_sampling_view_and_sampler(
+            cmd_buffer.bind_sampling_view(
                 BindingFrequency::Frequent,
                 3u32,
                 &env_map_specular,
-                resources.linear_sampler(),
             );
-            cmd_buffer.bind_sampling_view_and_sampler(
+            cmd_buffer.bind_sampling_view(
                 BindingFrequency::Frequent,
                 4u32,
                 &integration_lut,
-                resources.linear_sampler(),
-            );
-            cmd_buffer.bind_uniform_buffer(
-                BindingFrequency::Frame,
-                0,
-                BufferRef::Transient(camera_buffer),
-                0,
-                WHOLE_BUFFER,
             );
 
             for drawable in params.scene.scene.volume_mesh_instances() {
@@ -610,21 +592,19 @@ impl GeometryPass {
                     (volume_texture_info.depth as f32) / (volume_texture_lod_extents.z as f32),
                 ));
 
-                cmd_buffer.bind_sampling_view_and_sampler(
+                cmd_buffer.bind_sampling_view(
                     BindingFrequency::Frequent,
                     0u32,
                     &volume_texture.view,
-                    resources.linear_sampler(),
                 );
 
                 let transfer_function = params
                     .assets
                     .get_texture(drawable.transfer_function_texture);
-                cmd_buffer.bind_sampling_view_and_sampler(
+                cmd_buffer.bind_sampling_view(
                     BindingFrequency::Frequent,
                     1u32,
                     &transfer_function.view,
-                    resources.linear_sampler(),
                 );
 
                 cmd_buffer.set_push_constant_data(
@@ -723,21 +703,19 @@ impl GeometryPass {
                 (volume_texture_info.depth as f32) / (volume_texture_lod_extents.z as f32),
             ));
 
-            cmd_buffer.bind_sampling_view_and_sampler(
+            cmd_buffer.bind_sampling_view(
                 BindingFrequency::Frequent,
                 0u32,
                 &volume_texture.view,
-                resources.linear_sampler(),
             );
 
             let transfer_function = params
                 .assets
                 .get_texture(drawable.transfer_function_texture);
-            cmd_buffer.bind_sampling_view_and_sampler(
+            cmd_buffer.bind_sampling_view(
                 BindingFrequency::Frequent,
                 1u32,
                 &transfer_function.view,
-                resources.linear_sampler(),
             );
 
             cmd_buffer.set_pipeline(PipelineBinding::Graphics(if drawable.ray_march_normals {
@@ -836,11 +814,10 @@ impl GeometryPass {
                 }],
                 ShaderType::VertexShader,
             );
-            cmd_buffer.bind_sampling_view_and_sampler(
+            cmd_buffer.bind_sampling_view(
                 BindingFrequency::Frequent,
                 0u32,
                 &volume_texture.view,
-                resources.linear_sampler(),
             );
 
             let key = MarchingCubesKey::new(
@@ -895,21 +872,19 @@ impl GeometryPass {
                 (volume_texture_info.depth as f32) / (volume_texture_lod_extents.z as f32),
             ));
 
-            cmd_buffer.bind_sampling_view_and_sampler(
+            cmd_buffer.bind_sampling_view(
                 BindingFrequency::Frequent,
                 0u32,
                 &volume_texture.view,
-                resources.linear_sampler(),
             );
 
             let transfer_function = params
                 .assets
                 .get_texture(drawable.transfer_function_texture);
-            cmd_buffer.bind_sampling_view_and_sampler(
+            cmd_buffer.bind_sampling_view(
                 BindingFrequency::Frequent,
                 1u32,
                 &transfer_function.view,
-                resources.linear_sampler(),
             );
 
             cmd_buffer.set_pipeline(PipelineBinding::Graphics(if drawable.ray_march_normals {

@@ -212,13 +212,6 @@ impl RenderPath for VolumeRenderer {
         };
 
         let main_view = &scene.scene.views()[scene.active_view_index];
-        let marching_cubes_map = self
-            .marching_cubes_pass
-            .execute(&mut cmd_buffer, &mut params);
-
-        self.ibl_pass.execute(&mut cmd_buffer, &mut params);
-        let ibl_textures = self.ibl_pass.get_texture();
-
         let camera_buffer = cmd_buffer
             .upload_dynamic_data(
                 device,
@@ -252,6 +245,16 @@ impl RenderPath for VolumeRenderer {
             WHOLE_BUFFER,
         );
 
+        cmd_buffer.bind_sampler(BindingFrequency::Frame, 1, params.resources.linear_sampler());
+        cmd_buffer.bind_sampler(BindingFrequency::Frame, 2, params.resources.nearest_sampler());
+
+        let marching_cubes_map = self
+            .marching_cubes_pass
+            .execute(&mut cmd_buffer, &mut params);
+
+        self.ibl_pass.execute(&mut cmd_buffer, &mut params);
+        let ibl_textures = self.ibl_pass.get_texture();
+
         self.background.execute(
             &mut cmd_buffer,
             scene.scene,
@@ -273,7 +276,6 @@ impl RenderPath for VolumeRenderer {
             &mut cmd_buffer,
             &params,
             GeometryPass::DEPTH_TEXTURE_NAME,
-            &camera_buffer,
         );
 
         /*

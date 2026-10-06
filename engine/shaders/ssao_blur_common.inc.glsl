@@ -5,22 +5,27 @@ layout(local_size_x = 8,
 #include "descriptor_sets.inc.glsl"
 
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0, r16f) uniform writeonly image2D outputTexture;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform sampler2D inputTexture;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform sampler2D history;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform texture2D inputTexture;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform texture2D history;
 
 #ifdef HISTORY
 #ifndef VISIBILITY_BUFFER
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3) uniform sampler2D motionTex;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3) uniform texture2D motionTex;
 #else
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3, r32ui) readonly uniform uimage2D primitiveIds;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 4, rg16) readonly uniform image2D barycentrics;
-#include "frame_set.inc.glsl"
+#include "frame_set_modern.inc.glsl"
 #include "vis_buf.inc.glsl"
 #endif
 #endif
 
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 5) uniform sampler linearSampler;
+#if defined(HISTORY) && !defined(VISIBILITY_BUFFER)
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 6) uniform sampler nearestSampler;
+#endif
+
 void main() {
-  ivec2 inputTexSize = textureSize(inputTexture, 0);
+  ivec2 inputTexSize = textureSize(sampler2D(inputTexture, linearSampler), 0);
   ivec2 outputTexSize = imageSize(outputTexture);
   if (gl_GlobalInvocationID.x >= outputTexSize.x || gl_GlobalInvocationID.y >= outputTexSize.y) {
     return;
@@ -33,7 +38,7 @@ void main() {
   for (int x = 0; x < kernelSize; x++) {
     for (int y = 0; y < kernelSize; y++) {
       vec2 offset = vec2(float(x - kernelSize / 2), float(y - kernelSize / 2));
-      sum += texture(inputTexture, texCoord + offset * texel).r;
+      sum += texture(sampler2D(inputTexture, linearSampler), texCoord + offset * texel).r;
     }
   }
   sum /= kernelSize * kernelSize;
@@ -46,7 +51,7 @@ void main() {
 
 #ifdef HISTORY
   #ifndef VISIBILITY_BUFFER
-  vec2 motion = texture(motionTex, texCoord).xy;
+  vec2 motion = texture(sampler2D(motionTex, nearestSampler), texCoord).xy;
   #else
   uint id = imageLoad(primitiveIds, storageTexCoord).x;
   vec2 barycentricsXY = imageLoad(barycentrics, storageTexCoord).xy;
@@ -56,7 +61,7 @@ void main() {
 
 
   vec2 historyTexCoord = texCoord - motion;
-  sum += texture(history, historyTexCoord).r * 0.7;
+  sum += texture(sampler2D(history, linearSampler), historyTexCoord).r * 0.7;
 #endif
 
   imageStore(outputTexture, storageTexCoord, vec4(sum, 0.0, 0.0, 0.0));

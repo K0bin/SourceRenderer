@@ -1,7 +1,7 @@
-use bevy_app::{App, FixedPostUpdate, FixedPreUpdate, Plugin, PostUpdate};
+use bevy_app::{App, FixedPostUpdate, Plugin, PostUpdate};
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::prelude::{Added, Changed, IntoScheduleConfigs, Or, ParallelCommands};
+use bevy_ecs::prelude::{Added, Changed, Or, ParallelCommands};
 use bevy_ecs::system::{
     Commands,
     Query,

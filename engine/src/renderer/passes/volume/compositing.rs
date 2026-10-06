@@ -167,17 +167,15 @@ impl CompositingPass {
             ),
         }]);
 
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             0u32,
             &color_view,
-            resources.linear_sampler(),
         );
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             1u32,
             &ssao_view,
-            resources.linear_sampler(),
         );
 
         cmd_buffer.finish_binding();

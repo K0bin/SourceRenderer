@@ -127,17 +127,15 @@ impl SsrPass {
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buffer.flush_barriers();
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0, &ssr_uav);
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             1,
             &*color_srv,
-            params.resources.linear_sampler(),
         );
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             2,
             &*depth_srv,
-            params.resources.linear_sampler(),
         );
         if visibility_buffer {
             cmd_buffer.bind_storage_texture(
@@ -151,6 +149,11 @@ impl SsrPass {
                 barycentrics.as_ref().unwrap(),
             );
         }
+        cmd_buffer.bind_sampler(
+            BindingFrequency::VeryFrequent,
+            5,
+            params.resources.linear_sampler(),
+        );
         cmd_buffer.finish_binding();
         let ssr_info = ssr_uav.texture().unwrap().info();
         cmd_buffer.dispatch(

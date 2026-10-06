@@ -22,8 +22,9 @@ layout(local_size_x = 8,
 #define CS
 #include "descriptor_sets.inc.glsl"
 #include "util.inc.glsl"
+#include "frame_set_common.inc.glsl"
 
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform sampler2D envMap;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform texture2D envMap;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, rgba8) uniform coherent writeonly imageCube outputTexture;
 
 const float PI = 3.141592;
@@ -63,7 +64,7 @@ void main(void) {
     vec2 sphericalUV = directionToSphericalEnvmap(v);
 
     // Sample equirectangular texture.
-    vec4 color = texture(envMap, sphericalUV);
+    vec4 color = texture(sampler2D(envMap, samplerLinear), sphericalUV);
 
     // Write out color to output cubemap.
     imageStore(outputTexture, ivec3(gl_GlobalInvocationID), color);

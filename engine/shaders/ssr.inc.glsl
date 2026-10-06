@@ -7,19 +7,19 @@ struct SSRConfig {
   float thickness;
 };
 
-float reflectScreenspace(sampler2D depthTex, vec2 texCoord, Camera camera, SSRConfig config, float roughness, out vec2 outReflectionTexCoords) {
+float reflectScreenspace(texture2D depthTex, sampler depthSampler, vec2 texCoord, Camera camera, SSRConfig config, float roughness, out vec2 outReflectionTexCoords) {
   if (roughness > 0.3) {
     outReflectionTexCoords = texCoord;
     return 0.0;
   }
 
-  vec2 texSize = textureSize(depthTex, 0);
+  vec2 texSize = textureSize(sampler2D(depthTex, depthSampler), 0);
 
-  float startDepth = textureLod(depthTex, texCoord, 0).x;
+  float startDepth = textureLod(sampler2D(depthTex, depthSampler), texCoord, 0).x;
   vec3 positionFrom = viewSpacePosition(texCoord, startDepth, camera.invProj);
   vec3 unitPositionFrom = normalize(positionFrom);
   #ifdef CS
-  vec3 normal = reconstructViewSpaceNormalCS(depthTex, texCoord, camera.invProj);
+  vec3 normal = reconstructViewSpaceNormalCS(depthTex, depthSampler, texCoord, camera.invProj);
   #else
   vec3 normal = reconstructViewSpaceNormalFS(texCoord, startDepth, camera.invProj);
   #endif
@@ -58,7 +58,7 @@ float reflectScreenspace(sampler2D depthTex, vec2 texCoord, Camera camera, SSRCo
   for (uint i = 0; i < uint(deltaVal); i++) {
     frag += increment;
     uv = frag / texSize;
-    sampleDepth = textureLod(depthTex, uv, 0.0).x;
+    sampleDepth = textureLod(sampler2D(depthTex, depthSampler), uv, 0.0).x;
     float sampleZ = linearizeDepth(sampleDepth, camera.zNear, camera.zFar);
 
     frac = useX
@@ -86,7 +86,7 @@ float reflectScreenspace(sampler2D depthTex, vec2 texCoord, Camera camera, SSRCo
     frac = lastMissFrac + ((lastHitFrac - lastMissFrac) * 0.5);
     frag = mix(startFrag.xy, endFrag.xy, frac);
     uv = frag / texSize;
-    sampleDepth = textureLod(depthTex, uv, 0.0).x;
+    sampleDepth = textureLod(sampler2D(depthTex, depthSampler), uv, 0.0).x;
     float sampleZ = linearizeDepth(sampleDepth, camera.zNear, camera.zFar);
 
     float rayZ = (startView.z * endView.z) / mix(endView.z, startView.z, frac);

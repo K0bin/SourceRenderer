@@ -213,26 +213,22 @@ impl SsaoPass {
             0,
             WHOLE_BUFFER,
         );
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             1,
             blue_noise_view,
-            blue_noise_sampler,
         );
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             2,
             &*depth_srv,
-            pass_params.resources.linear_sampler(),
         );
-        cmd_buffer.bind_uniform_buffer(
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 3, &*ssao_uav);
+        cmd_buffer.bind_sampler(
             BindingFrequency::VeryFrequent,
-            3,
-            BufferRef::Transient(camera),
-            0,
-            WHOLE_BUFFER,
+            4,
+            blue_noise_sampler,
         );
-        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 4, &*ssao_uav);
         cmd_buffer.finish_binding();
         let ssao_info = ssao_uav.texture().unwrap().info();
         cmd_buffer.dispatch(
@@ -282,24 +278,21 @@ impl SsaoPass {
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&blur_pipeline));
         cmd_buffer.flush_barriers();
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0, &*blurred_uav);
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             1,
             &*ssao_srv,
-            pass_params.resources.linear_sampler(),
         );
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             2,
             &*blurred_srv_b,
-            pass_params.resources.linear_sampler(),
         );
         if !visibility_buffer {
-            cmd_buffer.bind_sampling_view_and_sampler(
+            cmd_buffer.bind_sampling_view(
                 BindingFrequency::VeryFrequent,
                 3,
                 &motion_srv.unwrap(),
-                pass_params.resources.nearest_sampler(),
             );
         } else {
             cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 3, &id_view.unwrap());
@@ -307,6 +300,18 @@ impl SsaoPass {
                 BindingFrequency::VeryFrequent,
                 4,
                 &barycentrics_view.unwrap(),
+            );
+        }
+        cmd_buffer.bind_sampler(
+            BindingFrequency::VeryFrequent,
+            5,
+            pass_params.resources.linear_sampler(),
+        );
+        if !visibility_buffer {
+            cmd_buffer.bind_sampler(
+                BindingFrequency::VeryFrequent,
+                6,
+                pass_params.resources.nearest_sampler(),
             );
         }
         cmd_buffer.finish_binding();

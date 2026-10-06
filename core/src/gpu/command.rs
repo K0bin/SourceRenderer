@@ -188,19 +188,6 @@ pub trait CommandBuffer<B: GPUBackend> {
         binding: u32,
         texture: &B::TextureView,
     );
-    unsafe fn bind_sampling_view_and_sampler(
-        &mut self,
-        frequency: BindingFrequency,
-        binding: u32,
-        texture: &B::TextureView,
-        sampler: &B::Sampler,
-    );
-    unsafe fn bind_sampling_view_and_sampler_array(
-        &mut self,
-        frequency: BindingFrequency,
-        binding: u32,
-        textures_and_samplers: &[(&B::TextureView, &B::Sampler)],
-    );
     unsafe fn bind_storage_view_array(
         &mut self,
         frequency: BindingFrequency,

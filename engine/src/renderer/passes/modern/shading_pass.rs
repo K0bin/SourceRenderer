@@ -221,31 +221,32 @@ impl ShadingPass {
             0,
             WHOLE_BUFFER,
         );
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             6,
             &pass_params.scene.lightmap.unwrap().view,
-            pass_params.resources.linear_sampler(),
         );
         if let Some(shadows) = shadows {
-            cmd_buffer.bind_sampling_view_and_sampler(
+            cmd_buffer.bind_sampling_view(
                 BindingFrequency::VeryFrequent,
                 7,
                 shadows,
-                pass_params.resources.linear_sampler(),
             );
         }
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             8,
             &ssao,
-            pass_params.resources.linear_sampler(),
         );
 
-        cmd_buffer.bind_sampling_view_and_sampler(
+        cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             9,
             &shadow_map,
+        );
+        cmd_buffer.bind_sampler(
+            BindingFrequency::VeryFrequent,
+            10,
             &self.shadow_sampler,
         );
 

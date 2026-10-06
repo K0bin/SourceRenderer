@@ -7,8 +7,9 @@ layout(local_size_x = 8,
        local_size_z = 1) in;
 
 #include "descriptor_sets.inc.glsl"
+#include "frame_set_common.inc.glsl"
 
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform sampler2D inputTexture;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform texture2D inputTexture;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, r32f) uniform writeonly image2D outputTexture;
 
 void main() {
@@ -17,7 +18,7 @@ void main() {
     return;
   }
   vec2 texCoord = vec2((float(gl_GlobalInvocationID.x) + 0.5) / float(texSize.x), (float(gl_GlobalInvocationID.y) + 0.5) / float(texSize.y));
-  float val = textureLod(inputTexture, texCoord, 0).x;
+  float val = textureLod(sampler2D(inputTexture, samplerLinear), texCoord, 0).x;
   ivec2 storageTexCoord = ivec2(int(gl_GlobalInvocationID.x), int(gl_GlobalInvocationID.y));
   imageStore(outputTexture, storageTexCoord, vec4(val, 0.0, 0.0, 0.0));
 }

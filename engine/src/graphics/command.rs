@@ -401,45 +401,6 @@ impl<'a> CommandBuffer<'a> {
         }
     }
 
-    pub fn bind_sampling_view_and_sampler(
-        &mut self,
-        frequency: BindingFrequency,
-        binding: u32,
-        texture: &super::TextureView,
-        sampler: &super::Sampler,
-    ) {
-        unsafe {
-            self.cmd_buffer_handle.bind_sampling_view_and_sampler(
-                frequency,
-                binding,
-                texture.handle(),
-                sampler.handle(),
-            );
-        }
-    }
-
-    pub fn bind_sampling_view_and_sampler_array(
-        &mut self,
-        frequency: BindingFrequency,
-        binding: u32,
-        textures_and_samplers: &[(&super::TextureView, &super::Sampler)],
-    ) {
-        let handles: SmallVec<
-            [(
-                &active_gpu_backend::TextureView,
-                &active_gpu_backend::Sampler,
-            ); 4],
-        > = textures_and_samplers
-            .iter()
-            .map(|(texture, sampler)| (texture.handle(), sampler.handle()))
-            .collect();
-
-        unsafe {
-            self.cmd_buffer_handle
-                .bind_sampling_view_and_sampler_array(frequency, binding, &handles);
-        }
-    }
-
     pub fn bind_storage_view_array(
         &mut self,
         frequency: BindingFrequency,

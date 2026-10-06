@@ -77,11 +77,13 @@ bevy_app = { version = "0.19", features = ["web"] }
 
 [features]
 default = ["ecs_threading"]
-# default = [ ]
 ecs_threading = ["bevy_tasks/multi_threaded"]
 profile = ["profiling/profile-with-optick"]
 non_send_gpu = ["sourcerenderer_core/non_send_gpu"]
 non_send_io = ["sourcerenderer_core/non_send_io"]
+
+[target.'cfg(target_arch = "wasm32")'.features]
+default = ["non_send_gpu", "non_send_io"]
 
 [build-dependencies]
 build-util = { path = "../build_util" }
