@@ -284,7 +284,7 @@ impl gpu::Buffer for VkBuffer {
     }
 
     fn cpu_access(&self) -> BufferCpuAccess {
-        BufferCpuAccess::Pointer
+        self.map_ptr.map(|_| BufferCpuAccess::Pointer).unwrap_or(BufferCpuAccess::None)
     }
 
     fn map_ptr(&self) -> Option<*mut c_void> {
