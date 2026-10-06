@@ -60,15 +60,16 @@ pub(crate) fn update_visibility(scene: &mut RendererScene, assets: &RendererAsse
             visible_drawables.bit_init(false);
             for (index, static_mesh) in chunk.iter().enumerate() {
                 let model_view_matrix = camera_matrix * static_mesh.transform;
-                let model = assets.get_model(static_mesh.model);
-                if model.is_none() {
+                let model_opt = assets.get_model(static_mesh.model);
+                if model_opt.is_none() {
                     continue;
                 }
-                let mesh = assets.get_mesh(model.unwrap().mesh_handle());
-                if mesh.is_none() {
+                let model = model_opt.unwrap();
+                let mesh_opt = assets.get_mesh(model.mesh_handle());
+                if mesh_opt.is_none() {
                     continue;
                 }
-                let mesh = mesh.unwrap();
+                let mesh = mesh_opt.unwrap();
                 let bounding_box = &mesh.bounding_box;
                 let is_visible = if let Some(bounding_box) = bounding_box {
                     frustum.intersects(bounding_box, &model_view_matrix)
@@ -76,7 +77,7 @@ pub(crate) fn update_visibility(scene: &mut RendererScene, assets: &RendererAsse
                     true
                 };
                 if !is_visible {
-                    continue;
+                    //continue;
                 }
 
                 visible_drawables.bit_set(index);
@@ -115,14 +116,23 @@ pub(crate) fn update_visibility(scene: &mut RendererScene, assets: &RendererAsse
                     && !camera_in_bb
                 {
                     // Mesh was not visible in the previous frame.
-                    println!("Previous frame faile");
+                    println!("Previous frame failed");
                     continue;
                 }
 
+                let mesh_key = mesh.sorting_key();
+                let mesh_key_prepared = (mesh_key % (1 << 15)) >> 48;
+                let mesh_key_mask = (1u64 << 16) - 1;
                 for part_index in 0..mesh.parts.len() {
+                    let material_handle = model.material_handles()[part_index];
+                    let material = assets.get_material(material_handle);
+                    let material_key = material.sorting_key();
+                    let key = (material_key & !mesh_key_mask) | mesh_key_prepared;
+
                     chunk_visible_parts.push(DrawablePart {
                         drawable_index,
                         part_index,
+                        sorting_key: key,
                     });
                 }
             }
@@ -163,6 +173,8 @@ pub(crate) fn update_visibility(scene: &mut RendererScene, assets: &RendererAsse
             .map(|(index, chunk)| map_func(index, chunk))
             .enumerate()
             .for_each(|(chunk_index, tuple)| iter_func((chunk_index, &(tuple))));
+
+        visible_parts.sort_unstable_by_key(|p| p.sorting_key);
 
         view_mut.drawable_parts = visible_parts;
         view_mut.visible_drawables_bitset = visible_drawables_bitset;

@@ -5,7 +5,7 @@ use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI};
 use crate::graphics::*;
 use crate::renderer::asset::{
     GraphicsPipelineHandle, GraphicsPipelineInfo, PathPipelineShaderStage, RendererAssets,
-    RendererAssetsReadOnly, RendererMaterial, RendererMaterialValue,
+    RendererAssetsReadOnly, RendererMaterial,
 };
 use crate::renderer::drawable::View;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
@@ -235,20 +235,13 @@ impl GeometryPass {
             let mesh = mesh.unwrap();
             let material_handle = model.material_handles()[part.part_index];
             let material = assets.get_material(material_handle);
-            let range = &mesh.parts[part.part_index];
-            let albedo_value = material.get("albedo").unwrap();
-            match albedo_value {
-                RendererMaterialValue::Texture(handle) => {
-                    let texture = assets.get_texture(*handle);
-                    let albedo_view = &texture.view;
-                    cmd_buffer.bind_sampling_view(
-                        BindingFrequency::Frequent,
-                        0,
-                        albedo_view,
-                    );
-                }
-                _ => {
-                    let texture = assets.get_placeholder_texture_white();
+            match material {
+                RendererMaterial::SimplePBR {
+                    albedo: albedo_handle, ..
+                } => {
+                    let texture = albedo_handle.map(|handle| {
+                        assets.get_texture(handle)
+                    }).unwrap_or(assets.get_placeholder_texture_white());
                     let albedo_view = &texture.view;
                     cmd_buffer.bind_sampling_view(
                         BindingFrequency::Frequent,
@@ -257,6 +250,7 @@ impl GeometryPass {
                     );
                 }
             }
+            let range = &mesh.parts[part.part_index];
 
             let model_data = cmd_buffer.upload_dynamic_data(device,
                                                             &[Matrix4::from(drawable.transform)],

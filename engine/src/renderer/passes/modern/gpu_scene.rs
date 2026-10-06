@@ -6,7 +6,7 @@ use sourcerenderer_core::{Matrix4, Vec3, Vec4};
 
 use crate::asset::{MaterialHandle, MeshHandle, ModelHandle};
 use crate::graphics::*;
-use crate::renderer::asset::{RendererAssetsReadOnly, RendererMaterial, RendererMaterialValue};
+use crate::renderer::asset::{RendererAssetsReadOnly, RendererMaterial};
 use crate::renderer::renderer_scene::RendererScene;
 
 pub const DRAWABLE_CAPACITY: u32 = 4096;
@@ -200,41 +200,22 @@ pub fn upload(
                                 albedo_texture_index: zero_view_index,
                                 _padding: 0,
                             };
-
-                            let albedo_value = material.get("albedo").unwrap();
-                            match albedo_value {
-                                RendererMaterialValue::Texture(handle) => {
-                                    let texture = assets.get_texture(*handle);
-                                    gpu_material.albedo_texture_index = texture
+                            match material {
+                                RendererMaterial::SimplePBR {
+                                    albedo: albedo_handle, roughness, metalness, albedo_color, roughness_factor, metalness_factor,
+                                } => {
+                                    let albedo_texture = albedo_handle.map(|handle| {
+                                        assets.get_texture(handle)
+                                    }).unwrap_or(assets.get_placeholder_texture_white());
+                                    gpu_material.albedo_texture_index = albedo_texture
                                         .bindless_index
                                         .as_ref()
                                         .map(|b| b.slot())
-                                        .unwrap_or(zero_view_index)
+                                        .unwrap_or(zero_view_index);
+
+                                    gpu_material.roughness_factor = *roughness_factor;
+                                    gpu_material.metalness_factor = *metalness_factor;
                                 }
-                                RendererMaterialValue::Vec4(val) => gpu_material.albedo = *val,
-                                RendererMaterialValue::Float(_) => unimplemented!(),
-                            }
-                            let roughness_value = material.get("roughness");
-                            match roughness_value {
-                                Some(RendererMaterialValue::Texture(_texture)) => {
-                                    unimplemented!()
-                                }
-                                Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
-                                Some(RendererMaterialValue::Float(val)) => {
-                                    gpu_material.roughness_factor = *val;
-                                }
-                                None => {}
-                            }
-                            let metalness_value = material.get("metalness");
-                            match metalness_value {
-                                Some(RendererMaterialValue::Texture(_texture)) => {
-                                    unimplemented!()
-                                }
-                                Some(RendererMaterialValue::Vec4(_)) => unimplemented!(),
-                                Some(RendererMaterialValue::Float(val)) => {
-                                    gpu_material.metalness_factor = *val;
-                                }
-                                None => {}
                             }
                             materials.push(gpu_material);
                             material_map.insert(material_handle, material_index);

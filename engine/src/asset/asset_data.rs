@@ -1,7 +1,6 @@
 use bytemuck::BoxBytes;
 use smallvec::SmallVec;
 use sourcerenderer_core::Vec4;
-use std::collections::HashMap;
 
 use super::AssetType;
 use super::loaded_level::LevelData;
@@ -34,34 +33,37 @@ pub struct ModelData {
 }
 
 #[derive(Clone)]
-pub struct MaterialData {
-    pub shader_name: String,
-    pub properties: HashMap<String, MaterialValue>,
+pub enum MaterialData {
+    SimplePBR {
+        albedo_path: Option<String>,
+        roughness_path: Option<String>,
+        metalness_path: Option<String>,
+        albedo_color: Vec4,
+        roughness_factor: f32,
+        metalness_factor: f32,
+    },
 }
 
 impl MaterialData {
     pub fn new_pbr(albedo_texture_path: &str, roughness: f32, metalness: f32) -> Self {
-        let mut props = HashMap::new();
-        props.insert(
-            "albedo".to_string(),
-            MaterialValue::Texture(albedo_texture_path.to_string()),
-        );
-        props.insert("roughness".to_string(), MaterialValue::Float(roughness));
-        props.insert("metalness".to_string(), MaterialValue::Float(metalness));
-        Self {
-            shader_name: "pbr".to_string(),
-            properties: props,
+        Self::SimplePBR {
+            albedo_path: Some(albedo_texture_path.to_string()),
+            roughness_path: None,
+            metalness_path: None,
+            albedo_color: Vec4::new(1.0f32, 1.0f32, 1.0f32, 1.0f32),
+            roughness_factor: roughness,
+            metalness_factor: metalness,
         }
     }
 
     pub fn new_pbr_color(albedo: Vec4, roughness: f32, metalness: f32) -> Self {
-        let mut props = HashMap::new();
-        props.insert("albedo".to_string(), MaterialValue::Vec4(albedo));
-        props.insert("roughness".to_string(), MaterialValue::Float(roughness));
-        props.insert("metalness".to_string(), MaterialValue::Float(metalness));
-        Self {
-            shader_name: "pbr".to_string(),
-            properties: props,
+        Self::SimplePBR {
+            albedo_path: None,
+            roughness_path: None,
+            metalness_path: None,
+            albedo_color: albedo,
+            roughness_factor: roughness,
+            metalness_factor: metalness,
         }
     }
 }

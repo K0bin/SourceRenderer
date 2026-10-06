@@ -270,30 +270,19 @@ impl AssetIntegrator {
         asset_manager: &Arc<AssetManager>,
         material: MaterialData,
     ) -> RendererMaterial {
-        let mut properties =
-            HashMap::<String, RendererMaterialValue>::with_capacity(material.properties.len());
-        for (key, value) in &material.properties {
-            match value {
-                MaterialValue::Texture(path) => {
-                    let texture_handle =
-                        asset_manager.get_or_reserve_handle(path, AssetType::Texture);
-                    properties.insert(
-                        key.to_string(),
-                        RendererMaterialValue::Texture(texture_handle.into()),
-                    );
-                }
-                MaterialValue::Float(val) => {
-                    properties.insert(key.to_string(), RendererMaterialValue::Float(*val));
-                }
-                MaterialValue::Vec4(val) => {
-                    properties.insert(key.to_string(), RendererMaterialValue::Vec4(*val));
+        match material {
+            MaterialData::SimplePBR {
+                albedo_path, roughness_path, metalness_path, albedo_color, roughness_factor, metalness_factor
+            } => {
+                RendererMaterial::SimplePBR {
+                    albedo: albedo_path.map(|path| asset_manager.get_or_reserve_handle(&path, AssetType::Texture).into()),
+                    roughness: roughness_path.map(|path| asset_manager.get_or_reserve_handle(&path, AssetType::Texture).into()),
+                    metalness: metalness_path.map(|path| asset_manager.get_or_reserve_handle(&path, AssetType::Texture).into()),
+                    albedo_color,
+                    roughness_factor,
+                    metalness_factor,
                 }
             }
-        }
-
-        RendererMaterial {
-            shader_name: material.shader_name.clone(),
-            properties,
         }
     }
 

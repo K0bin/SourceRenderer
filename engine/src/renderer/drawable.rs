@@ -81,6 +81,7 @@ impl Default for View {
 pub struct DrawablePart {
     pub drawable_index: usize,
     pub part_index: usize,
+    pub sorting_key: u64,
 }
 
 pub(crate) fn make_camera_view(position: Vec3, rotation: Quaternion) -> Matrix4 {

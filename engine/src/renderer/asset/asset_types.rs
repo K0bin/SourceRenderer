@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use smallvec::SmallVec;
@@ -27,168 +26,77 @@ impl RendererTexture {
     }
 }
 
-pub struct RendererMaterial {
-    pub(super) properties: HashMap<String, RendererMaterialValue>,
-    pub(super) shader_name: String, // TODO reference actual shader
-}
 
-impl Clone for RendererMaterial {
-    fn clone(&self) -> Self {
-        Self {
-            properties: self.properties.clone(),
-            shader_name: self.shader_name.clone(),
-        }
-    }
-}
-
-pub enum RendererMaterialValue {
-    Float(f32),
-    Vec4(Vec4),
-    Texture(TextureHandle),
-}
-
-impl PartialEq for RendererMaterialValue {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Float(l0), Self::Float(r0)) => (l0 * 100f32) as u32 == (r0 * 100f32) as u32,
-            (Self::Vec4(l0), Self::Vec4(r0)) => {
-                (l0.x * 100f32) as u32 == (r0.x * 100f32) as u32
-                    && (l0.y * 100f32) as u32 == (r0.y * 100f32) as u32
-                    && (l0.z * 100f32) as u32 == (r0.z * 100f32) as u32
-                    && (l0.w * 100f32) as u32 == (r0.w * 100f32) as u32
-            }
-            (Self::Texture(l0), Self::Texture(r0)) => l0 == r0,
-            _ => false,
-        }
-    }
-}
-
-impl Eq for RendererMaterialValue {}
-
-impl Clone for RendererMaterialValue {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Float(val) => Self::Float(*val),
-            Self::Vec4(val) => Self::Vec4(*val),
-            Self::Texture(tex) => Self::Texture(*tex),
-        }
-    }
-}
-
-impl PartialOrd for RendererMaterialValue {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for RendererMaterialValue {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        match (self, other) {
-            (RendererMaterialValue::Float(val1), RendererMaterialValue::Float(val2)) => {
-                ((val1 * 100f32) as u32).cmp(&((val2 * 100f32) as u32))
-            }
-            (RendererMaterialValue::Float(_), RendererMaterialValue::Texture(_)) => {
-                std::cmp::Ordering::Less
-            }
-            (RendererMaterialValue::Float(_), RendererMaterialValue::Vec4(_)) => {
-                std::cmp::Ordering::Less
-            }
-            (RendererMaterialValue::Texture(_), RendererMaterialValue::Float(_)) => {
-                std::cmp::Ordering::Greater
-            }
-            (RendererMaterialValue::Texture(_), RendererMaterialValue::Vec4(_)) => {
-                std::cmp::Ordering::Greater
-            }
-            (RendererMaterialValue::Texture(tex1), RendererMaterialValue::Texture(tex2)) => {
-                tex1.cmp(&tex2)
-            }
-            (RendererMaterialValue::Vec4(val1), RendererMaterialValue::Vec4(val2)) => {
-                ((val1.x * 100f32) as u32)
-                    .cmp(&((val2.x * 100f32) as u32))
-                    .then(((val1.y * 100f32) as u32).cmp(&((val2.y * 100f32) as u32)))
-                    .then(((val1.z * 100f32) as u32).cmp(&((val2.z * 100f32) as u32)))
-                    .then(((val1.w * 100f32) as u32).cmp(&((val2.w * 100f32) as u32)))
-            }
-            (RendererMaterialValue::Vec4(_), RendererMaterialValue::Texture(_)) => {
-                std::cmp::Ordering::Less
-            }
-            (RendererMaterialValue::Vec4(_), RendererMaterialValue::Float(_)) => {
-                std::cmp::Ordering::Greater
-            }
-        }
-    }
-}
-
-impl PartialEq for RendererMaterial {
-    fn eq(&self, other: &Self) -> bool {
-        if self.shader_name != other.shader_name {
-            return false;
-        }
-        for (key, value) in self.properties.iter() {
-            if other.properties.get(key) != Some(value) {
-                return false;
-            }
-        }
-        true
-    }
+pub enum RendererMaterial {
+    SimplePBR {
+        albedo: Option<TextureHandle>,
+        roughness: Option<TextureHandle>,
+        metalness: Option<TextureHandle>,
+        albedo_color: Vec4,
+        roughness_factor: f32,
+        metalness_factor: f32,
+    },
 }
 
 impl RendererMaterial {
     pub fn new_pbr(albedo_texture: TextureHandle) -> Self {
-        let mut props = HashMap::new();
-        props.insert(
-            "albedo".to_string(),
-            RendererMaterialValue::Texture(albedo_texture),
-        );
-        Self {
-            shader_name: "pbr".to_string(),
-            properties: props,
+        Self::SimplePBR {
+            albedo: Some(albedo_texture),
+            roughness: None,
+            metalness: None,
+            albedo_color: Vec4::new(1.0f32, 1.0f32, 1.0f32, 1.0f32),
+            roughness_factor: 1.0f32,
+            metalness_factor: 1.0f32,
         }
     }
 
     pub fn new_pbr_color(color: Vec4) -> Self {
-        let mut props = HashMap::new();
-        props.insert("albedo".to_string(), RendererMaterialValue::Vec4(color));
-        Self {
-            shader_name: "pbr".to_string(),
-            properties: props,
+        Self::SimplePBR {
+            albedo: None,
+            roughness: None,
+            metalness: None,
+            albedo_color: color,
+            roughness_factor: 1.0f32,
+            metalness_factor: 1.0f32,
         }
     }
 
-    pub fn get(&self, key: &str) -> Option<&RendererMaterialValue> {
-        self.properties.get(key)
-    }
-}
+    pub fn sorting_key(&self) -> u64 {
+        let mut sort_index = 0u64;
+        let enum_index;
+        match self {
+            RendererMaterial::SimplePBR {
+                albedo, roughness, metalness,
+                ..
+            } => {
+                enum_index = 0;
 
-impl Eq for RendererMaterial {}
-
-impl PartialOrd for RendererMaterial {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for RendererMaterial {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        let mut last_result = self
-            .shader_name
-            .cmp(&other.shader_name)
-            .then(self.properties.len().cmp(&other.properties.len()));
-
-        if last_result != std::cmp::Ordering::Equal {
-            return last_result;
-        }
-
-        for (key, value) in &self.properties {
-            let other_val = other.properties.get(key);
-            if let Some(other_val) = other_val {
-                last_result = value.cmp(other_val);
-                if last_result != std::cmp::Ordering::Equal {
-                    return last_result;
+                #[inline(always)]
+                fn get_tex_index(texture: &Option<TextureHandle>) -> u64 {
+                    texture.map(|t| {
+                        let handle: AssetHandle = t.into();
+                        handle.index()
+                    }).unwrap_or(0)
                 }
-            }
+
+                // 6 bits for the texture, packed right to left
+                let mut bit_pos = 64;
+                const BITS_PER_TEXTURE: u64 = 6;
+
+                bit_pos -= BITS_PER_TEXTURE;
+                let albedo_tex_index = get_tex_index(albedo);
+                sort_index |= (albedo_tex_index % ((BITS_PER_TEXTURE << 6) - 1)) << bit_pos;
+                bit_pos -= BITS_PER_TEXTURE;
+                let roughness_tex_index = get_tex_index(roughness);
+                sort_index |= (roughness_tex_index % ((BITS_PER_TEXTURE << 6) - 1)) << bit_pos;
+                bit_pos -= BITS_PER_TEXTURE;
+                let metalness_tex_index = get_tex_index(metalness);
+                sort_index |= (metalness_tex_index % ((BITS_PER_TEXTURE << 6) - 1)) << bit_pos
+            },
         }
-        std::cmp::Ordering::Equal
+        sort_index >>= 4;
+        sort_index |= (enum_index % 0b111111) << 58; // 6 bits for enum index
+        sort_index
     }
 }
 
@@ -228,4 +136,10 @@ pub struct RendererMesh {
     pub parts: Box<[MeshRange]>,
     pub bounding_box: Option<BoundingBox>,
     pub vertex_count: u32,
+}
+
+impl RendererMesh {
+    pub fn sorting_key(&self) -> u64 {
+        self as *const RendererMesh as u64
+    }
 }

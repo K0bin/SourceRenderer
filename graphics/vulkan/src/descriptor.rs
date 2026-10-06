@@ -1120,12 +1120,6 @@ impl VkBindingManager {
         }
     }
 
-    pub(crate) fn reset(&mut self) {
-        self.dirty = DirtyDescriptorSets::all();
-        self.bindings = Default::default();
-        self.current_sets = Default::default();
-    }
-
     pub(crate) fn clear_all_bindings(&mut self, frequency: gpu::BindingFrequency) {
         let bindings_table = &mut self.bindings[frequency as usize];
         *bindings_table = Default::default();

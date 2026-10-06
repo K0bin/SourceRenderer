@@ -197,13 +197,9 @@ impl AssetLoader for RawVolumeLoader {
         };
         let mesh_path = format!("{}_mesh", file.path());
         manager.add_asset_data(&mesh_path, AssetData::Mesh(mesh), priority);
-        let material = MaterialData {
-            shader_name: "empty".to_string(),
-            properties: HashMap::from([(
-                "albedo".to_string(),
-                MaterialValue::Vec4(Vec4::new(1.0f32, 0.0f32, 0.5f32, 1.0f32)),
-            )]),
-        };
+        let material = MaterialData::new_pbr_color(
+            Vec4::new(1.0f32, 0.0f32, 0.5f32, 1.0f32), 1.0f32, 0.0f32
+        );
         let material_path = format!("{}_material", file.path());
         manager.add_asset_data(&material_path, AssetData::Material(material), priority);
         let model = ModelData {
