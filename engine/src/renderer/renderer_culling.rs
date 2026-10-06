@@ -77,7 +77,7 @@ pub(crate) fn update_visibility(scene: &mut RendererScene, assets: &RendererAsse
                     true
                 };
                 if !is_visible {
-                    //continue;
+                    continue;
                 }
 
                 visible_drawables.bit_set(index);
