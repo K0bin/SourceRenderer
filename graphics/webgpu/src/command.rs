@@ -356,7 +356,6 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         &mut self,
         _data: *const c_void,
         _length: u64,
-        _visible_for_shader_stage: gpu::ShaderType,
     ) {
         todo!("Implement WebGPU immediates!")
     }

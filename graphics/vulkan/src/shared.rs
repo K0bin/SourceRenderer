@@ -24,7 +24,8 @@ pub(super) struct VkDescriptorSetLayoutKey {
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub(super) struct VkPipelineLayoutKey {
     pub(super) descriptor_set_layouts: [VkDescriptorSetLayoutKey; gpu::TOTAL_SET_COUNT as usize],
-    pub(super) push_constant_ranges: [Option<VkConstantRange>; 3],
+    pub(super) push_constant_size: u32,
+    pub(super) push_constant_stages: vk::ShaderStageFlags,
 }
 
 impl VkShared {
@@ -96,9 +97,13 @@ impl VkShared {
         }
 
         let pipeline_layout = Arc::new(VkPipelineLayout::new(
-            &descriptor_sets,
-            &layout_key.push_constant_ranges,
             &self.device,
+            &descriptor_sets,
+            &vk::PushConstantRange {
+                offset: 0,
+                size: layout_key.push_constant_size,
+                stage_flags: layout_key.push_constant_stages,
+            },
         ));
         let mut cache = self.pipeline_layouts.write().unwrap();
         cache.insert(layout_key.clone(), pipeline_layout.clone());

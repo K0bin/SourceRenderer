@@ -362,7 +362,6 @@ impl GeometryPass {
                                 ),
                                 drawable.transform.translation.to_vec3(),
                             )],
-                            ShaderType::VertexShader,
                         );
 
                         let model = assets.get_model(drawable.model);

@@ -347,7 +347,7 @@ impl ShadowMapPass {
             cmd_buffer.set_vertex_buffer(0, pass_params.scene.vertex_buffer, 0);
             cmd_buffer.set_index_buffer(pass_params.scene.index_buffer, 0, IndexFormat::U32);
 
-            cmd_buffer.set_push_constant_data(&[cascade.view_proj], ShaderType::VertexShader);
+            cmd_buffer.set_push_constant_data(&[cascade.view_proj]);
 
             cmd_buffer.finish_binding();
             cmd_buffer.draw_indexed_indirect_count(

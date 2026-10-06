@@ -248,7 +248,6 @@ impl Prepass {
                                 drawable.old_transform.translation.to_vec3(),
                             ),
                         }],
-                        ShaderType::VertexShader,
                     );
 
                     let model: Option<&crate::renderer::asset::RendererModel> =

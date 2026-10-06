@@ -815,7 +815,6 @@ impl MarchingCubesPass {
                     extent,
                     thresholds_count: thresholds.len() as u32,
                 }],
-                ShaderType::ComputeShader,
             );
 
             command_buffer.bind_storage_buffer(

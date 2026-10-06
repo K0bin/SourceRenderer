@@ -219,7 +219,6 @@ impl GeometryPass {
             let drawable = &drawables[part.drawable_index];
             /*cmd_buffer.set_push_constant_data(
                 &[Matrix4::from(drawable.transform)],
-                ShaderType::VertexShader,
             );*/
             let model = assets.get_model(drawable.model);
             if model.is_none() {

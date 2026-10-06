@@ -334,7 +334,6 @@ impl ImageBasedLightingPreparation {
         for i in 0..info.mip_levels {
             cmd_buffer.set_push_constant_data(
                 &[(1.0f32 / ((info.mip_levels - 1u32) as f32)) * (i as f32)],
-                ShaderType::ComputeShader,
             );
             let output_view = pass_params.resources.get_view(
                 Self::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,

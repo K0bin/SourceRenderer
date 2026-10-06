@@ -336,7 +336,6 @@ impl OcclusionPass {
 
                     command_buffer.set_push_constant_data(
                         &[drawable.old_transform * bb_transform],
-                        ShaderType::VertexShader,
                     );
                     command_buffer.begin_query(&query_range, drawable_query_index);
                     command_buffer.draw_indexed(1, 0, 36, 0, 0);

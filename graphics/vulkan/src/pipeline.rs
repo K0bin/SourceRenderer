@@ -6,9 +6,7 @@ use std::sync::Arc;
 
 use ash::vk::{self, Handle as _};
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{
-    self, Buffer as _, PipelineShaderStage, Shader as _, SpecConstValue,
-};
+use sourcerenderer_core::gpu::{self, Buffer as _, PipelineShaderStage, Shader as _, ShaderType, SpecConstValue};
 use sourcerenderer_core::{align_up_32, align_up_64};
 
 use super::*;
@@ -161,6 +159,7 @@ pub struct VkPipeline {
     pipeline_type: VkPipelineType,
     uses_bindless_texture_set: bool,
     sbt: Option<VkShaderBindingTables>,
+    shader_stages: vk::ShaderStageFlags,
 }
 
 struct VkShaderBindingTables {
@@ -315,7 +314,7 @@ struct DescriptorSetLayoutSetupContext {
     descriptor_set_layouts: [VkDescriptorSetLayoutKey; gpu::TOTAL_SET_COUNT as usize],
     dynamic_storage_buffers: [u32; gpu::TOTAL_SET_COUNT as usize],
     dynamic_uniform_buffers: [u32; gpu::TOTAL_SET_COUNT as usize],
-    push_constants_ranges: [Option<VkConstantRange>; 3],
+    push_constant_range: vk::PushConstantRange,
     uses_bindless_texture_set: bool,
     shader_stages: vk::ShaderStageFlags,
 }
@@ -377,13 +376,8 @@ fn add_shader_to_descriptor_set_layout_setup(
     }
     let shader_stage_flags = shader_type_to_vk(shader.shader_type());
     if let Some(push_constants_range) = &shader.push_constants_range {
-        if let Some(index) = VkPipelineLayout::push_constant_range_index(shader.shader_type()) {
-            context.push_constants_ranges[index] = Some(VkConstantRange {
-                offset: push_constants_range.offset,
-                size: push_constants_range.size,
-                shader_stage: shader_stage_flags,
-            });
-        }
+        context.push_constant_range.size = context.push_constant_range.size.max(push_constants_range.size);
+        context.push_constant_range.stage_flags |= shader_stage_flags;
     }
     context.uses_bindless_texture_set |= shader.uses_bindless_texture_set;
     context.shader_stages |= shader_stage_flags;
@@ -424,22 +418,6 @@ fn add_bindless_set_if_used(
             bindings: bindless_bindings,
             flags: vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL_EXT,
         };
-}
-
-fn remap_push_constant_ranges(context: &mut DescriptorSetLayoutSetupContext) {
-    let mut offset = 0u32;
-    let mut remapped_push_constant_ranges = <[Option<VkConstantRange>; 3]>::default();
-    for i in 0..context.push_constants_ranges.len() {
-        if let Some(range) = &context.push_constants_ranges[i] {
-            remapped_push_constant_ranges[i] = Some(VkConstantRange {
-                offset,
-                size: align_up_32(range.size - offset, 16), // Pad to 16 bytes for std430
-                shader_stage: range.shader_stage,
-            });
-            offset += align_up_32(range.size - offset, 16); // Pad to 16 bytes for std430
-        }
-    }
-    context.push_constants_ranges = remapped_push_constant_ranges;
 }
 
 impl VkPipeline {
@@ -658,11 +636,11 @@ impl VkPipeline {
         };
 
         add_bindless_set_if_used(device, &mut context, name);
-        remap_push_constant_ranges(&mut context);
 
         let layout = shared.get_pipeline_layout(&VkPipelineLayoutKey {
             descriptor_set_layouts: context.descriptor_set_layouts,
-            push_constant_ranges: context.push_constants_ranges,
+            push_constant_size: context.push_constant_range.size,
+            push_constant_stages: context.push_constant_range.stage_flags,
         });
 
         let viewport_info = vk::PipelineViewportStateCreateInfo {
@@ -762,6 +740,7 @@ impl VkPipeline {
             pipeline_type: VkPipelineType::Graphics,
             uses_bindless_texture_set: context.uses_bindless_texture_set,
             sbt: None,
+            shader_stages: context.shader_stages,
         }
     }
 
@@ -921,11 +900,11 @@ impl VkPipeline {
         };
 
         add_bindless_set_if_used(device, &mut context, name);
-        remap_push_constant_ranges(&mut context);
 
         let layout = shared.get_pipeline_layout(&VkPipelineLayoutKey {
             descriptor_set_layouts: context.descriptor_set_layouts,
-            push_constant_ranges: context.push_constants_ranges,
+            push_constant_size: context.push_constant_range.size,
+            push_constant_stages: context.push_constant_range.stage_flags,
         });
 
         let viewport_info = vk::PipelineViewportStateCreateInfo {
@@ -1025,6 +1004,7 @@ impl VkPipeline {
             pipeline_type: VkPipelineType::Graphics,
             uses_bindless_texture_set: context.uses_bindless_texture_set,
             sbt: None,
+            shader_stages: context.shader_stages,
         }
     }
 
@@ -1048,11 +1028,11 @@ impl VkPipeline {
 
         add_shader_to_descriptor_set_layout_setup(device, shader.shader, &mut context);
         add_bindless_set_if_used(device, &mut context, name);
-        remap_push_constant_ranges(&mut context);
 
         let layout = shared.get_pipeline_layout(&VkPipelineLayoutKey {
             descriptor_set_layouts: context.descriptor_set_layouts,
-            push_constant_ranges: context.push_constants_ranges,
+            push_constant_size: context.push_constant_range.size,
+            push_constant_stages: context.push_constant_range.stage_flags,
         });
 
         let pipeline_create_info = vk::ComputePipelineCreateInfo {
@@ -1092,6 +1072,7 @@ impl VkPipeline {
             pipeline_type: VkPipelineType::Compute,
             uses_bindless_texture_set: shader.shader.uses_bindless_texture_set,
             sbt: None,
+            shader_stages: context.shader_stages,
         }
     }
 
@@ -1123,9 +1104,9 @@ impl VkPipeline {
         }
 
         let layout = Arc::new(VkPipelineLayout::new(
-            &descriptor_set_layouts,
-            &context.push_constants_ranges,
             device,
+            &descriptor_set_layouts,
+            &context.push_constant_range,
         ));
 
         let pipeline_create_info = vk::ComputePipelineCreateInfo {
@@ -1165,6 +1146,7 @@ impl VkPipeline {
             pipeline_type: VkPipelineType::Compute,
             uses_bindless_texture_set: shader.uses_bindless_texture_set,
             sbt: None,
+            shader_stages: context.shader_stages,
         }
     }
 
@@ -1339,7 +1321,8 @@ impl VkPipeline {
 
         let layout = shared.get_pipeline_layout(&VkPipelineLayoutKey {
             descriptor_set_layouts: context.descriptor_set_layouts,
-            push_constant_ranges: context.push_constants_ranges,
+            push_constant_size: context.push_constant_range.size,
+            push_constant_stages: context.push_constant_range.stage_flags,
         });
 
         let vk_info = vk::RayTracingPipelineCreateInfoKHR {
@@ -1485,6 +1468,7 @@ impl VkPipeline {
                 closest_hit_region,
                 miss_region,
             }),
+            shader_stages: context.shader_stages,
         }
     }
 
@@ -1535,6 +1519,10 @@ impl VkPipeline {
     pub(super) fn miss_sbt_region(&self) -> &vk::StridedDeviceAddressRegionKHR {
         &self.sbt.as_ref().unwrap().miss_region
     }
+
+    pub(super) fn shader_stages(&self) -> vk::ShaderStageFlags {
+        self.shader_stages
+    }
 }
 
 impl Drop for VkPipeline {
@@ -1575,15 +1563,15 @@ pub(super) struct VkPipelineLayout {
     device: Arc<RawVkDevice>,
     layout: vk::PipelineLayout,
     descriptor_set_layouts: [Option<Arc<VkDescriptorSetLayout>>; gpu::TOTAL_SET_COUNT as usize],
-    push_constant_ranges: [Option<VkConstantRange>; 3],
+    push_constant_range: vk::PushConstantRange,
 }
 
 impl VkPipelineLayout {
     pub fn new(
+        device: &Arc<RawVkDevice>,
         descriptor_set_layouts: &[Option<Arc<VkDescriptorSetLayout>>;
              gpu::TOTAL_SET_COUNT as usize],
-        push_constant_ranges: &[Option<VkConstantRange>; 3],
-        device: &Arc<RawVkDevice>,
+        push_constant_range: &vk::PushConstantRange,
     ) -> Self {
         let layouts: Vec<vk::DescriptorSetLayout> = descriptor_set_layouts
             .iter()
@@ -1591,24 +1579,11 @@ impl VkPipelineLayout {
             .map(|descriptor_set_layout| descriptor_set_layout.as_ref().unwrap().handle())
             .collect();
 
-        let ranges: Vec<vk::PushConstantRange> = push_constant_ranges
-            .iter()
-            .filter(|r| r.is_some())
-            .map(|r| {
-                let r = r.as_ref().unwrap();
-                vk::PushConstantRange {
-                    stage_flags: r.shader_stage,
-                    offset: r.offset,
-                    size: r.size,
-                }
-            })
-            .collect();
-
         let info = vk::PipelineLayoutCreateInfo {
             p_set_layouts: layouts.as_ptr(),
             set_layout_count: layouts.len() as u32,
-            p_push_constant_ranges: ranges.as_ptr(),
-            push_constant_range_count: ranges.len() as u32,
+            p_push_constant_ranges: push_constant_range as *const vk::PushConstantRange,
+            push_constant_range_count: if push_constant_range.size != 0 && !push_constant_range.stage_flags.is_empty() { 1 } else { 0 },
             ..Default::default()
         };
 
@@ -1623,7 +1598,7 @@ impl VkPipelineLayout {
             device: device.clone(),
             layout,
             descriptor_set_layouts: descriptor_set_layouts.clone(),
-            push_constant_ranges: push_constant_ranges.clone(),
+            push_constant_range: push_constant_range.clone(),
         }
     }
 
@@ -1637,26 +1612,9 @@ impl VkPipelineLayout {
         self.descriptor_set_layouts[index as usize].as_ref()
     }
 
-    pub(super) fn push_constant_range_index(shader_type: gpu::ShaderType) -> Option<usize> {
-        match shader_type {
-            gpu::ShaderType::VertexShader => Some(0),
-            gpu::ShaderType::FragmentShader => Some(2),
-            gpu::ShaderType::ComputeShader => Some(0),
-            gpu::ShaderType::RayGen => Some(0),
-            gpu::ShaderType::RayClosestHit => Some(1),
-            gpu::ShaderType::RayMiss => Some(2),
-            gpu::ShaderType::MeshShader => Some(1),
-            gpu::ShaderType::TaskShader => Some(0),
-            _ => None,
-        }
-    }
-
-    pub(super) fn push_constant_range(
-        &self,
-        shader_type: gpu::ShaderType,
-    ) -> Option<&VkConstantRange> {
-        Self::push_constant_range_index(shader_type)
-            .and_then(|index| self.push_constant_ranges[index].as_ref())
+    #[inline]
+    pub(super) fn push_constant_range(&self) -> &vk::PushConstantRange {
+        &self.push_constant_range
     }
 }
 

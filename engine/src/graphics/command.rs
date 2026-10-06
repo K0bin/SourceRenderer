@@ -183,11 +183,10 @@ impl<'a> CommandBuffer<'a> {
     pub fn set_push_constant_data<T: Pod>(
         &mut self,
         data: &[T],
-        visible_for_shader_stage: ShaderType,
     ) {
         unsafe {
             self.cmd_buffer_handle
-                .set_push_constant_data(data.as_ptr() as *const c_void, std::mem::size_of_val(data) as u64, visible_for_shader_stage);
+                .set_push_constant_data(data.as_ptr() as *const c_void, std::mem::size_of_val(data) as u64);
         }
     }
 

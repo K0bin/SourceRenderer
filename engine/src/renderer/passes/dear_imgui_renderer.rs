@@ -358,7 +358,7 @@ impl DearImguiRenderer {
             0.0f32,
         ));
 
-        command_buffer.set_push_constant_data(&[transform], ShaderType::VertexShader);
+        command_buffer.set_push_constant_data(&[transform]);
 
         for draw_list in &draw.draw_lists {
             // Same type, just make bytemuck happy.

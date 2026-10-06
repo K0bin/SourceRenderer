@@ -230,7 +230,6 @@ impl HierarchicalZPass {
                 num_work_groups: work_groups_x * work_groups_y,
                 work_group_offset: Vec2::new(0f32, 0f32),
             }],
-            ShaderType::ComputeShader,
         );
 
         cmd_buffer.flush_barriers();

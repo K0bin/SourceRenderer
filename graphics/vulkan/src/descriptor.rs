@@ -50,13 +50,6 @@ pub(crate) struct VkDescriptorSetEntryInfo {
     pub(crate) flags: vk::DescriptorBindingFlags,
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub(crate) struct VkConstantRange {
-    pub(crate) offset: u32,
-    pub(crate) size: u32,
-    pub(crate) shader_stage: vk::ShaderStageFlags,
-}
-
 pub(crate) struct VkDescriptorSetLayout {
     pub device: Arc<RawVkDevice>,
     layout: vk::DescriptorSetLayout,

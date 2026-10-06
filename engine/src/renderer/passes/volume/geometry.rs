@@ -30,6 +30,7 @@ struct PushConstantData {
     _padding0: u32,
     _padding1: u32,
     _padding2: u32,
+    material_data: MaterialData,
 }
 
 #[repr(C)]
@@ -613,25 +614,21 @@ impl GeometryPass {
                         lod_extents: volume_texture_lod_extents,
                         threshold: drawable.min_threshold,
                         lod: drawable.texture_lod,
+                        material_data: MaterialData {
+                            roughness: 0.6f32,
+                            metalness: 0.3f32,
+                            //roughness: 0.1f32,
+                            //metalness: 0.9f32,
+                            f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
+                            inv_model_matrix: Matrix4::inverse(&model_matrix),
+                            lod: drawable.texture_lod,
+                            width: color_tex_extent.x as f32,
+                            height: color_tex_extent.y as f32,
+                            threshold: drawable.min_threshold,
+                            ..Zeroable::zeroed()
+                        },
                         ..Zeroable::zeroed()
                     }],
-                    ShaderType::VertexShader,
-                );
-                cmd_buffer.set_push_constant_data(
-                    &[MaterialData {
-                        roughness: 0.6f32,
-                        metalness: 0.3f32,
-                        //roughness: 0.1f32,
-                        //metalness: 0.9f32,
-                        f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
-                        inv_model_matrix: Matrix4::inverse(&model_matrix),
-                        lod: drawable.texture_lod,
-                        width: color_tex_extent.x as f32,
-                        height: color_tex_extent.y as f32,
-                        threshold: drawable.min_threshold,
-                        ..Zeroable::zeroed()
-                    }],
-                    ShaderType::FragmentShader,
                 );
                 let key = MarchingCubesKey::new(
                     drawable.volume_texture,
@@ -729,25 +726,21 @@ impl GeometryPass {
                     lod_extents: volume_texture_lod_extents,
                     threshold: drawable.min_threshold,
                     lod: drawable.texture_lod,
+                    material_data: MaterialData {
+                        roughness: 0.4f32,
+                        metalness: 0.3f32,
+                        //roughness: 0.1f32,
+                        //metalness: 0.9f32,
+                        inv_model_matrix: Matrix4::inverse(&model_matrix),
+                        lod: drawable.texture_lod,
+                        width: color_tex_extent.x as f32,
+                        height: color_tex_extent.y as f32,
+                        f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
+                        threshold: drawable.min_threshold,
+                        ..Zeroable::zeroed()
+                    },
                     ..Zeroable::zeroed()
                 }],
-                ShaderType::VertexShader,
-            );
-            cmd_buffer.set_push_constant_data(
-                &[MaterialData {
-                    roughness: 0.4f32,
-                    metalness: 0.3f32,
-                    //roughness: 0.1f32,
-                    //metalness: 0.9f32,
-                    inv_model_matrix: Matrix4::inverse(&model_matrix),
-                    lod: drawable.texture_lod,
-                    width: color_tex_extent.x as f32,
-                    height: color_tex_extent.y as f32,
-                    f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
-                    threshold: drawable.min_threshold,
-                    ..Zeroable::zeroed()
-                }],
-                ShaderType::FragmentShader,
             );
 
             let key = MarchingCubesKey::new(
@@ -812,7 +805,6 @@ impl GeometryPass {
                     lod: drawable.texture_lod,
                     ..Zeroable::zeroed()
                 }],
-                ShaderType::VertexShader,
             );
             cmd_buffer.bind_sampling_view(
                 BindingFrequency::Frequent,
@@ -898,25 +890,21 @@ impl GeometryPass {
                     threshold: drawable.min_threshold,
                     lod_extents: volume_texture_lod_extents,
                     lod: drawable.texture_lod,
+                    material_data: MaterialData {
+                        roughness: 0.6f32,
+                        metalness: 0.3f32,
+                        //roughness: 0.1f32,
+                        //metalness: 0.9f32,
+                        f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
+                        inv_model_matrix: Matrix4::inverse(&model_matrix),
+                        lod: drawable.texture_lod,
+                        width: color_tex_extent.x as f32,
+                        height: color_tex_extent.y as f32,
+                        threshold: drawable.min_threshold,
+                        ..Zeroable::zeroed()
+                    },
                     ..Zeroable::zeroed()
                 }],
-                ShaderType::VertexShader,
-            );
-            cmd_buffer.set_push_constant_data(
-                &[MaterialData {
-                    roughness: 0.6f32,
-                    metalness: 0.3f32,
-                    //roughness: 0.1f32,
-                    //metalness: 0.9f32,
-                    f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
-                    inv_model_matrix: Matrix4::inverse(&model_matrix),
-                    lod: drawable.texture_lod,
-                    width: color_tex_extent.x as f32,
-                    height: color_tex_extent.y as f32,
-                    threshold: drawable.min_threshold,
-                    ..Zeroable::zeroed()
-                }],
-                ShaderType::FragmentShader,
             );
 
             let key = MarchingCubesKey::new(

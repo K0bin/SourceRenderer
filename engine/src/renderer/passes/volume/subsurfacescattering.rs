@@ -267,7 +267,7 @@ impl SSSPass {
             dir: Vec2::new(1.0f32, 0.0f32),
             sss_width,
         };
-        cmd_buffer.set_push_constant_data(&[params], ShaderType::ComputeShader);
+        cmd_buffer.set_push_constant_data(&[params]);
 
         cmd_buffer.dispatch(
             (sss_temp_info.width + 7) / 8,
@@ -318,7 +318,7 @@ impl SSSPass {
             dir: Vec2::new(0.0f32, 1.0f32),
             sss_width,
         };
-        cmd_buffer.set_push_constant_data(&[params], ShaderType::ComputeShader);
+        cmd_buffer.set_push_constant_data(&[params]);
 
         cmd_buffer.dispatch(
             (sss_info.width + 7) / 8,

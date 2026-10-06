@@ -111,7 +111,6 @@ pub trait CommandBuffer<B: GPUBackend> {
         &mut self,
         data: *const c_void,
         length: u64,
-        visible_for_shader_stage: ShaderType,
     );
     unsafe fn draw(
         &mut self,
