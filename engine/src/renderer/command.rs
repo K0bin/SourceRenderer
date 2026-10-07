@@ -59,6 +59,7 @@ pub enum RendererCommand {
         transparent: VolumeDrawableTransparencyMode,
         render_as_cubes: bool,
         ray_march_normals: bool,
+        material_path: String,
     },
     SetLightmap(String),
     EndFrame,

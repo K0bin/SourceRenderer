@@ -721,7 +721,6 @@ impl GeometryPass {
     fn bind_material(cmd_buffer: &mut CommandBuffer, assets: &RendererAssetsReadOnly, material: MaterialHandle) {
         let material_opt = assets.get_material_opt(material);
         if material_opt.is_none() {
-            log::warn!("Missing material");
             cmd_buffer.bind_sampling_view(
                 BindingFrequency::Frequent,
                 1u32,

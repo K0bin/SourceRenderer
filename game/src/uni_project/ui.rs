@@ -24,7 +24,7 @@ pub(super) struct UIPlugin;
 impl Plugin for UIPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(UIState::default());
-        app.add_systems(Update, (volume_meshes_ui_system, pick_hdri_ui_system));
+        app.add_systems(Update, (volume_meshes_ui_system, pick_hdri_ui_system, import_materials_ui_system, materials_ui_system));
     }
 }
 
@@ -97,7 +97,9 @@ struct MaterialUIState<const STEPS: usize> {
 #[derive(Default, Resource)]
 struct UIState {
     selected: Option<Entity>,
+    selected_material: Option<String>,
     materials: HashMap<String, MaterialUIState<TEXTURE_GRADIENT_STEPS>>,
+    next_material_id: u64,
 }
 
 fn volume_meshes_ui_system(
@@ -110,6 +112,11 @@ fn volume_meshes_ui_system(
     let ui = imgui.ui();
     let window_size = [500.0f32, 400.0f32];
 
+    let material_paths: Vec<String> = {
+        let material_keys = state.materials.keys();
+        material_keys.into_iter().cloned().collect()
+    };
+
     ui.window("Meshes##meshwindow")
         .position([0.0, 0.0], Condition::FirstUseEver)
         .size(window_size, Condition::FirstUseEver)
@@ -121,7 +128,7 @@ fn volume_meshes_ui_system(
                     ListBox::new("##meshlistbox")
                         .size([
                             ui.content_region_avail()[0],
-                            ui.content_region_avail()[1] - 64.0f32,
+                            (ui.content_region_avail()[1] - 64.0f32).max(0.0f32),
                         ])
                         .build(ui, || {
                             for (entity, mesh) in &instances {
@@ -219,37 +226,20 @@ fn volume_meshes_ui_system(
                             &mut mesh.ray_march_normals,
                         );
 
-                        let material_existed = state.materials.contains_key(&mesh.material_path);
-                        if !material_existed {
-                            state.materials.insert(mesh.material_path.clone(), MaterialUIState::default());
+                        let mut current_idx = material_paths.iter().enumerate().find_map(|(idx, path)| if path == &mesh.material_path {
+                            Some(idx)
+                        } else {
+                            None
+                        }).unwrap_or(0);
+
+                        if ui.combo(
+                            "##mesh_material",
+                            &mut current_idx,
+                            &material_paths,
+                            |path| path.into(),
+                        ) {
+                            mesh.material_path = material_paths[current_idx].clone();
                         }
-
-                        let material = state.materials.get_mut(&mesh.material_path).unwrap();
-
-                        let albedo_path = format!("{}_albedo", &mesh.material_path);
-                        let roughness_path = format!("{}_roughness", &mesh.material_path);
-                        let metalness_path = format!("{}_metalnness", &mesh.material_path);
-
-                        let albedo_handle: TextureHandle = asset_manager.get_or_reserve_handle(&albedo_path, AssetType::Texture).into();
-                        let roughness_handle: TextureHandle = asset_manager.get_or_reserve_handle(&roughness_path, AssetType::Texture).into();
-                        let metalness_handle: TextureHandle = asset_manager.get_or_reserve_handle(&metalness_path, AssetType::Texture).into();
-
-                        const TEXTURE_WIDTH: u32 = 128;
-                        ui.text("Albedo:");
-                        if color_gradient(ui,false, &mut material.albedo.positions, &mut material.albedo.values,
-                                                           &format!("albedo{:?}", entity), albedo_handle) || !material_existed {
-                            update_texture(&albedo_path, TEXTURE_WIDTH, false, &material.albedo, &asset_manager);
-                        }
-                        ui.text("Roughness:");
-                        if color_gradient(ui, true, &mut material.roughness.positions, &mut material.roughness.values, &format!("roughness{:?}", entity), roughness_handle) || !material_existed {
-                            update_texture(&roughness_path, TEXTURE_WIDTH, true, &material.roughness, &asset_manager);
-                        }
-                        ui.text("Metalness:");
-                        if color_gradient(ui, true, &mut material.metalness.positions, &mut material.metalness.values, &format!("metalness{:?}", entity), metalness_handle) || !material_existed {
-                            update_texture(&metalness_path, TEXTURE_WIDTH, true, &material.metalness, &asset_manager);
-                        }
-
-                        // TODO: Rate limit updates
 
                         if ui.button("Delete mesh##deletemeshbutton") {
                             commands.entity(entity).despawn();
@@ -259,47 +249,152 @@ fn volume_meshes_ui_system(
                 }
             });
         });
+}
 
-    // Clean up stray materials.
-    let instances_count = instances.iter().len();
-    if state.materials.len() > instances_count {
-        let mut keys_to_remove = HashSet::<String>::with_capacity(state.materials.len());
-        for key in state.materials.keys() {
-            keys_to_remove.insert(key.clone());
-        }
-        for (_, instance) in &instances {
-            keys_to_remove.remove(&instance.material_path);
-        }
-        for key in keys_to_remove {
-            state.materials.remove(&key);
-        }
-    } else if state.materials.len() < instances_count {
-        let mut keys_to_add = HashSet::<String>::with_capacity(state.materials.len());
-        for (_, instance) in &instances {
-            keys_to_add.insert(instance.material_path.clone());
-        }
-        for key in state.materials.keys() {
-            keys_to_add.remove(key);
-        }
-        for material_path in keys_to_add {
-            asset_manager.add_asset_data(&material_path, AssetData::Material(make_volume_material(&material_path)), AssetLoadPriority::High);
 
-            let albedo_path = format!("{}_albedo", &material_path);
-            let roughness_path = format!("{}_roughness", &material_path);
-            let metalness_path = format!("{}_metalnness", &material_path);
-
-            let _ = asset_manager.get_or_reserve_handle(&albedo_path, AssetType::Texture);
-            let _ = asset_manager.get_or_reserve_handle(&roughness_path, AssetType::Texture);
-            let _ = asset_manager.get_or_reserve_handle(&metalness_path, AssetType::Texture);
-
-            let material_ui = MaterialUIState::default();
-            const TEXTURE_WIDTH: u32 = 128;
-            update_texture(&albedo_path, TEXTURE_WIDTH, false, &material_ui.albedo, &asset_manager);
-            update_texture(&roughness_path, TEXTURE_WIDTH, true, &material_ui.roughness, &asset_manager);
-            update_texture(&metalness_path, TEXTURE_WIDTH, true, &material_ui.metalness, &asset_manager);
-            state.materials.insert(material_path, material_ui);
+fn import_materials_ui_system(
+    instances: Query<(Entity, &VolumeMeshInstance)>,
+    mut state: ResMut<UIState>,
+    asset_manager: Res<AssetManagerECSResource>
+) {
+    let mut keys_to_add = HashSet::<String>::with_capacity(state.materials.len());
+    for (_, instance) in &instances {
+        if instance.material_path == "" {
+            continue;
         }
+        keys_to_add.insert(instance.material_path.clone());
     }
+    for key in state.materials.keys() {
+        keys_to_add.remove(key);
+    }
+    for material_path in keys_to_add {
+        asset_manager.add_asset_data(&material_path, AssetData::Material(make_volume_material(&material_path)), AssetLoadPriority::High);
+
+        let albedo_path = format!("{}_albedo", &material_path);
+        let roughness_path = format!("{}_roughness", &material_path);
+        let metalness_path = format!("{}_metalnness", &material_path);
+
+        let _ = asset_manager.get_or_reserve_handle(&albedo_path, AssetType::Texture);
+        let _ = asset_manager.get_or_reserve_handle(&roughness_path, AssetType::Texture);
+        let _ = asset_manager.get_or_reserve_handle(&metalness_path, AssetType::Texture);
+
+        let material_ui = MaterialUIState::default();
+        const TEXTURE_WIDTH: u32 = 128;
+        update_texture(&albedo_path, TEXTURE_WIDTH, false, &material_ui.albedo, &asset_manager);
+        update_texture(&roughness_path, TEXTURE_WIDTH, true, &material_ui.roughness, &asset_manager);
+        update_texture(&metalness_path, TEXTURE_WIDTH, true, &material_ui.metalness, &asset_manager);
+        state.materials.insert(material_path, material_ui);
+    }
+}
+
+
+fn materials_ui_system(
+    imgui: NonSendMut<DearImgui>,
+    mut instances: Query<(Entity, &mut VolumeMeshInstance)>,
+    mut state: ResMut<UIState>,
+    mut commands: Commands,
+    asset_manager: Res<AssetManagerECSResource>
+) {
+    let ui = imgui.ui();
+    let window_size = [500.0f32, 400.0f32];
+
+    ui.window("Materials##materialwindow")
+        .position([0.0, 0.0], Condition::FirstUseEver)
+        .size(window_size, Condition::FirstUseEver)
+        .build(|| {
+            let size = ui.content_region_avail();
+            ChildWindow::new("##materialchildwindow")
+                .size([128.0f32.min(size[0]), size[1]])
+                .build(ui, || {
+                    ListBox::new("##materiallistbox")
+                        .size([
+                            ui.content_region_avail()[0],
+                                  (ui.content_region_avail()[1] - 64.0f32).max(0.0f32),
+                        ])
+                        .build(ui, || {
+                            let mut new_selected: Option<String> = None;
+                            for path in state.materials.keys() {
+                                let text = format!(
+                                    "{:?}##materials{:?}",
+                                    path, path
+                                );
+                                if ui
+                                    .selectable_config(&text)
+                                    .selected(state.selected_material.as_ref() == Some(path))
+                                    .build()
+                                {
+                                    new_selected = Some(path.clone());
+                                }
+                            }
+                            if new_selected.is_some() {
+                                state.selected_material = new_selected;
+                            }
+                        });
+                    if ui.button("Add Material##addmaterialbutton") {
+                        let new_entity = commands.spawn_empty();
+                        let id = new_entity.id();
+
+                        let material_path = format!("VolumeMaterial_{}", state.next_material_id);
+                        state.next_material_id += 1;
+                        asset_manager.add_asset_data(&material_path, AssetData::Material(make_volume_material(&material_path)), AssetLoadPriority::High);
+
+                        state.materials.insert(material_path, MaterialUIState::default());
+
+                        state.selected = Some(id);
+                    }
+                });
+
+            ui.same_line();
+            ChildWindow::new("##materialproperties").build(ui, || {
+                if let Some(material_path) = state.selected_material.as_ref().cloned() {
+                    let mut delete = false;
+                    if let Some(material) = state.materials.get_mut(&material_path) {
+                        let albedo_path = format!("{}_albedo", material_path);
+                        let roughness_path = format!("{}_roughness", material_path);
+                        let metalness_path = format!("{}_metalnness", material_path);
+
+                        let albedo_handle: TextureHandle = asset_manager.get_or_reserve_handle(&albedo_path, AssetType::Texture).into();
+                        let roughness_handle: TextureHandle = asset_manager.get_or_reserve_handle(&roughness_path, AssetType::Texture).into();
+                        let metalness_handle: TextureHandle = asset_manager.get_or_reserve_handle(&metalness_path, AssetType::Texture).into();
+
+                        const TEXTURE_WIDTH: u32 = 128;
+                        ui.text("Albedo:");
+                        if color_gradient(ui,false, &mut material.albedo.positions, &mut material.albedo.values,
+                                          &format!("albedo{:?}", material_path), albedo_handle) {
+                            update_texture(&albedo_path, TEXTURE_WIDTH, false, &material.albedo, &asset_manager);
+                        }
+                        ui.text("Roughness:");
+                        if color_gradient(ui, true, &mut material.roughness.positions, &mut material.roughness.values, &format!("roughness{:?}", material_path), roughness_handle) {
+                            update_texture(&roughness_path, TEXTURE_WIDTH, true, &material.roughness, &asset_manager);
+                        }
+                        ui.text("Metalness:");
+                        if color_gradient(ui, true, &mut material.metalness.positions, &mut material.metalness.values, &format!("metalness{:?}", material_path), metalness_handle) {
+                            update_texture(&metalness_path, TEXTURE_WIDTH, true, &material.metalness, &asset_manager);
+                        }
+
+                        // TODO: Rate limit updates
+
+                        if ui.button("Delete material##deletematerialbutton") {
+                            delete = true;
+                            state.selected_material = None;
+                        }
+                    }
+                    if delete {
+                        state.materials.remove(&material_path);
+                        for (_, mut mesh) in instances.iter_mut() {
+                            if &mesh.material_path == &material_path {
+                                if state.materials.is_empty() {
+                                    mesh.material_path = "".to_string();
+                                } else {
+                                    mesh.material_path = state.materials.keys().find(|_| true).unwrap().clone();
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        });
+
 }
 
 fn color_gradient<const STEPS: usize>(ui: &dear_imgui_rs::Ui, greyscale: bool, positions: &mut [f32; STEPS], colors: &mut [[f32; 4]; STEPS], imgui_label_internal: &str, texture_handle: TextureHandle) -> bool {
@@ -397,7 +492,7 @@ fn build_texture_data<const STEPS: usize>(width: u32, positions: &[f32; STEPS], 
         let start_color = colors[start_pos_index];
         let end_color = colors[start_pos_index + 1];
 
-        let lerp_pos = (pos - start_position) / (end_position - start_position);
+        let lerp_pos = (pos - start_position) / (end_position - start_position).min(0.0).max(1.0);
         for j in 0..components  {
             let mut color_component_float = start_color[j] * (1.0f32 - lerp_pos);
             color_component_float += end_color[j] * lerp_pos;

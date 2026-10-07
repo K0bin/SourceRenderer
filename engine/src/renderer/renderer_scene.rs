@@ -11,7 +11,7 @@ use sourcerenderer_core::Vec3;
 use super::drawable::{RendererVolumeDrawable, View, VolumeDrawableTransparencyMode};
 use super::light::{DirectionalLight, RendererDirectionalLight, RendererPointLight};
 use super::{PointLight, RendererStaticDrawable};
-use crate::asset::TextureHandle;
+use crate::asset::{MaterialHandle, TextureHandle};
 
 struct RendererEntityType<T> {
     entries: Vec<T>,
@@ -241,6 +241,7 @@ impl RendererScene {
         transparent: VolumeDrawableTransparencyMode,
         render_as_cubes: bool,
         ray_march_normals: bool,
+        material: MaterialHandle,
     ) {
         let volume_mesh_opt = self.volume_meshes.get_mut(entity);
         if let Some(volume_mesh) = volume_mesh_opt {
@@ -249,6 +250,7 @@ impl RendererScene {
             volume_mesh.transparent = transparent;
             volume_mesh.render_as_cubes = render_as_cubes;
             volume_mesh.ray_march_normals = ray_march_normals;
+            volume_mesh.material_handle = material;
             return;
         }
 

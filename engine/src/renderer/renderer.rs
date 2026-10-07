@@ -373,7 +373,14 @@ impl Renderer {
                     texture_lod: lod,
                     render_as_cubes,
                     ray_march_normals,
+                    material_path,
                 } => {
+                    let (material_handle, _) =
+                        self.assets.asset_manager().request_asset(
+                            &material_path,
+                            AssetType::Material,
+                            AssetLoadPriority::Normal,
+                        );
                     self.scene.update_volume_mesh_data(
                         entity,
                         min_threshold,
@@ -381,6 +388,7 @@ impl Renderer {
                         transparent,
                         render_as_cubes,
                         ray_march_normals,
+                        material_handle.into(),
                     );
                 }
 
@@ -766,6 +774,7 @@ impl RendererSender {
                 transparent: renderable.transparent,
                 render_as_cubes: renderable.render_as_cubes,
                 ray_march_normals: renderable.ray_march_normals,
+                material_path: renderable.material_path.clone(),
             })
             .map_err(|_| SendError(()))
     }
