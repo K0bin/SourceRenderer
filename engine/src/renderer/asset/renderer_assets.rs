@@ -360,6 +360,13 @@ impl RendererAssetsReadOnly<'_> {
     }
 
     #[inline(always)]
+    pub fn get_material_opt(&self, handle: MaterialHandle) -> Option<&RendererMaterial> {
+        self.maps
+            .materials
+            .get(&handle)
+    }
+
+    #[inline(always)]
     pub fn get_placeholder_material(&self) -> &RendererMaterial {
         self.placeholders.material()
     }
