@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::ops::Deref;
 use std::sync::Arc;
 
 use bevy_app::{Plugin, PreUpdate};
@@ -18,7 +19,20 @@ use crate::asset::loaders::*;
 use crate::asset::*;
 
 #[derive(Resource)]
-pub struct AssetManagerECSResource(pub Arc<AssetManager>);
+pub struct AssetManagerECSResource(Arc<AssetManager>);
+
+impl AsRef<Arc<AssetManager>> for AssetManagerECSResource {
+    fn as_ref(&self) -> &Arc<AssetManager> {
+        &self.0
+    }
+}
+
+impl Deref for AssetManagerECSResource {
+    type Target = Arc<AssetManager>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 pub struct AssetManagerPlugin<IO: PlatformIO>(PhantomData<IO>);
 unsafe impl<IO: PlatformIO> Send for AssetManagerPlugin<IO> {}
@@ -55,7 +69,7 @@ pub struct LevelTemplates(HashMap<LevelHandle, LevelData>);
 
 fn receive_level_system(
     mut commands: Commands,
-    asset_manager_res: Res<AssetManagerECSResource>,
+    asset_manager: Res<AssetManagerECSResource>,
     entities: Query<(Entity, &PlacedLevel, Option<&Transform>)>,
     mut templates: ResMut<LevelTemplates>) {
 
@@ -65,7 +79,6 @@ fn receive_level_system(
         }
     }
 
-    let asset_manager = &asset_manager_res.0;
     let mut level_opt: Option<LoadedAssetData> = asset_manager.receive_asset_data(AssetTypeGroup::Level);
     while let Some(LoadedAssetData {
                        data: AssetData::Level(level),

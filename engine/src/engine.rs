@@ -242,6 +242,6 @@ impl Engine {
     }
 
     pub fn get_asset_manager(app: &App) -> &Arc<AssetManager> {
-        &app.world().resource::<AssetManagerECSResource>().0
+        &app.world().resource::<AssetManagerECSResource>()
     }
 }

@@ -160,7 +160,7 @@ pub fn insert_resources<P: GraphicsPlatform<ActiveBackend>>(
         let handle = start_render_thread::<P>(
             window,
             receiver,
-            &asset_manager_resource.0,
+            &asset_manager_resource,
             &console_resource.0,
             renderer_type,
         );
@@ -177,7 +177,7 @@ pub fn insert_resources<P: GraphicsPlatform<ActiveBackend>>(
                 surface,
                 window.width(),
                 window.height(),
-                &asset_manager_resource.0,
+                &asset_manager_resource,
                 &console_resource.0,
                 renderer_type,
             )),
