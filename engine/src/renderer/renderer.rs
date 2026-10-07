@@ -292,9 +292,6 @@ impl Renderer {
             }
         }
 
-        let _ = self.device.submit_counter_bump(QueueType::Graphics);
-        let _ = self.device.submit_counter_bump(QueueType::Compute);
-        let _ = self.device.submit_counter_bump(QueueType::Transfer);
         self.context.end_frame();
 
         let c_device = self.device.clone();
