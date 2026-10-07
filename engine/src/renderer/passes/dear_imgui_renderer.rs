@@ -10,6 +10,7 @@ use sourcerenderer_core::gpu::{Texture as _, TexturePlane};
 use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec3UI};
 use std::collections::HashMap;
 use std::sync::Arc;
+use crate::asset::{AssetHandle, AssetType};
 
 pub struct DearImguiRenderer {
     next_id: u64,
@@ -19,6 +20,8 @@ pub struct DearImguiRenderer {
 }
 
 impl DearImguiRenderer {
+    const IMGUI_IDENTIFY_MASK: u64 = 1 << 63;
+
     pub fn new(
         _device: &Device,
         _resources: &mut RendererResources,
@@ -207,7 +210,7 @@ impl DearImguiRenderer {
                         Some(&format!("DearImgui view {}", id)),
                     );
 
-                    let imgui_id = dear_imgui_rs::TextureId::new(id);
+                    let imgui_id = dear_imgui_rs::TextureId::new(id | Self::IMGUI_IDENTIFY_MASK);
                     self.textures
                         .insert(texture_request.texture(), (imgui_id, view));
 
@@ -423,12 +426,18 @@ impl DearImguiRenderer {
 
                         let view = match texture {
                             dear_imgui_rs::TextureBinding::Legacy(id) => {
-                                log::warn!("Binding with legacy texture id: {:?}", id);
-                                self.textures
-                                    .iter()
-                                    .find(|(_, (stored_id, _))| id == stored_id)
-                                    .map(|(_, (_, texture))| texture)
-                                    .unwrap()
+                                if (id.id() & Self::IMGUI_IDENTIFY_MASK) != 0 {
+                                    log::warn!("Got a managed texture in the legacy path.");
+                                    self.textures
+                                        .iter()
+                                        .find(|(_, (stored_id, _))| id == stored_id)
+                                        .map(|(_, (_, texture))| texture)
+                                        .unwrap()
+                                } else {
+                                    let asset_handle = AssetHandle::new(id.id(), AssetType::Texture);
+                                    let texture = assets_readonly.get_texture_opt(asset_handle.into());
+                                    texture.map(|t| &t.view).unwrap_or(&assets_readonly.get_placeholder_texture_black().view)
+                                }
                             }
                             dear_imgui_rs::TextureBinding::Managed(id) => {
                                 &(self.textures.get(id).unwrap().1)

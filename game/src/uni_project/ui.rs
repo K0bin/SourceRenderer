@@ -306,6 +306,11 @@ fn color_gradient<const STEPS: usize>(ui: &dear_imgui_rs::Ui, greyscale: bool, p
     let space = unsafe { ui.style() }.item_spacing()[0];
     let size = (ui.content_region_avail()[0] - ((STEPS - 1) as f32 * space)) * (1.0f32 / (STEPS as f32));
 
+    let asset_handle: AssetHandle = texture_handle.into();
+    let imgui_texture_id = dear_imgui_rs::TextureId::new(asset_handle.index());
+    let imgui_texture_ref = dear_imgui_rs::TextureRef::from(imgui_texture_id);
+    ui.image(imgui_texture_ref, [ui.content_region_avail()[0], ui.frame_height() * 2.0f32]);
+
     let mut changed = false;
 
     for i in 0..STEPS {
