@@ -1,6 +1,6 @@
 #[cfg(not(target_arch = "wasm32"))]
 use crate::uni_project::ui::UIPlugin;
-use crate::uni_project::{MANIX_PATH, TRANSFER_FUNCTION_PATH, manix_transform};
+use crate::uni_project::{make_volume_material, manix_transform, MANIX_PATH, TRANSFER_FUNCTION_PATH};
 use crate::{RendererPicker, fps_camera};
 use bevy_app::{App, Plugin};
 use bevy_math::Affine3A;
@@ -9,7 +9,7 @@ use sourcerenderer_engine::VolumeDrawableTransparencyMode;
 use sourcerenderer_engine::renderer::{RendererType, VolumeMeshInstance};
 use sourcerenderer_engine::transform::InterpolatedTransform;
 use std::marker::PhantomData;
-
+use sourcerenderer_engine::asset::{AssetData, AssetLoadPriority, AssetManagerECSResource};
 /* TODO:
  * - DLSS/FSR/XeSS/MetalFX
  * - DearImgui controls
@@ -36,7 +36,7 @@ impl<IO: PlatformIO> Plugin for UniProjectPlugin<IO> {
             app.world_mut().spawn((
                 VolumeMeshInstance {
                     volume_texture_path: MANIX_PATH.to_string(),
-                    transfer_function_texture_path: TRANSFER_FUNCTION_PATH.to_string(),
+                    material_path: "default0".to_string(),
                     volume_texture_lod: 3,
                     threshold_min: 0.0288f32,
                     transparent: VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque,
@@ -48,7 +48,7 @@ impl<IO: PlatformIO> Plugin for UniProjectPlugin<IO> {
             app.world_mut().spawn((
                 VolumeMeshInstance {
                     volume_texture_path: MANIX_PATH.to_string(),
-                    transfer_function_texture_path: TRANSFER_FUNCTION_PATH.to_string(),
+                    material_path: "default1".to_string(),
                     volume_texture_lod: 3,
                     threshold_min: 0.55f32,
                     transparent: VolumeDrawableTransparencyMode::Opaque,

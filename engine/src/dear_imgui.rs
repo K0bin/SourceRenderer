@@ -11,6 +11,8 @@ use std::cell::{RefCell, RefMut};
 use std::marker::PhantomPinned;
 use std::pin::Pin;
 
+pub use dear_imgui_rs;
+
 pub fn install(app: &mut App, window: &impl Window<ActiveBackend>) {
     app.insert_non_send(DearImgui::new(window.width(), window.height()));
     app.add_systems(PreUpdate, (update_input,));

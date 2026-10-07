@@ -1,9 +1,6 @@
 use crate::graphics::*;
 use crate::renderer::VolumeRendererOptions;
-use crate::renderer::asset::{
-    GraphicsPipelineHandle, GraphicsPipelineInfo, PathPipelineShaderStage, RendererAssets,
-    RendererAssetsReadOnly,
-};
+use crate::renderer::asset::{GraphicsPipelineHandle, GraphicsPipelineInfo, PathPipelineShaderStage, RendererAssets, RendererAssetsReadOnly, RendererMaterial};
 use crate::renderer::drawable::{RendererVolumeDrawable, VolumeDrawableTransparencyMode};
 use crate::renderer::passes::volume::ibl::ImageBasedLightingTextures;
 use crate::renderer::passes::volume::marching_cubes::{
@@ -19,6 +16,7 @@ use std::cell::Ref;
 use std::collections::HashMap;
 use std::default::Default;
 use std::sync::Arc;
+use crate::asset::MaterialHandle;
 
 #[repr(C)]
 #[derive(Clone, Copy, Zeroable, Pod)]
@@ -546,17 +544,17 @@ impl GeometryPass {
 
             cmd_buffer.bind_sampling_view(
                 BindingFrequency::Frequent,
-                2u32,
+                4u32,
                 &env_map_diffuse,
             );
             cmd_buffer.bind_sampling_view(
                 BindingFrequency::Frequent,
-                3u32,
+                5u32,
                 &env_map_specular,
             );
             cmd_buffer.bind_sampling_view(
                 BindingFrequency::Frequent,
-                4u32,
+                6u32,
                 &integration_lut,
             );
 
@@ -599,14 +597,7 @@ impl GeometryPass {
                     &volume_texture.view,
                 );
 
-                let transfer_function = params
-                    .assets
-                    .get_texture(drawable.transfer_function_texture);
-                cmd_buffer.bind_sampling_view(
-                    BindingFrequency::Frequent,
-                    1u32,
-                    &transfer_function.view,
-                );
+                Self::bind_material(cmd_buffer, params.assets, drawable.material_handle);
 
                 cmd_buffer.set_push_constant_data(
                     &[PushConstantData {
@@ -680,95 +671,19 @@ impl GeometryPass {
                 continue;
             }
 
-            let volume_texture = params.assets.get_texture(drawable.volume_texture);
-            let volume_texture_base_opt = volume_texture.view.texture();
-            if volume_texture_base_opt.is_none() {
-                continue;
-            }
-            let volume_texture_base = volume_texture_base_opt.unwrap();
-            let volume_texture_info = volume_texture_base.info();
-            let volume_texture_lod_extents = Vec3UI::new(
-                (volume_texture_info.width >> drawable.texture_lod).max(1u32),
-                (volume_texture_info.height >> drawable.texture_lod).max(1u32),
-                (volume_texture_info.depth >> drawable.texture_lod).max(1u32),
-            );
-
-            let mut model_matrix = drawable.transform.into();
-            model_matrix *= Matrix4::from_scale(Vec3::new(
-                (volume_texture_info.width as f32) / (volume_texture_lod_extents.x as f32),
-                (volume_texture_info.height as f32) / (volume_texture_lod_extents.y as f32),
-                (volume_texture_info.depth as f32) / (volume_texture_lod_extents.z as f32),
-            ));
-
-            cmd_buffer.bind_sampling_view(
-                BindingFrequency::Frequent,
-                0u32,
-                &volume_texture.view,
-            );
-
-            let transfer_function = params
-                .assets
-                .get_texture(drawable.transfer_function_texture);
-            cmd_buffer.bind_sampling_view(
-                BindingFrequency::Frequent,
-                1u32,
-                &transfer_function.view,
-            );
-
-            cmd_buffer.set_pipeline(PipelineBinding::Graphics(if drawable.ray_march_normals {
+            let pipeline = if drawable.ray_march_normals {
                 pipeline_non_overlapping
             } else {
                 pipeline_non_overlapping_non_raymarching
-            }));
-            cmd_buffer.set_push_constant_data(
-                &[PushConstantData {
-                    model_matrix,
-                    lod_extents: volume_texture_lod_extents,
-                    threshold: drawable.min_threshold,
-                    lod: drawable.texture_lod,
-                    material_data: MaterialData {
-                        roughness: 0.4f32,
-                        metalness: 0.3f32,
-                        //roughness: 0.1f32,
-                        //metalness: 0.9f32,
-                        inv_model_matrix: Matrix4::inverse(&model_matrix),
-                        lod: drawable.texture_lod,
-                        width: color_tex_extent.x as f32,
-                        height: color_tex_extent.y as f32,
-                        f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
-                        threshold: drawable.min_threshold,
-                        ..Zeroable::zeroed()
-                    },
-                    ..Zeroable::zeroed()
-                }],
-            );
+            };
 
-            let key = MarchingCubesKey::new(
-                drawable.volume_texture,
-                drawable.texture_lod,
-                drawable.entity,
-            );
-            let buffer_info = marching_cubes_map.get(&key).unwrap();
-            let ibo = resources.access_buffer(
-                cmd_buffer,
-                &buffer_info.buffer_name,
-                BarrierSync::INDEX_INPUT,
-                BarrierAccess::INDEX_READ,
-                HistoryResourceEntry::Current,
-            );
-            cmd_buffer.set_index_buffer(BufferRef::Regular(&*ibo), 0u64, IndexFormat::U32);
-            cmd_buffer.finish_binding();
-            cmd_buffer.draw_indexed_indirect(
-                BufferRef::Regular(&*marchingcubes_indirect),
-                buffer_info.indirect_buffer_offset as u64,
-                1u32,
-                std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
-            );
+            Self::draw(cmd_buffer, params.assets, color_tex_extent, params.resources,
+                       marching_cubes_map, &marchingcubes_indirect, pipeline, drawable);
         }
 
         // Geometry 2 - Depth prepass
 
-        // Decide pipeline per-mesh here because he have a fixed order.
+        // Decide pipeline per-mesh here because we have a fixed order.
         for drawable in &transparent_drawables {
             if drawable.transparent == VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque {
                 cmd_buffer.set_stencil_reference(1u32);
@@ -776,63 +691,8 @@ impl GeometryPass {
                 cmd_buffer.set_stencil_reference(0u32);
             }
 
-            let volume_texture = params.assets.get_texture(drawable.volume_texture);
-            let volume_texture_base_opt = volume_texture.view.texture();
-            if volume_texture_base_opt.is_none() {
-                continue;
-            }
-            let volume_texture_base = volume_texture_base_opt.unwrap();
-            let volume_texture_info = volume_texture_base.info();
-            let volume_texture_lod_extents = Vec3UI::new(
-                (volume_texture_info.width >> drawable.texture_lod).max(1u32),
-                (volume_texture_info.height >> drawable.texture_lod).max(1u32),
-                (volume_texture_info.depth >> drawable.texture_lod).max(1u32),
-            );
-
-            let mut model_matrix = drawable.transform.into();
-            model_matrix *= Matrix4::from_scale(Vec3::new(
-                (volume_texture_info.width as f32) / (volume_texture_lod_extents.x as f32),
-                (volume_texture_info.height as f32) / (volume_texture_lod_extents.y as f32),
-                (volume_texture_info.depth as f32) / (volume_texture_lod_extents.z as f32),
-            ));
-
-            cmd_buffer.set_pipeline(PipelineBinding::Graphics(pipeline_transparent_prepass));
-            cmd_buffer.set_push_constant_data(
-                &[PushConstantData {
-                    model_matrix,
-                    lod_extents: volume_texture_lod_extents,
-                    threshold: drawable.min_threshold,
-                    lod: drawable.texture_lod,
-                    ..Zeroable::zeroed()
-                }],
-            );
-            cmd_buffer.bind_sampling_view(
-                BindingFrequency::Frequent,
-                0u32,
-                &volume_texture.view,
-            );
-
-            let key = MarchingCubesKey::new(
-                drawable.volume_texture,
-                drawable.texture_lod,
-                drawable.entity,
-            );
-            let buffer_info = marching_cubes_map.get(&key).unwrap();
-            let ibo = resources.access_buffer(
-                cmd_buffer,
-                &buffer_info.buffer_name,
-                BarrierSync::INDEX_INPUT,
-                BarrierAccess::INDEX_READ,
-                HistoryResourceEntry::Current,
-            );
-            cmd_buffer.set_index_buffer(BufferRef::Regular(&*ibo), 0u64, IndexFormat::U32);
-            cmd_buffer.finish_binding();
-            cmd_buffer.draw_indexed_indirect(
-                BufferRef::Regular(&*marchingcubes_indirect),
-                buffer_info.indirect_buffer_offset as u64,
-                1u32,
-                std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
-            );
+            Self::draw(cmd_buffer, params.assets, color_tex_extent, params.resources, marching_cubes_map, &marchingcubes_indirect,
+                       pipeline_transparent_prepass, drawable);
         }
 
         // Geometry 2 - Transparent
@@ -844,94 +704,169 @@ impl GeometryPass {
                 cmd_buffer.set_stencil_reference(0u32);
             }
 
-            let volume_texture = params.assets.get_texture(drawable.volume_texture);
-            let volume_texture_base_opt = volume_texture.view.texture();
-            if volume_texture_base_opt.is_none() {
-                continue;
-            }
-            let volume_texture_base = volume_texture_base_opt.unwrap();
-            let volume_texture_info = volume_texture_base.info();
-            let volume_texture_lod_extents = Vec3UI::new(
-                (volume_texture_info.width >> drawable.texture_lod).max(1u32),
-                (volume_texture_info.height >> drawable.texture_lod).max(1u32),
-                (volume_texture_info.depth >> drawable.texture_lod).max(1u32),
-            );
-
-            let mut model_matrix = drawable.transform.into();
-            model_matrix *= Matrix4::from_scale(Vec3::new(
-                (volume_texture_info.width as f32) / (volume_texture_lod_extents.x as f32),
-                (volume_texture_info.height as f32) / (volume_texture_lod_extents.y as f32),
-                (volume_texture_info.depth as f32) / (volume_texture_lod_extents.z as f32),
-            ));
-
-            cmd_buffer.bind_sampling_view(
-                BindingFrequency::Frequent,
-                0u32,
-                &volume_texture.view,
-            );
-
-            let transfer_function = params
-                .assets
-                .get_texture(drawable.transfer_function_texture);
-            cmd_buffer.bind_sampling_view(
-                BindingFrequency::Frequent,
-                1u32,
-                &transfer_function.view,
-            );
-
-            cmd_buffer.set_pipeline(PipelineBinding::Graphics(if drawable.ray_march_normals {
+            let pipeline = if drawable.ray_march_normals {
                 pipeline_transparent
             } else {
                 pipeline_transparent_non_raymarching
-            }));
-            cmd_buffer.set_push_constant_data(
-                &[PushConstantData {
-                    model_matrix,
-                    threshold: drawable.min_threshold,
-                    lod_extents: volume_texture_lod_extents,
-                    lod: drawable.texture_lod,
-                    material_data: MaterialData {
-                        roughness: 0.6f32,
-                        metalness: 0.3f32,
-                        //roughness: 0.1f32,
-                        //metalness: 0.9f32,
-                        f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
-                        inv_model_matrix: Matrix4::inverse(&model_matrix),
-                        lod: drawable.texture_lod,
-                        width: color_tex_extent.x as f32,
-                        height: color_tex_extent.y as f32,
-                        threshold: drawable.min_threshold,
-                        ..Zeroable::zeroed()
-                    },
-                    ..Zeroable::zeroed()
-                }],
-            );
-
-            let key = MarchingCubesKey::new(
-                drawable.volume_texture,
-                drawable.texture_lod,
-                drawable.entity,
-            );
-            let buffer_info = marching_cubes_map.get(&key).unwrap();
-            let ibo = resources.access_buffer(
-                cmd_buffer,
-                &buffer_info.buffer_name,
-                BarrierSync::INDEX_INPUT,
-                BarrierAccess::INDEX_READ,
-                HistoryResourceEntry::Current,
-            );
-            cmd_buffer.set_index_buffer(BufferRef::Regular(&*ibo), 0u64, IndexFormat::U32);
-            cmd_buffer.finish_binding();
-            cmd_buffer.draw_indexed_indirect(
-                BufferRef::Regular(&*marchingcubes_indirect),
-                buffer_info.indirect_buffer_offset as u64,
-                1u32,
-                std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
-            );
+            };
+            Self::draw(cmd_buffer, params.assets, color_tex_extent, params.resources,
+                       marching_cubes_map, &marchingcubes_indirect, pipeline, drawable);
         }
 
         cmd_buffer.end_render_pass();
 
         cmd_buffer.end_label();
+    }
+
+    fn bind_material(cmd_buffer: &mut CommandBuffer, assets: &RendererAssetsReadOnly, material: MaterialHandle) {
+        let material_opt = assets.get_material_opt(material);
+        if material_opt.is_none() {
+            log::warn!("Missing material");
+            cmd_buffer.bind_sampling_view(
+                BindingFrequency::Frequent,
+                1u32,
+                &assets.get_placeholder_texture_white().view,
+            );
+            cmd_buffer.bind_sampling_view(
+                BindingFrequency::Frequent,
+                2u32,
+                &assets.get_placeholder_texture_white().view,
+            );
+            cmd_buffer.bind_sampling_view(
+                BindingFrequency::Frequent,
+                3u32,
+                &assets.get_placeholder_texture_black().view,
+            );
+            return;
+        }
+
+        let material = material_opt.unwrap();
+        match material {
+            RendererMaterial::SimplePBR {
+                albedo, roughness, metalness,
+                albedo_color: _, roughness_factor: _, metalness_factor: _
+            } => {
+                let albedo_texture = albedo
+                    .and_then(|t|
+                        assets.get_texture_opt(t))
+                    .unwrap_or(assets.get_placeholder_texture_white());
+
+                cmd_buffer.bind_sampling_view(
+                    BindingFrequency::Frequent,
+                    1u32,
+                    &albedo_texture.view,
+                );
+
+                let roughness_texture = roughness
+                    .and_then(|t|
+                        assets.get_texture_opt(t))
+                    .unwrap_or(assets.get_placeholder_texture_white());
+
+                cmd_buffer.bind_sampling_view(
+                    BindingFrequency::Frequent,
+                    2u32,
+                    &roughness_texture.view,
+                );
+
+                let metalness_texture = metalness
+                    .and_then(|t|
+                        assets.get_texture_opt(t))
+                    .unwrap_or(assets.get_placeholder_texture_black());
+
+                cmd_buffer.bind_sampling_view(
+                    BindingFrequency::Frequent,
+                    3u32,
+                    &metalness_texture.view,
+                );
+            },
+            _ => panic!("Unexpected material"),
+        }
+    }
+
+    fn draw(
+        cmd_buffer: &mut CommandBuffer,
+        assets: &RendererAssetsReadOnly,
+        rt_extent: Vec2UI,
+        resources: &RendererResources,
+        marching_cubes_map: &HashMap<MarchingCubesKey, MarchingCubesInfo>,
+        indirect_buffer: &Arc<BufferSlice>,
+        pipeline: &Arc<GraphicsPipeline>,
+        drawable: &RendererVolumeDrawable) -> bool {
+        let volume_texture = assets.get_texture(drawable.volume_texture);
+        let volume_texture_base_opt = volume_texture.view.texture();
+        if volume_texture_base_opt.is_none() {
+            return false;
+        }
+        let volume_texture_base = volume_texture_base_opt.unwrap();
+        let volume_texture_info = volume_texture_base.info();
+        let volume_texture_lod_extents = Vec3UI::new(
+            (volume_texture_info.width >> drawable.texture_lod).max(1u32),
+            (volume_texture_info.height >> drawable.texture_lod).max(1u32),
+            (volume_texture_info.depth >> drawable.texture_lod).max(1u32),
+        );
+
+        let mut model_matrix = drawable.transform.into();
+        model_matrix *= Matrix4::from_scale(Vec3::new(
+            (volume_texture_info.width as f32) / (volume_texture_lod_extents.x as f32),
+            (volume_texture_info.height as f32) / (volume_texture_lod_extents.y as f32),
+            (volume_texture_info.depth as f32) / (volume_texture_lod_extents.z as f32),
+        ));
+
+        cmd_buffer.set_pipeline(PipelineBinding::Graphics(pipeline));
+
+        cmd_buffer.bind_sampling_view(
+            BindingFrequency::Frequent,
+            0u32,
+            &volume_texture.view,
+        );
+        Self::bind_material(cmd_buffer, assets, drawable.material_handle);
+
+        cmd_buffer.set_push_constant_data(
+            &[PushConstantData {
+                model_matrix,
+                threshold: drawable.min_threshold,
+                lod_extents: volume_texture_lod_extents,
+                lod: drawable.texture_lod,
+                material_data: MaterialData {
+                    roughness: 0.6f32,
+                    metalness: 0.3f32,
+                    //roughness: 0.1f32,
+                    //metalness: 0.9f32,
+                    f0: Vec3::new(0.04f32, 0.04f32, 0.04f32),
+                    inv_model_matrix: Matrix4::inverse(&model_matrix),
+                    lod: drawable.texture_lod,
+                    width: rt_extent.x as f32,
+                    height: rt_extent.y as f32,
+                    threshold: drawable.min_threshold,
+                    ..Zeroable::zeroed()
+                },
+                ..Zeroable::zeroed()
+            }],
+        );
+
+        let key = MarchingCubesKey::new(
+            drawable.volume_texture,
+            drawable.texture_lod,
+            drawable.entity,
+        );
+        let buffer_info = marching_cubes_map.get(&key).unwrap();
+        let ibo = resources.access_buffer(
+            cmd_buffer,
+            &buffer_info.buffer_name,
+            BarrierSync::INDEX_INPUT,
+            BarrierAccess::INDEX_READ,
+            HistoryResourceEntry::Current,
+        );
+        cmd_buffer.set_index_buffer(BufferRef::Regular(&*ibo), 0u64, IndexFormat::U32);
+        cmd_buffer.finish_binding();
+
+        cmd_buffer.draw_indexed_indirect(
+            BufferRef::Regular(&*indirect_buffer),
+            buffer_info.indirect_buffer_offset as u64,
+            1u32,
+            std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
+        );
+
+        true
     }
 }

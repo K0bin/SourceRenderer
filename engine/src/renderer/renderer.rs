@@ -456,7 +456,7 @@ impl Renderer {
                     entity,
                     transform,
                     texture_path,
-                    transfer_function_texture_path,
+                    material_path,
                     texture_lod,
                     min_threshold,
                     transparent,
@@ -478,10 +478,11 @@ impl Renderer {
                             &(texture_path.to_string() + "_max"),
                             AssetType::Texture,
                         );
-                    let (transfer_function_texture_handle, _) =
+
+                    let (material_handle, _) =
                         self.assets.asset_manager().request_asset(
-                            &transfer_function_texture_path,
-                            AssetType::Texture,
+                            &material_path,
+                            AssetType::Material,
                             AssetLoadPriority::Normal,
                         );
                     self.scene.add_volume_drawable(
@@ -496,7 +497,7 @@ impl Renderer {
                             volume_texture: volume_texture_handle.into(),
                             volume_texture_min: volume_texture_handle_min.into(),
                             volume_texture_max: volume_texture_handle_max.into(),
-                            transfer_function_texture: transfer_function_texture_handle.into(),
+                            material_handle: material_handle.into(),
                             render_as_cubes,
                             ray_march_normals,
                         },
@@ -695,7 +696,7 @@ impl RendererSender {
                 transparent: renderable.transparent,
                 texture_path: renderable.volume_texture_path.clone(),
                 texture_lod: renderable.volume_texture_lod,
-                transfer_function_texture_path: renderable.transfer_function_texture_path.clone(),
+                material_path: renderable.material_path.clone(),
                 render_as_cubes: renderable.render_as_cubes,
                 ray_march_normals: renderable.ray_march_normals,
             })

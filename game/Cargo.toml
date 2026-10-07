@@ -21,3 +21,4 @@ bevy_utils = "0.19"
 bevy_time = "0.19"
 bevy_input = "0.19"
 bytemuck = { version = "1.25", features = ["extern_crate_std"] }
+smallvec = { version = "1.15", features = ["union", "const_generics", "const_new"] }

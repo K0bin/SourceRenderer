@@ -29,10 +29,12 @@ layout (push_constant, std430) uniform Params {
 };
 
 layout (set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform texture3D densityMap;
-layout (set = DESCRIPTOR_SET_FREQUENT, binding = 1) uniform texture2D transferFunction;
-layout (set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform textureCube envMapDiffuse;
-layout (set = DESCRIPTOR_SET_FREQUENT, binding = 3) uniform textureCube envMapSpecular;
-layout (set = DESCRIPTOR_SET_FREQUENT, binding = 4) uniform texture2D integrationLUT;
+layout (set = DESCRIPTOR_SET_FREQUENT, binding = 1) uniform texture2D albedoTransferFunction;
+layout (set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform texture2D roughnessTransferFunction;
+layout (set = DESCRIPTOR_SET_FREQUENT, binding = 3) uniform texture2D metalnessTransferFunction;
+layout (set = DESCRIPTOR_SET_FREQUENT, binding = 4) uniform textureCube envMapDiffuse;
+layout (set = DESCRIPTOR_SET_FREQUENT, binding = 5) uniform textureCube envMapSpecular;
+layout (set = DESCRIPTOR_SET_FREQUENT, binding = 6) uniform texture2D integrationLUT;
 
 
 vec3 calculateGradient(vec3 densityMapUV, uint normalLod) {
@@ -135,7 +137,56 @@ vec4 rayMarchPositionInMip(vec3 startPosNormalized, uint targetLod) {
     return vec4(0.0);
 }
 
-#include "volume_shading.inc.glsl"
+vec3 approximateSpecularIBL(vec3 specularColor, float roughness, vec3 normal, vec3 viewDir) {
+    float normalDotViewDir = clamp(dot(normal, viewDir), 0.0, 1.0);
+    vec3 reflectionDir = 2.0 * dot(viewDir, normal) * normal - viewDir;
+    vec3 prefilteredSpecular = textureLod(samplerCube(envMapSpecular, samplerLinear), reflectionDir, float(textureQueryLevels(samplerCube(envMapSpecular, samplerLinear))) * roughness).xyz;
+    vec2 preintegrated = textureLod(sampler2D(integrationLUT, samplerLinear), vec2(normalDotViewDir, roughness), 0).xy;
+    return prefilteredSpecular * (specularColor * preintegrated.x + preintegrated.y);
+}
+
+vec4 shadeFragment(float densityNormalized, vec3 worldPosition, vec3 normal, out float sssIntensity) {
+    vec4 albedoAndAlpha = texture(sampler2D(albedoTransferFunction, samplerLinear), vec2(densityNormalized, 0.0));
+    vec3 albedo = albedoAndAlpha.rgb;
+    float alpha = albedoAndAlpha.a;
+    float roughness = texture(sampler2D(roughnessTransferFunction, samplerLinear), vec2(densityNormalized, 0.0)).r;
+    float metalness = texture(sampler2D(metalnessTransferFunction, samplerLinear), vec2(densityNormalized, 0.0)).r;
+
+    vec3 radiance = vec3(0.0);
+
+    // Direct lighting
+    vec3 lightDir = normalize(-vec3(0.1, 1.0, 0.3));
+    vec3 viewDir = normalize(camera.position.xyz - worldPosition);
+    vec3 lightPower = vec3(0.5);
+    radiance += pbr(lightDir, viewDir, normal.xyz, f0, albedo, lightPower, roughness, metalness);
+
+    // Image based lighting (diffuse)
+    vec3 rhoDiffuse = (1.0 - metalness) * albedo;
+    rhoDiffuse *= vec3(1.0) - f0;
+    radiance += rhoDiffuse * texture(samplerCube(envMapDiffuse, samplerLinear), normal).rgb;
+
+    // Image based lighting (specular)
+    radiance += approximateSpecularIBL(f0, roughness, normal, viewDir);
+
+    vec4 color = vec4(0.0);
+    color.rgb = radiance;
+    // TODO use transferFunction texture to get SSS intensity
+    //color.a = clamp((1.0 - densityNormalized) * 0.33, 0.0, 1.0);
+
+    //color = vec4(min(albedo, vec3(0.1) * albedo + pbr(lightDir, viewDir, normal, vec3(0.025), albedo, vec3(15.0), 0.1, 0.8) * 0.6), 1.0);
+    //color.a = in_density;
+    //color.rgb = normal * 0.5 + 0.5;
+
+    //color.rgb = vec3(in_density) * 5.0;
+
+    //color.rgb = normal.rgb * 0.5 + vec3(0.5);
+    //color.rgb = normal.rgb;
+
+    color.a = alpha;
+    sssIntensity = clamp((1.0 - densityNormalized) * 0.33, 0.0, 1.0);
+
+    return color;
+}
 
 void main(void) {
     uint normalLod = 0u;

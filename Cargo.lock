@@ -3078,6 +3078,7 @@ dependencies = [
  "bevy_utils",
  "bytemuck",
  "log",
+ "smallvec",
  "sourcerenderer_core",
  "sourcerenderer_engine",
 ]

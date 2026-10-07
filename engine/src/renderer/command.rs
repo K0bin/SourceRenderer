@@ -35,7 +35,7 @@ pub enum RendererCommand {
         entity: Entity,
         transform: Affine3A,
         texture_path: String,
-        transfer_function_texture_path: String,
+        material_path: String,
         texture_lod: u32,
         min_threshold: f32,
         transparent: VolumeDrawableTransparencyMode,

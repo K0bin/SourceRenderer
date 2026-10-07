@@ -4,7 +4,7 @@ use bevy_ecs::entity::Entity;
 use bevy_math::Affine3A;
 use sourcerenderer_core::{Matrix4, Quaternion, Vec3};
 
-use crate::asset::{ModelHandle, TextureHandle};
+use crate::asset::{MaterialHandle, ModelHandle, TextureHandle};
 
 #[derive(Clone, Debug)]
 pub struct RendererStaticDrawable {
@@ -32,7 +32,7 @@ pub struct RendererVolumeDrawable {
     pub volume_texture: TextureHandle,
     pub volume_texture_min: TextureHandle,
     pub volume_texture_max: TextureHandle,
-    pub transfer_function_texture: TextureHandle,
+    pub material_handle: MaterialHandle,
     pub texture_lod: u32,
     pub transparent: VolumeDrawableTransparencyMode,
     pub min_threshold: f32,

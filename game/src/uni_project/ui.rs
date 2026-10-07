@@ -1,16 +1,23 @@
-use crate::uni_project::{MANIX_PATH, TRANSFER_FUNCTION_PATH, manix_transform};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use crate::uni_project::{manix_transform, MANIX_PATH, make_volume_material};
 use bevy_app::{App, Plugin, Update};
-use bevy_ecs::change_detection::{NonSendMut, ResMut};
+use bevy_ecs::change_detection::{NonSendMut, Res, ResMut};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::prelude::Commands;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::Query;
 use bevy_math::Affine3A;
-use sourcerenderer_engine::dear_imgui_rs::{ChildWindow, Condition, ListBox};
+use bytemuck::box_bytes_of;
+use sourcerenderer_core::gpu::{Format, SampleCount, TextureDimension, TextureInfo, TextureUsage};
+use sourcerenderer_engine::dear_imgui_rs::{ChildWindow, ColorEditFlags, Condition, ListBox, TextureId, TextureRef};
 use sourcerenderer_engine::renderer::VolumeMeshInstance;
 use sourcerenderer_engine::renderer::VolumeRendererOptions;
 use sourcerenderer_engine::transform::InterpolatedTransform;
-use sourcerenderer_engine::{DearImgui, VolumeDrawableTransparencyMode};
+use sourcerenderer_engine::{dear_imgui_rs, DearImgui, VolumeDrawableTransparencyMode};
+use sourcerenderer_engine::asset::{AssetData, AssetHandle, AssetLoadPriority, AssetManager, AssetManagerECSResource, AssetType, MaterialData, TextureData, TextureHandle};
+use smallvec::smallvec;
+use sourcerenderer_core::Vec4;
 
 pub(super) struct UIPlugin;
 
@@ -58,9 +65,39 @@ fn pick_hdri_ui_system(
         });
 }
 
+struct Colors<const STEPS: usize> {
+    positions: [f32; STEPS],
+    values: [[f32; 4]; STEPS],
+}
+
+impl<const STEPS: usize> Default for Colors<STEPS> {
+    fn default() -> Self {
+        let mut positions = [0.0f32; STEPS];
+        let values = [[0.005f32, 0.005f32, 0.005f32, 1.0f32]; STEPS];
+        let fraction = 1.0f32 / (STEPS as f32);
+        for i in 0..STEPS {
+            positions[i] = (i as f32) * fraction;
+        }
+        Self {
+            positions,
+            values,
+        }
+    }
+}
+
+const TEXTURE_GRADIENT_STEPS: usize = 3;
+
+#[derive(Default)]
+struct MaterialUIState<const STEPS: usize> {
+    albedo: Colors<STEPS>,
+    roughness: Colors<STEPS>,
+    metalness: Colors<STEPS>,
+}
+
 #[derive(Default, Resource)]
 struct UIState {
     selected: Option<Entity>,
+    materials: HashMap<String, MaterialUIState<TEXTURE_GRADIENT_STEPS>>,
 }
 
 fn volume_meshes_ui_system(
@@ -68,6 +105,7 @@ fn volume_meshes_ui_system(
     mut instances: Query<(Entity, &mut VolumeMeshInstance)>,
     mut state: ResMut<UIState>,
     mut commands: Commands,
+    asset_manager: Res<AssetManagerECSResource>
 ) {
     let ui = imgui.ui();
     let window_size = [500.0f32, 400.0f32];
@@ -101,22 +139,25 @@ fn volume_meshes_ui_system(
                             }
                         });
                     if ui.button("Add mesh##addmeshbutton") {
-                        let new_entity = commands
-                            .spawn((
+                        let mut new_entity = commands.spawn_empty();
+                        let id = new_entity.id();
+
+                        let material_path = format!("VolumeMaterial_{}", id);
+                        asset_manager.add_asset_data(&material_path, AssetData::Material(make_volume_material(&material_path)), AssetLoadPriority::High);
+
+                        new_entity.insert((
                                 VolumeMeshInstance {
                                     volume_texture_path: MANIX_PATH.to_string(),
                                     volume_texture_lod: 3,
-                                    transfer_function_texture_path: TRANSFER_FUNCTION_PATH
-                                        .to_string(),
+                                    material_path,
                                     threshold_min: 0.95f32,
                                     transparent: VolumeDrawableTransparencyMode::Opaque,
                                     render_as_cubes: false,
                                     ray_march_normals: true,
                                 },
                                 InterpolatedTransform(Affine3A::from_mat4(manix_transform())),
-                            ))
-                            .id();
-                        state.selected = Some(new_entity);
+                            ));
+                        state.selected = Some(id);
                     }
                 });
 
@@ -178,7 +219,39 @@ fn volume_meshes_ui_system(
                             &mut mesh.ray_march_normals,
                         );
 
-                        if ui.button("Delete mesh##addmeshbutton") {
+                        let material_existed = state.materials.contains_key(&mesh.material_path);
+                        if !material_existed {
+                            state.materials.insert(mesh.material_path.clone(), MaterialUIState::default());
+                        }
+
+                        let material = state.materials.get_mut(&mesh.material_path).unwrap();
+
+                        let albedo_path = format!("{}_albedo", &mesh.material_path);
+                        let roughness_path = format!("{}_roughness", &mesh.material_path);
+                        let metalness_path = format!("{}_metalnness", &mesh.material_path);
+
+                        let albedo_handle: TextureHandle = asset_manager.get_or_reserve_handle(&albedo_path, AssetType::Texture).into();
+                        let roughness_handle: TextureHandle = asset_manager.get_or_reserve_handle(&roughness_path, AssetType::Texture).into();
+                        let metalness_handle: TextureHandle = asset_manager.get_or_reserve_handle(&metalness_path, AssetType::Texture).into();
+
+                        const TEXTURE_WIDTH: u32 = 128;
+                        ui.text("Albedo:");
+                        if color_gradient(ui,false, &mut material.albedo.positions, &mut material.albedo.values,
+                                                           &format!("albedo{:?}", entity), albedo_handle) || !material_existed {
+                            update_texture(&albedo_path, TEXTURE_WIDTH, false, &material.albedo, &asset_manager);
+                        }
+                        ui.text("Roughness:");
+                        if color_gradient(ui, true, &mut material.roughness.positions, &mut material.roughness.values, &format!("roughness{:?}", entity), roughness_handle) || !material_existed {
+                            update_texture(&roughness_path, TEXTURE_WIDTH, true, &material.roughness, &asset_manager);
+                        }
+                        ui.text("Metalness:");
+                        if color_gradient(ui, true, &mut material.metalness.positions, &mut material.metalness.values, &format!("metalness{:?}", entity), metalness_handle) || !material_existed {
+                            update_texture(&metalness_path, TEXTURE_WIDTH, true, &material.metalness, &asset_manager);
+                        }
+
+                        // TODO: Rate limit updates
+
+                        if ui.button("Delete mesh##deletemeshbutton") {
                             commands.entity(entity).despawn();
                             state.selected = None;
                         }
@@ -186,4 +259,147 @@ fn volume_meshes_ui_system(
                 }
             });
         });
+
+    // Clean up stray materials.
+    let instances_count = instances.iter().len();
+    if state.materials.len() > instances_count {
+        let mut keys_to_remove = HashSet::<String>::with_capacity(state.materials.len());
+        for key in state.materials.keys() {
+            keys_to_remove.insert(key.clone());
+        }
+        for (_, instance) in &instances {
+            keys_to_remove.remove(&instance.material_path);
+        }
+        for key in keys_to_remove {
+            state.materials.remove(&key);
+        }
+    } else if state.materials.len() < instances_count {
+        let mut keys_to_add = HashSet::<String>::with_capacity(state.materials.len());
+        for (_, instance) in &instances {
+            keys_to_add.insert(instance.material_path.clone());
+        }
+        for key in state.materials.keys() {
+            keys_to_add.remove(key);
+        }
+        for material_path in keys_to_add {
+            asset_manager.add_asset_data(&material_path, AssetData::Material(make_volume_material(&material_path)), AssetLoadPriority::High);
+
+            let albedo_path = format!("{}_albedo", &material_path);
+            let roughness_path = format!("{}_roughness", &material_path);
+            let metalness_path = format!("{}_metalnness", &material_path);
+
+            let _ = asset_manager.get_or_reserve_handle(&albedo_path, AssetType::Texture);
+            let _ = asset_manager.get_or_reserve_handle(&roughness_path, AssetType::Texture);
+            let _ = asset_manager.get_or_reserve_handle(&metalness_path, AssetType::Texture);
+
+            let material_ui = MaterialUIState::default();
+            const TEXTURE_WIDTH: u32 = 128;
+            update_texture(&albedo_path, TEXTURE_WIDTH, false, &material_ui.albedo, &asset_manager);
+            update_texture(&roughness_path, TEXTURE_WIDTH, true, &material_ui.roughness, &asset_manager);
+            update_texture(&metalness_path, TEXTURE_WIDTH, true, &material_ui.metalness, &asset_manager);
+            state.materials.insert(material_path, material_ui);
+        }
+    }
 }
+
+fn color_gradient<const STEPS: usize>(ui: &dear_imgui_rs::Ui, greyscale: bool, positions: &mut [f32; STEPS], colors: &mut [[f32; 4]; STEPS], imgui_label_internal: &str, texture_handle: TextureHandle) -> bool {
+    let space = unsafe { ui.style() }.item_spacing()[0];
+    let size = (ui.content_region_avail()[0] - ((STEPS - 1) as f32 * space)) * (1.0f32 / (STEPS as f32));
+
+    let mut changed = false;
+
+    for i in 0..STEPS {
+        let mut previous_pos = 0.0f32;
+        let mut next_pos = 1.0f32;
+        if i != 0 {
+            ui.same_line();
+            previous_pos = positions[i - 1];
+        }
+        if i != STEPS - 1 {
+            next_pos = positions[i + 1];
+        }
+        ui.set_next_item_width(size);
+        changed |= ui.slider_f32(format!("##{}_{}", imgui_label_internal, i), &mut positions[i], previous_pos, next_pos);
+    }
+
+    for i in 0..STEPS {
+        let color = &mut colors[i];
+        if i != 0 {
+            ui.same_line();
+        }
+        if !greyscale {
+            if i != 0 {
+                ui.set_cursor_pos_x((size + space) * (i as f32));
+            }
+            ui.set_next_item_width(size);
+            changed |= ui.color_edit4_config(format!("##{}_color_{}", imgui_label_internal, i), color)
+                .flags(ColorEditFlags::NO_INPUTS | ColorEditFlags::NO_LABEL)
+                .build();
+        } else {
+            ui.set_next_item_width(size - ui.frame_height() - space);
+            // Roughness 0 is broken, set it to 0.005
+            changed |= ui.slider_f32(format!("##{}_color_{}", imgui_label_internal, i), &mut color[0], 0.005f32, 1.0f32);
+            color[1] = color[0];
+            color[2] = color[0];
+            color[3] = 1.0f32;
+            ui.same_line();
+            let _ = ui.color_edit4_config(format!("##{}_color_preview_{}", imgui_label_internal, i), color)
+                .flags(ColorEditFlags::NO_INPUTS | ColorEditFlags::NO_LABEL | ColorEditFlags::ALPHA_OPAQUE | ColorEditFlags::NO_PICKER | ColorEditFlags::NO_ALPHA)
+                .build();
+        }
+    }
+
+    changed
+}
+
+fn update_texture(path: &str, width: u32, greyscale: bool, colors: &Colors<TEXTURE_GRADIENT_STEPS>, asset_manager: &Arc<AssetManager>) {
+    let data = build_texture_data::<TEXTURE_GRADIENT_STEPS>(width, &colors.positions, greyscale, &colors.values);
+    let data_bytemuck = box_bytes_of(data);
+
+    asset_manager.add_asset_data(
+        path,
+        AssetData::Texture(TextureData {
+            info: TextureInfo {
+                dimension: TextureDimension::Dim2D,
+                width,
+                height: 1,
+                depth: 1,
+                mip_levels: 1,
+                array_length: 1,
+                samples: SampleCount::Samples1,
+                usage: TextureUsage::SAMPLED | TextureUsage::INITIAL_COPY,
+                supports_srgb: false,
+                format: if greyscale { Format::R8UNorm } else { Format::RGBA8UNorm }
+            },
+            data: smallvec![data_bytemuck]
+        }),
+        AssetLoadPriority::High
+    );
+}
+
+
+fn build_texture_data<const STEPS: usize>(width: u32, positions: &[f32; STEPS], greyscale: bool, colors: &[[f32; 4]; STEPS]) -> Box<[u8]> {
+    let components: usize = if greyscale { 1 } else { 4 };
+    let mut data = Vec::<u8>::with_capacity((width as usize) * components);
+    let mut start_pos_index = 0usize;
+    for i in 0..width {
+        let pos = (i as f32) / (width as f32);
+        if start_pos_index != STEPS - 2 && pos >= positions[start_pos_index + 1] {
+            start_pos_index += 1;
+        }
+        let start_position = positions[start_pos_index];
+        let end_position = positions[start_pos_index + 1];
+        let start_color = colors[start_pos_index];
+        let end_color = colors[start_pos_index + 1];
+
+        let lerp_pos = (pos - start_position) / (end_position - start_position);
+        for j in 0..components  {
+            let mut color_component_float = start_color[j] * (1.0f32 - lerp_pos);
+            color_component_float += end_color[j] * lerp_pos;
+            let color_component_u8 = (color_component_float * 255.0f32) as u8;
+            data.push(color_component_u8);
+        }
+    }
+    data.into_boxed_slice()
+}
+
