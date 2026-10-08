@@ -3,9 +3,8 @@ use crate::renderer::asset::{
     GraphicsPipelineHandle, PathPipelineShaderStage, RendererAssets, RendererAssetsReadOnly,
 };
 use crate::renderer::renderer_resources::RendererResources;
-use bytemuck::{Pod, Zeroable, box_bytes_of};
+use bytemuck::{Pod, Zeroable};
 use dear_imgui_rs;
-use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{Texture as _, TexturePlane};
 use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec3UI};
 use std::collections::HashMap;
@@ -118,8 +117,9 @@ impl DearImguiRenderer {
         backbuffer_view: &Arc<TextureView>,
         backbuffer_handle: &BackendTexture,
     ) {
-        let mut feedback = Vec::<dear_imgui_rs::TextureFeedback>::new();
+        command_buffer.begin_label("DearImgui");
 
+        command_buffer.begin_label("Pre-Copy Barriers");
         for texture_request in snapshot.texture_requests() {
             match texture_request.operation() {
                 dear_imgui_rs::TextureOp::Create {
@@ -132,8 +132,8 @@ impl DearImguiRenderer {
                     assert_eq!(*row_pitch, imgui_tight_pitch(*format, *width as u64) as usize);
                     if self.textures.contains_key(&texture_request.texture()) {
                         log::warn!(
-                            "DearImgui texture creation request for a texture that already exists: {:?}",
-                            texture_request.texture()
+                            "EPOCH: {:?}: DearImgui texture creation request for a texture that already exists: {:?}",
+                            snapshot.epoch(), texture_request.texture()
                         );
                     }
 
@@ -188,15 +188,6 @@ impl DearImguiRenderer {
                     let imgui_id = dear_imgui_rs::TextureId::new(id | Self::IMGUI_IDENTIFY_MASK);
                     self.textures
                         .insert(texture_request.texture(), (imgui_id, view));
-
-                    match texture_request.uploaded(imgui_id) {
-                        Ok(f) => {
-                            feedback.push(f);
-                        }
-                        Err(e) => {
-                            log::error!("DearImgui error: {:?}", e);
-                        }
-                    }
                 }
                 dear_imgui_rs::TextureOp::Update { .. } => {
                     if let Some((_, texture_view)) =
@@ -221,7 +212,10 @@ impl DearImguiRenderer {
         }
 
         command_buffer.flush_barriers();
+        command_buffer.end_label();
 
+        command_buffer.begin_label("Copies");
+        let mut feedback = Vec::<dear_imgui_rs::TextureFeedback>::new();
         for texture_request in snapshot.texture_requests() {
             match texture_request.operation() {
                 dear_imgui_rs::TextureOp::Create {
@@ -231,7 +225,6 @@ impl DearImguiRenderer {
                     row_pitch,
                     pixels,
                 } => {
-
                     let (imgui_id, view) = self.textures.get(&texture_request.texture()).unwrap();
                     let texture = view.texture().unwrap();
 
@@ -298,6 +291,8 @@ impl DearImguiRenderer {
                     assert_eq!(*width, texture.info().width);
                     assert_eq!(*height, texture.info().height);
                     for rect in rects {
+                        log::warn!("EPOCH: {:?}: Copy rect to {:?}: {:?}", snapshot.epoch(), texture_request.texture(), rect.rect);
+
                         let data_buffer = command_buffer
                             .upload_dynamic_data(device, &rect.data, BufferUsage::COPY_SRC)
                             .unwrap();
@@ -368,7 +363,9 @@ impl DearImguiRenderer {
         }
 
         command_buffer.flush_barriers();
+        command_buffer.end_label();
 
+        command_buffer.begin_label("Post-Copy Barriers");
         for texture_request in snapshot.texture_requests() {
             match texture_request.operation() {
                 dear_imgui_rs::TextureOp::Update { .. } => {
@@ -390,9 +387,11 @@ impl DearImguiRenderer {
                 _ => {}
             }
         }
+        command_buffer.end_label();
 
         command_buffer.flush_barriers();
 
+        command_buffer.begin_label("Drawing");
         command_buffer.begin_render_pass(&RenderPassBeginInfo {
             render_targets: &[RenderTarget {
                 view: backbuffer_view,
@@ -538,6 +537,8 @@ impl DearImguiRenderer {
         }
 
         command_buffer.end_render_pass();
+        command_buffer.end_label();
+        command_buffer.end_label();
 
         snapshot.commit(feedback).unwrap();
     }
