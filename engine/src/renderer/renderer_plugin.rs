@@ -430,7 +430,7 @@ fn extract_volume_renderables(
             if renderable.is_changed_after(renderer.last_unsaturated_tick) {
                 let result = renderer
                     .sender
-                    .update_volume_thresholds(entity, &renderable);
+                    .update_volume_renderable(entity, &renderable);
                 if result.is_err() {
                     let _ = events.write(AppExit::from_code(1));
                 }

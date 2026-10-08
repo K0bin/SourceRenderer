@@ -369,12 +369,19 @@ impl Renderer {
                 RendererCommand::UpdateVolumeMeshData {
                     entity,
                     min_threshold,
+                    texture_path,
                     transparent,
                     texture_lod: lod,
                     render_as_cubes,
                     ray_march_normals,
                     material_path,
                 } => {
+                    let (texture_handle, _) =
+                        self.assets.asset_manager().request_asset(
+                            &texture_path,
+                            AssetType::Texture,
+                            AssetLoadPriority::Normal,
+                        );
                     let (material_handle, _) =
                         self.assets.asset_manager().request_asset(
                             &material_path,
@@ -383,6 +390,7 @@ impl Renderer {
                         );
                     self.scene.update_volume_mesh_data(
                         entity,
+                        texture_handle.into(),
                         min_threshold,
                         lod,
                         transparent,
@@ -755,7 +763,7 @@ impl RendererSender {
             .map_err(|_| SendError(()))
     }
 
-    pub fn update_volume_thresholds(
+    pub fn update_volume_renderable(
         &self,
         entity: Entity,
         renderable: &VolumeMeshInstance,
@@ -770,6 +778,7 @@ impl RendererSender {
             .send(RendererCommand::UpdateVolumeMeshData {
                 entity,
                 min_threshold: renderable.threshold_min,
+                texture_path: renderable.volume_texture_path.clone(),
                 texture_lod: renderable.volume_texture_lod,
                 transparent: renderable.transparent,
                 render_as_cubes: renderable.render_as_cubes,

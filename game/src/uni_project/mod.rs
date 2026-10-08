@@ -8,7 +8,22 @@ use sourcerenderer_core::{Matrix4, Vec3, Vec4};
 use sourcerenderer_engine::asset::{AssetData, AssetLoadPriority, AssetManager, MaterialData};
 pub use uni_project_plugin::*;
 
-const MANIX_PATH: &'static str = "assets/manix.raw.txt";
+const MANIX_PATH: &'static str = "assets/ct/manix/manix.raw.txt";
+const MECANIX_PATH: &'static str = "assets/ct/mecanix/mecanix.raw.txt";
+const DENTAL1_PATH: &'static str = "assets/ct/dental1/dental1.raw.txt";
+const LUNGS_PATH: &'static str = "assets/ct/lungs/lungs.raw.txt";
+const ARTICULATION_PATH: &'static str = "assets/ct/articulation/articulation.raw.txt";
+const CT_HEAD_PATH: &'static str = "assets/ct/CT_HEAD/CT_HEAD.raw.txt";
+
+const MESHES: [&'static str; 6] = [
+    MANIX_PATH,
+    MECANIX_PATH,
+    DENTAL1_PATH,
+    LUNGS_PATH,
+    ARTICULATION_PATH,
+    CT_HEAD_PATH
+];
+
 const TRANSFER_FUNCTION_PATH: &'static str = "assets/transferfunction.png";
 
 pub(crate) fn manix_transform() -> Matrix4 {

@@ -55,6 +55,7 @@ pub enum RendererCommand {
     UpdateVolumeMeshData {
         entity: Entity,
         min_threshold: f32,
+        texture_path: String,
         texture_lod: u32,
         transparent: VolumeDrawableTransparencyMode,
         render_as_cubes: bool,

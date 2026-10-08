@@ -236,6 +236,7 @@ impl RendererScene {
     pub fn update_volume_mesh_data(
         &mut self,
         entity: Entity,
+        texture_handle: TextureHandle,
         min_threshold: f32,
         texture_lod: u32,
         transparent: VolumeDrawableTransparencyMode,
@@ -251,6 +252,7 @@ impl RendererScene {
             volume_mesh.render_as_cubes = render_as_cubes;
             volume_mesh.ray_march_normals = ray_march_normals;
             volume_mesh.material_handle = material;
+            volume_mesh.volume_texture = texture_handle;
             return;
         }
 
@@ -317,6 +319,20 @@ impl RendererScene {
     }
 
     pub fn set_ui_data(&self, data: ImguiFrameSnapshot) {
+        for texture_request in data.texture_requests() {
+            match texture_request.operation() {
+                dear_imgui_rs::TextureOp::Update {
+                    rects,
+                    ..
+                } => {
+                    for rect in rects {
+                        log::warn!("EPOCH: {:?}: Copy rect to {:?}: {:?}", data.epoch(), texture_request.texture(), rect.rect);
+                    }
+                }
+                _ => {}
+            }
+        }
+
         self.latest_imgui.replace(Some(data));
     }
 

@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use crate::uni_project::{manix_transform, MANIX_PATH, make_volume_material};
+use crate::uni_project::{manix_transform, MANIX_PATH, make_volume_material, MESHES};
 use bevy_app::{App, Plugin, Update};
 use bevy_ecs::change_detection::{NonSendMut, Res, ResMut};
 use bevy_ecs::entity::Entity;
@@ -15,9 +15,8 @@ use sourcerenderer_engine::renderer::VolumeMeshInstance;
 use sourcerenderer_engine::renderer::VolumeRendererOptions;
 use sourcerenderer_engine::transform::InterpolatedTransform;
 use sourcerenderer_engine::{dear_imgui_rs, DearImgui, VolumeDrawableTransparencyMode};
-use sourcerenderer_engine::asset::{AssetData, AssetHandle, AssetLoadPriority, AssetManager, AssetManagerECSResource, AssetType, MaterialData, TextureData, TextureHandle};
+use sourcerenderer_engine::asset::{AssetData, AssetHandle, AssetLoadPriority, AssetManager, AssetManagerECSResource, AssetType, TextureData, TextureHandle};
 use smallvec::smallvec;
-use sourcerenderer_core::Vec4;
 
 pub(super) struct UIPlugin;
 
@@ -172,6 +171,17 @@ fn volume_meshes_ui_system(
             ChildWindow::new("##meshproperties").build(ui, || {
                 if let Some(entity) = state.selected {
                     if let Ok((_, mut mesh)) = instances.get_mut(entity) {
+                        let mut idx = MESHES.iter().enumerate().find(|(_, path)| **path == mesh.volume_texture_path).map(|(idx, _)| idx).unwrap_or(0);
+                        ui.text("Mesh:");
+                        if ui.combo(
+                            "##mesh",
+                            &mut idx,
+                            &MESHES,
+                            |path| (*path).into(),
+                        ) {
+                            mesh.volume_texture_path = MESHES[idx].to_string();
+                        }
+
                         ui.text("Min Threshold:");
                         ui.set_next_item_width(ui.content_region_avail_width());
                         ui.slider(
