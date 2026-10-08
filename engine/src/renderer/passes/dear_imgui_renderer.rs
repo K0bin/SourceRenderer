@@ -120,36 +120,6 @@ impl DearImguiRenderer {
     ) {
         let mut feedback = Vec::<dear_imgui_rs::TextureFeedback>::new();
 
-        {
-            let mut layout_transfer_textures = SmallVec::<[&Texture; 4]>::new();
-            for texture_request in snapshot.texture_requests() {
-                match texture_request.operation() {
-                    dear_imgui_rs::TextureOp::Update { .. } => {
-                        let (_, texture_view) =
-                            self.textures.get(&texture_request.texture()).unwrap();
-                        let texture = texture_view.texture().unwrap();
-                        layout_transfer_textures.push(texture);
-                    }
-                    _ => {}
-                }
-            }
-
-            for texture in layout_transfer_textures {
-                command_buffer.barrier(&[Barrier::TextureBarrier {
-                    old_sync: BarrierSync::FRAGMENT_SHADER | BarrierSync::COPY,
-                    new_sync: BarrierSync::COPY,
-                    old_layout: TextureLayout::Sampled,
-                    new_layout: TextureLayout::CopyDst,
-                    old_access: BarrierAccess::empty(),
-                    new_access: BarrierAccess::COPY_WRITE,
-                    texture,
-                    range: Default::default(),
-                    queue_ownership: None,
-                }]);
-            }
-            command_buffer.flush_barriers();
-        }
-
         for texture_request in snapshot.texture_requests() {
             match texture_request.operation() {
                 dear_imgui_rs::TextureOp::Create {
@@ -157,12 +127,9 @@ impl DearImguiRenderer {
                     width,
                     height,
                     row_pitch,
-                    pixels,
+                    pixels: _,
                 } => {
-                    assert_eq!(*row_pitch, imgui_tight_pitch(*format, *width) as usize);
-                    let data = pixels.clone();
-                    let data_box = box_bytes_of(data.into_boxed_slice());
-
+                    assert_eq!(*row_pitch, imgui_tight_pitch(*format, *width as u64) as usize);
                     if self.textures.contains_key(&texture_request.texture()) {
                         log::warn!(
                             "DearImgui texture creation request for a texture that already exists: {:?}",
@@ -193,10 +160,6 @@ impl DearImguiRenderer {
                         )
                         .unwrap();
 
-                    device
-                        .init_texture(&data_box[..], &texture, 0u32, 0u32)
-                        .unwrap();
-
                     let view = device.create_texture_view(
                         &texture,
                         &TextureViewInfo {
@@ -209,6 +172,18 @@ impl DearImguiRenderer {
                         },
                         Some(&format!("DearImgui view {}", id)),
                     );
+
+                    command_buffer.barrier(&[Barrier::TextureBarrier {
+                        old_sync: BarrierSync::FRAGMENT_SHADER | BarrierSync::COPY,
+                        new_sync: BarrierSync::COPY,
+                        old_layout: TextureLayout::Sampled,
+                        new_layout: TextureLayout::CopyDst,
+                        old_access: BarrierAccess::empty(),
+                        new_access: BarrierAccess::COPY_WRITE,
+                        texture: texture.as_ref(),
+                        range: Default::default(),
+                        queue_ownership: None,
+                    }]);
 
                     let imgui_id = dear_imgui_rs::TextureId::new(id | Self::IMGUI_IDENTIFY_MASK);
                     self.textures
@@ -223,18 +198,112 @@ impl DearImguiRenderer {
                         }
                     }
                 }
+                dear_imgui_rs::TextureOp::Update { .. } => {
+                    if let Some((_, texture_view)) =
+                        self.textures.get(&texture_request.texture())
+                    {
+                        let texture = texture_view.texture().unwrap();
+                        command_buffer.barrier(&[Barrier::TextureBarrier {
+                            old_sync: BarrierSync::FRAGMENT_SHADER | BarrierSync::COPY,
+                            new_sync: BarrierSync::COPY,
+                            old_layout: TextureLayout::Sampled,
+                            new_layout: TextureLayout::CopyDst,
+                            old_access: BarrierAccess::empty(),
+                            new_access: BarrierAccess::COPY_WRITE,
+                            texture,
+                            range: Default::default(),
+                            queue_ownership: None,
+                        }]);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        command_buffer.flush_barriers();
+
+        for texture_request in snapshot.texture_requests() {
+            match texture_request.operation() {
+                dear_imgui_rs::TextureOp::Create {
+                    format,
+                    width,
+                    height,
+                    row_pitch,
+                    pixels,
+                } => {
+
+                    let (imgui_id, view) = self.textures.get(&texture_request.texture()).unwrap();
+                    let texture = view.texture().unwrap();
+
+                    // Do the copy manually here to avoid problems if it's immediately used or updated.
+                    // Device::init_texture uses a separate command buffer.
+                    let data_buffer = command_buffer
+                        .upload_dynamic_data(device, pixels, BufferUsage::COPY_SRC)
+                        .unwrap();
+
+                    assert_eq!(imgui_tight_pitch(*format, *width as u64), *row_pitch as u64);
+                    assert_eq!(*row_pitch * (*height as usize), pixels.len());
+
+                    command_buffer.copy_buffer_to_texture(
+                        BufferRef::Transient(&data_buffer),
+                        texture.as_ref(),
+                        &BufferTextureCopyRegion {
+                            buffer_offset: 0,
+                            buffer_row_pitch: *row_pitch as u64,
+                            buffer_slice_pitch: (*row_pitch as u64) * (*height as u64),
+                            texture_subresource: TextureSubresource {
+                                array_layer: 0,
+                                mip_level: 0,
+                            },
+                            texture_offset: Vec3UI::new(
+                                0, 0, 0,
+                            ),
+                            texture_extent: Vec3UI::new(
+                                *width,
+                                *height,
+                                1,
+                            ),
+                        },
+                    );
+
+                    command_buffer.barrier(&[Barrier::TextureBarrier {
+                        old_sync: BarrierSync::COPY,
+                        new_sync: BarrierSync::FRAGMENT_SHADER,
+                        old_layout: TextureLayout::CopyDst,
+                        new_layout: TextureLayout::Sampled,
+                        old_access: BarrierAccess::COPY_WRITE,
+                        new_access: BarrierAccess::SAMPLING_READ,
+                        texture: texture.as_ref(),
+                        range: Default::default(),
+                        queue_ownership: None,
+                    }]);
+
+                    match texture_request.uploaded(*imgui_id) {
+                        Ok(f) => {
+                            feedback.push(f);
+                        }
+                        Err(e) => {
+                            log::error!("DearImgui error: {:?}", e);
+                        }
+                    }
+                }
                 dear_imgui_rs::TextureOp::Update {
                     format,
-                    width: _,
-                    height: _,
+                    width,
+                    height,
                     rects,
                 } => {
-                    let (id, texture_view) = self.textures.get(&texture_request.texture()).unwrap();
+                    let (imgui_id, texture_view) = self.textures.get(&texture_request.texture()).unwrap();
                     let texture = texture_view.texture().unwrap();
+                    assert_eq!(*width, texture.info().width);
+                    assert_eq!(*height, texture.info().height);
                     for rect in rects {
                         let data_buffer = command_buffer
                             .upload_dynamic_data(device, &rect.data, BufferUsage::COPY_SRC)
                             .unwrap();
+
+                        assert_eq!(imgui_tight_pitch(*format, rect.rect.w as u64), rect.row_pitch as u64);
+                        assert_eq!(rect.row_pitch * (rect.rect.h as usize), rect.data.len());
 
                         command_buffer.copy_buffer_to_texture(
                             BufferRef::Transient(&data_buffer),
@@ -242,9 +311,7 @@ impl DearImguiRenderer {
                             &BufferTextureCopyRegion {
                                 buffer_offset: 0,
                                 buffer_row_pitch: rect.row_pitch as u64,
-                                buffer_slice_pitch: (imgui_tight_pitch(*format, rect.rect.w as u32)
-                                    as u64)
-                                    * (rect.rect.h as u64),
+                                buffer_slice_pitch: (rect.row_pitch as u64) * (rect.rect.h as u64),
                                 texture_subresource: TextureSubresource {
                                     array_layer: 0,
                                     mip_level: 0,
@@ -277,7 +344,7 @@ impl DearImguiRenderer {
                         command_buffer.flush_barriers();
                     }
 
-                    match texture_request.uploaded(*id) {
+                    match texture_request.uploaded(*imgui_id) {
                         Ok(f) => {
                             feedback.push(f);
                         }
@@ -300,36 +367,32 @@ impl DearImguiRenderer {
             }
         }
 
-        {
-            let mut layout_transfer_textures = SmallVec::<[&Texture; 4]>::new();
-            for texture_request in snapshot.texture_requests() {
-                match texture_request.operation() {
-                    dear_imgui_rs::TextureOp::Update { .. } => {
-                        let (_, texture_view) =
-                            self.textures.get(&texture_request.texture()).unwrap();
-                        let texture = texture_view.texture().unwrap();
-                        layout_transfer_textures.push(texture);
-                    }
-                    _ => {}
-                }
-            }
+        command_buffer.flush_barriers();
 
-            for texture in layout_transfer_textures {
-                command_buffer.barrier(&[Barrier::TextureBarrier {
-                    old_sync: BarrierSync::COPY,
-                    new_sync: BarrierSync::FRAGMENT_SHADER,
-                    old_layout: TextureLayout::CopyDst,
-                    new_layout: TextureLayout::Sampled,
-                    old_access: BarrierAccess::COPY_WRITE,
-                    new_access: BarrierAccess::SAMPLING_READ,
-                    texture,
-                    range: Default::default(),
-                    queue_ownership: None,
-                }]);
+        for texture_request in snapshot.texture_requests() {
+            match texture_request.operation() {
+                dear_imgui_rs::TextureOp::Update { .. } => {
+                    let (_, texture_view) =
+                        self.textures.get(&texture_request.texture()).unwrap();
+                    let texture = texture_view.texture().unwrap();
+                    command_buffer.barrier(&[Barrier::TextureBarrier {
+                        old_sync: BarrierSync::COPY,
+                        new_sync: BarrierSync::FRAGMENT_SHADER,
+                        old_layout: TextureLayout::CopyDst,
+                        new_layout: TextureLayout::Sampled,
+                        old_access: BarrierAccess::COPY_WRITE,
+                        new_access: BarrierAccess::SAMPLING_READ,
+                        texture,
+                        range: Default::default(),
+                        queue_ownership: None,
+                    }]);
+                }
+                _ => {}
             }
         }
 
         command_buffer.flush_barriers();
+
         command_buffer.begin_render_pass(&RenderPassBeginInfo {
             render_targets: &[RenderTarget {
                 view: backbuffer_view,
@@ -487,7 +550,7 @@ fn imgui_format_to_format(format: dear_imgui_rs::TextureFormat) -> gpu::Format {
     }
 }
 
-fn imgui_tight_pitch(format: dear_imgui_rs::TextureFormat, width: u32) -> u32 {
+fn imgui_tight_pitch(format: dear_imgui_rs::TextureFormat, width: u64) -> u64 {
     let element_size = match format {
         dear_imgui_rs::TextureFormat::RGBA32 => 4,
         dear_imgui_rs::TextureFormat::Alpha8 => 1,
