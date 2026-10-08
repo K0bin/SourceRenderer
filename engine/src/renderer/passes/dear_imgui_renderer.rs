@@ -8,7 +8,7 @@ use dear_imgui_rs;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{Texture as _, TexturePlane};
 use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec3UI};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use crate::asset::{AssetHandle, AssetType};
 
@@ -114,13 +114,11 @@ impl DearImguiRenderer {
         command_buffer: &mut CommandBuffer,
         renderer_assets: &RendererAssets,
         resources: &RendererResources,
-        snapshot: dear_imgui_rs::FrameSnapshot,
+        snapshots: &mut VecDeque<dear_imgui_rs::FrameSnapshot>,
         backbuffer_view: &Arc<TextureView>,
         backbuffer_handle: &BackendTexture,
     ) {
-        let mut feedback = Vec::<dear_imgui_rs::TextureFeedback>::new();
-
-        {
+        for snapshot in snapshots.iter() {
             let mut layout_transfer_textures = SmallVec::<[&Texture; 4]>::new();
             for texture_request in snapshot.texture_requests() {
                 match texture_request.operation() {
@@ -147,160 +145,220 @@ impl DearImguiRenderer {
                     queue_ownership: None,
                 }]);
             }
-            command_buffer.flush_barriers();
         }
+        command_buffer.flush_barriers();
 
-        for texture_request in snapshot.texture_requests() {
-            match texture_request.operation() {
-                dear_imgui_rs::TextureOp::Create {
-                    format,
-                    width,
-                    height,
-                    row_pitch,
-                    pixels,
-                } => {
-                    assert_eq!(*row_pitch, imgui_tight_pitch(*format, *width) as usize);
-                    let data = pixels.clone();
-                    let data_box = box_bytes_of(data.into_boxed_slice());
+        // Do a separate back-to-front pass to avoid recreating the same texture over and over again.
+        let mut newly_created_textures = HashSet::<dear_imgui_rs::SnapshotTextureId>::new();
+        for snapshot in snapshots.iter().rev() {
+            for texture_request in snapshot.texture_requests() {
+                match texture_request.operation() {
+                    dear_imgui_rs::TextureOp::Create {
+                        format,
+                        width,
+                        height,
+                        row_pitch,
+                        pixels,
+                    } => {
+                        assert_eq!(*row_pitch, imgui_tight_pitch(*format, *width as u64) as usize);
+                        assert_eq!(*row_pitch * (*height as usize), pixels.len());
 
-                    if self.textures.contains_key(&texture_request.texture()) {
-                        log::warn!(
-                            "DearImgui texture creation request for a texture that already exists: {:?}",
-                            texture_request.texture()
-                        );
-                    }
+                        if let Some((_, old_view)) = self.textures.get(&texture_request.texture()) {
+                            let old_texture = old_view.texture().unwrap();
+                            log::trace!(
+                                "Skipping DearImgui texture creation request for a texture that already exists: {:?}. Old texture size: {}x{}. new texture size: {}x{}",
+                                texture_request.texture(), old_texture.info().width, old_texture.info().height, *width, *height,
+                            );
+                            continue;
+                        } else {
+                            newly_created_textures.insert(texture_request.texture());
 
-                    let id = self.next_id;
-                    self.next_id += 1;
+                            let id = self.next_id;
+                            self.next_id += 1;
 
-                    let texture = device
-                        .create_texture(
-                            &TextureInfo {
-                                dimension: TextureDimension::Dim2D,
-                                width: *width,
-                                height: *height,
-                                depth: 1,
-                                mip_levels: 1,
-                                array_length: 1,
-                                samples: SampleCount::Samples1,
-                                usage: TextureUsage::INITIAL_COPY
-                                    | TextureUsage::COPY_DST
-                                    | TextureUsage::SAMPLED,
-                                format: imgui_format_to_format(*format),
-                                supports_srgb: false,
-                            },
-                            Some(&format!("DearImgui texture {}", id)),
-                        )
-                        .unwrap();
+                            let texture = device
+                                .create_texture(
+                                    &TextureInfo {
+                                        dimension: TextureDimension::Dim2D,
+                                        width: *width,
+                                        height: *height,
+                                        depth: 1,
+                                        mip_levels: 1,
+                                        array_length: 1,
+                                        samples: SampleCount::Samples1,
+                                        usage: TextureUsage::INITIAL_COPY
+                                            | TextureUsage::COPY_DST
+                                            | TextureUsage::SAMPLED,
+                                        format: imgui_format_to_format(*format),
+                                        supports_srgb: false,
+                                    },
+                                    Some(&format!("DearImgui texture {}", id)),
+                                )
+                                .unwrap();
 
-                    device
-                        .init_texture(&data_box[..], &texture, 0u32, 0u32)
-                        .unwrap();
-
-                    let view = device.create_texture_view(
-                        &texture,
-                        &TextureViewInfo {
-                            base_mip_level: 0,
-                            mip_level_length: 1,
-                            base_array_layer: 0,
-                            array_layer_length: 1,
-                            plane: TexturePlane::Primary,
-                            format: None,
-                        },
-                        Some(&format!("DearImgui view {}", id)),
-                    );
-
-                    let imgui_id = dear_imgui_rs::TextureId::new(id | Self::IMGUI_IDENTIFY_MASK);
-                    self.textures
-                        .insert(texture_request.texture(), (imgui_id, view));
-
-                    match texture_request.uploaded(imgui_id) {
-                        Ok(f) => {
-                            feedback.push(f);
-                        }
-                        Err(e) => {
-                            log::error!("DearImgui error: {:?}", e);
-                        }
-                    }
-                }
-                dear_imgui_rs::TextureOp::Update {
-                    format,
-                    width: _,
-                    height: _,
-                    rects,
-                } => {
-                    let (id, texture_view) = self.textures.get(&texture_request.texture()).unwrap();
-                    let texture = texture_view.texture().unwrap();
-                    for rect in rects {
-                        let data_buffer = command_buffer
-                            .upload_dynamic_data(device, &rect.data, BufferUsage::COPY_SRC)
-                            .unwrap();
-
-                        command_buffer.copy_buffer_to_texture(
-                            BufferRef::Transient(&data_buffer),
-                            texture,
-                            &BufferTextureCopyRegion {
-                                buffer_offset: 0,
-                                buffer_row_pitch: rect.row_pitch as u64,
-                                buffer_slice_pitch: (imgui_tight_pitch(*format, rect.rect.w as u32)
-                                    as u64)
-                                    * (rect.rect.h as u64),
-                                texture_subresource: TextureSubresource {
-                                    array_layer: 0,
-                                    mip_level: 0,
+                            let view = device.create_texture_view(
+                                &texture,
+                                &TextureViewInfo {
+                                    base_mip_level: 0,
+                                    mip_level_length: 1,
+                                    base_array_layer: 0,
+                                    array_layer_length: 1,
+                                    plane: TexturePlane::Primary,
+                                    format: None,
                                 },
-                                texture_offset: Vec3UI::new(
-                                    rect.rect.x as u32,
-                                    rect.rect.y as u32,
-                                    0,
-                                ),
-                                texture_extent: Vec3UI::new(
-                                    rect.rect.w as u32,
-                                    rect.rect.h as u32,
-                                    1,
-                                ),
-                            },
-                        );
+                                Some(&format!("DearImgui view {}", id)),
+                            );
 
-                        // Dunno if they overlap...
-                        command_buffer.barrier(&[Barrier::TextureBarrier {
-                            old_sync: BarrierSync::COPY,
-                            new_sync: BarrierSync::COPY,
-                            old_layout: TextureLayout::CopyDst,
-                            new_layout: TextureLayout::CopyDst,
-                            old_access: BarrierAccess::COPY_WRITE,
-                            new_access: BarrierAccess::COPY_WRITE,
-                            texture,
-                            range: Default::default(),
-                            queue_ownership: None,
-                        }]);
-                        command_buffer.flush_barriers();
-                    }
+                            let imgui_id = dear_imgui_rs::TextureId::new(id | Self::IMGUI_IDENTIFY_MASK);
+                            self.textures
+                                .insert(texture_request.texture(), (imgui_id, view));
 
-                    match texture_request.uploaded(*id) {
-                        Ok(f) => {
-                            feedback.push(f);
-                        }
-                        Err(e) => {
-                            log::error!("DearImgui error: {:?}", e);
+                            // Do the copy manually here to avoid problems if it's immediately used or updated.
+                            // Device::init_texture uses a separate command buffer.
+                            let data_buffer = command_buffer
+                                .upload_dynamic_data(device, pixels, BufferUsage::COPY_SRC)
+                                .unwrap();
+
+                            assert_eq!(imgui_tight_pitch(*format, *width as u64), *row_pitch as u64);
+                            assert_eq!(*row_pitch * (*height as usize), pixels.len());
+
+                            command_buffer.copy_buffer_to_texture(
+                                BufferRef::Transient(&data_buffer),
+                                texture.as_ref(),
+                                &BufferTextureCopyRegion {
+                                    buffer_offset: 0,
+                                    buffer_row_pitch: *row_pitch as u64,
+                                    buffer_slice_pitch: (*row_pitch as u64) * (*height as u64),
+                                    texture_subresource: TextureSubresource {
+                                        array_layer: 0,
+                                        mip_level: 0,
+                                    },
+                                    texture_offset: Vec3UI::new(
+                                        0, 0, 0,
+                                    ),
+                                    texture_extent: Vec3UI::new(
+                                        *width,
+                                        *height,
+                                        1,
+                                    ),
+                                },
+                            );
                         }
                     }
-                }
-                dear_imgui_rs::TextureOp::Destroy => {
-                    self.textures.remove(&texture_request.texture());
-                    match texture_request.destroyed() {
-                        Ok(f) => {
-                            feedback.push(f);
-                        }
-                        Err(e) => {
-                            log::error!("DearImgui error: {:?}", e);
-                        }
-                    }
+                    _ => {}
                 }
             }
         }
 
-        {
+        let mut feedback_lists = VecDeque::<Vec::<dear_imgui_rs::TextureFeedback>>::with_capacity(snapshots.len());
+        for snapshot in snapshots.iter() {
+            let mut feedback = Vec::<dear_imgui_rs::TextureFeedback>::with_capacity(snapshot.texture_requests().len());
+
+            for texture_request in snapshot.texture_requests() {
+                match texture_request.operation() {
+                    dear_imgui_rs::TextureOp::Create {
+                        ..
+                    } => {
+                        // Texture requests were handled by the earlier pass, we just provide the
+                        // feedback here for simplicity.
+                        if newly_created_textures.contains(&texture_request.texture()) {
+                            let (imgui_id, _texture)= self.textures.get(&texture_request.texture()).unwrap();
+                            match texture_request.uploaded(*imgui_id) {
+                                Ok(f) => {
+                                    feedback.push(f);
+                                }
+                                Err(e) => {
+                                    log::error!("DearImgui error: {:?}", e);
+                                }
+                            }
+                        } else {
+                            feedback.push(texture_request.superseded());
+                        }
+                    }
+                    dear_imgui_rs::TextureOp::Update {
+                        format,
+                        width,
+                        height,
+                        rects,
+                    } => {
+                        let (id, texture_view) = self.textures.get(&texture_request.texture()).unwrap();
+                        let texture = texture_view.texture().unwrap();
+                        assert_eq!(*width, texture.info().width);
+                        assert_eq!(*height, texture.info().height);
+                        for rect in rects {
+                            let data_buffer = command_buffer
+                                .upload_dynamic_data(device, &rect.data, BufferUsage::COPY_SRC)
+                                .unwrap();
+
+                            assert_eq!(imgui_tight_pitch(*format, rect.rect.w as u64), rect.row_pitch as u64);
+                            assert_eq!(rect.row_pitch * (rect.rect.h as usize), rect.data.len());
+
+                            command_buffer.copy_buffer_to_texture(
+                                BufferRef::Transient(&data_buffer),
+                                texture,
+                                &BufferTextureCopyRegion {
+                                    buffer_offset: 0,
+                                    buffer_row_pitch: rect.row_pitch as u64,
+                                    buffer_slice_pitch: (rect.row_pitch as u64) * (rect.rect.h as u64),
+                                    texture_subresource: TextureSubresource {
+                                        array_layer: 0,
+                                        mip_level: 0,
+                                    },
+                                    texture_offset: Vec3UI::new(
+                                        rect.rect.x as u32,
+                                        rect.rect.y as u32,
+                                        0,
+                                    ),
+                                    texture_extent: Vec3UI::new(
+                                        rect.rect.w as u32,
+                                        rect.rect.h as u32,
+                                        1,
+                                    ),
+                                },
+                            );
+
+                            // Dunno if they overlap...
+                            command_buffer.barrier(&[Barrier::TextureBarrier {
+                                old_sync: BarrierSync::COPY,
+                                new_sync: BarrierSync::COPY,
+                                old_layout: TextureLayout::CopyDst,
+                                new_layout: TextureLayout::CopyDst,
+                                old_access: BarrierAccess::COPY_WRITE,
+                                new_access: BarrierAccess::COPY_WRITE,
+                                texture,
+                                range: Default::default(),
+                                queue_ownership: None,
+                            }]);
+                            command_buffer.flush_barriers();
+                        }
+
+                        match texture_request.uploaded(*id) {
+                            Ok(f) => {
+                                feedback.push(f);
+                            }
+                            Err(e) => {
+                                log::error!("DearImgui error: {:?}", e);
+                            }
+                        }
+                    }
+                    dear_imgui_rs::TextureOp::Destroy => {
+                        self.textures.remove(&texture_request.texture());
+                        match texture_request.destroyed() {
+                            Ok(f) => {
+                                feedback.push(f);
+                            }
+                            Err(e) => {
+                                log::error!("DearImgui error: {:?}", e);
+                            }
+                        }
+                    }
+                }
+            }
+
+            feedback_lists.push_back(feedback);
+        }
+
+        for snapshot in snapshots.iter() {
             let mut layout_transfer_textures = SmallVec::<[&Texture; 4]>::new();
             for texture_request in snapshot.texture_requests() {
                 match texture_request.operation() {
@@ -347,7 +405,7 @@ impl DearImguiRenderer {
             .unwrap();
         command_buffer.set_pipeline(PipelineBinding::Graphics(pipeline));
 
-        let draw = snapshot.draw_data();
+        let draw = snapshots.front().unwrap().draw_data();
 
         // Transform 0 - window size to -1 - 1
         // and flip y.
@@ -476,7 +534,10 @@ impl DearImguiRenderer {
 
         command_buffer.end_render_pass();
 
-        snapshot.commit(feedback).unwrap();
+        while let Some(snapshot) = snapshots.pop_front() {
+            let feedback = feedback_lists.pop_front().unwrap();
+            snapshot.commit(feedback).unwrap();
+        }
     }
 }
 
@@ -487,7 +548,7 @@ fn imgui_format_to_format(format: dear_imgui_rs::TextureFormat) -> gpu::Format {
     }
 }
 
-fn imgui_tight_pitch(format: dear_imgui_rs::TextureFormat, width: u32) -> u32 {
+fn imgui_tight_pitch(format: dear_imgui_rs::TextureFormat, width: u64) -> u64 {
     let element_size = match format {
         dear_imgui_rs::TextureFormat::RGBA32 => 4,
         dear_imgui_rs::TextureFormat::Alpha8 => 1,

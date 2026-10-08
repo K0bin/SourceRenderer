@@ -94,7 +94,7 @@ impl DearImgui {
         self.frame.replace(frame_wrapper);
     }
 
-    pub fn ui(&self) -> &dear_imgui_rs::Ui {
+    pub fn ui(&mut self) -> &dear_imgui_rs::Ui {
         self.frame.as_ref().expect("No active frame").frame.ui()
     }
 

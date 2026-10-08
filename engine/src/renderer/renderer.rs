@@ -536,7 +536,7 @@ impl Renderer {
                     WindowState::Minimized => {}
                 },
                 RendererCommand::UpdateUIData(snapshot) => {
-                    self.scene.set_ui_data(snapshot);
+                    self.scene.push_ui_data(snapshot);
                 }
                 RendererCommand::UpdateVolumeRendererOptions(options) => {
                     let any_box_ref: &dyn Any = self.render_path.as_ref();

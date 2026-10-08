@@ -29,7 +29,7 @@ impl Plugin for UIPlugin {
 }
 
 fn pick_hdri_ui_system(
-    imgui: NonSendMut<DearImgui>,
+    mut imgui: NonSendMut<DearImgui>,
     mut options: ResMut<VolumeRendererOptions>,
 ) {
     let ui = imgui.ui();
@@ -103,7 +103,7 @@ struct UIState {
 }
 
 fn volume_meshes_ui_system(
-    imgui: NonSendMut<DearImgui>,
+    mut imgui: NonSendMut<DearImgui>,
     mut instances: Query<(Entity, &mut VolumeMeshInstance)>,
     mut state: ResMut<UIState>,
     mut commands: Commands,
@@ -289,7 +289,7 @@ fn import_materials_ui_system(
 
 
 fn materials_ui_system(
-    imgui: NonSendMut<DearImgui>,
+    mut imgui: NonSendMut<DearImgui>,
     mut instances: Query<(Entity, &mut VolumeMeshInstance)>,
     mut state: ResMut<UIState>,
     mut commands: Commands,

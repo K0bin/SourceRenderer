@@ -319,7 +319,9 @@ impl RenderPath for VolumeRenderer {
 
         std::mem::drop(params);
         std::mem::drop(read_assets);
-        if let Some(ui_data) = scene.scene.take_ui_data() {
+
+        let mut ui_data = scene.scene.take_ui_data();
+        if !ui_data.is_empty() {
             cmd_buffer.barrier(&[Barrier::RawTextureBarrier {
                 old_sync: BarrierSync::RENDER_TARGET,
                 new_sync: BarrierSync::RENDER_TARGET,
@@ -338,11 +340,12 @@ impl RenderPath for VolumeRenderer {
                 &mut cmd_buffer,
                 assets,
                 resources,
-                ui_data,
+                &mut ui_data,
                 &backbuffer_view,
                 backbuffer_handle,
             );
         }
+        scene.scene.return_ui_queue(ui_data);
 
         cmd_buffer.barrier(&[Barrier::RawTextureBarrier {
             old_sync: BarrierSync::RENDER_TARGET,

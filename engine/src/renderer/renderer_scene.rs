@@ -1,5 +1,5 @@
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use super::ImguiFrameSnapshot;
 use bevy_ecs::entity::Entity;
@@ -94,7 +94,8 @@ pub struct RendererScene {
     point_lights: RendererEntityType<RendererPointLight>,
     directional_lights: RendererEntityType<RendererDirectionalLight>,
     volume_meshes: RendererEntityType<RendererVolumeDrawable>,
-    latest_imgui: Cell<Option<ImguiFrameSnapshot>>,
+
+    imgui_queue: Cell<VecDeque<ImguiFrameSnapshot>>,
     lightmap: Option<TextureHandle>,
 }
 
@@ -108,7 +109,7 @@ impl RendererScene {
             volume_meshes: RendererEntityType::new(),
             directional_lights: RendererEntityType::new(),
             lightmap: None,
-            latest_imgui: Default::default(),
+            imgui_queue: Default::default(),
         }
     }
 
@@ -316,12 +317,19 @@ impl RendererScene {
         self.volume_meshes.remove(entity);
     }
 
-    pub fn set_ui_data(&self, data: ImguiFrameSnapshot) {
-        self.latest_imgui.replace(Some(data));
+    pub fn push_ui_data(&mut self, data: ImguiFrameSnapshot) {
+        self.imgui_queue.get_mut().push_back(data);
     }
 
-    pub fn take_ui_data(&self) -> Option<ImguiFrameSnapshot> {
-        self.latest_imgui.take()
+    pub fn take_ui_data(&self) -> VecDeque<ImguiFrameSnapshot> {
+        self.imgui_queue.take()
+    }
+
+    pub fn return_ui_queue(&self, queue: VecDeque<ImguiFrameSnapshot>) {
+        // Return the allocation.
+        assert!(queue.is_empty());
+        let old = self.imgui_queue.replace(queue);
+        assert!(old.is_empty());
     }
 
     #[inline(always)]
