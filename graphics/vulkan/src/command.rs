@@ -1268,14 +1268,14 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         debug_assert_eq!(self.state.load(), VkCommandBufferState::Recording);
         debug_assert!(!self.is_in_render_pass);
 
-        let actual_length_in_u32s = if length_in_u32s == gpu::WHOLE_BUFFER {
+        let length_in_bytes = if length_in_u32s == gpu::WHOLE_BUFFER {
             debug_assert_eq!((buffer.info().size - offset) % 4, 0);
-            (buffer.info().size - offset) / 4
+            buffer.info().size - offset
         } else {
-            length_in_u32s
+            length_in_u32s * 4
         };
-        let length_in_bytes = actual_length_in_u32s * 4;
         debug_assert!(buffer.info().size - offset >= length_in_bytes);
+        debug_assert_eq!(length_in_bytes % 4, 0);
         unsafe {
             self.device.cmd_fill_buffer(
                 self.cmd_buffer,
