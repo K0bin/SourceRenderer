@@ -237,6 +237,8 @@ impl RendererScene {
         &mut self,
         entity: Entity,
         texture_handle: TextureHandle,
+        texture_min_handle: TextureHandle,
+        texture_max_handle: TextureHandle,
         min_threshold: f32,
         texture_lod: u32,
         transparent: VolumeDrawableTransparencyMode,
@@ -253,6 +255,8 @@ impl RendererScene {
             volume_mesh.ray_march_normals = ray_march_normals;
             volume_mesh.material_handle = material;
             volume_mesh.volume_texture = texture_handle;
+            volume_mesh.volume_texture_max = texture_max_handle;
+            volume_mesh.volume_texture_min = texture_min_handle;
             return;
         }
 

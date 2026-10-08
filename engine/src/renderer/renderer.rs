@@ -382,6 +382,18 @@ impl Renderer {
                             AssetType::Texture,
                             AssetLoadPriority::Normal,
                         );
+                    let (texture_min_handle, _) =
+                        self.assets.asset_manager().request_asset(
+                            &(texture_path.to_string() + "_min"),
+                            AssetType::Texture,
+                            AssetLoadPriority::Normal,
+                        );
+                    let (texture_max_handle, _) =
+                        self.assets.asset_manager().request_asset(
+                            &(texture_path.to_string() + "_max"),
+                            AssetType::Texture,
+                            AssetLoadPriority::Normal,
+                        );
                     let (material_handle, _) =
                         self.assets.asset_manager().request_asset(
                             &material_path,
@@ -391,6 +403,8 @@ impl Renderer {
                     self.scene.update_volume_mesh_data(
                         entity,
                         texture_handle.into(),
+                        texture_min_handle.into(),
+                        texture_max_handle.into(),
                         min_threshold,
                         lod,
                         transparent,
