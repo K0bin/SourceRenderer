@@ -176,7 +176,7 @@ impl DearImguiRenderer {
                     command_buffer.barrier(&[Barrier::TextureBarrier {
                         old_sync: BarrierSync::FRAGMENT_SHADER | BarrierSync::COPY,
                         new_sync: BarrierSync::COPY,
-                        old_layout: TextureLayout::Sampled,
+                        old_layout: TextureLayout::Undefined,
                         new_layout: TextureLayout::CopyDst,
                         old_access: BarrierAccess::empty(),
                         new_access: BarrierAccess::COPY_WRITE,
