@@ -80,7 +80,6 @@ pub struct MarchingCubesPass {
     cube_pipelines: [ComputePipelineHandle; 4],
     edges_buffer: Arc<BufferSlice>,
     tris_buffer: Arc<BufferSlice>,
-    executed_count: u32,
 }
 
 impl MarchingCubesPass {
@@ -513,7 +512,6 @@ impl MarchingCubesPass {
             cube_pipelines: cube_pipelines.as_array().unwrap().clone(),
             edges_buffer,
             tris_buffer,
-            executed_count: 0u32,
         }
     }
 
@@ -618,10 +616,6 @@ impl MarchingCubesPass {
         }
 
         let resources = &pass_params.resources;
-        if self.executed_count > 0u32 {
-            //return;
-        }
-        self.executed_count += 1u32;
 
         command_buffer.begin_label("Marching Cubes pass");
 
