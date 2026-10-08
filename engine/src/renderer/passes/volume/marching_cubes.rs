@@ -523,8 +523,8 @@ impl MarchingCubesPass {
 
         // Assume there's a lot of empty space/fully filled space and voxels with fewer triangles
         // to avoid huge buffers.
-        // In case of the manix, the theoretical space is 148x larger than the actually necessary one.
-        resolution_multiplied /= 100;
+        // Besides, the theoretical worst-case space we need is ~7.7 GB per model. That's not feasible!
+        resolution_multiplied /= 50;
 
         // The theoretical maximum is that every voxel adds 5 triangles, so 15 indices.
         resources.destroy_buffer(name);
