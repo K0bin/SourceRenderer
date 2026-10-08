@@ -48,7 +48,7 @@ impl<IO: PlatformIO> Plugin for UniProjectPlugin<IO> {
             app.world_mut().spawn((
                 VolumeMeshInstance {
                     volume_texture_path: MANIX_PATH.to_string(),
-                    material_path: "default1".to_string(),
+                    material_path: "default0".to_string(),
                     volume_texture_lod: 3,
                     threshold_min: 0.55f32,
                     transparent: VolumeDrawableTransparencyMode::Opaque,
