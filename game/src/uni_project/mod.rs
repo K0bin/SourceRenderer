@@ -2,10 +2,8 @@ mod uni_project_plugin;
 #[cfg(not(target_arch = "wasm32"))]
 mod ui;
 
-use std::sync::Arc;
-use bevy_ecs::entity::Entity;
 use sourcerenderer_core::{Matrix4, Vec3, Vec4};
-use sourcerenderer_engine::asset::{AssetData, AssetLoadPriority, AssetManager, MaterialData};
+use sourcerenderer_engine::asset::MaterialData;
 pub use uni_project_plugin::*;
 
 const MANIX_PATH: &'static str = "assets/ct/manix/manix.raw.txt";
@@ -26,14 +24,23 @@ const MESHES: [&'static str; 6] = [
 
 const TRANSFER_FUNCTION_PATH: &'static str = "assets/transferfunction.png";
 
-pub(crate) fn manix_transform() -> Matrix4 {
+pub(crate) fn mesh_transform(index: usize) -> Matrix4 {
     Matrix4::from_rotation_x(-1.57f32)
         * Matrix4::from_rotation_z(3.14)
-        * Matrix4::from_scale(manix_scale())
+        * Matrix4::from_scale(mesh_scale(index))
 }
 
-pub(crate) fn manix_scale() -> Vec3 {
-    Vec3::new(0.488281f32, 0.488281f32, 0.700012f32) * 8f32 * 0.01f32
+const MESH_SCALING: [Vec3; 6] = [
+    Vec3::new(0.488281f32, 0.488281f32, 0.700012f32),
+    Vec3::new(0.558594, 0.558594, 0.799988),
+    Vec3::new(0.290000, 0.290000, 0.315733),
+    Vec3::new(0.782000, 0.782000, 0.400000),
+    Vec3::new(0.907000, 0.907000, 0.300000),
+    Vec3::new(0.426000, 0.426000, 0.300000),
+];
+
+pub(crate) fn mesh_scale(index: usize) -> Vec3 {
+    MESH_SCALING[index] * 8f32 * 0.01f32
 }
 
 fn make_volume_material(path: &str) -> MaterialData {

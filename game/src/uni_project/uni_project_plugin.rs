@@ -1,6 +1,6 @@
 #[cfg(not(target_arch = "wasm32"))]
 use crate::uni_project::ui::UIPlugin;
-use crate::uni_project::{make_volume_material, manix_transform, MANIX_PATH, TRANSFER_FUNCTION_PATH};
+use crate::uni_project::{MANIX_PATH, mesh_transform};
 use crate::{RendererPicker, fps_camera};
 use bevy_app::{App, Plugin};
 use bevy_math::Affine3A;
@@ -9,7 +9,6 @@ use sourcerenderer_engine::VolumeDrawableTransparencyMode;
 use sourcerenderer_engine::renderer::{RendererType, VolumeMeshInstance};
 use sourcerenderer_engine::transform::InterpolatedTransform;
 use std::marker::PhantomData;
-use sourcerenderer_engine::asset::{AssetData, AssetLoadPriority, AssetManagerECSResource};
 /* TODO:
  * - DLSS/FSR/XeSS/MetalFX
  * - DearImgui controls
@@ -31,7 +30,6 @@ impl<IO: PlatformIO> Plugin for UniProjectPlugin<IO> {
     fn build(&self, app: &mut App) {
         {
             log::info!("Initializing university project plugin");
-            let model_matrix = manix_transform();
 
             app.world_mut().spawn((
                 VolumeMeshInstance {
@@ -43,7 +41,7 @@ impl<IO: PlatformIO> Plugin for UniProjectPlugin<IO> {
                     render_as_cubes: false,
                     ray_march_normals: false,
                 },
-                InterpolatedTransform(Affine3A::from_mat4(model_matrix)),
+                InterpolatedTransform(Affine3A::from_mat4(mesh_transform(0))),
             ));
             app.world_mut().spawn((
                 VolumeMeshInstance {
@@ -55,7 +53,7 @@ impl<IO: PlatformIO> Plugin for UniProjectPlugin<IO> {
                     render_as_cubes: false,
                     ray_march_normals: false,
                 },
-                InterpolatedTransform(Affine3A::from_mat4(model_matrix)),
+                InterpolatedTransform(Affine3A::from_mat4(mesh_transform(0))),
             ));
 
             #[cfg(not(target_arch = "wasm32"))]

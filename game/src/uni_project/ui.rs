@@ -1,6 +1,4 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-use crate::uni_project::{manix_transform, MANIX_PATH, make_volume_material, MESHES};
+use crate::uni_project::{MANIX_PATH, MESHES, make_volume_material, mesh_transform};
 use bevy_app::{App, Plugin, Update};
 use bevy_ecs::change_detection::{NonSendMut, Res, ResMut};
 use bevy_ecs::entity::Entity;
@@ -9,14 +7,16 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::Query;
 use bevy_math::Affine3A;
 use bytemuck::box_bytes_of;
+use smallvec::smallvec;
 use sourcerenderer_core::gpu::{Format, SampleCount, TextureDimension, TextureInfo, TextureUsage};
-use sourcerenderer_engine::dear_imgui_rs::{ChildWindow, ColorEditFlags, Condition, ListBox, TextureId, TextureRef};
+use sourcerenderer_engine::asset::{AssetData, AssetHandle, AssetLoadPriority, AssetManager, AssetManagerECSResource, AssetType, TextureData, TextureHandle};
+use sourcerenderer_engine::dear_imgui_rs::{ChildWindow, ColorEditFlags, Condition, ListBox};
 use sourcerenderer_engine::renderer::VolumeMeshInstance;
 use sourcerenderer_engine::renderer::VolumeRendererOptions;
 use sourcerenderer_engine::transform::InterpolatedTransform;
-use sourcerenderer_engine::{dear_imgui_rs, DearImgui, VolumeDrawableTransparencyMode};
-use sourcerenderer_engine::asset::{AssetData, AssetHandle, AssetLoadPriority, AssetManager, AssetManagerECSResource, AssetType, TextureData, TextureHandle};
-use smallvec::smallvec;
+use sourcerenderer_engine::{DearImgui, VolumeDrawableTransparencyMode, dear_imgui_rs};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 pub(super) struct UIPlugin;
 
@@ -103,7 +103,7 @@ struct UIState {
 
 fn volume_meshes_ui_system(
     imgui: NonSendMut<DearImgui>,
-    mut instances: Query<(Entity, &mut VolumeMeshInstance)>,
+    mut instances: Query<(Entity, &mut VolumeMeshInstance, &mut InterpolatedTransform)>,
     mut state: ResMut<UIState>,
     mut commands: Commands,
     asset_manager: Res<AssetManagerECSResource>
@@ -130,7 +130,7 @@ fn volume_meshes_ui_system(
                             (ui.content_region_avail()[1] - 64.0f32).max(0.0f32),
                         ])
                         .build(ui, || {
-                            for (entity, mesh) in &instances {
+                            for (entity, mesh, _) in &instances {
                                 let text = format!(
                                     "Mesh {:?}##meshlistentry{:?}",
                                     mesh.threshold_min, entity
@@ -161,7 +161,7 @@ fn volume_meshes_ui_system(
                                     render_as_cubes: false,
                                     ray_march_normals: false,
                                 },
-                                InterpolatedTransform(Affine3A::from_mat4(manix_transform())),
+                                InterpolatedTransform(Affine3A::from_mat4(mesh_transform(0))),
                             ));
                         state.selected = Some(id);
                     }
@@ -170,7 +170,7 @@ fn volume_meshes_ui_system(
             ui.same_line();
             ChildWindow::new("##meshproperties").build(ui, || {
                 if let Some(entity) = state.selected {
-                    if let Ok((_, mut mesh)) = instances.get_mut(entity) {
+                    if let Ok((_, mut mesh, mut transform)) = instances.get_mut(entity) {
                         let mut idx = MESHES.iter().enumerate().find(|(_, path)| **path == mesh.volume_texture_path).map(|(idx, _)| idx).unwrap_or(0);
                         ui.text("Mesh:");
                         if ui.combo(
@@ -180,6 +180,7 @@ fn volume_meshes_ui_system(
                             |path| (*path).into(),
                         ) {
                             mesh.volume_texture_path = MESHES[idx].to_string();
+                            *transform = InterpolatedTransform(Affine3A::from_mat4(mesh_transform(idx)));
                         }
 
                         ui.text("Min Threshold:");
