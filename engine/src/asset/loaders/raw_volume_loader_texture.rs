@@ -41,7 +41,7 @@ impl AssetLoader for RawVolumeLoaderTexture {
         let mut metadata = String::new();
         file.read_to_string(&mut metadata).await.map_err(|_| ())?;
 
-        let mut words = metadata.split(&[' ', '\r', '\n']);
+        let mut words = metadata.split(&[' ', '\r', '\n', '\'', ',', ';']);
 
         let mut width = 0u32;
         let mut height = 0u32;
@@ -53,9 +53,9 @@ impl AssetLoader for RawVolumeLoaderTexture {
         let mut has_max_value = false;
 
         let mut word_opt = words.next();
-        while word_opt.is_some() {
-            let word = word_opt.unwrap();
+        while let Some(word) = word_opt {
             match word {
+                "Resolution:" |
                 "size:" => {
                     word_opt = words.next();
                     let mut word = word_opt.ok_or(())?;
@@ -69,6 +69,7 @@ impl AssetLoader for RawVolumeLoaderTexture {
                     word = word_opt.ok_or(())?;
                     depth = word.parse().map_err(|_| ())?;
                 }
+                "SliceThickness" |
                 "spacing:" => {
                     for i in 0..3 {
                         word_opt = words.next();
