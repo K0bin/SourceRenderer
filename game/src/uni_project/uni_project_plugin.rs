@@ -37,11 +37,11 @@ impl<IO: PlatformIO> Plugin for UniProjectPlugin<IO> {
                 VolumeMeshInstance {
                     volume_texture_path: MANIX_PATH.to_string(),
                     material_path: "default0".to_string(),
-                    volume_texture_lod: 3,
+                    volume_texture_lod: 1,
                     threshold_min: 0.0288f32,
                     transparent: VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque,
                     render_as_cubes: false,
-                    ray_march_normals: true,
+                    ray_march_normals: false,
                 },
                 InterpolatedTransform(Affine3A::from_mat4(model_matrix)),
             ));
@@ -49,11 +49,11 @@ impl<IO: PlatformIO> Plugin for UniProjectPlugin<IO> {
                 VolumeMeshInstance {
                     volume_texture_path: MANIX_PATH.to_string(),
                     material_path: "default0".to_string(),
-                    volume_texture_lod: 3,
+                    volume_texture_lod: 1,
                     threshold_min: 0.55f32,
                     transparent: VolumeDrawableTransparencyMode::Opaque,
                     render_as_cubes: false,
-                    ray_march_normals: true,
+                    ray_march_normals: false,
                 },
                 InterpolatedTransform(Affine3A::from_mat4(model_matrix)),
             ));

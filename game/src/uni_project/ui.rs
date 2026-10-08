@@ -159,7 +159,7 @@ fn volume_meshes_ui_system(
                                     threshold_min: 0.95f32,
                                     transparent: VolumeDrawableTransparencyMode::Opaque,
                                     render_as_cubes: false,
-                                    ray_march_normals: true,
+                                    ray_march_normals: false,
                                 },
                                 InterpolatedTransform(Affine3A::from_mat4(manix_transform())),
                             ));
