@@ -26,6 +26,8 @@ mod subsurfacescattering;
 
 pub use self::geometry::GeometryPass;
 
+pub use marching_cubes::MAX_SIZE as MARCHING_CUBES_MAX_SIZE;
+
 #[derive(Clone, Copy, Zeroable, Pod)]
 #[repr(C)]
 struct CameraBuffer {

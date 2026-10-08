@@ -16,6 +16,8 @@ use std::cell::Ref;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+pub const MAX_SIZE: u32 = 512;
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Zeroable, Pod)]
 struct MarchingCubesConfig {

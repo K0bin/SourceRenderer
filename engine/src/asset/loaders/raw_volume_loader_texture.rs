@@ -9,6 +9,7 @@ use smallvec::SmallVec;
 use sourcerenderer_core::Vec3;
 use sourcerenderer_core::gpu::{Format, SampleCount, TextureDimension, TextureInfo, TextureUsage};
 use std::sync::Arc;
+use crate::renderer::passes::volume::MARCHING_CUBES_MAX_SIZE;
 
 pub struct RawVolumeLoaderTexture {}
 
@@ -116,11 +117,12 @@ impl AssetLoader for RawVolumeLoaderTexture {
         progress.inc_finished(1);
 
         log::info!(
-            "Loading density data. Resolution: {}x{}x{}, {} voxels, spacing: {:?}",
+            "Loading density data. Resolution: {}x{}x{}, {} voxels, {} bytes, spacing: {:?}",
             width,
             height,
             depth,
             (width as usize) * (height as usize) * (depth as usize),
+            src_data_bytes.len(),
             spacing,
         );
 
@@ -139,7 +141,7 @@ impl AssetLoader for RawVolumeLoaderTexture {
         data.push(src_data_f16);
 
         // Build lower mips
-        let mip_count = width.ilog2().min(height.ilog2()).min(depth.ilog2());
+        let mut mip_count = width.ilog2().min(height.ilog2()).min(depth.ilog2());
         progress.inc_expected(mip_count - 1);
         for mip in 1..mip_count {
             let source_image_width = width >> (mip - 1);
@@ -260,6 +262,19 @@ impl AssetLoader for RawVolumeLoaderTexture {
             mips_boxed_max.push(mip_box);
         }
         progress.inc_finished(1);
+
+        if width > MARCHING_CUBES_MAX_SIZE || height > MARCHING_CUBES_MAX_SIZE || depth > MARCHING_CUBES_MAX_SIZE {
+            log::warn!("Resolution larger than 512! Skipping mip 0");
+            mips_boxed.remove(0);
+            mips_boxed_min.remove(0);
+            mips_boxed_max.remove(0);
+
+            width /= 2;
+            height /= 2;
+            depth /= 2;
+            mip_count -= 1;
+        }
+        assert_eq!(mips_boxed.len(), mip_count as usize);
 
         manager.add_asset_data_with_progress(
             file.path(),
