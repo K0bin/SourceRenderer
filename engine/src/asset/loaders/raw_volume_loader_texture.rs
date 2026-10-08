@@ -69,7 +69,7 @@ impl AssetLoader for RawVolumeLoaderTexture {
                     word = word_opt.ok_or(())?;
                     depth = word.parse().map_err(|_| ())?;
                 }
-                "SliceThickness" |
+                "SliceThickness:" |
                 "spacing:" => {
                     for i in 0..3 {
                         word_opt = words.next();
