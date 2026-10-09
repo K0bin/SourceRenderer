@@ -328,6 +328,7 @@ impl BufferAllocator {
         }
     }
 
+    const RETAINED_BUFFERS_COUNT: u32 = 2;
     pub fn cleanup_unused(&self) {
         let mut guard = self.buffers.lock().unwrap();
         for (buffer_key, buffers) in guard.iter_mut() {
@@ -338,15 +339,8 @@ impl BufferAllocator {
                     return true;
                 }
                 retained_empty += 1;
-                retained_empty < 2
+                retained_empty < Self::RETAINED_BUFFERS_COUNT
             });
-            if buffers.len() != buffer_count_before {
-                trace!(
-                    "Freed {} buffers in buffer type {:?}",
-                    buffer_count_before - buffers.len(),
-                    buffer_key
-                );
-            }
         }
     }
 }

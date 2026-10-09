@@ -229,6 +229,8 @@ impl MemoryAllocator {
         self.is_uma
     }
 
+    const RETAINED_CHUNK_COUNT: u32 = 2;
+
     pub fn cleanup_unused(&self) {
         let mut guard = self.inner.lock().unwrap();
         for (memory_type, chunks) in guard.chunks.iter_mut() {
@@ -239,15 +241,8 @@ impl MemoryAllocator {
                     return true;
                 }
                 retained_empty += 1;
-                retained_empty < 2
+                retained_empty < Self::RETAINED_CHUNK_COUNT
             });
-            if chunks.len() != chunks_count_before {
-                trace!(
-                    "Freed {} memory chunks in memory_type {}",
-                    chunks_count_before - chunks.len(),
-                    memory_type
-                );
-            }
         }
     }
 }
