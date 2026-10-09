@@ -37,7 +37,7 @@ struct TaskPayload {
 };
 taskPayloadSharedEXT TaskPayload payload;
 
-layout(constant_id = 1) const bool renderDebugCube = false;
+layout(constant_id = 0) const bool renderDebugCube = false;
 
 void main() {
     uvec3 workgroupBasePos = gl_WorkGroupID * gl_WorkGroupSize;
