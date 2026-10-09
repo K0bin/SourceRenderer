@@ -1,6 +1,6 @@
 use crate::graphics::*;
 use crate::renderer::VolumeRendererOptions;
-use crate::renderer::asset::{GraphicsPipelineHandle, GraphicsPipelineInfo, PathPipelineShaderStage, RendererAssets, RendererAssetsReadOnly, RendererMaterial};
+use crate::renderer::asset::{GraphicsPipelineHandle, GraphicsPipelineInfo, MeshGraphicsPipelineInfo, MeshGraphicsPipelineHandle, PathPipelineShaderStage, RendererAssets, RendererAssetsReadOnly, RendererMaterial};
 use crate::renderer::drawable::{RendererVolumeDrawable, VolumeDrawableTransparencyMode};
 use crate::renderer::passes::volume::ibl::ImageBasedLightingTextures;
 use crate::renderer::passes::volume::marching_cubes::{
@@ -48,6 +48,8 @@ struct MaterialData {
 }
 
 pub struct GeometryPass {
+    mesh_pipeline: MeshGraphicsPipelineHandle,
+
     pipeline: GraphicsPipelineHandle,
     pipeline_non_overlapping: GraphicsPipelineHandle,
     pipeline_transparent: GraphicsPipelineHandle,
@@ -134,6 +136,68 @@ impl GeometryPass {
             depth_stencil_format: Format::D32S8, // I'd prefer D24S8 but AMD & Apple don't support that.
         };
         let pipeline = assets.request_graphics_pipeline(&pipeline_info);
+
+
+        let ms_path = crate::renderer::shader_path!("marching_cubes.mesh");
+        let ts_path = crate::renderer::shader_path!("marching_cubes.task");
+        let mesh_pipeline_info = MeshGraphicsPipelineInfo {
+            ts: Some(PathPipelineShaderStage::empty_spec_consts(&ts_path)),
+            ms: PathPipelineShaderStage::empty_spec_consts(ms_path),
+            fs: Some(PathPipelineShaderStage::empty_spec_consts(&fs_path)),
+            rasterizer: RasterizerInfo {
+                fill_mode: FillMode::Fill,
+                cull_mode: CullMode::Back,
+                front_face: FrontFace::Clockwise,
+                sample_count: SampleCount::Samples1,
+            },
+            depth_stencil: DepthStencilInfo {
+                depth_test_enabled: true,
+                depth_write_enabled: true,
+                depth_func: CompareFunc::Less,
+                stencil_enable: true,
+                stencil_read_mask: !0u8,
+                stencil_write_mask: !0u8,
+                stencil_front: StencilInfo {
+                    pass_op: StencilOp::Replace,
+                    fail_op: StencilOp::Keep,
+                    func: CompareFunc::Always,
+                    depth_fail_op: StencilOp::Keep,
+                },
+                stencil_back: StencilInfo::default(),
+            },
+            blend: BlendInfo {
+                alpha_to_coverage_enabled: false,
+                logic_op_enabled: false,
+                logic_op: LogicOp::And,
+                constants: [0f32, 0f32, 0f32, 0f32],
+                attachments: &[
+                    AttachmentBlendInfo {
+                        blend_enabled: false,
+                        src_color_blend_factor: BlendFactor::SrcAlpha,
+                        dst_color_blend_factor: BlendFactor::OneMinusSrcAlpha,
+                        color_blend_op: BlendOp::Add,
+                        src_alpha_blend_factor: BlendFactor::Zero,
+                        dst_alpha_blend_factor: BlendFactor::One,
+                        alpha_blend_op: BlendOp::Add,
+                        write_mask: ColorComponents::all(),
+                    },
+                    AttachmentBlendInfo {
+                        blend_enabled: false,
+                        src_color_blend_factor: BlendFactor::One,
+                        dst_color_blend_factor: BlendFactor::Zero,
+                        color_blend_op: BlendOp::Add,
+                        src_alpha_blend_factor: BlendFactor::One,
+                        dst_alpha_blend_factor: BlendFactor::Zero,
+                        alpha_blend_op: BlendOp::Add,
+                        write_mask: ColorComponents::all(),
+                    },
+                ],
+            },
+            render_target_formats: &[Format::RGBA16UNorm, Format::R8UNorm],
+            depth_stencil_format: Format::D32S8, // I'd prefer D24S8 but AMD & Apple don't support that.
+        };
+        let mesh_pipeline = assets.request_mesh_graphics_pipeline(&mesh_pipeline_info);
+
 
         let mut pipeline_transparency_non_overlapping_info: GraphicsPipelineInfo =
             pipeline_info.clone();
@@ -252,6 +316,8 @@ impl GeometryPass {
             pipeline_non_overlapping,
             pipeline_transparent_prepass,
 
+            mesh_pipeline,
+
             pipeline_non_raymarch: non_raymarch_pipeline,
             pipeline_non_overlapping_non_raymarch: non_raymarch_non_overlapping_pipeline,
             pipeline_transparent_non_raymarch: non_raymarch_transparency_pipeline,
@@ -334,10 +400,9 @@ impl GeometryPass {
     pub(crate) fn execute(
         &mut self,
         cmd_buffer: &mut CommandBuffer,
-        camera_buffer: &TransientBufferSlice,
         params: &RenderPassParameters,
-        options: &VolumeRendererOptions,
         marching_cubes_map: &HashMap<MarchingCubesKey, MarchingCubesInfo>,
+        tris_table: &Arc<BufferSlice>,
         ibl_textures: &ImageBasedLightingTextures,
     ) {
         cmd_buffer.clear_all_bindings(BindingFrequency::Frequent);
@@ -522,6 +587,10 @@ impl GeometryPass {
             .assets
             .get_graphics_pipeline(self.pipeline_non_overlapping_non_raymarch)
             .expect("Pipeline is not compiled yet");
+        let mesh_pipeline: &Arc<MeshGraphicsPipeline> = params
+            .assets
+            .get_mesh_graphics_pipeline(self.mesh_pipeline)
+            .expect("Pipeline is not compiled yet");
 
         cmd_buffer.set_viewports(&[Viewport {
             position: Vec2::new(0.0f32, 0.0f32),
@@ -536,11 +605,18 @@ impl GeometryPass {
         cmd_buffer.set_stencil_reference(1u32);
 
         let mut base_pass = |ray_march_normals: bool| {
-            cmd_buffer.set_pipeline(PipelineBinding::Graphics(if ray_march_normals {
-                pipeline
+            if ray_march_normals {
+                cmd_buffer.set_pipeline(PipelineBinding::Graphics(if ray_march_normals {
+                    pipeline
+                } else {
+                    pipeline_non_raymarching
+                }));
             } else {
-                pipeline_non_raymarching
-            }));
+                cmd_buffer.set_pipeline(PipelineBinding::MeshGraphics(
+                    mesh_pipeline));
+
+                cmd_buffer.bind_uniform_buffer(BindingFrequency::Frequent, 7, BufferRef::Regular(tris_table), 0, WHOLE_BUFFER);
+            }
 
             cmd_buffer.bind_sampling_view(
                 BindingFrequency::Frequent,
@@ -637,12 +713,18 @@ impl GeometryPass {
 
                 cmd_buffer.set_index_buffer(BufferRef::Regular(&*ibo), 0u64, IndexFormat::U32);
                 cmd_buffer.finish_binding();
-                cmd_buffer.draw_indexed_indirect(
-                    BufferRef::Regular(&*marchingcubes_indirect),
-                    buffer_info.indirect_buffer_offset as u64,
-                    1u32,
-                    std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
-                );
+                if ray_march_normals {
+                    cmd_buffer.draw_indexed_indirect(
+                        BufferRef::Regular(&*marchingcubes_indirect),
+                        buffer_info.indirect_buffer_offset as u64,
+                        1u32,
+                        std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
+                    );
+                } else {
+                    cmd_buffer.draw_mesh_tasks((volume_texture_info.width + 3) / 4,
+                                               (volume_texture_info.height + 3) / 4,
+                                               (volume_texture_info.depth + 3) / 4);
+                }
             }
         };
 

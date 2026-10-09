@@ -840,4 +840,8 @@ impl MarchingCubesPass {
         command_buffer.end_label();
         map
     }
+
+    pub(crate) fn tris_table(&self) -> &Arc<BufferSlice> {
+        &self.tris_buffer
+    }
 }
