@@ -269,6 +269,7 @@ impl RenderPath for VolumeRenderer {
             &mut cmd_buffer,
             &params,
             &marching_cubes_map,
+            self.marching_cubes_pass.tris_table(),
             &ibl_textures,
         );
 
