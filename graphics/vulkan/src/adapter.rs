@@ -439,6 +439,24 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             );
         }
 
+        if supported_features_12.shader_int8 == vk::FALSE {
+            panic!(
+                "Your Vulkan driver is not capable of running this application. Shader Int8 is a required feature!"
+            );
+        }
+
+        if supported_features_12.scalar_block_layout == vk::FALSE {
+            panic!(
+                "Your Vulkan driver is not capable of running this application. Scalar black layout is a required feature!"
+            );
+        }
+
+        if supported_features_12.uniform_buffer_standard_layout == vk::FALSE {
+            panic!(
+                "Your Vulkan driver is not capable of running this application. Uniform buffer standard layout is a required feature!"
+            );
+        }
+
         let mut enabled_features: vk::PhysicalDeviceFeatures2 = Default::default();
         let mut enabled_features_11: vk::PhysicalDeviceVulkan11Features = Default::default();
         let mut enabled_features_12: vk::PhysicalDeviceVulkan12Features = Default::default();
@@ -461,9 +479,10 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             .shader_storage_image_write_without_format = vk::TRUE;
         enabled_features.features.sampler_anisotropy = vk::TRUE;
         enabled_features_12.host_query_reset = vk::TRUE;
-        enabled_features_12.scalar_block_layout = supported_features_12.scalar_block_layout;
-        enabled_features_12.shader_float16 = supported_features_12.shader_float16;
-        enabled_features_12.shader_int8 = supported_features_12.shader_int8;
+        enabled_features_12.scalar_block_layout = vk::TRUE;
+        enabled_features_12.shader_float16 = vk::TRUE;
+        enabled_features_12.shader_int8 = vk::TRUE;
+        enabled_features_12.uniform_buffer_standard_layout = vk::TRUE;
         enabled_features_13.dynamic_rendering = vk::TRUE;
         enabled_features.features.independent_blend = vk::TRUE;
         _features_shader_atomic_float = supported_features_shader_atomic_float;
