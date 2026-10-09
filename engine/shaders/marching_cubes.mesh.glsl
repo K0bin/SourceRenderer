@@ -57,8 +57,7 @@ shared uint shared_primitiveCount;
 
 struct TaskPayload {
     uint8_t voxelKeys[32];
-    uvec4 workgroupBase;
-    uvec2 mask;
+    uvec4 workgroupBase; // TODO: turn into morton code
 };
 taskPayloadSharedEXT TaskPayload payload;
 
@@ -161,17 +160,31 @@ void main() {
     subgroupFirstIndex = subgroupBroadcastFirst(subgroupFirstIndex);
     uint firstIndex = subgroupFirstIndex + subgroupExclusiveAdd(indexCount);
 
+    uint voxelKey = payload.voxelKeys[gl_SubgroupID];
 
+    uint triangleIndex = gl_WorkGroupID.x;
+    uint baseIndex = triangleIndex * 3u;
     if (!renderDebugCube) {
-        for (uint i = 0u; i < indexCount && firstIndex + indexCount < maxIndices; i += 3u) {
-            indicesBuffers[j].indices[firstIndex + i + 0u] = buildVertexKey(tris[voxelKey][1u + i + 0u]);
-            indicesBuffers[j].indices[firstIndex + i + 1u] = buildVertexKey(tris[voxelKey][1u + i + 1u]);
-            indicesBuffers[j].indices[firstIndex + i + 2u] = buildVertexKey(tris[voxelKey][1u + i + 2u]);
-        }
+        indicesBuffers[j].indices[firstIndex + baseIndex + 0u] = buildVertexKey(tris[voxelKey][1u + baseIndex + 0u]);
+        indicesBuffers[j].indices[firstIndex + baseIndex + 1u] = buildVertexKey(tris[voxelKey][1u + baseIndex + 1u]);
+        indicesBuffers[j].indices[firstIndex + baseIndex + 2u] = buildVertexKey(tris[voxelKey][1u + baseIndex + 2u]);
+
+        vertexOut[slot].out_densityMapUV = (pos + 0.5) / densityMapSize;
+        vertexOut[slot].out_worldPosition = worldPos.xyz;
+        vertexOut[slot].out_density = posAndDensity.w;
+        gl_MeshVerticesEXT[slot].gl_Position = camera.viewProj * worldPos;
+
+        gl_PrimitiveTriangleIndicesEXT[firstPrimitive + i] = indices;
+
+
     } else {
+        uvec3 vtx = cubePositions[cubeIndices[triangleIndex][0]] + payload.workgroupBase.xyz + gl_LocalInvocationID;
+
         for (uint i = 0u; i < 12u * 3u && firstIndex + indexCount < maxIndices; i++) {
-            uvec3 vtx = cubePositions[cubeIndices[i / 3u][i % 3u]] + gl_GlobalInvocationID;
             indicesBuffers[j].indices[firstIndex + i] = vertexKey(vtx, vtx);
         }
     }
+
+    // SetMeshOutputsEXT(vertexSlotCount, min(maxPrimitives, totalPrimitiveCount));
+
 }
