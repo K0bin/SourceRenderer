@@ -723,7 +723,7 @@ impl GeometryPass {
                 } else {
                     cmd_buffer.draw_mesh_tasks((volume_texture_info.width + 3) / 4,
                                                (volume_texture_info.height + 3) / 4,
-                                               (volume_texture_info.depth + 3) / 4);
+                                               (volume_texture_info.depth + 1) / 2);
                 }
             }
         };
