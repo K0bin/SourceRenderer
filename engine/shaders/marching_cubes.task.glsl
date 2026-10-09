@@ -1,0 +1,92 @@
+#version 450
+#extension GL_GOOGLE_include_directive : enable
+// #extension GL_EXT_debug_printf : enable
+
+#extension GL_EXT_mesh_shader : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
+#extension GL_EXT_scalar_block_layout : enable
+
+#extension GL_KHR_shader_subgroup_basic : enable
+#extension GL_KHR_shader_subgroup_arithmetic : enable
+#extension GL_KHR_shader_subgroup_vote : enable
+#extension GL_KHR_shader_subgroup_ballot : enable
+#extension GL_KHR_shader_subgroup_shuffle : enable
+#extension GL_EXT_maximal_reconvergence : enable
+#extension GL_EXT_nonuniform_qualifier : enable
+
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 2) in;
+
+#include "descriptor_sets.inc.glsl"
+#include "frame_set_common.inc.glsl"
+
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform texture3D densityImage;
+
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 8) uniform texture3D densityImageMin;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 9) uniform texture3D densityImageMax;
+
+layout(push_constant, std430) uniform Config {
+    uvec3 lodExtents;
+    uint lod;
+    float minThreshold;
+};
+
+struct TaskPayload {
+    uint8_t voxelKeys[32];
+    uvec4 workgroupBasePos;
+};
+taskPayloadSharedEXT TaskPayload payload;
+
+void main() {
+    uvec3 workgroupBasePos = gl_WorkGroupID * gl_WorkGroupSize;
+
+    if (subgroupAll(any(greaterThanEqual(gl_GlobalInvocationID + uvec3(1u), lodExtents))))
+    return;
+
+    uint8_t voxelKey = uint8_t(0u);
+    for (uint z = 0u; z < 2u; z++) {
+        for (uint y = 0u; y < 2u; y++) {
+            for (uint x = 0u; x < 2u; x++) {
+                uvec3 offset = uvec3(x, y, z);
+
+                uvec3 localInvocationPos = uvec3(
+                    gl_SubgroupID / (4u * 2u),
+                    (gl_SubgroupID / 2u) % 4u,
+                    gl_SubgroupID % 2u);
+                uvec3 invocationPos = workgroupBasePos + localInvocationPos;
+                uvec3 pos = gl_GlobalInvocationID + offset;
+                float density = texelFetch(sampler3D(densityImage, samplerNearest), ivec3(pos), int(lod)).x;
+
+                uint index = ((x + z) & 1u) + z * 2u + y * 4u;
+
+                bool passes = density >= minThreshold;
+                voxelKey |= uint8_t(density >= minThreshold) << index;
+            }
+        }
+    }
+
+    uint indexCount;
+    if (!renderDebugCube) {
+        indexCount = tris[voxelKey][0u];
+        indexCount = min(indexCount, 15u);
+
+        if (indexCount == 0u) {
+            if (gl_LocalInvocationIndex == 0u)
+            SetMeshOutputsEXT(vertexSlotCount, min(maxPrimitives, totalPrimitiveCount));
+
+            return;
+        }
+
+    } else {
+        indexCount = 12u * 3u;
+    }
+
+    uint primitiveCount = indexCount / 3u;
+    uint subgroupPrimitiveCount = subgroupMax(primitiveCount);
+
+    if (gl_LocalInvocationIndex == 0u) {
+        payload.workgroupBasePos = uvec4(workgroupBasePos, 0u);
+    }
+    payload.voxelKeys[exclusiveOffset] = voxelKey;
+
+    EmitMeshTasksEXT(subgroupPrimitiveCount, 1, 1);
+}
