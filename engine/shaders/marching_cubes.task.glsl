@@ -19,22 +19,26 @@ layout(local_size_x = 4, local_size_y = 4, local_size_z = 2) in;
 #include "descriptor_sets.inc.glsl"
 #include "frame_set_common.inc.glsl"
 
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform texture3D densityImage;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform texture3D densityMap;
 
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 8) uniform texture3D densityImageMin;
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 9) uniform texture3D densityImageMax;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 7, std430) uniform TriTable {
+    int[256u][17u] tris;
+};
 
 layout(push_constant, std430) uniform Config {
+    mat4 modelMat;
     uvec3 lodExtents;
     uint lod;
-    float minThreshold;
+    float threshold;
 };
 
 struct TaskPayload {
     uint8_t voxelKeys[32];
-    uvec4 workgroupBasePos;
+    uvec3 workgroupBasePos;
 };
 taskPayloadSharedEXT TaskPayload payload;
+
+layout(constant_id = 1) const bool renderDebugCube = false;
 
 void main() {
     uvec3 workgroupBasePos = gl_WorkGroupID * gl_WorkGroupSize;
@@ -54,12 +58,11 @@ void main() {
                     gl_SubgroupID % 2u);
                 uvec3 invocationPos = workgroupBasePos + localInvocationPos;
                 uvec3 pos = gl_GlobalInvocationID + offset;
-                float density = texelFetch(sampler3D(densityImage, samplerNearest), ivec3(pos), int(lod)).x;
+                float density = texelFetch(sampler3D(densityMap, samplerNearest), ivec3(pos), int(lod)).x;
 
                 uint index = ((x + z) & 1u) + z * 2u + y * 4u;
 
-                bool passes = density >= minThreshold;
-                voxelKey |= uint8_t(density >= minThreshold) << index;
+                voxelKey |= uint8_t(density >= threshold) << index;
             }
         }
     }
@@ -68,25 +71,18 @@ void main() {
     if (!renderDebugCube) {
         indexCount = tris[voxelKey][0u];
         indexCount = min(indexCount, 15u);
-
-        if (indexCount == 0u) {
-            if (gl_LocalInvocationIndex == 0u)
-            SetMeshOutputsEXT(vertexSlotCount, min(maxPrimitives, totalPrimitiveCount));
-
-            return;
-        }
-
     } else {
         indexCount = 12u * 3u;
+        indexCount *= uint(voxelKey != 0u && voxelKey != 255u);
     }
+
+    if (gl_LocalInvocationIndex == 0u) {
+        payload.workgroupBasePos = workgroupBasePos;
+    }
+    payload.voxelKeys[gl_LocalInvocationIndex] = voxelKey;
 
     uint primitiveCount = indexCount / 3u;
     uint subgroupPrimitiveCount = subgroupMax(primitiveCount);
-
-    if (gl_LocalInvocationIndex == 0u) {
-        payload.workgroupBasePos = uvec4(workgroupBasePos, 0u);
-    }
-    payload.voxelKeys[exclusiveOffset] = voxelKey;
-
+    // 1 Workgroup per primitive. 1 Task thread = 1 Mesh thread = 1 triangle of a voxel
     EmitMeshTasksEXT(subgroupPrimitiveCount, 1, 1);
 }
