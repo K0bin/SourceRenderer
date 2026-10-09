@@ -267,9 +267,7 @@ impl RenderPath for VolumeRenderer {
 
         self.geometry.execute(
             &mut cmd_buffer,
-            &camera_buffer,
             &params,
-            &self.options,
             &marching_cubes_map,
             &ibl_textures,
         );
