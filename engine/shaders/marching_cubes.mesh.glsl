@@ -15,7 +15,7 @@
 #extension GL_EXT_maximal_reconvergence : enable
 #extension GL_EXT_nonuniform_qualifier : enable
 
-layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 2) in;
 
 #include "descriptor_sets.inc.glsl"
 #include "frame_set_common.inc.glsl"
@@ -34,6 +34,8 @@ layout(push_constant, std430) uniform Config {
 
 // Nvidia recommends up to 64 vertices and 126 primitives.
 // AMD implements mesh shaders on primitive shaders and thus recommends 1:1 primitives and threads
+
+// 32 primitives * 3 vertices = 96
 const uint vertexCount = 96u;
 layout(triangles, max_vertices = vertexCount, max_primitives = 32u) out;
 
@@ -46,7 +48,7 @@ layout(location = 0) out VertexData {
 
 struct TaskPayload {
     uint8_t[32] voxelKeys;
-    uvec3 workgroupBase; // TODO: turn into morton code
+    uvec3 workgroupBasePos; // TODO: turn into morton code
 };
 taskPayloadSharedEXT TaskPayload payload;
 
@@ -92,54 +94,48 @@ uvec3 indexOffset(uint idx) {
     );
 }
 
-vec4 vertexPosFromIndexOffsets(uint idx1, uint idx2) {
-    uvec3 workgroupBase = payload.workgroupBase.xyz;
-    uvec3 base = workgroupBase + gl_LocalInvocationID;
-    uvec3 vertexPos1 = base + indexOffset(idx1);
-    uvec3 vertexPos2 = base + indexOffset(idx2);
+vec4 vertexPosFromIndexOffsets(uvec3 voxelPosition, uint idx1, uint idx2) {
+    uvec3 vertexPos1 = voxelPosition + indexOffset(idx1);
+    uvec3 vertexPos2 = voxelPosition + indexOffset(idx2);
     return interpolateVertices(vertexPos1, vertexPos2);
 }
 
-vec4 vertexPos(uint triLookupTableValue) {
-    uint index = triLookupTableValue;
+vec4 vertexPos(uvec3 voxelPosition, uint triLookupTableValue) {
     // Naming of those two is confusing because I named them when I translated the loop and built the array index
     // from the loop index.
     // This function goes the other way around (array index -> loop index).
     // Code from the loop variant:
     // uint iDiv3 = i / 3u;
     // uint iMod3 = i % 3u;
-    // uint index = iDiv3 + iMod3 * 4u;
-    uint iMod3 = index / 4u;
-    uint iDiv3 = index % 4u;
+    // uint triLookupTableValue = iDiv3 + iMod3 * 4u;
+    uint iMod3 = triLookupTableValue / 4u;
+    uint iDiv3 = triLookupTableValue % 4u;
 
     uint idx1 = iDiv3 + uint(iMod3 == 1u) * 4u;
     uint idx2 = (iDiv3 + uint(iMod3 != 2u)) % 4u + uint(iMod3 != 0u) * 4u;
-    return vertexPosFromIndexOffsets(idx1, idx2);
+    return vertexPosFromIndexOffsets(voxelPosition, idx1, idx2);
 }
 
-void writeVertex(uint outputPrimitiveIndex, uint triangleVertexIndex) {
-    uvec3 basePosition = payload.workgroupBase.xyz + gl_LocalInvocationID;
-
+void writeVertex(uvec3 voxelPosition, uint voxelKey, uint outFirstVertexIndex, uint triangleVertexIndex) {
     uint inputPrimitiveIndex = gl_WorkGroupID.x;
     uint baseIndex = inputPrimitiveIndex * 3u;
 
-    uint voxelKey = payload.voxelKeys[gl_LocalInvocationIndex];
     uint lookupValue = tris[voxelKey][1u + baseIndex + triangleVertexIndex];
-    vec4 posAndDensity = vertexPos(lookupValue);
+    vec4 posAndDensity = vertexPos(voxelPosition, lookupValue);
     vec3 pos = posAndDensity.xyz;
     float density = posAndDensity.w;
 
     vec4 worldPos = modelMat * vec4(pos, 1.0);
 
-    uint outIndex = outputPrimitiveIndex + triangleVertexIndex;
-    vertexOut[outIndex].out_densityMapUV = (pos + 0.5) / vec3(lodExtents);
+    uint outIndex = outFirstVertexIndex + triangleVertexIndex;
+    vertexOut[outIndex].out_densityMapUV = pos / vec3(lodExtents);
     vertexOut[outIndex].out_worldPosition = worldPos.xyz;
     vertexOut[outIndex].out_density = density;
     gl_MeshVerticesEXT[outIndex].gl_Position = camera.viewProj * worldPos;
 }
 
 
-layout(constant_id = 1) const bool renderDebugCube = false;
+layout(constant_id = 1) const bool renderDebugCube = true;
 const uvec3 cubePositions[8] = uvec3[8](
         uvec3(0, 0, 0), uvec3(1, 0, 0),
         uvec3(1, 1, 0), uvec3(0, 1, 0),
@@ -154,19 +150,17 @@ const uvec3 cubeIndices[12] = uvec3[12](
         uvec3(6, 2, 3), uvec3(3, 7, 6), // Top
         uvec3(1, 5, 4), uvec3(4, 0, 1)  // Bottom
 );
-void writeCubeVertex(uint outputPrimitiveIndex, uint triangleVertexIndex) {
-    uvec3 basePosition = payload.workgroupBase.xyz + gl_LocalInvocationID;
-
+void writeCubeVertex(uvec3 voxelPosition, uint outFirstVertexIndex, uint triangleVertexIndex) {
     uint inputPrimitiveIndex = gl_WorkGroupID.x;
     uint baseIndex = inputPrimitiveIndex * 3u;
 
-    uvec3 intVtx = cubePositions[cubeIndices[inputPrimitiveIndex][triangleVertexIndex]] + basePosition;
+    uvec3 intVtx = cubePositions[cubeIndices[inputPrimitiveIndex][triangleVertexIndex]] + voxelPosition;
     vec3 pos = vec3(intVtx) - 0.5;
 
     vec4 worldPos = modelMat * vec4(pos, 1.0);
 
-    uint outIndex = outputPrimitiveIndex + triangleVertexIndex;
-    vertexOut[outIndex].out_densityMapUV = (pos + 0.5) / vec3(lodExtents);
+    uint outIndex = outFirstVertexIndex + triangleVertexIndex;
+    vertexOut[outIndex].out_densityMapUV = pos / vec3(lodExtents);
     vertexOut[outIndex].out_worldPosition = worldPos.xyz;
     vertexOut[outIndex].out_density = 1.0;
     gl_MeshVerticesEXT[outIndex].gl_Position = camera.viewProj * worldPos;
@@ -176,21 +170,24 @@ void writeCubeVertex(uint outputPrimitiveIndex, uint triangleVertexIndex) {
 void main() {
     uint voxelKey = payload.voxelKeys[gl_LocalInvocationIndex];
     bool hasGeometry = voxelKey != 0u && voxelKey != 255u;
-    hasGeometry = hasGeometry && tris[voxelKey][0] < gl_WorkGroupID.x * 3u;
+    hasGeometry = hasGeometry && (renderDebugCube || tris[voxelKey][0] > gl_WorkGroupID.x * 3u);
     uint primitiveIndex = subgroupExclusiveAdd(uint(hasGeometry));
 
+    uint totalPrimitiveCount = subgroupAdd(uint(hasGeometry));
+    SetMeshOutputsEXT(totalPrimitiveCount * 3u, totalPrimitiveCount);
+
+    uvec3 voxelPosition = payload.workgroupBasePos.xyz + gl_LocalInvocationID;
     if (hasGeometry) {
+        uint firstVertex = primitiveIndex * 3u;
+        gl_PrimitiveTriangleIndicesEXT[primitiveIndex] = uvec3(firstVertex, firstVertex + 1u, firstVertex + 2u);
         if (!renderDebugCube) {
-            writeVertex(primitiveIndex, 0u);
-            writeVertex(primitiveIndex, 1u);
-            writeVertex(primitiveIndex, 2u);
+            writeVertex(voxelPosition, voxelKey, firstVertex, 0u);
+            writeVertex(voxelPosition, voxelKey, firstVertex, 1u);
+            writeVertex(voxelPosition, voxelKey, firstVertex, 2u);
         } else {
-            writeCubeVertex(primitiveIndex, 0u);
-            writeCubeVertex(primitiveIndex, 1u);
-            writeCubeVertex(primitiveIndex, 2u);
+            writeCubeVertex(voxelPosition, firstVertex, 0u);
+            writeCubeVertex(voxelPosition, firstVertex, 1u);
+            writeCubeVertex(voxelPosition, firstVertex, 2u);
         }
     }
-
-    uint totalPrimitiveCount = subgroupAdd(uint(hasGeometry) * 3u);
-    SetMeshOutputsEXT(vertexCount, totalPrimitiveCount);
 }

@@ -20,7 +20,6 @@ layout(local_size_x = 4, local_size_y = 4, local_size_z = 2) in;
 #include "frame_set_common.inc.glsl"
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform texture3D densityMap;
-
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 7, std430) uniform TriTable {
     int[256u][17u] tris;
 };
@@ -38,13 +37,10 @@ struct TaskPayload {
 };
 taskPayloadSharedEXT TaskPayload payload;
 
-layout(constant_id = 1) const bool renderDebugCube = false;
+layout(constant_id = 1) const bool renderDebugCube = true;
 
 void main() {
     uvec3 workgroupBasePos = gl_WorkGroupID * gl_WorkGroupSize;
-
-    if (subgroupAll(any(greaterThanEqual(gl_GlobalInvocationID + uvec3(1u), lodExtents))))
-    return;
 
     uint8_t voxelKey = uint8_t(0u);
     for (uint z = 0u; z < 2u; z++) {
@@ -52,11 +48,7 @@ void main() {
             for (uint x = 0u; x < 2u; x++) {
                 uvec3 offset = uvec3(x, y, z);
 
-                uvec3 localInvocationPos = uvec3(
-                    gl_SubgroupID / (4u * 2u),
-                    (gl_SubgroupID / 2u) % 4u,
-                    gl_SubgroupID % 2u);
-                uvec3 invocationPos = workgroupBasePos + localInvocationPos;
+                uvec3 invocationPos = workgroupBasePos + gl_LocalInvocationID;
                 uvec3 pos = gl_GlobalInvocationID + offset;
                 float density = texelFetch(sampler3D(densityMap, samplerNearest), ivec3(pos), int(lod)).x;
 
