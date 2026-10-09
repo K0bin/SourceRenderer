@@ -503,7 +503,7 @@ fn build_texture_data<const STEPS: usize>(width: u32, positions: &[f32; STEPS], 
         let start_color = colors[start_pos_index];
         let end_color = colors[start_pos_index + 1];
 
-        let lerp_pos = (pos - start_position) / (end_position - start_position).max(0.0).min(1.0);
+        let lerp_pos = ((pos - start_position) / (end_position - start_position)).max(0.0).min(1.0);
         for j in 0..components  {
             let mut color_component_float = start_color[j] * (1.0f32 - lerp_pos);
             color_component_float += end_color[j] * lerp_pos;
