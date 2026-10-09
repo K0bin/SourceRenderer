@@ -57,6 +57,27 @@ pub enum PipelineBinding<'a> {
     Compute(&'a super::ComputePipeline),
     RayTracing(&'a super::RayTracingPipeline),
 }
+impl<'a> From<&'a super::GraphicsPipeline> for PipelineBinding<'a> {
+    fn from(pipeline: &'a GraphicsPipeline) -> Self {
+        PipelineBinding::Graphics(pipeline)
+    }
+}
+impl<'a> From<&'a super::MeshGraphicsPipeline> for PipelineBinding<'a> {
+    fn from(pipeline: &'a MeshGraphicsPipeline) -> Self {
+        PipelineBinding::MeshGraphics(pipeline)
+    }
+}
+impl<'a> From<&'a super::RayTracingPipeline> for PipelineBinding<'a> {
+    fn from(pipeline: &'a RayTracingPipeline) -> Self {
+        PipelineBinding::RayTracing(pipeline)
+    }
+}
+impl<'a> From<&'a super::ComputePipeline> for PipelineBinding<'a> {
+    fn from(pipeline: &'a ComputePipeline) -> Self {
+        PipelineBinding::Compute(pipeline)
+    }
+}
+
 pub struct CommandBuffer<'a> {
     command_pool: AtomicRefMut<'a, CommandPool>,
     cmd_buffer_handle: ManuallyDrop<active_gpu_backend::CommandBuffer>,
