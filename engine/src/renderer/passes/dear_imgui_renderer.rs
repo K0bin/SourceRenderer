@@ -291,8 +291,6 @@ impl DearImguiRenderer {
                     assert_eq!(*width, texture.info().width);
                     assert_eq!(*height, texture.info().height);
                     for rect in rects {
-                        log::warn!("EPOCH: {:?}: Copy rect to {:?}: {:?}", snapshot.epoch(), texture_request.texture(), rect.rect);
-
                         let data_buffer = command_buffer
                             .upload_dynamic_data(device, &rect.data, BufferUsage::COPY_SRC)
                             .unwrap();
