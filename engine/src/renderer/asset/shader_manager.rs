@@ -161,6 +161,13 @@ impl<'a> PathPipelineShaderStage<'a> {
             spec_consts: Some(spec_consts),
         }
     }
+
+    pub fn with_spec_consts_opt(&self, spec_consts: Option<&'a HashMap<u32, SpecConstValue>>) -> Self {
+        Self {
+            shader_path: self.shader_path,
+            spec_consts,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
