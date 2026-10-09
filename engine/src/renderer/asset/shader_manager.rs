@@ -361,6 +361,21 @@ pub struct MeshGraphicsPipelineInfo<'a> {
     pub depth_stencil_format: Format,
 }
 
+impl<'a> MeshGraphicsPipelineInfo<'a> {
+    pub fn from_legacy(info: &GraphicsPipelineInfo<'a>, ts_path: &Option<PathPipelineShaderStage<'a>>, ms_path: &PathPipelineShaderStage<'a>) -> Self {
+        MeshGraphicsPipelineInfo {
+            ts: ts_path.clone(),
+            ms: ms_path.clone(),
+            fs: info.fs.clone(),
+            rasterizer: info.rasterizer.clone(),
+            depth_stencil: info.depth_stencil.clone(),
+            blend: info.blend.clone(),
+            render_target_formats: info.render_target_formats.clone(),
+            depth_stencil_format: info.depth_stencil_format,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct MeshGraphicsCompileTask {
     ts: Option<HandlePipelineShaderStage>,
