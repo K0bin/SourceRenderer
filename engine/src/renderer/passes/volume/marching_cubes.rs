@@ -593,7 +593,11 @@ impl MarchingCubesPass {
                 }
                 let buffer_name = key.buffer_name();
 
-                Self::create_buffers(pass_params.resources, &buffer_name);
+                if !pass_params.device.supports_mesh_shader() {
+                    Self::create_buffers(pass_params.resources, &buffer_name);
+                } else {
+                    pass_params.resources.destroy_buffer(&buffer_name);
+                }
                 map.insert(
                     key,
                     MarchingCubesInfo {
@@ -608,6 +612,10 @@ impl MarchingCubesPass {
                 volume_meshes.len() * std::mem::size_of::<MarchingCubesIndirectCall>();
             meshes_grouped_by_dispatch
                 .push(((volume_texture, texture_lod, as_cube), volume_meshes));
+        }
+
+        if pass_params.device.supports_mesh_shader() {
+            return map;
         }
 
         let mut keys_to_destroy = SmallVec::<[String; 2]>::new();
