@@ -591,20 +591,22 @@ impl GeometryPass {
 
         let mut slices: SmallVec<[Ref<Arc<BufferSlice>>; 4]> =
             SmallVec::with_capacity(params.scene.scene.volume_mesh_instances().len());
-        for drawable in params.scene.scene.volume_mesh_instances() {
-            let key = MarchingCubesKey::new(
-                drawable.volume_texture,
-                drawable.texture_lod,
-                drawable.entity,
-            );
-            let buffer_info = marching_cubes_map.get(&key).unwrap();
-            slices.push(resources.access_buffer(
-                cmd_buffer,
-                &buffer_info.buffer_name,
-                BarrierSync::INDEX_INPUT,
-                BarrierAccess::INDEX_READ,
-                HistoryResourceEntry::Current,
-            ));
+        if !params.device.supports_mesh_shader() {
+            for drawable in params.scene.scene.volume_mesh_instances() {
+                let key = MarchingCubesKey::new(
+                    drawable.volume_texture,
+                    drawable.texture_lod,
+                    drawable.entity,
+                );
+                let buffer_info = marching_cubes_map.get(&key).unwrap();
+                slices.push(resources.access_buffer(
+                    cmd_buffer,
+                    &buffer_info.buffer_name,
+                    BarrierSync::INDEX_INPUT,
+                    BarrierAccess::INDEX_READ,
+                    HistoryResourceEntry::Current,
+                ));
+            }
         }
 
         cmd_buffer.flush_barriers();
@@ -960,27 +962,23 @@ impl GeometryPass {
             }],
         );
 
-        let key = MarchingCubesKey::new(
-            drawable.volume_texture,
-            drawable.texture_lod,
-            drawable.entity,
-        );
-        let buffer_info = marching_cubes_map.get(&key).unwrap();
-        let ibo = resources.access_buffer(
-            cmd_buffer,
-            &buffer_info.buffer_name,
-            BarrierSync::INDEX_INPUT,
-            BarrierAccess::INDEX_READ,
-            HistoryResourceEntry::Current,
-        );
         if !is_mesh {
+            let key = MarchingCubesKey::new(
+                drawable.volume_texture,
+                drawable.texture_lod,
+                drawable.entity,
+            );
+            let buffer_info = marching_cubes_map.get(&key).unwrap();
+            let ibo = resources.access_buffer(
+                cmd_buffer,
+                &buffer_info.buffer_name,
+                BarrierSync::INDEX_INPUT,
+                BarrierAccess::INDEX_READ,
+                HistoryResourceEntry::Current,
+            );
             cmd_buffer.set_index_buffer(BufferRef::Regular(&*ibo), 0u64, IndexFormat::U32);
-        } else {
-            cmd_buffer.bind_uniform_buffer(BindingFrequency::Frequent, 7, BufferRef::Regular(tris_table), 0, WHOLE_BUFFER);
-        }
-        cmd_buffer.finish_binding();
 
-        if !is_mesh {
+            cmd_buffer.finish_binding();
             cmd_buffer.draw_indexed_indirect(
                 BufferRef::Regular(&*indirect_buffer),
                 buffer_info.indirect_buffer_offset as u64,
@@ -988,6 +986,8 @@ impl GeometryPass {
                 std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
             );
         } else {
+            cmd_buffer.bind_uniform_buffer(BindingFrequency::Frequent, 7, BufferRef::Regular(tris_table), 0, WHOLE_BUFFER);
+            cmd_buffer.finish_binding();
             cmd_buffer.draw_mesh_tasks(
                 (volume_texture_lod_extents.x + 3) / 4,
                 (volume_texture_lod_extents.y + 3) / 4,
