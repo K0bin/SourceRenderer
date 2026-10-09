@@ -553,6 +553,11 @@ impl MarchingCubesPass {
         true
     }
 
+    #[inline(always)]
+    pub(super) fn tris_table(&self) -> &Arc<BufferSlice> {
+        &self.tris_buffer
+    }
+
     pub fn execute(
         &mut self,
         command_buffer: &mut CommandBuffer,
