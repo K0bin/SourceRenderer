@@ -392,6 +392,11 @@ impl Device {
         self.device.supports_min_max_filter()
     }
 
+    #[inline(always)]
+    pub fn supports_mesh_shader(&self) -> bool {
+        self.device.supports_mesh_shader()
+    }
+
     pub fn block_until_idle(&self) {
         log::warn!("Block until idle.");
         self.flush();
