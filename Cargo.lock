@@ -957,8 +957,7 @@ dependencies = [
 [[package]]
 name = "dear-imgui-build-support"
 version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02da0cb00f1035b67f4caf8c91dd926da86b591350d19b330e2de2f1431e51df"
+source = "git+https://github.com/Latias94/dear-imgui-rs#27bfc9a89ebf7623dbfc0fd6e54aa5bed4d0084c"
 dependencies = [
  "cc",
  "serde",
@@ -968,8 +967,7 @@ dependencies = [
 [[package]]
 name = "dear-imgui-rs"
 version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0c64d4b6afbba994f9d52d531ed82e760d185d4ab39a77cbdfe021f096d4501"
+source = "git+https://github.com/Latias94/dear-imgui-rs#27bfc9a89ebf7623dbfc0fd6e54aa5bed4d0084c"
 dependencies = [
  "bitflags",
  "dear-imgui-sys",
@@ -980,8 +978,7 @@ dependencies = [
 [[package]]
 name = "dear-imgui-sys"
 version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18dff8796ca8ea21fae88ea91b6111898ba86ef14cac20d1f149138f5fbb2ff0"
+source = "git+https://github.com/Latias94/dear-imgui-rs#27bfc9a89ebf7623dbfc0fd6e54aa5bed4d0084c"
 dependencies = [
  "cc",
  "dear-imgui-build-support",

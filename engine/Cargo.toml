@@ -62,7 +62,7 @@ sourcerenderer_vulkan = { path = "../graphics/vulkan" }
 objc2 = { version = "0.6", features = ["std", "disable-encoding-assertions"] } # disable-encoding-assertions is required otherwise the Metal debugger doesn't work
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-dear-imgui-rs = "0.18"
+dear-imgui-rs = { git = "https://github.com/Latias94/dear-imgui-rs" }
 
 # Force rand crate to use getrandom with wasm-js feature
 [target.'cfg(target_arch = "wasm32")'.dependencies]
