@@ -463,6 +463,7 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
         enabled_features_12.host_query_reset = vk::TRUE;
         enabled_features_12.scalar_block_layout = supported_features_12.scalar_block_layout;
         enabled_features_12.shader_float16 = supported_features_12.shader_float16;
+        enabled_features_12.shader_int8 = supported_features_12.shader_int8;
         enabled_features_13.dynamic_rendering = vk::TRUE;
         enabled_features.features.independent_blend = vk::TRUE;
         _features_shader_atomic_float = supported_features_shader_atomic_float;
