@@ -323,20 +323,6 @@ impl RendererScene {
     }
 
     pub fn set_ui_data(&self, data: ImguiFrameSnapshot) {
-        for texture_request in data.texture_requests() {
-            match texture_request.operation() {
-                dear_imgui_rs::TextureOp::Update {
-                    rects,
-                    ..
-                } => {
-                    for rect in rects {
-                        log::warn!("EPOCH: {:?}: Copy rect to {:?}: {:?}", data.epoch(), texture_request.texture(), rect.rect);
-                    }
-                }
-                _ => {}
-            }
-        }
-
         self.latest_imgui.replace(Some(data));
     }
 
