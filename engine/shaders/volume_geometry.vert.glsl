@@ -12,7 +12,6 @@ layout(location = 2) out vec3 out_densityMapUV;
 
 layout(push_constant) uniform VeryHighFrequencyUbo {
     mat4 model;
-//mat4 invModel;
     uvec3 lodExtents;
     float threshold;
     uint lod;

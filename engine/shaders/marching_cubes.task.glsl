@@ -25,10 +25,10 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 7, std430) uniform TriTable {
 };
 
 layout(push_constant, std430) uniform Config {
-    mat4 modelMat;
+    mat4 model;
     uvec3 lodExtents;
-    uint lod;
     float threshold;
+    uint lod;
 };
 
 struct TaskPayload {
@@ -37,7 +37,7 @@ struct TaskPayload {
 };
 taskPayloadSharedEXT TaskPayload payload;
 
-layout(constant_id = 1) const bool renderDebugCube = true;
+layout(constant_id = 1) const bool renderDebugCube = false;
 
 void main() {
     uvec3 workgroupBasePos = gl_WorkGroupID * gl_WorkGroupSize;
@@ -48,7 +48,6 @@ void main() {
             for (uint x = 0u; x < 2u; x++) {
                 uvec3 offset = uvec3(x, y, z);
 
-                uvec3 invocationPos = workgroupBasePos + gl_LocalInvocationID;
                 uvec3 pos = gl_GlobalInvocationID + offset;
                 float density = texelFetch(sampler3D(densityMap, samplerNearest), ivec3(pos), int(lod)).x;
 

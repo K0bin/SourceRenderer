@@ -26,10 +26,10 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 7, std430) uniform TriTable {
 };
 
 layout(push_constant, std430) uniform Config {
-    mat4 modelMat;
+    mat4 model;
     uvec3 lodExtents;
-    uint lod;
     float threshold;
+    uint lod;
 };
 
 // Nvidia recommends up to 64 vertices and 126 primitives.
@@ -54,11 +54,10 @@ taskPayloadSharedEXT TaskPayload payload;
 
 
 vec4 interpolateVertices(uvec3 pos1, uvec3 pos2) {
-    vec3 imgSize = vec3(lodExtents);
     vec3 fpos1 = vec3(pos1) + 0.5;
     vec3 fpos2 = vec3(pos2) + 0.5;
-    float value1 = textureLod(sampler3D(densityMap, samplerLinear), fpos1 / imgSize, lod).x;
-    float value2 = textureLod(sampler3D(densityMap, samplerLinear), fpos2 / imgSize, lod).x;
+    float value1 = texelFetch(sampler3D(densityMap, samplerNearest), ivec3(pos1), int(lod)).x;
+    float value2 = texelFetch(sampler3D(densityMap, samplerNearest), ivec3(pos2), int(lod)).x;
     if (abs(value1 - threshold) < 0.00001 || abs(value1 - value2) < 0.00001) {
         return vec4(fpos1, value1);
     }
@@ -125,7 +124,7 @@ void writeVertex(uvec3 voxelPosition, uint voxelKey, uint outFirstVertexIndex, u
     vec3 pos = posAndDensity.xyz;
     float density = posAndDensity.w;
 
-    vec4 worldPos = modelMat * vec4(pos, 1.0);
+    vec4 worldPos = model * vec4(pos, 1.0);
 
     uint outIndex = outFirstVertexIndex + triangleVertexIndex;
     vertexOut[outIndex].out_densityMapUV = pos / vec3(lodExtents);
@@ -135,7 +134,7 @@ void writeVertex(uvec3 voxelPosition, uint voxelKey, uint outFirstVertexIndex, u
 }
 
 
-layout(constant_id = 1) const bool renderDebugCube = true;
+layout(constant_id = 1) const bool renderDebugCube = false;
 const uvec3 cubePositions[8] = uvec3[8](
         uvec3(0, 0, 0), uvec3(1, 0, 0),
         uvec3(1, 1, 0), uvec3(0, 1, 0),
@@ -155,9 +154,9 @@ void writeCubeVertex(uvec3 voxelPosition, uint outFirstVertexIndex, uint triangl
     uint baseIndex = inputPrimitiveIndex * 3u;
 
     uvec3 intVtx = cubePositions[cubeIndices[inputPrimitiveIndex][triangleVertexIndex]] + voxelPosition;
-    vec3 pos = vec3(intVtx) - 0.5;
+    vec3 pos = vec3(intVtx);
 
-    vec4 worldPos = modelMat * vec4(pos, 1.0);
+    vec4 worldPos = model * vec4(pos, 1.0);
 
     uint outIndex = outFirstVertexIndex + triangleVertexIndex;
     vertexOut[outIndex].out_densityMapUV = pos / vec3(lodExtents);
