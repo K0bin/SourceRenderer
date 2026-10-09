@@ -401,6 +401,28 @@ impl RendererAssetsReadOnly<'_> {
     }
 
     #[inline(always)]
+    pub fn has_pipeline(
+        &self,
+        handle: AssetHandle,
+    ) -> bool {
+        match handle.asset_type() {
+            AssetType::GraphicsPipeline => {
+                self.get_graphics_pipeline(handle.into()).is_some()
+            }
+            AssetType::MeshGraphicsPipeline => {
+                self.get_mesh_graphics_pipeline(handle.into()).is_some()
+            }
+            AssetType::ComputePipeline => {
+                self.get_compute_pipeline(handle.into()).is_some()
+            }
+            AssetType::RayTracingPipeline => {
+                self.get_ray_tracing_pipeline(handle.into()).is_some()
+            }
+            _ => panic!("Asset handle is not a pipeline")
+        }
+    }
+
+    #[inline(always)]
     pub fn get_graphics_pipeline(
         &self,
         handle: GraphicsPipelineHandle,
