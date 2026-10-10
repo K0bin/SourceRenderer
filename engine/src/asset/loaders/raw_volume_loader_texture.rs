@@ -163,9 +163,14 @@ impl AssetLoader for RawVolumeLoaderTexture {
                         let mut value = 0f32;
                         let mut value_min = f32::MAX;
                         let mut value_max = f32::MIN;
-                        for z in 0usize..2 {
-                            for y in 0usize..2 {
-                                for x in 0usize..2 {
+
+                        let sample_step_x = ((source_image_width as usize) - x_base).min(3);
+                        let sample_step_y = ((source_image_height as usize) - y_base).min(3);
+                        let sample_step_z = ((source_image_depth as usize) - z_base).min(3);
+
+                        for z in 0usize..sample_step_z {
+                            for y in 0usize..sample_step_y {
+                                for x in 0usize..sample_step_x {
                                     let i = (z_base + z)
                                         * (source_image_width as usize)
                                         * (source_image_height as usize)
@@ -174,8 +179,14 @@ impl AssetLoader for RawVolumeLoaderTexture {
 
                                     let last_mip_data = data.last().unwrap();
                                     let val = last_mip_data[i].to_f32();
-                                    value += val / 8.0f32;
 
+                                    if x < 2 && y < 2 && z < 2 {
+                                        value += val / 8.0f32;
+                                    }
+
+                                    // Marching cubes always checks the 3 pixels around it.
+                                    // So to avoid problems at the edges of 2x2x2 voxels, we use check
+                                    // 3x3x3 voxels for every min/max but only advance by 2x2
                                     let val_max =
                                         data_max.last().unwrap_or(last_mip_data)[i].to_f32();
                                     value_max = value_max.max(val_max);
