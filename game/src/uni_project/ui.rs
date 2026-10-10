@@ -23,11 +23,11 @@ pub(super) struct UIPlugin;
 impl Plugin for UIPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(UIState::default());
-        app.add_systems(Update, (volume_meshes_ui_system, pick_hdri_ui_system, import_materials_ui_system, materials_ui_system));
+        app.add_systems(Update, (volume_meshes_ui_system, renderer_options_ui_system, import_materials_ui_system, materials_ui_system));
     }
 }
 
-fn pick_hdri_ui_system(
+fn renderer_options_ui_system(
     imgui: NonSendMut<DearImgui>,
     mut options: ResMut<VolumeRendererOptions>,
 ) {
@@ -61,6 +61,9 @@ fn pick_hdri_ui_system(
             ) {
                 options.background_hdri = hdris[current_idx].1.map(|s| s.to_string());
             }
+            ui.text("Use Mesh Shader");
+            ui.same_line();
+            ui.checkbox("##meshshader", &mut options.use_mesh_shader);
         });
 }
 

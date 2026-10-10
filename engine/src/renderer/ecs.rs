@@ -39,12 +39,14 @@ pub struct VolumeMeshInstance {
 #[derive(Clone, Debug, PartialEq, Resource)]
 pub struct VolumeRendererOptions {
     pub background_hdri: Option<String>,
+    pub use_mesh_shader: bool,
 }
 
 impl Default for VolumeRendererOptions {
     fn default() -> Self {
         Self {
             background_hdri: None,
+            use_mesh_shader: false,
         }
     }
 }

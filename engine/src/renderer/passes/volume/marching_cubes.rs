@@ -15,6 +15,7 @@ use sourcerenderer_core::gpu::SpecConstValue;
 use std::cell::Ref;
 use std::collections::HashMap;
 use std::sync::Arc;
+use crate::renderer::VolumeRendererOptions;
 
 pub const MAX_SIZE: u32 = 512;
 
@@ -562,6 +563,7 @@ impl MarchingCubesPass {
         &mut self,
         command_buffer: &mut CommandBuffer,
         pass_params: &mut RenderPassParameters<'_>,
+        options: &VolumeRendererOptions,
     ) -> HashMap<MarchingCubesKey, MarchingCubesInfo> {
         command_buffer.clear_all_bindings(BindingFrequency::Frequent);
         command_buffer.clear_all_bindings(BindingFrequency::VeryFrequent);
@@ -593,10 +595,10 @@ impl MarchingCubesPass {
                 }
                 let buffer_name = key.buffer_name();
 
-                if !pass_params.device.supports_mesh_shader() {
-                    Self::create_buffers(pass_params.resources, &buffer_name);
-                } else {
+                if pass_params.device.supports_mesh_shader() && options.use_mesh_shader {
                     pass_params.resources.destroy_buffer(&buffer_name);
+                } else {
+                    Self::create_buffers(pass_params.resources, &buffer_name);
                 }
                 map.insert(
                     key,
@@ -614,7 +616,7 @@ impl MarchingCubesPass {
                 .push(((volume_texture, texture_lod, as_cube), volume_meshes));
         }
 
-        if pass_params.device.supports_mesh_shader() {
+        if pass_params.device.supports_mesh_shader() && options.use_mesh_shader {
             return map;
         }
 

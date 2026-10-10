@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use std::default::Default;
 use std::sync::Arc;
 use crate::asset::{AssetHandle, MaterialHandle};
+use crate::renderer::VolumeRendererOptions;
 
 #[repr(C)]
 #[derive(Clone, Copy, Zeroable, Pod)]
@@ -488,6 +489,7 @@ impl GeometryPass {
         &mut self,
         cmd_buffer: &mut CommandBuffer,
         params: &RenderPassParameters,
+        options: &VolumeRendererOptions,
         marching_cubes_map: &HashMap<MarchingCubesKey, MarchingCubesInfo>,
         tris_table: &Arc<BufferSlice>,
         ibl_textures: &ImageBasedLightingTextures,
@@ -592,7 +594,7 @@ impl GeometryPass {
 
         let mut slices: SmallVec<[Ref<Arc<BufferSlice>>; 4]> =
             SmallVec::with_capacity(params.scene.scene.volume_mesh_instances().len());
-        if !params.device.supports_mesh_shader() {
+        if !params.device.supports_mesh_shader() || !options.use_mesh_shader {
             for drawable in params.scene.scene.volume_mesh_instances() {
                 let key = MarchingCubesKey::new(
                     drawable.volume_texture,
@@ -697,7 +699,7 @@ impl GeometryPass {
                     continue;
                 }
 
-                let pipeline: PipelineBinding = if params.device.supports_mesh_shader() {
+                let pipeline: PipelineBinding = if options.use_mesh_shader && pipelines_mesh.is_some() {
                     if drawable.render_as_cubes {
                         if drawable.ray_march_normals {
                             pipelines_mesh_cube.as_ref().unwrap().opaque
@@ -748,7 +750,7 @@ impl GeometryPass {
                 continue;
             }
 
-            let pipeline: PipelineBinding = if params.device.supports_mesh_shader() {
+            let pipeline: PipelineBinding = if options.use_mesh_shader && pipelines_mesh.is_some() {
                 if drawable.render_as_cubes {
                     if drawable.ray_march_normals {
                         pipelines_mesh_cube.as_ref().unwrap().non_overlapping
@@ -782,7 +784,7 @@ impl GeometryPass {
             } else if drawable.transparent == VolumeDrawableTransparencyMode::Transparent {
                 cmd_buffer.set_stencil_reference(0u32);
             }
-            let pipeline: PipelineBinding = if params.device.supports_mesh_shader() {
+            let pipeline: PipelineBinding = if options.use_mesh_shader && pipelines_mesh.is_some() {
                 if drawable.render_as_cubes {
                     pipelines_mesh_cube.as_ref().unwrap().transparent_prepass.as_ref().into()
                 } else {
@@ -805,7 +807,7 @@ impl GeometryPass {
                 cmd_buffer.set_stencil_reference(0u32);
             }
 
-            let pipeline: PipelineBinding = if params.device.supports_mesh_shader() {
+            let pipeline: PipelineBinding = if options.use_mesh_shader && pipelines_mesh.is_some() {
                 if drawable.render_as_cubes {
                     if drawable.ray_march_normals {
                         pipelines_mesh_cube.as_ref().unwrap().transparent

@@ -116,9 +116,7 @@ impl VolumeRenderer {
 
         Self {
             device: device.clone(),
-            options: VolumeRendererOptions {
-                background_hdri: None,
-            },
+            options: VolumeRendererOptions::default(),
             marching_cubes_pass,
             geometry: geometry_pass,
             ssao,
@@ -252,7 +250,7 @@ impl RenderPath for VolumeRenderer {
 
         let marching_cubes_map = self
             .marching_cubes_pass
-            .execute(&mut cmd_buffer, &mut params);
+            .execute(&mut cmd_buffer, &mut params, &self.options);
 
         self.ibl_pass.execute(&mut cmd_buffer, &mut params);
         let ibl_textures = self.ibl_pass.get_texture();
@@ -268,6 +266,7 @@ impl RenderPath for VolumeRenderer {
         self.geometry.execute(
             &mut cmd_buffer,
             &params,
+            &self.options,
             &marching_cubes_map,
             self.marching_cubes_pass.tris_table(),
             &ibl_textures,
