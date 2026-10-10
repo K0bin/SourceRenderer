@@ -780,6 +780,9 @@ impl GeometryPass {
         // Decide pipeline per-mesh here because we have a fixed order.
         for drawable in &transparent_drawables {
             if drawable.transparent == VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque {
+                if !has_opaque {
+                    continue;
+                }
                 cmd_buffer.set_stencil_reference(1u32);
             } else if drawable.transparent == VolumeDrawableTransparencyMode::Transparent {
                 cmd_buffer.set_stencil_reference(0u32);
@@ -802,6 +805,9 @@ impl GeometryPass {
 
         for drawable in &transparent_drawables {
             if drawable.transparent == VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque {
+                if !has_opaque {
+                    continue;
+                }
                 cmd_buffer.set_stencil_reference(1u32);
             } else if drawable.transparent == VolumeDrawableTransparencyMode::Transparent {
                 cmd_buffer.set_stencil_reference(0u32);
