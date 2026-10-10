@@ -10,7 +10,7 @@ use bevy_ecs::entity::Entity;
 use bytemuck::{Pod, Zeroable};
 use itertools::Itertools;
 use smallvec::SmallVec;
-use sourcerenderer_core::Vec3UI;
+use sourcerenderer_core::{Vec3UI, Vec4UI};
 use sourcerenderer_core::gpu::SpecConstValue;
 use std::cell::Ref;
 use std::collections::HashMap;
@@ -26,6 +26,14 @@ struct MarchingCubesConfig {
     pub lod: u32,
     pub min: Vec3UI,
     pub thresholds_count: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Zeroable, Pod)]
+struct IndirectCommand {
+    pub x: u32,
+    pub y: u32,
+    pub z: u32,
 }
 
 #[derive(Clone, Hash, Eq, PartialEq, Debug)]
@@ -45,7 +53,7 @@ impl MarchingCubesKey {
     }
 
     fn prefix() -> &'static str {
-        "MarchingCubes IBO for "
+        "MarchingCubes Buffer for "
     }
 
     fn buffer_name(&self) -> String {
@@ -62,6 +70,7 @@ impl MarchingCubesKey {
 #[derive(Debug)]
 pub struct MarchingCubesInfo {
     pub buffer_name: String,
+    pub culling_buffer_name: String,
     pub indirect_buffer_offset: usize,
 }
 
@@ -79,6 +88,7 @@ pub struct MarchingCubesIndirectCall {
 }
 
 pub struct MarchingCubesPass {
+    culling_pipelines: [ComputePipelineHandle; 4],
     pipelines: [ComputePipelineHandle; 4],
     cube_pipelines: [ComputePipelineHandle; 4],
     edges_buffer: Arc<BufferSlice>,
@@ -112,6 +122,18 @@ impl MarchingCubesPass {
         for i in 0..4 {
             spec_consts.insert(0u32, SpecConstValue::UInt(i));
             cube_pipelines.push(assets.request_compute_pipeline(PathPipelineShaderStage {
+                shader_path: &shader_path,
+                spec_consts: Some(&spec_consts),
+            }));
+        }
+
+        let mut culling_pipelines = SmallVec::<[ComputePipelineHandle; 4]>::with_capacity(4);
+        spec_consts.insert(1u32, SpecConstValue::UInt(8));
+        spec_consts.insert(2u32, SpecConstValue::UInt(8));
+        spec_consts.insert(3u32, SpecConstValue::UInt(8));
+        for i in 0..4 {
+            spec_consts.insert(0u32, SpecConstValue::UInt(i));
+            culling_pipelines.push(assets.request_compute_pipeline(PathPipelineShaderStage {
                 shader_path: &shader_path,
                 spec_consts: Some(&spec_consts),
             }));
@@ -518,7 +540,7 @@ impl MarchingCubesPass {
         }
     }
 
-    fn create_buffers(resources: &mut RendererResources, name: &str) {
+    fn create_buffers(resources: &mut RendererResources, buffer_name: &str, culling_buffer_name: &str) {
         // The texture might not be loaded yet, it might not be loaded yet.
         let mut resolution_multiplied = 512 * 512 * 512;
 
@@ -528,12 +550,25 @@ impl MarchingCubesPass {
         resolution_multiplied /= 50;
 
         // The theoretical maximum is that every voxel adds 5 triangles, so 15 indices.
-        resources.destroy_buffer(name);
+        resources.destroy_buffer(buffer_name);
         resources.create_buffer(
-            name,
+            buffer_name,
             &BufferInfo {
                 size: (std::mem::size_of::<u32>() * 15 * resolution_multiplied) as u64,
                 usage: BufferUsage::STORAGE | BufferUsage::INDEX | BufferUsage::COPY_DST,
+                sharing_mode: QueueSharingMode::Exclusive,
+            },
+            MemoryUsage::GPUMemory,
+            false,
+        );
+
+        let workgroup_count: usize = ((512 + 7) / 8) * ((512 + 7) / 8) * ((512 + 7) / 8);
+        resources.destroy_buffer(culling_buffer_name);
+        resources.create_buffer(
+            culling_buffer_name,
+            &BufferInfo {
+                size: (std::mem::size_of::<IndirectCommand>() + std::mem::size_of::<u32>() + std::mem::size_of::<Vec4UI>() * workgroup_count) as u64,
+                usage: BufferUsage::CONSTANT | BufferUsage::STORAGE | BufferUsage::INDIRECT | BufferUsage::COPY_DST,
                 sharing_mode: QueueSharingMode::Exclusive,
             },
             MemoryUsage::GPUMemory,
@@ -594,16 +629,18 @@ impl MarchingCubesPass {
                     continue;
                 }
                 let buffer_name = key.buffer_name();
+                let culling_buffer_name = format!("{}_culling", &buffer_name);
 
                 if pass_params.device.supports_mesh_shader() && options.use_mesh_shader {
                     pass_params.resources.destroy_buffer(&buffer_name);
                 } else {
-                    Self::create_buffers(pass_params.resources, &buffer_name);
+                    Self::create_buffers(pass_params.resources, &buffer_name, &culling_buffer_name);
                 }
                 map.insert(
                     key,
                     MarchingCubesInfo {
                         buffer_name,
+                        culling_buffer_name,
                         indirect_buffer_offset: chunk_first_element_atomics_offset
                             + index * std::mem::size_of::<MarchingCubesIndirectCall>(),
                     },
@@ -650,6 +687,13 @@ impl MarchingCubesPass {
                 BarrierAccess::COPY_WRITE,
                 HistoryResourceEntry::Current,
             ));
+            buffer_slices.push(pass_params.resources.access_buffer(
+                command_buffer,
+                &entry.culling_buffer_name,
+                BarrierSync::COPY,
+                BarrierAccess::COPY_WRITE,
+                HistoryResourceEntry::Current,
+            ));
         }
 
         let atomics_slice = pass_params.resources.access_buffer(
@@ -681,6 +725,75 @@ impl MarchingCubesPass {
         }
         buffer_slices.clear();
 
+        // Culling pass
+
+        for d in pass_params.scene.scene.volume_mesh_instances() {
+            let key = MarchingCubesKey::new(d.volume_texture, d.texture_lod, d.entity);
+            let entry = map.get(&key).unwrap();
+
+            buffer_slices.push(pass_params.resources.access_buffer(
+                command_buffer,
+                &entry.culling_buffer_name,
+                BarrierSync::COMPUTE_SHADER,
+                BarrierAccess::STORAGE_WRITE,
+                HistoryResourceEntry::Current,
+            ));
+        }
+        command_buffer.flush_barriers();
+
+        for ((texture, lod, as_cubes), chunk) in &meshes_grouped_by_dispatch {
+            let mut buffer_slices = SmallVec::<[Ref<Arc<BufferSlice>>; 4]>::new();
+            let mut thresholds = SmallVec::<[f32; 4]>::new();
+            assert!(!chunk.is_empty());
+            for d in chunk.iter() {
+                let key = MarchingCubesKey::new(*texture, *lod, d.entity);
+                let map_entry = map.get(&key).unwrap();
+
+                let slice = pass_params.resources.access_buffer(
+                    command_buffer,
+                    &map_entry.culling_buffer_name,
+                    BarrierSync::COMPUTE_SHADER,
+                    BarrierAccess::STORAGE_WRITE,
+                    HistoryResourceEntry::Current,
+                );
+                buffer_slices.push(slice);
+                thresholds.push(d.min_threshold);
+            }
+
+            assert!(buffer_slices.len() <= 16);
+            assert_ne!(buffer_slices.len(), 0);
+            command_buffer.begin_label(&format!(
+                "Marching Cube Texture: {:?} with lod: {}",
+                texture, lod
+            ));
+
+            let entries: SmallVec<[BufferArrayEntry; 2]> = buffer_slices
+                .iter()
+                .map(|slice| BufferArrayEntry {
+                    buffer: BufferRef::Regular(slice),
+                    offset: 0,
+                    length: WHOLE_BUFFER,
+                })
+                .collect();
+
+            let pipeline_index = if entries.len() < self.pipelines.len() {
+                entries.len()
+            } else {
+                0 // Spec const value 0 makes it use the dynamic value
+            };
+            let pipeline = pass_params
+                .assets
+                .get_compute_pipeline(if *as_cubes {
+                    self.cube_pipelines[pipeline_index]
+                } else {
+                    self.pipelines[pipeline_index]
+                })
+                .unwrap();
+            command_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
+        }
+
+        // Actual marching cubes pass
+
         let atomics_slice = pass_params.resources.access_buffer(
             command_buffer,
             Self::ATOMICS_BUFFER_NAME,
@@ -697,6 +810,14 @@ impl MarchingCubesPass {
                 &entry.buffer_name,
                 BarrierSync::COMPUTE_SHADER,
                 BarrierAccess::STORAGE_WRITE,
+                HistoryResourceEntry::Current,
+            ));
+
+            buffer_slices.push(pass_params.resources.access_buffer(
+                command_buffer,
+                &entry.buffer_name,
+                BarrierSync::COMPUTE_SHADER,
+                BarrierAccess::INDIRECT_READ | BarrierAccess::CONSTANT_READ,
                 HistoryResourceEntry::Current,
             ));
         }
