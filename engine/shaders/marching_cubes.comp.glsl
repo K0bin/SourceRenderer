@@ -17,6 +17,8 @@ layout(constant_id = 0) const uint thresholdsCountConst = 0u;
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
 #include "descriptor_sets.inc.glsl"
+#include "frame_set_common.inc.glsl"
+#include "morton_code.inc.glsl"
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0, std430) uniform EdgeTable {
     uint[256u] edges;
@@ -49,9 +51,6 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 5, scalar) buffer bufferatomics 
     IndirectCommand[] commands;
 };
 
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 6) uniform sampler linearSampler;
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 7) uniform sampler nearestSampler;
-
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 8) uniform texture3D densityImageMin;
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 9) uniform texture3D densityImageMax;
 
@@ -73,15 +72,8 @@ uvec3 indexOffset(uint idx) {
 
 uint vertexKey(uvec3 pos1, uvec3 pos2) {
     uvec3 pos = pos1 + pos2;
-
-    uvec3 sizes = uvec3(512u * 2u + 1u);
-    pos = min(sizes - uvec3(1u), pos);
-
-    uint key = pos.z * sizes.x * sizes.y +
-    pos.y * sizes.x +
-    pos.x;
-
-    return key;
+    uvec3 size = uvec3(512u * 2u + 1u);
+    return mortonCode(pos, size);
 }
 
 uint vertexKeyFromIndexOffsets(uint idx1, uint idx2) {
@@ -145,7 +137,7 @@ void main() {
     if (!any(greaterThanEqual(gl_LocalInvocationID, gl_WorkGroupSize - uvec3(1u)))) {
         uvec3 lowResPos = workgroupBase / uvec3(8u);
         // Workgroup 8x8x8 => +3 mip levels but min/max textures don't have the top mip level, so +2
-        float densityMax = texelFetch(sampler3D(densityImageMax, nearestSampler), ivec3(lowResPos), int(lod + 2u)).x;
+        float densityMax = texelFetch(sampler3D(densityImageMax, samplerNearest), ivec3(lowResPos), int(lod + 2u)).x;
         bool empty = true;
         bool full = true;
         for (uint i = 0u; i < finalThresholdsCount; i++) {
@@ -169,7 +161,7 @@ void main() {
                 uvec3 offset = uvec3(x, y, z);
 
                 uvec3 pos = base + offset;
-                float density = texelFetch(sampler3D(densityImage, nearestSampler), ivec3(pos), int(lod)).x;
+                float density = texelFetch(sampler3D(densityImage, samplerNearest), ivec3(pos), int(lod)).x;
 
                 uint index = ((x + z) & 1u) + z * 2u + y * 4u;
 

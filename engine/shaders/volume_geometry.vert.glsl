@@ -5,6 +5,7 @@
 #include "descriptor_sets.inc.glsl"
 #include "camera.inc.glsl"
 #include "frame_set_volume.inc.glsl"
+#include "morton_code.inc.glsl"
 
 layout(location = 0) out float out_density;
 layout(location = 1) out vec3 out_worldPosition;
@@ -39,11 +40,8 @@ vec4 interpolateVertices(uvec3 pos1, uvec3 pos2) {
 
 
 vec4 vertexPosFromKey(uint vertexKey) {
-    uvec3 sizes = uvec3(512u * 2u + 1u);
-
-    uvec3 pos = uvec3(vertexKey % sizes.x,
-            (vertexKey / sizes.x) % sizes.y,
-            vertexKey / (sizes.x * sizes.y));
+    uvec3 size = uvec3(512u * 2u + 1u);
+    uvec3 pos = vectorFromMortonCode(vertexKey, size);
 
     uvec3 pos1 = pos / 2u;
     uvec3 pos2 = pos1 + (pos % 2u);
