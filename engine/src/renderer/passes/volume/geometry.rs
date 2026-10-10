@@ -3,7 +3,7 @@ use crate::renderer::asset::{GraphicsPipelineHandle, GraphicsPipelineInfo, MeshG
 use crate::renderer::drawable::{RendererVolumeDrawable, VolumeDrawableTransparencyMode};
 use crate::renderer::passes::volume::ibl::ImageBasedLightingTextures;
 use crate::renderer::passes::volume::marching_cubes::{
-    MarchingCubesIndirectCall, MarchingCubesInfo, MarchingCubesKey, MarchingCubesPass,
+    MarchingCubesIndirectCall, MarchingCubesPass,
 };
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
@@ -490,7 +490,7 @@ impl GeometryPass {
         cmd_buffer: &mut CommandBuffer,
         params: &RenderPassParameters,
         options: &VolumeRendererOptions,
-        marching_cubes_map: &HashMap<MarchingCubesKey, MarchingCubesInfo>,
+        marching_cubes_map: &super::marching_cubes::OffsetsMap,
         tris_table: &Arc<BufferSlice>,
         ibl_textures: &ImageBasedLightingTextures,
     ) {
@@ -596,15 +596,9 @@ impl GeometryPass {
             SmallVec::with_capacity(params.scene.scene.volume_mesh_instances().len());
         if !params.device.supports_mesh_shader() || !options.use_mesh_shader {
             for drawable in params.scene.scene.volume_mesh_instances() {
-                let key = MarchingCubesKey::new(
-                    drawable.volume_texture,
-                    drawable.texture_lod,
-                    drawable.entity,
-                );
-                let buffer_info = marching_cubes_map.get(&key).unwrap();
                 slices.push(resources.access_buffer(
                     cmd_buffer,
-                    &buffer_info.buffer_name,
+                    &MarchingCubesPass::buffer_name(drawable.entity),
                     BarrierSync::INDEX_INPUT,
                     BarrierAccess::INDEX_READ,
                     HistoryResourceEntry::Current,
@@ -912,7 +906,7 @@ impl GeometryPass {
         assets: &RendererAssetsReadOnly,
         rt_extent: Vec2UI,
         resources: &RendererResources,
-        marching_cubes_map: &HashMap<MarchingCubesKey, MarchingCubesInfo>,
+        marching_cubes_map: &super::marching_cubes::OffsetsMap,
         indirect_buffer: &Arc<BufferSlice>,
         pipeline: PipelineBinding,
         tris_table: &Arc<BufferSlice>,
@@ -972,15 +966,10 @@ impl GeometryPass {
         );
 
         if !is_mesh {
-            let key = MarchingCubesKey::new(
-                drawable.volume_texture,
-                drawable.texture_lod,
-                drawable.entity,
-            );
-            let buffer_info = marching_cubes_map.get(&key).unwrap();
+            let indirect_buffer_offset = *(marching_cubes_map.get(&drawable.entity).unwrap());
             let ibo = resources.access_buffer(
                 cmd_buffer,
-                &buffer_info.buffer_name,
+                &MarchingCubesPass::buffer_name(drawable.entity),
                 BarrierSync::INDEX_INPUT,
                 BarrierAccess::INDEX_READ,
                 HistoryResourceEntry::Current,
@@ -990,7 +979,7 @@ impl GeometryPass {
             cmd_buffer.finish_binding();
             cmd_buffer.draw_indexed_indirect(
                 BufferRef::Regular(&*indirect_buffer),
-                buffer_info.indirect_buffer_offset as u64,
+                indirect_buffer_offset as u64,
                 1u32,
                 std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
             );
