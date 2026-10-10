@@ -660,7 +660,7 @@ impl MarchingCubesPass {
             HistoryResourceEntry::Current,
         );
         command_buffer.flush_barriers();
-        command_buffer.clear_storage_buffer(
+        command_buffer.copy_clear_buffer(
             BufferRef::Regular(&atomics_slice),
             0u64,
             pass_params
@@ -672,7 +672,7 @@ impl MarchingCubesPass {
         );
 
         for slice in buffer_slices.iter() {
-            command_buffer.clear_storage_buffer(
+            command_buffer.copy_clear_buffer(
                 BufferRef::Regular(&slice),
                 0u64,
                 slice.length() / 4,

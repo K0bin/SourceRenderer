@@ -1212,7 +1212,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         }
     }
 
-    unsafe fn clear_storage_texture(
+    unsafe fn copy_clear_texture(
         &mut self,
         texture: &VkTexture,
         array_layer: u32,
@@ -1258,7 +1258,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
         }
     }
 
-    unsafe fn clear_storage_buffer(
+    unsafe fn copy_clear_buffer(
         &mut self,
         buffer: &VkBuffer,
         offset: u64,

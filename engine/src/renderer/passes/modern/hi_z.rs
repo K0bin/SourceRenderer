@@ -88,7 +88,7 @@ impl HierarchicalZPass {
                 HistoryResourceEntry::Current,
             );
             init_cmd_buffer.flush_barriers();
-            init_cmd_buffer.clear_storage_buffer(BufferRef::Regular(&counter_buffer), 0, 4, 0);
+            init_cmd_buffer.copy_clear_buffer(BufferRef::Regular(&counter_buffer), 0, 4, 0);
         }
 
         Self {

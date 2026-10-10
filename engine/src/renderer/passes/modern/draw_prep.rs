@@ -175,7 +175,7 @@ impl DrawPrepPass {
                 HistoryResourceEntry::Current,
             );
             cmd_buffer.flush_barriers();
-            cmd_buffer.clear_storage_buffer(BufferRef::Regular(&draw_buffer), 0, 4, 0);
+            cmd_buffer.copy_clear_buffer(BufferRef::Regular(&draw_buffer), 0, 4, 0);
         }
 
         assert!(pass_params.scene.scene.static_drawables().len() as u32 <= DRAWABLE_CAPACITY);

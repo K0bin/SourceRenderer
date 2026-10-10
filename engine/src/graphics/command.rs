@@ -715,7 +715,7 @@ impl<'a> CommandBuffer<'a> {
         FinishedCommandBuffer::new(cmd_buffer)
     }
 
-    pub fn clear_storage_texture(
+    pub fn copy_clear_texture(
         &mut self,
         view: &super::Texture,
         array_layer: u32,
@@ -723,7 +723,7 @@ impl<'a> CommandBuffer<'a> {
         values: [u32; 4],
     ) {
         unsafe {
-            self.cmd_buffer_handle.clear_storage_texture(
+            self.cmd_buffer_handle.copy_clear_texture(
                 view.handle(),
                 array_layer,
                 mip_level,
@@ -732,7 +732,7 @@ impl<'a> CommandBuffer<'a> {
         }
     }
 
-    pub fn clear_storage_buffer(
+    pub fn copy_clear_buffer(
         &mut self,
         buffer: BufferRef,
         offset: u64,
@@ -745,7 +745,7 @@ impl<'a> CommandBuffer<'a> {
             length: buffer_length,
         } = buffer.deconstruct(self.generation());
         unsafe {
-            self.cmd_buffer_handle.clear_storage_buffer(
+            self.cmd_buffer_handle.copy_clear_buffer(
                 buffer_handle,
                 offset + buffer_offset,
                 length_in_u32s.min((buffer_length - offset) / 4),
