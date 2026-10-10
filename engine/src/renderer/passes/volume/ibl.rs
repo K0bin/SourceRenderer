@@ -365,7 +365,7 @@ impl ImageBasedLightingPreparation {
             mip_levels: 1u32,
             array_length: 1u32,
             samples: SampleCount::Samples1,
-            usage: TextureUsage::SAMPLED | TextureUsage::STORAGE,
+            usage: TextureUsage::SAMPLED | TextureUsage::STORAGE | TextureUsage::COPY_DST,
             supports_srgb: false,
         };
 
