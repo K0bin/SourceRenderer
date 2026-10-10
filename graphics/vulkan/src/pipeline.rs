@@ -756,23 +756,23 @@ impl VkPipeline {
         let entry_point = CString::new(SHADER_ENTRY_POINT_NAME).unwrap();
         let mut context = DescriptorSetLayoutSetupContext::default();
 
-        let mut _fs_spec_info = vk::SpecializationInfo::default();
-        let mut _fs_spec_data = Option::<Box<[u32]>>::None;
-        let mut _fs_spec_map = Option::<Box<[vk::SpecializationMapEntry]>>::None;
+        let mut _ts_spec_info = vk::SpecializationInfo::default();
+        let mut _ts_spec_data = Option::<Box<[u32]>>::None;
+        let mut _ts_spec_map = Option::<Box<[vk::SpecializationMapEntry]>>::None;
 
         if let Some(shader) = info.ts.clone() {
             let (spec_info, spec_data, spec_map) =
                 unsafe { Self::get_spec_map(info.ms.spec_consts) };
 
-            _fs_spec_info = spec_info;
-            _fs_spec_data = Some(spec_data);
-            _fs_spec_map = Some(spec_map);
+            _ts_spec_info = spec_info;
+            _ts_spec_data = Some(spec_data);
+            _ts_spec_map = Some(spec_map);
 
             let shader_stage = vk::PipelineShaderStageCreateInfo {
                 module: shader.shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
                 stage: shader_type_to_vk(shader.shader.shader_type()),
-                p_specialization_info: &_fs_spec_info as *const vk::SpecializationInfo,
+                p_specialization_info: &_ts_spec_info as *const vk::SpecializationInfo,
                 ..Default::default()
             };
             shader_stages.push(shader_stage);
@@ -795,15 +795,27 @@ impl VkPipeline {
             add_shader_to_descriptor_set_layout_setup(device, shader.shader, &mut context);
         }
 
-        if let Some(shader) = info.fs.clone() {
+        let mut _fs_spec_info = vk::SpecializationInfo::default();
+        let mut _fs_spec_data = Option::<Box<[u32]>>::None;
+        let mut _fs_spec_map = Option::<Box<[vk::SpecializationMapEntry]>>::None;
+
+        if let Some(pipeline_shader) = info.fs.as_ref() {
+            let (spec_info, spec_data, spec_map) =
+                unsafe { Self::get_spec_map(&pipeline_shader.spec_consts) };
+
+            _fs_spec_info = spec_info;
+            _fs_spec_data = Some(spec_data);
+            _fs_spec_map = Some(spec_map);
+
             let shader_stage = vk::PipelineShaderStageCreateInfo {
-                module: shader.shader.shader_module(),
+                module: pipeline_shader.shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
-                stage: shader_type_to_vk(shader.shader.shader_type()),
+                stage: shader_type_to_vk(pipeline_shader.shader.shader_type()),
+                p_specialization_info: &_fs_spec_info as *const vk::SpecializationInfo,
                 ..Default::default()
             };
             shader_stages.push(shader_stage);
-            add_shader_to_descriptor_set_layout_setup(device, shader.shader, &mut context);
+            add_shader_to_descriptor_set_layout_setup(device, pipeline_shader.shader, &mut context);
         }
 
         let rasterizer_create_info = vk::PipelineRasterizationStateCreateInfo {
