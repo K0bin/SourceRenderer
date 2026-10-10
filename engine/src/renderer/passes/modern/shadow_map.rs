@@ -221,7 +221,7 @@ impl ShadowMapPass {
             );
 
             cmd_buffer.flush_barriers();
-            cmd_buffer.clear_storage_buffer(
+            cmd_buffer.copy_clear_buffer(
                 BufferRef::Regular(&visibility_buffer),
                 0,
                 visibility_buffer.info().size / 4,

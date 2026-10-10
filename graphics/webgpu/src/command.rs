@@ -907,7 +907,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
             .unwrap();
     }
 
-    unsafe fn clear_storage_texture(
+    unsafe fn copy_clear_texture(
         &mut self,
         _view: &WebGPUTexture,
         _array_layer: u32,
@@ -917,7 +917,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
         todo!("TODO: Write a compute shader to clear storage textures")
     }
 
-    unsafe fn clear_storage_buffer(
+    unsafe fn copy_clear_buffer(
         &mut self,
         buffer: &WebGPUBuffer,
         offset: u64,
@@ -926,7 +926,7 @@ impl gpu::CommandBuffer<WebGPUBackend> for WebGPUCommandBuffer {
     ) {
         if value != 0 {
             todo!(
-                "clear_storage_buffer is only implemented for value 0. TODO: Write a compute shader to clear buffers."
+                "copy_clear_buffer is only implemented for value 0. TODO: Write a compute shader to clear buffers."
             )
         } else {
             let recording: &mut WebGPURecordingCommandBuffer = self.get_recording_mut();

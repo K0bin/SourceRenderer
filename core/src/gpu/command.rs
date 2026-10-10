@@ -268,14 +268,14 @@ pub trait CommandBuffer<B: GPUBackend> {
     );
     unsafe fn copy_buffer(&mut self, src: &B::Buffer, dst: &B::Buffer, region: &BufferCopyRegion);
 
-    unsafe fn clear_storage_texture(
+    unsafe fn copy_clear_texture(
         &mut self,
         view: &B::Texture,
         array_layer: u32,
         mip_level: u32,
         values: [u32; 4],
     );
-    unsafe fn clear_storage_buffer(
+    unsafe fn copy_clear_buffer(
         &mut self,
         buffer: &B::Buffer,
         offset: u64,

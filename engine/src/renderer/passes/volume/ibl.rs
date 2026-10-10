@@ -414,9 +414,9 @@ impl ImageBasedLightingPreparation {
         );
         cmd_buffer.flush_barriers();
 
-        cmd_buffer.clear_storage_texture(&diffuse, 0, 0, [0u32, 0u32, 0u32, 0u32]);
+        cmd_buffer.copy_clear_texture(&diffuse, 0, 0, [0u32, 0u32, 0u32, 0u32]);
         for mip in 0..info.mip_levels {
-            cmd_buffer.clear_storage_texture(&specular, 0, mip, [0u32, 0u32, 0u32, 0u32]);
+            cmd_buffer.copy_clear_texture(&specular, 0, mip, [0u32, 0u32, 0u32, 0u32]);
         }
     }
 
