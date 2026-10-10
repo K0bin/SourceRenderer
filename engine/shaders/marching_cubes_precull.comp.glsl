@@ -22,9 +22,10 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform texture3D densityImag
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 1) uniform texture3D densityImageMin;
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform texture3D densityImageMax;
 
-layout(constant_id = 0) const uint TargetWorkGroupSizeX = 8;
-layout(constant_id = 1) const uint TargetWorkGroupSizeY = 8;
-layout(constant_id = 2) const uint TargetWorkGroupSizeZ = 8;
+layout(constant_id = 0) const uint thresholdsCountConst = 0u;
+layout(constant_id = 1) const uint TargetWorkGroupSizeX = 8;
+layout(constant_id = 2) const uint TargetWorkGroupSizeY = 8;
+layout(constant_id = 3) const uint TargetWorkGroupSizeZ = 8;
 
 struct IndirectCommand {
     uint x;
@@ -35,13 +36,17 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 3, scalar) buffer bufferatomics 
     IndirectCommand command;
     uint _padding;
     uvec4[] workgroupPositions;
+} commandsBuffer[16u];
+
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 4, scalar) uniform thresholds {
+    float[16u] minThresholds;
 };
 
 layout(push_constant, std430) uniform Config {
     uvec3 targetLodExtents;
     uint targetLod;
     uint reduction;
-    float threshold;
+    uint thresholdsCount;
 };
 
 uint divCeil(uint numerator, uint denominator) {
@@ -49,12 +54,6 @@ uint divCeil(uint numerator, uint denominator) {
 }
 
 void main() {
-    // When targetting a workgroup size of 4x4x4, reduction should be at least 2. For 8x8x8 at least 3.
-
-    float density = texelFetch(sampler3D(densityImageMax, samplerNearest), ivec3(gl_GlobalInvocationID), int(targetLod + reduction)).r;
-    if (density < threshold)
-        return;
-
     // Naive count is 1 << reduction but that breaks due to rounding.
     uvec3 cullingVoxelSize = uvec3(
             divCeil(targetLodExtents.x, targetLodExtents.x >> reduction),
@@ -66,21 +65,34 @@ void main() {
             (cullingVoxelSize.x + TargetWorkGroupSizeX - 1u) / TargetWorkGroupSizeX,
             (cullingVoxelSize.y + TargetWorkGroupSizeY - 1u) / TargetWorkGroupSizeY,
             (cullingVoxelSize.y + TargetWorkGroupSizeZ - 1u) / TargetWorkGroupSizeZ);
-    uint totalSpawnedWorkgroups = workgroups.x * workgroups.y * workgroups.z;
+    uint totalWorkgroupsToSpawn = workgroups.x * workgroups.y * workgroups.z;
 
-    // Assume that the number of workgroups spawned by one culling invocation is never more than 65k.
-    // Culling voxel size of 32x32x32 (reduction by 5) is 32k.
+    // When targetting a workgroup size of 4x4x4, reduction should be at least 2. For 8x8x8 at least 3.
 
-    uint firstGlobalWorkgroupIndex = atomicAdd(command.x, totalSpawnedWorkgroups);
-    command.y = 1;
-    command.z = 1;
-    // TODO spread this out on Qualcomm because max workgroups x there is 65535
+    uint finalThresholdsCount = thresholdsCountConst == 0u ? thresholdsCount : thresholdsCountConst;
 
-    for (uint x = 0u; x < workgroups.x; x++) {
-        for (uint y = 0u; y < workgroups.y; y++) {
-            for (uint z = 0u; z < workgroups.z; z++) {
-                uint index = mortonCode(uvec3(x,y,z), workgroups);
-                workgroupPositions[firstGlobalWorkgroupIndex + index] = uvec4(gl_GlobalInvocationID, 1u);
+    float density = texelFetch(sampler3D(densityImageMax, samplerNearest), ivec3(gl_GlobalInvocationID), int(targetLod + reduction)).r;
+    uint nonEmpty = 0u;
+    for (uint i = 0u; i < finalThresholdsCount; i++) {
+        float threshold = minThresholds[i];
+
+        if (density < threshold)
+        continue;
+
+        // Assume that the number of workgroups spawned by one culling invocation is never more than 65k.
+        // Culling voxel size of 32x32x32 (reduction by 5) is 32k.
+
+        uint firstGlobalWorkgroupIndex = atomicAdd(commandsBuffer[i].command.x, totalWorkgroupsToSpawn);
+        commandsBuffer[i].command.y = 1;
+        commandsBuffer[i].command.z = 1;
+        // TODO spread this out on Qualcomm because max workgroups x there is 65535
+
+        for (uint x = 0u; x < workgroups.x; x++) {
+            for (uint y = 0u; y < workgroups.y; y++) {
+                for (uint z = 0u; z < workgroups.z; z++) {
+                    uint index = mortonCode(uvec3(x, y, z), workgroups);
+                    commandsBuffer[i].workgroupPositions[firstGlobalWorkgroupIndex + index] = uvec4(gl_GlobalInvocationID, 1u);
+                }
             }
         }
     }
