@@ -237,6 +237,14 @@ impl RendererResources {
         Ref::map(buffer_ref, |buffer| buffer.buffer.info())
     }
 
+    pub fn has_buffer(&self, name: &str) -> bool {
+        self.buffers.contains_key(name)
+    }
+
+    pub fn has_texture(&self, name: &str) -> bool {
+        self.textures.contains_key(name)
+    }
+
     #[allow(unused)]
     #[inline]
     pub fn buffer_range(&self, name: &str) -> Range {
