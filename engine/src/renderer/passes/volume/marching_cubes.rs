@@ -15,6 +15,7 @@ use sourcerenderer_core::gpu::SpecConstValue;
 use std::cell::Ref;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use bumpalo::Bump;
 use crate::renderer::{RendererStaticDrawable, VolumeRendererOptions};
 
 pub const MAX_SIZE: u32 = 512;
@@ -84,13 +85,6 @@ impl From<&RendererVolumeDrawable> for MarchingCubesKey {
     }
 }
 
-#[derive(Debug)]
-pub struct MarchingCubesInfo {
-    pub buffer_name: String,
-    pub culling_buffer_name: String,
-    pub indirect_buffer_offset: usize,
-}
-
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Zeroable, Pod)]
 pub struct MarchingCubesIndirectCall {
@@ -112,6 +106,7 @@ pub struct MarchingCubesPass {
     tris_buffer: Arc<BufferSlice>,
 }
 
+type OffsetsMap = HashMap::<MarchingCubesKey, u32>;
 impl MarchingCubesPass {
     pub const ATOMICS_BUFFER_NAME: &'static str = "marchingcubes_atomics";
 
@@ -614,30 +609,47 @@ impl MarchingCubesPass {
         &self.tris_buffer
     }
 
+
+    fn build_drawing_map(&mut self,
+                         pass_params: &RenderPassParameters) {
+        let mut indirect_buffer_offset = 0u32;
+        let mut offset_map = OffsetsMap::with_capacity(pass_params.scene.scene.volume_mesh_instances().len());
+        for instance in pass_params
+            .scene
+            .scene
+            .volume_mesh_instances() {
+            let key = MarchingCubesKey::from(instance);
+            offset_map.insert(key, indirect_buffer_offset);
+            indirect_buffer_offset += std::mem::size_of::<IndirectCommand>() as u32;
+        }
+    }
+
+    /// Clears all buffers required to render the active volume mesh instances
     fn clear_buffers(&mut self,
         command_buffer: &mut CommandBuffer,
         pass_params: &RenderPassParameters)
     {
         // Access all of them here to batch barriers
-        let mut buffer_slices: SmallVec<[Ref<Arc<BufferSlice>>; 2]> =
-            SmallVec::with_capacity(pass_params.scene.scene.volume_mesh_instances().len());
+        let mut buffer_slices = HashMap::<MarchingCubesKey, Ref<Arc<BufferSlice>>>::with_capacity(pass_params.scene.scene.volume_mesh_instances().len());
         for d in pass_params.scene.scene.volume_mesh_instances() {
             let key = MarchingCubesKey::new(d.volume_texture, d.texture_lod, d.entity);
 
-            buffer_slices.push(pass_params.resources.access_buffer(
+            let slice = pass_params.resources.access_buffer(
                 command_buffer,
-                &entry.buffer_name,
+                &key.buffer_name(),
                 BarrierSync::COPY,
                 BarrierAccess::COPY_WRITE,
                 HistoryResourceEntry::Current,
-            ));
-            buffer_slices.push(pass_params.resources.access_buffer(
+            );
+            let culling_slice = pass_params.resources.access_buffer(
                 command_buffer,
-                &entry.culling_buffer_name,
+                &key.culling_buffer_name(),
                 BarrierSync::COPY,
                 BarrierAccess::COPY_WRITE,
                 HistoryResourceEntry::Current,
-            ));
+            );
+            buffer_slices.insert(key.clone(), slice);
+            buffer_slices.insert(key, culling_slice);
         }
 
         let atomics_slice = pass_params.resources.access_buffer(
@@ -659,7 +671,7 @@ impl MarchingCubesPass {
             0u32,
         );
 
-        for slice in buffer_slices.iter() {
+        for (_, slice) in buffer_slices.iter() {
             command_buffer.copy_clear_buffer(
                 BufferRef::Regular(&slice),
                 0u64,
@@ -670,9 +682,11 @@ impl MarchingCubesPass {
         buffer_slices.clear();
     }
 
+
+    /// Creates required buffers for every active volume mesh instance.
+    /// Also destroys the ones that are no longer needed.
     fn manage_buffers(&mut self,
-                       options: &VolumeRendererOptions,
-                       pass_params: &mut RenderPassParameters) -> HashMap<MarchingCubesKey, MarchingCubesInfo> {
+                       pass_params: &mut RenderPassParameters) {
         let mut active_buffer_names = HashSet::<String>::with_capacity(pass_params.scene.scene.volume_mesh_instances().len());
         for instance in pass_params
             .scene
@@ -686,57 +700,16 @@ impl MarchingCubesPass {
             Self::create_buffers_for_key(pass_params.resources, &key);
         }
 
+        let mut buffers_to_destroy = SmallVec::<[String; 2]>::new();
         for buffer_name in pass_params.resources.buffer_keys() {
             if !buffer_name.starts_with(MarchingCubesKey::prefix()) || active_buffer_names.contains(buffer_name) {
                 continue;
             }
-            pass_params.resources.destroy_buffer(buffer_name);
+            buffers_to_destroy.push(buffer_name.to_string());
         }
-
-
-        let mut map = HashMap::<MarchingCubesKey, MarchingCubesInfo>::new();
-        let mut chunk_first_element_atomics_offset = 0;
-        for ((volume_texture, texture_lod, as_cube), chunk) in pass_params
-            .scene
-            .scene
-            .volume_mesh_instances()
-            .iter()
-            .chunk_by(|d| (d.volume_texture, d.texture_lod, d.render_as_cubes))
-            .into_iter()
-        {
-            let mut volume_meshes =
-                SmallVec::<[&RendererVolumeDrawable; 1]>::with_capacity(chunk.size_hint().0);
-            for (index, instance) in chunk.enumerate() {
-                let key = MarchingCubesKey::from(instance);
-                if map.contains_key(&key) {
-                    // Skip duplicates. (Can happen with the sliders.)
-                    continue;
-                }
-                active_buffer_names.insert(key.culling_buffer_name());
-
-
-                map.insert(
-                    key,
-                    MarchingCubesInfo {
-                        buffer_name,
-                        culling_buffer_name,
-                        indirect_buffer_offset: chunk_first_element_atomics_offset
-                            + index * std::mem::size_of::<MarchingCubesIndirectCall>(),
-                    },
-                );
-                volume_meshes.push(d);
-            }
-            chunk_first_element_atomics_offset +=
-                volume_meshes.len() * std::mem::size_of::<MarchingCubesIndirectCall>();
-            meshes_grouped_by_dispatch
-                .push(((volume_texture, texture_lod, as_cube), volume_meshes));
-
-
-                Self::create_buffers_for_key(pass_params.resources, &key);
-            }
+        for buffer_name in buffers_to_destroy {
+            pass_params.resources.destroy_buffer(&buffer_name);
         }
-
-        map
     }
 
     pub fn execute(
@@ -744,7 +717,7 @@ impl MarchingCubesPass {
         command_buffer: &mut CommandBuffer,
         pass_params: &mut RenderPassParameters<'_>,
         options: &VolumeRendererOptions,
-    ) -> HashMap<MarchingCubesKey, MarchingCubesInfo> {
+    ) -> OffsetsMap {
         command_buffer.clear_all_bindings(BindingFrequency::Frequent);
         command_buffer.clear_all_bindings(BindingFrequency::VeryFrequent);
 
@@ -800,18 +773,6 @@ impl MarchingCubesPass {
 
         if pass_params.device.supports_mesh_shader() && options.use_mesh_shader {
             return map;
-        }
-
-        let mut keys_to_destroy = SmallVec::<[String; 2]>::new();
-        for buffer_key in pass_params.resources.buffer_keys() {
-            if buffer_key.starts_with(MarchingCubesKey::prefix()) {
-                if !map.keys().any(|k| k.buffer_name() == buffer_key) {
-                    keys_to_destroy.push(buffer_key.to_string());
-                }
-            }
-        }
-        for buffer_key in keys_to_destroy {
-            pass_params.resources.destroy_buffer(&buffer_key);
         }
 
         let resources = &pass_params.resources;
