@@ -530,6 +530,13 @@ impl DearImguiRenderer {
                             resources.nearest_sampler(),
                         );
                     }
+                    dear_imgui_rs::DrawCmdSnapshot::SetSamplerFromTexture => {
+                        command_buffer.bind_sampler(
+                            BindingFrequency::VeryFrequent,
+                            1,
+                            resources.linear_sampler(),
+                        );
+                    }
                 }
             }
         }
