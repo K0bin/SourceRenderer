@@ -608,12 +608,10 @@ fn read_metadata(
     // RESOURCES
     unsafe {
         let mut spv_resources_ptr: spirv_cross_sys::spvc_resources = std::ptr::null_mut();
-        unsafe {
-            spirv_cross_sys::spvc_compiler_create_shader_resources(
-                compiler,
-                &mut spv_resources_ptr,
-            );
-        }
+        spirv_cross_sys::spvc_compiler_create_shader_resources(
+            compiler,
+            &mut spv_resources_ptr,
+        );
 
         read_resources(
             compiler,
