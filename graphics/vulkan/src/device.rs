@@ -627,7 +627,7 @@ impl gpu::Device<VkBackend> for VkDevice {
     }
 
     fn supports_indirect_count_mesh_shader(&self) -> bool {
-        self.supports_indirect_count()
+        self.supports_mesh_shader() && self.supports_indirect_count()
     }
 
     fn supports_min_max_filter(&self) -> bool {

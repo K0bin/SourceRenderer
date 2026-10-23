@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use ash::vk::{self, Handle as _};
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::{self, Buffer as _, PipelineShaderStage, Shader as _, ShaderType, SpecConstValue};
+use sourcerenderer_core::gpu::{self, Buffer as _, PipelineShaderStage, Shader as _, SpecConstValue};
 use sourcerenderer_core::{align_up_32, align_up_64};
 
 use super::*;

@@ -319,7 +319,7 @@ impl GeometryPass {
             &raymarch_spec_consts_hashmap,
         );
 
-        let (mesh_pipelines, mesh_pipelines_non_raymarch, mesh_pipelines_cube, mesh_pipelines_non_raymarch_cube) = if device.supports_indirect_count_mesh_shader() {
+        let (mesh_pipelines, mesh_pipelines_non_raymarch, mesh_pipelines_cube, mesh_pipelines_non_raymarch_cube) = if device.supports_mesh_shader() {
             let mut cube_spec_consts = HashMap::<u32, SpecConstValue>::with_capacity(1);
             cube_spec_consts.insert(0, SpecConstValue::Bool(true));
 
