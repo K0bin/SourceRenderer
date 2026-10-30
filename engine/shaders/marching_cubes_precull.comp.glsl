@@ -26,17 +26,18 @@ layout(constant_id = 0) const uint thresholdsCountConst = 0u;
 layout(constant_id = 1) const uint TargetWorkGroupSizeX = 8;
 layout(constant_id = 2) const uint TargetWorkGroupSizeY = 8;
 layout(constant_id = 3) const uint TargetWorkGroupSizeZ = 8;
+layout(constant_id = 4) const bool PrepareBatchedDispatch = true;
 
 struct IndirectCommand {
     uint x;
     uint y;
     uint z;
 };
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 3, scalar) buffer bufferatomics {
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 3, scalar) buffer indirectbuffers{
     IndirectCommand command;
     uint _padding;
     uvec4[] workgroupPositions;
-} commandsBuffer[16u];
+} indirectBuffers[16u];
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 4, scalar) uniform thresholds {
     float[16u] minThresholds;
@@ -57,43 +58,50 @@ uvec3 divCeil(uvec3 numerator, uvec3 denominator) {
     return (numerator + denominator - uvec3(1u)) / denominator;
 }
 
+void spawnWorkgroups(uvec3 count, uint targetBufferIndex) {
+    // Assume that the number of workgroups spawned by one culling invocation is never more than 65k.
+    // Culling voxel size of 32x32x32 (reduction by 5) is 32k.
+
+    uint totalWorkgroupsToSpawn = count.x * count.y * count.z;
+    uint firstGlobalWorkgroupIndex = atomicAdd(indirectBuffers[targetBufferIndex].command.x, totalWorkgroupsToSpawn);
+    indirectBuffers[targetBufferIndex].command.y = 1;
+    indirectBuffers[targetBufferIndex].command.z = 1;
+    // TODO spread this out on Qualcomm because max workgroups x there is 65535
+
+    for (uint x = 0u; x < count.x; x++) {
+        for (uint y = 0u; y < count.y; y++) {
+            for (uint z = 0u; z < count.z; z++) {
+                uint index = mortonCode(uvec3(x, y, z), count);
+                indirectBuffers[targetBufferIndex].workgroupPositions[firstGlobalWorkgroupIndex + index] = uvec4(gl_GlobalInvocationID, 1u);
+            }
+        }
+    }
+}
+
 void main() {
+    // When targetting a workgroup size of 4x4x4, reduction should be at least 2. For 8x8x8 at least 3.
     uint maxGroupSizeDimension = max(TargetWorkGroupSizeX, max(TargetWorkGroupSizeY, TargetWorkGroupSizeZ));
     uint actualReduction = max(reduction, 1u << findMSB(maxGroupSizeDimension));
 
     // Naive count is 1 << reduction but that breaks due to rounding.
     uvec3 cullingVoxelSize = divCeil(targetLodExtents, targetLodExtents >> actualReduction);
 
+    // Number of workgroups
     uvec3 workgroups = divCeil(cullingVoxelSize, uvec3(TargetWorkGroupSizeX, TargetWorkGroupSizeY, TargetWorkGroupSizeZ));
-    uint totalWorkgroupsToSpawn = workgroups.x * workgroups.y * workgroups.z;
-
-    // When targetting a workgroup size of 4x4x4, reduction should be at least 2. For 8x8x8 at least 3.
 
     uint finalThresholdsCount = thresholdsCountConst == 0u ? thresholdsCount : thresholdsCountConst;
 
     float density = texelFetch(sampler3D(densityImageMax, samplerNearest), ivec3(gl_GlobalInvocationID), int(targetLod + actualReduction)).r;
-    uint nonEmpty = 0u;
+    bool empty = true;
     for (uint i = 0u; i < finalThresholdsCount; i++) {
         float threshold = minThresholds[i];
+        bool notEmptyDrawable = density >= threshold;
+        empty = empty && notEmptyDrawable;
 
-        if (density < threshold)
-        continue;
-
-        // Assume that the number of workgroups spawned by one culling invocation is never more than 65k.
-        // Culling voxel size of 32x32x32 (reduction by 5) is 32k.
-
-        uint firstGlobalWorkgroupIndex = atomicAdd(commandsBuffer[i].command.x, totalWorkgroupsToSpawn);
-        commandsBuffer[i].command.y = 1;
-        commandsBuffer[i].command.z = 1;
-        // TODO spread this out on Qualcomm because max workgroups x there is 65535
-
-        for (uint x = 0u; x < workgroups.x; x++) {
-            for (uint y = 0u; y < workgroups.y; y++) {
-                for (uint z = 0u; z < workgroups.z; z++) {
-                    uint index = mortonCode(uvec3(x, y, z), workgroups);
-                    commandsBuffer[i].workgroupPositions[firstGlobalWorkgroupIndex + index] = uvec4(gl_GlobalInvocationID, 1u);
-                }
-            }
-        }
+        if (!PrepareBatchedDispatch && notEmptyDrawable)
+            spawnWorkgroups(workgroups, i);
     }
+
+    if (PrepareBatchedDispatch && !empty)
+        spawnWorkgroups(workgroups, 0u);
 }
