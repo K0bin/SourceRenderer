@@ -51,13 +51,20 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 5, scalar) buffer bufferatomics 
     IndirectCommand[] commands;
 };
 
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 6, scalar) readonly buffer indirectBuffer {
+    uint _padding0;
+    uint _padding1;
+    uint _padding2;
+    uint _padding3;
+    uvec4[] workgroupPositions;
+};
+
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 8) uniform texture3D densityImageMin;
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 9) uniform texture3D densityImageMax;
 
 layout(push_constant, std430) uniform Config {
     uvec3 lodExtents;
     uint lod;
-    uvec3 minBox;
     uint thresholdsCount;
 };
 
@@ -77,7 +84,7 @@ uint vertexKey(uvec3 pos1, uvec3 pos2) {
 }
 
 uint vertexKeyFromIndexOffsets(uint idx1, uint idx2) {
-    uvec3 workgroupBase = gl_WorkGroupID * gl_WorkGroupSize + minBox;
+    uvec3 workgroupBase = workgroupPositions[gl_WorkGroupID.x].xyz;
     uvec3 base = workgroupBase + gl_LocalInvocationID;
     uvec3 vertexPos1 = base + indexOffset(idx1);
     uvec3 vertexPos2 = base + indexOffset(idx2);
@@ -123,7 +130,7 @@ const uvec3 cubeIndices[12] = uvec3[12](
 );
 
 void main() {
-    uvec3 workgroupBase = gl_WorkGroupID * gl_WorkGroupSize + minBox;
+    uvec3 workgroupBase = workgroupPositions[gl_WorkGroupID.x].xyz;
     uvec3 base = workgroupBase + gl_LocalInvocationID;
 
     if (subgroupAll(any(greaterThanEqual(base + uvec3(1u), lodExtents))))
@@ -211,7 +218,7 @@ void main() {
             }
         } else {
             for (uint i = 0u; i < 12u * 3u && firstIndex + indexCount < maxIndices; i++) {
-                uvec3 vtx = cubePositions[cubeIndices[i / 3u][i % 3u]] + gl_GlobalInvocationID;
+                uvec3 vtx = cubePositions[cubeIndices[i / 3u][i % 3u]] + workgroupBase + gl_LocalInvocationID;
                 indicesBuffers[j].indices[firstIndex + i] = vertexKey(vtx, vtx);
             }
         }

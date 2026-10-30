@@ -53,25 +53,25 @@ uint divCeil(uint numerator, uint denominator) {
     return (numerator + denominator - 1u) / denominator;
 }
 
-void main() {
-    // Naive count is 1 << reduction but that breaks due to rounding.
-    uvec3 cullingVoxelSize = uvec3(
-            divCeil(targetLodExtents.x, targetLodExtents.x >> reduction),
-            divCeil(targetLodExtents.y, targetLodExtents.y >> reduction),
-            divCeil(targetLodExtents.z, targetLodExtents.z >> reduction)
-    );
+uvec3 divCeil(uvec3 numerator, uvec3 denominator) {
+    return (numerator + denominator - uvec3(1u)) / denominator;
+}
 
-    uvec3 workgroups = uvec3(
-            (cullingVoxelSize.x + TargetWorkGroupSizeX - 1u) / TargetWorkGroupSizeX,
-            (cullingVoxelSize.y + TargetWorkGroupSizeY - 1u) / TargetWorkGroupSizeY,
-            (cullingVoxelSize.y + TargetWorkGroupSizeZ - 1u) / TargetWorkGroupSizeZ);
+void main() {
+    uint maxGroupSizeDimension = max(TargetWorkGroupSizeX, max(TargetWorkGroupSizeY, TargetWorkGroupSizeZ));
+    uint actualReduction = max(reduction, 1u << findMSB(maxGroupSizeDimension));
+
+    // Naive count is 1 << reduction but that breaks due to rounding.
+    uvec3 cullingVoxelSize = divCeil(targetLodExtents, targetLodExtents >> actualReduction);
+
+    uvec3 workgroups = divCeil(cullingVoxelSize, uvec3(TargetWorkGroupSizeX, TargetWorkGroupSizeY, TargetWorkGroupSizeZ));
     uint totalWorkgroupsToSpawn = workgroups.x * workgroups.y * workgroups.z;
 
     // When targetting a workgroup size of 4x4x4, reduction should be at least 2. For 8x8x8 at least 3.
 
     uint finalThresholdsCount = thresholdsCountConst == 0u ? thresholdsCount : thresholdsCountConst;
 
-    float density = texelFetch(sampler3D(densityImageMax, samplerNearest), ivec3(gl_GlobalInvocationID), int(targetLod + reduction)).r;
+    float density = texelFetch(sampler3D(densityImageMax, samplerNearest), ivec3(gl_GlobalInvocationID), int(targetLod + actualReduction)).r;
     uint nonEmpty = 0u;
     for (uint i = 0u; i < finalThresholdsCount; i++) {
         float threshold = minThresholds[i];
