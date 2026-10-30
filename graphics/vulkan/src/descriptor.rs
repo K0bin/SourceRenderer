@@ -371,12 +371,15 @@ impl VkDescriptorSet {
                 }) => {
                     assert!(
                         binding_info.descriptor_type == vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
-                            || binding_info.descriptor_type == vk::DescriptorType::STORAGE_BUFFER
+                            || binding_info.descriptor_type == vk::DescriptorType::STORAGE_BUFFER,
+                        "Descriptor binding in slot {} is not a storage buffer. It is a {:?}.", binding, &binding_info
                     );
                     assert_eq!(
                         *offset
                             % (device.properties.limits.min_storage_buffer_offset_alignment as u64),
-                        0u64
+                        0u64,
+                        "Storage buffer at binding {} is not aligned properly.",
+                        binding
                     );
                     let buffer_info = vk::DescriptorBufferInfo {
                         buffer: *buffer,
@@ -400,7 +403,8 @@ impl VkDescriptorSet {
                 VkBoundResource::StorageBufferArray(buffers) => {
                     assert_eq!(
                         binding_info.descriptor_type,
-                        vk::DescriptorType::STORAGE_BUFFER
+                        vk::DescriptorType::STORAGE_BUFFER,
+                        "Descriptor binding in slot {} does not match layout. (left is layout)", binding
                     );
                     assert!(binding_info.count == 0 || binding_info.count >= buffers.len() as u32);
                     assert!(buffers.len() <= MAX_DESCRIPTOR_ARRAY_SIZE as usize);
@@ -414,7 +418,9 @@ impl VkDescriptorSet {
                             *offset
                                 % (device.properties.limits.min_storage_buffer_offset_alignment
                                     as u64),
-                            0u64
+                            0u64,
+                            "Storage buffer in array at binding {} is not aligned properly.",
+                            binding
                         );
                         let buffer_info = vk::DescriptorBufferInfo {
                             buffer: *buffer,
@@ -432,6 +438,12 @@ impl VkDescriptorSet {
                     write.descriptor_count = buffers.len() as u32;
                 }
                 VkBoundResource::StorageTexture(texture) => {
+                    assert_eq!(
+                        binding_info.descriptor_type,
+                        vk::DescriptorType::STORAGE_IMAGE,
+                        "Descriptor binding in slot {} does not match layout. (left is layout)",
+                        binding,
+                    );
                     let texture_info = vk::DescriptorImageInfo {
                         image_view: *texture,
                         sampler: vk::Sampler::null(),
@@ -446,6 +458,12 @@ impl VkDescriptorSet {
                     write.descriptor_type = vk::DescriptorType::STORAGE_IMAGE;
                 }
                 VkBoundResource::StorageTextureArray(textures) => {
+                    assert_eq!(
+                        binding_info.descriptor_type,
+                        vk::DescriptorType::STORAGE_IMAGE,
+                        "Descriptor binding in slot {} does not match layout. (left is layout)",
+                        binding,
+                    );
                     assert!(binding_info.count == 0 || binding_info.count >= textures.len() as u32);
                     assert!(textures.len() <= MAX_DESCRIPTOR_ARRAY_SIZE as usize);
 
@@ -472,12 +490,15 @@ impl VkDescriptorSet {
                 }) => {
                     assert!(
                         binding_info.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
-                            || binding_info.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER
+                            || binding_info.descriptor_type == vk::DescriptorType::UNIFORM_BUFFER,
+                        "Descriptor binding in slot {} is not a uniform buffer. It is a {:?}.", binding, &binding_info
                     );
                     assert_eq!(
                         *offset
                             % (device.properties.limits.min_uniform_buffer_offset_alignment as u64),
-                        0u64
+                        0u64,
+                        "Uniform buffer at binding {} is not aligned properly.",
+                        binding,
                     );
                     let buffer_info = vk::DescriptorBufferInfo {
                         buffer: *buffer,
@@ -501,7 +522,8 @@ impl VkDescriptorSet {
                 VkBoundResource::UniformBufferArray(buffers) => {
                     assert_eq!(
                         binding_info.descriptor_type,
-                        vk::DescriptorType::UNIFORM_BUFFER
+                        vk::DescriptorType::UNIFORM_BUFFER,
+                        "Descriptor binding in slot {} does not match layout. (left is layout)", binding
                     );
                     assert!(binding_info.count == 0 || binding_info.count >= buffers.len() as u32);
                     assert!(buffers.len() <= MAX_DESCRIPTOR_ARRAY_SIZE as usize);
@@ -515,7 +537,9 @@ impl VkDescriptorSet {
                             *offset
                                 % (device.properties.limits.min_uniform_buffer_offset_alignment
                                     as u64),
-                            0u64
+                            0u64,
+                            "Uniform buffer in array at binding {} is not aligned properly.",
+                            binding,
                         );
                         let buffer_info = vk::DescriptorBufferInfo {
                             buffer: *buffer,
@@ -533,6 +557,11 @@ impl VkDescriptorSet {
                     write.descriptor_count = buffers.len() as u32;
                 }
                 VkBoundResource::SampledTexture(texture) => {
+                    assert_eq!(
+                        binding_info.descriptor_type,
+                        vk::DescriptorType::SAMPLED_IMAGE,
+                        "Descriptor binding in slot {} does not match layout. (left is layout)", binding
+                    );
                     let texture_info = vk::DescriptorImageInfo {
                         image_view: *texture,
                         sampler: vk::Sampler::null(),
@@ -547,6 +576,11 @@ impl VkDescriptorSet {
                     write.descriptor_type = vk::DescriptorType::SAMPLED_IMAGE;
                 }
                 VkBoundResource::SampledTextureArray(textures) => {
+                    assert_eq!(
+                        binding_info.descriptor_type,
+                        vk::DescriptorType::SAMPLED_IMAGE,
+                        "Descriptor binding in slot {} does not match layout. (left is layout)", binding
+                    );
                     assert!(binding_info.count == 0 || binding_info.count >= textures.len() as u32);
                     assert!(textures.len() <= MAX_DESCRIPTOR_ARRAY_SIZE as usize);
 
@@ -567,6 +601,11 @@ impl VkDescriptorSet {
                     write.descriptor_count = textures.len() as u32;
                 }
                 VkBoundResource::Sampler(sampler) => {
+                    assert_eq!(
+                        binding_info.descriptor_type,
+                        vk::DescriptorType::SAMPLER,
+                        "Descriptor binding in slot {} does not match layout. (left is layout)", binding
+                    );
                     let texture_info = vk::DescriptorImageInfo {
                         image_view: vk::ImageView::null(),
                         sampler: *sampler,
@@ -581,6 +620,11 @@ impl VkDescriptorSet {
                     write.descriptor_type = vk::DescriptorType::SAMPLER;
                 }
                 VkBoundResource::AccelerationStructure(accel_struct) => {
+                    assert_eq!(
+                        binding_info.descriptor_type,
+                        vk::DescriptorType::ACCELERATION_STRUCTURE_KHR,
+                        "Descriptor binding in slot {} does not match layout. (left is layout)", binding
+                    );
                     acceleration_structures.push(*accel_struct);
                     let acceleration_structure_write =
                         vk::WriteDescriptorSetAccelerationStructureKHR {
@@ -608,12 +652,14 @@ impl VkDescriptorSet {
                     );
                 }
             }
+
             assert_eq!(
                 layout.binding_infos[binding]
                     .as_ref()
                     .unwrap()
                     .descriptor_type,
-                write.descriptor_type
+                write.descriptor_type,
+                "Wrong binding type in slot {:?}. Left is layout", binding
             );
             writes.push(write);
         }
