@@ -148,20 +148,6 @@ void main() {
 
     uint finalThresholdsCount = thresholdsCountConst == 0u ? thresholdsCount : thresholdsCountConst;
 
-    if (!any(greaterThanEqual(gl_LocalInvocationID, gl_WorkGroupSize - uvec3(1u)))) {
-        uvec3 lowResPos = workgroupBase / uvec3(8u);
-        // Workgroup 8x8x8 => +3 mip levels but min/max textures don't have the top mip level, so +2
-        float densityMax = texelFetch(sampler3D(densityImageMax, samplerNearest), ivec3(lowResPos), int(lod + 2u)).x;
-        bool empty = true;
-        bool full = true;
-        for (uint i = 0u; i < finalThresholdsCount; i++) {
-            float threshold = minThresholds[i];
-            empty = empty && (densityMax < threshold);
-        }
-        if (empty)
-        return;
-    }
-
     uint[thresholdsCountConst == 0u ? 16u : thresholdsCountConst] voxelKeys;
     for (uint i = 0u; i < finalThresholdsCount; i++) {
         voxelKeys[i] = 0u;
