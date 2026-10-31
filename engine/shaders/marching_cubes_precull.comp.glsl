@@ -46,7 +46,6 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 4, scalar) uniform thresholds {
 layout(push_constant, std430) uniform Config {
     uvec3 targetLodExtents;
     uint targetLod;
-    uint reduction;
     uint thresholdsCount;
 };
 
@@ -58,7 +57,7 @@ uvec3 divCeil(uvec3 numerator, uvec3 denominator) {
     return (numerator + denominator - uvec3(1u)) / denominator;
 }
 
-void spawnWorkgroups(uvec3 count, uint targetBufferIndex) {
+void spawnWorkgroups(uvec3 count, uvec3 cullingVoxelSize, uint targetBufferIndex) {
     // Assume that the number of workgroups spawned by one culling invocation is never more than 65k.
     // Culling voxel size of 32x32x32 (reduction by 5) is 32k.
 
@@ -68,41 +67,43 @@ void spawnWorkgroups(uvec3 count, uint targetBufferIndex) {
     indirectBuffers[targetBufferIndex].command.z = 1;
     // TODO spread this out on Qualcomm because max workgroups x there is 65535
 
+    uvec3 targetWorkGroupSize = uvec3(TargetWorkGroupSizeX, TargetWorkGroupSizeY, TargetWorkGroupSizeZ);
+
     for (uint x = 0u; x < count.x; x++) {
         for (uint y = 0u; y < count.y; y++) {
             for (uint z = 0u; z < count.z; z++) {
                 uint index = mortonCode(uvec3(x, y, z), count);
-                // TODO: multiply scale up pos to target res
-                indirectBuffers[targetBufferIndex].workgroupPositions[firstGlobalWorkgroupIndex + index] = uvec4(gl_GlobalInvocationID, 1u);
+                indirectBuffers[targetBufferIndex].workgroupPositions[firstGlobalWorkgroupIndex + index] =
+                    uvec4(gl_GlobalInvocationID * cullingVoxelSize + uvec3(x, y, z) * targetWorkGroupSize, 1u);
             }
         }
     }
 }
 
 void main() {
-    // When targetting a workgroup size of 4x4x4, reduction should be at least 2. For 8x8x8 at least 3.
-    uint maxGroupSizeDimension = max(TargetWorkGroupSizeX, max(TargetWorkGroupSizeY, TargetWorkGroupSizeZ));
-    uint actualReduction = max(reduction, findMSB(maxGroupSizeDimension));
-
-    // Naive count is 1 << reduction but that breaks due to rounding.
-    uvec3 cullingVoxelSize = divCeil(targetLodExtents, targetLodExtents >> actualReduction);
+    // When targeting a workgroup size of 4x4x4, reduction should be at least 2. For 8x8x8 at least 3.
+    uvec3 totalInvocations = gl_NumWorkGroups * gl_WorkGroupSize;
+    uvec3 cullingVoxelSize = divCeil(targetLodExtents, totalInvocations);
+    uint mipLod = targetLod + uint(findMSB(max(cullingVoxelSize.x, max(cullingVoxelSize.y, cullingVoxelSize.z))));
 
     // Number of workgroups
-    uvec3 workgroups = divCeil(cullingVoxelSize, uvec3(TargetWorkGroupSizeX, TargetWorkGroupSizeY, TargetWorkGroupSizeZ));
+    uvec3 targetWorkGroupSize = uvec3(TargetWorkGroupSizeX, TargetWorkGroupSizeY, TargetWorkGroupSizeZ);
+    uvec3 workgroups = divCeil(cullingVoxelSize, targetWorkGroupSize);
 
     uint finalThresholdsCount = thresholdsCountConst == 0u ? thresholdsCount : thresholdsCountConst;
 
-    float density = texelFetch(sampler3D(densityImageMax, samplerNearest), ivec3(gl_GlobalInvocationID), int(targetLod + actualReduction)).r;
+    uint maxTextureLod = mipLod - 1u; // the max texture doesn't have the top mip
+    float density = texelFetch(sampler3D(densityImageMax, samplerNearest), ivec3(gl_GlobalInvocationID), int(maxTextureLod)).r;
     bool empty = true;
     for (uint i = 0u; i < finalThresholdsCount; i++) {
         float threshold = minThresholds[i];
         bool notEmptyDrawable = density >= threshold;
-        empty = empty && notEmptyDrawable;
+        empty = empty && !notEmptyDrawable;
 
         if (!PrepareBatchedDispatch && notEmptyDrawable)
-            spawnWorkgroups(workgroups, i);
+            spawnWorkgroups(workgroups, cullingVoxelSize, i);
     }
 
     if (PrepareBatchedDispatch && !empty)
-        spawnWorkgroups(workgroups, 0u);
+        spawnWorkgroups(workgroups, cullingVoxelSize, 0u);
 }

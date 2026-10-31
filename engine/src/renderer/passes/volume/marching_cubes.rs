@@ -33,7 +33,6 @@ struct MarchingCubesConfig {
 struct MarchingCubesCullingConfig {
     pub extent: Vec3UI,
     pub lod: u32,
-    pub reduction: u32,
     pub thresholds_count: u32,
 }
 
@@ -752,24 +751,14 @@ impl MarchingCubesPass {
             }
         }
 
-        let atomics_slice = pass_params.resources.access_buffer(
+        buffer_slices.insert(Self::ATOMICS_BUFFER_NAME.to_string(), pass_params.resources.access_buffer(
             command_buffer,
             Self::ATOMICS_BUFFER_NAME,
             BarrierSync::COPY,
             BarrierAccess::COPY_WRITE,
             HistoryResourceEntry::Current,
-        );
+        ));
         command_buffer.flush_barriers();
-        command_buffer.copy_clear_buffer(
-            BufferRef::Regular(&atomics_slice),
-            0u64,
-            pass_params
-                .resources
-                .buffer_range(Self::ATOMICS_BUFFER_NAME)
-                .length
-                / 4,
-            0u32,
-        );
 
         for (_, slice) in buffer_slices.iter() {
             command_buffer.copy_clear_buffer(
@@ -1082,7 +1071,6 @@ impl MarchingCubesPass {
             &[MarchingCubesCullingConfig {
                 lod: batch.dispatch.lod,
                 extent,
-                reduction,
                 thresholds_count: thresholds.len() as u32,
             }],
         );

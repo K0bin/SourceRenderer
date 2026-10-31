@@ -112,7 +112,7 @@ uint buildVertexKey(uint index) {
 
 const uint maxIndices = (512u * 512u * 512u) / 100u * 15u;
 
-const bool CullingDebug = true;
+const bool cullingDebug = true;
 
 
 layout(constant_id = 1) const bool renderDebugCube = false;
@@ -130,20 +130,19 @@ const uvec3 cubeIndices[12] = uvec3[12](
         uvec3(6, 2, 3), uvec3(3, 7, 6), // Top
         uvec3(1, 5, 4), uvec3(4, 0, 1)  // Bottom
 );
+const uint cubeIndexCount = 12u * 3u;
 
 void main() {
     uvec3 workgroupBase = workgroupPositions[gl_WorkGroupID.x].xyz;
     uvec3 base = workgroupBase + gl_LocalInvocationID;
 
-    if (CullingDebug) {
-        uint indexCount = 12u * 3u;
-        uint firstIndex = atomicAdd(commands[0u].indexCount, indexCount);
+    if (cullingDebug) {
+        uint firstIndex = atomicAdd(commands[0u].indexCount, cubeIndexCount);
         commands[0u].instanceCount = 1u;
-        for (uint i = 0u; i < 12u * 3u && firstIndex + indexCount < maxIndices; i++) {
-            uvec3 vtx = cubePositions[cubeIndices[i / 3u][i % 3u]] + workgroupBase + gl_LocalInvocationID;
+        for (uint i = 0u; i < cubeIndexCount && firstIndex + cubeIndexCount < maxIndices; i++) {
+            uvec3 vtx = cubePositions[cubeIndices[i / 3u][i % 3u]] + base;
             indicesBuffers[0u].indices[firstIndex + i] = vertexKey(vtx, vtx);
         }
-
         return;
     }
 
@@ -212,7 +211,7 @@ void main() {
             if (indexCount == 0u)
             continue;
         } else {
-            indexCount = 12u * 3u;
+            indexCount = cubeIndexCount;
         }
 
         uint subgroupTotalIndices = subgroupAdd(indexCount);
@@ -232,8 +231,8 @@ void main() {
                 indicesBuffers[j].indices[firstIndex + i + 2u] = buildVertexKey(tris[voxelKey][1u + i + 2u]);
             }
         } else {
-            for (uint i = 0u; i < 12u * 3u && firstIndex + indexCount < maxIndices; i++) {
-                uvec3 vtx = cubePositions[cubeIndices[i / 3u][i % 3u]] + workgroupBase + gl_LocalInvocationID;
+            for (uint i = 0u; i < indexCount && firstIndex + indexCount < maxIndices; i++) {
+                uvec3 vtx = cubePositions[cubeIndices[i / 3u][i % 3u]] + base;
                 indicesBuffers[j].indices[firstIndex + i] = vertexKey(vtx, vtx);
             }
         }
