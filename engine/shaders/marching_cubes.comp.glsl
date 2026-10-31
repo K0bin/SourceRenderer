@@ -52,10 +52,6 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 5, scalar) buffer bufferatomics 
 };
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 6, scalar) readonly buffer indirectBuffer {
-    uint _padding0;
-    uint _padding1;
-    uint _padding2;
-    uint _padding3;
     uvec4[] workgroupPositions;
 };
 

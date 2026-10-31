@@ -24,6 +24,10 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 7, std430) uniform TriTable {
     int[256u][17u] tris;
 };
 
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 8, scalar) readonly buffer indirectBuffer {
+    uvec4[] workgroupPositions;
+};
+
 layout(push_constant, std430) uniform Config {
     mat4 model;
     uvec3 lodExtents;
@@ -40,7 +44,8 @@ taskPayloadSharedEXT TaskPayload payload;
 layout(constant_id = 0) const bool renderDebugCube = false;
 
 void main() {
-    uvec3 workgroupBasePos = gl_WorkGroupID * gl_WorkGroupSize;
+    uvec3 workgroupBase = workgroupPositions[gl_WorkGroupID.x].xyz;
+    uvec3 base = workgroupBase + gl_LocalInvocationID;
 
     uint8_t voxelKey = uint8_t(0u);
     for (uint z = 0u; z < 2u; z++) {
@@ -48,7 +53,7 @@ void main() {
             for (uint x = 0u; x < 2u; x++) {
                 uvec3 offset = uvec3(x, y, z);
 
-                uvec3 pos = gl_GlobalInvocationID + offset;
+                uvec3 pos = base + offset;
                 float density = texelFetch(sampler3D(densityMap, samplerNearest), ivec3(pos), int(lod)).x;
 
                 uint index = ((x + z) & 1u) + z * 2u + y * 4u;
@@ -68,7 +73,7 @@ void main() {
     }
 
     if (gl_LocalInvocationIndex == 0u) {
-        payload.workgroupBasePos = workgroupBasePos;
+        payload.workgroupBasePos = workgroupBase;
     }
     payload.voxelKeys[gl_LocalInvocationIndex] = voxelKey;
 

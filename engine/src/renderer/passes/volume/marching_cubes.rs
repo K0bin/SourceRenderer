@@ -21,7 +21,7 @@ use crate::renderer::{VolumeRendererOptions};
 //  - Switch to transient buffers
 //  - Remove indirect commands buffer and put it into the start of every indices buffer
 //  - Skip culling if small mips are selected
-//  - Make it actually work with mesh shaders
+//  - Move culling to separate file
 
 pub const MAX_SIZE: u32 = 512;
 
@@ -654,7 +654,9 @@ impl MarchingCubesPass {
 
                 let name = Self::culling_buffer_name(*entity);
                 if !pass_params.resources.has_buffer(&name) {
-                    let workgroup_count: usize = ((512 + 7) / 8) * ((512 + 7) / 8) * ((512 + 7) / 8);
+                    let workgroup_count: usize = (((512 + MESH_WORK_GROUP_SIZE.x - 1) / MESH_WORK_GROUP_SIZE.x)
+                        * (512 + MESH_WORK_GROUP_SIZE.y - 1) / MESH_WORK_GROUP_SIZE.y
+                        * (512 + MESH_WORK_GROUP_SIZE.z - 1) / MESH_WORK_GROUP_SIZE.z) as usize;
                     pass_params.resources.create_buffer(
                         &name,
                         &BufferInfo {
@@ -672,7 +674,9 @@ impl MarchingCubesPass {
 
                 let dispatch_buffer_name = Self::culling_dispatch_buffer_name(*volume_texture, *texture_lod, *render_as_cubes);
                 if !pass_params.resources.has_buffer(&dispatch_buffer_name) {
-                    let workgroup_count: usize = ((512 + 7) / 8) * ((512 + 7) / 8) * ((512 + 7) / 8);
+                    let workgroup_count: usize = (((512 + WORK_GROUP_SIZE.x - 1) / WORK_GROUP_SIZE.x)
+                        * (512 + WORK_GROUP_SIZE.y - 1) / WORK_GROUP_SIZE.y
+                        * (512 + WORK_GROUP_SIZE.z - 1) / WORK_GROUP_SIZE.z) as usize;
                     pass_params.resources.create_buffer(
                         &dispatch_buffer_name,
                         &BufferInfo {
@@ -1218,7 +1222,7 @@ impl MarchingCubesPass {
             BindingFrequency::Frequent,
             6,
             BufferRef::Regular(indirect_slice),
-            0,
+            (std::mem::size_of::<u32>() * 4) as u64,
             WHOLE_BUFFER,
         );
 

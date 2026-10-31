@@ -498,6 +498,8 @@ impl GeometryPass {
         cmd_buffer.clear_all_bindings(BindingFrequency::Frequent);
         cmd_buffer.clear_all_bindings(BindingFrequency::VeryFrequent);
 
+        let use_mesh_shader = params.device.supports_mesh_shader() && options.use_mesh_shader;
+
         let resources = &params.resources;
 
         if !resources.has_resource(ibl_textures.filtered_diffuse_environment_map_texture_name)
@@ -593,22 +595,35 @@ impl GeometryPass {
             HistoryResourceEntry::Current,
         );
 
-        let mut slices: SmallVec<[Ref<Arc<BufferSlice>>; 4]> =
+        let mut slices: SmallVec<[(String, Ref<Arc<BufferSlice>>); 4]> =
             SmallVec::with_capacity(params.scene.scene.volume_mesh_instances().len());
-        if !params.device.supports_mesh_shader() || !options.use_mesh_shader {
+        if !use_mesh_shader {
             for drawable in params.scene.scene.volume_mesh_instances() {
-                slices.push(resources.access_buffer(
+                let name = MarchingCubesPass::index_buffer_name(drawable.entity);
+                let slice = resources.access_buffer(
                     cmd_buffer,
                     &MarchingCubesPass::index_buffer_name(drawable.entity),
                     BarrierSync::INDEX_INPUT,
                     BarrierAccess::INDEX_READ,
                     HistoryResourceEntry::Current,
-                ));
+                );
+                slices.push((name, slice));
+            }
+        } else {
+            for drawable in params.scene.scene.volume_mesh_instances() {
+                let name = MarchingCubesPass::culling_buffer_name(drawable.entity);
+                let slice = resources.access_buffer(
+                    cmd_buffer,
+                    &name,
+                    BarrierSync::INDIRECT | BarrierSync::TASK_SHADER,
+                    BarrierAccess::INDIRECT_READ | BarrierAccess::STORAGE_READ,
+                    HistoryResourceEntry::Current,
+                );
+                slices.push((name, slice));
             }
         }
 
         cmd_buffer.flush_barriers();
-        std::mem::drop(slices);
 
         cmd_buffer.begin_label("Geometry");
 
@@ -715,8 +730,8 @@ impl GeometryPass {
                         pipelines_non_raymarch.opaque
                     }.as_ref().into()
                 };
-                Self::draw(cmd_buffer, params.assets, color_tex_extent, params.resources,
-                           marching_cubes_map, &marchingcubes_indirect, pipeline, tris_table, drawable);
+                Self::draw(cmd_buffer, params.assets, color_tex_extent, marching_cubes_map, &slices,
+                           &marchingcubes_indirect, pipeline, tris_table, drawable);
             }
         };
 
@@ -766,8 +781,8 @@ impl GeometryPass {
                     pipelines_non_raymarch.non_overlapping
                 }.as_ref().into()
             };
-            Self::draw(cmd_buffer, params.assets, color_tex_extent, params.resources,
-                       marching_cubes_map, &marchingcubes_indirect, pipeline, tris_table, drawable);
+            Self::draw(cmd_buffer, params.assets, color_tex_extent, marching_cubes_map, &slices,
+                       &marchingcubes_indirect, pipeline, tris_table, drawable);
         }
 
         // Geometry 2 - Depth prepass
@@ -792,8 +807,8 @@ impl GeometryPass {
                 pipelines.transparent_prepass.as_ref().into()
             };
 
-            Self::draw(cmd_buffer, params.assets, color_tex_extent, params.resources, marching_cubes_map, &marchingcubes_indirect,
-                       pipeline, tris_table, drawable);
+            Self::draw(cmd_buffer, params.assets, color_tex_extent, marching_cubes_map, &slices,
+                       &marchingcubes_indirect, pipeline, tris_table, drawable);
         }
 
         // Geometry 2 - Transparent
@@ -829,8 +844,8 @@ impl GeometryPass {
                     pipelines_non_raymarch.transparent
                 }.as_ref().into()
             };
-            Self::draw(cmd_buffer, params.assets, color_tex_extent, params.resources,
-                       marching_cubes_map, &marchingcubes_indirect, pipeline, tris_table, drawable);
+            Self::draw(cmd_buffer, params.assets, color_tex_extent, marching_cubes_map, &slices,
+                       &marchingcubes_indirect, pipeline, tris_table, drawable);
         }
 
         cmd_buffer.end_render_pass();
@@ -906,8 +921,8 @@ impl GeometryPass {
         cmd_buffer: &mut CommandBuffer,
         assets: &RendererAssetsReadOnly,
         rt_extent: Vec2UI,
-        resources: &RendererResources,
         marching_cubes_map: &super::marching_cubes::OffsetsMap,
+        buffers: &[(String, Ref<Arc<BufferSlice>>)],
         indirect_buffer: &Arc<BufferSlice>,
         pipeline: PipelineBinding,
         tris_table: &Arc<BufferSlice>,
@@ -967,14 +982,10 @@ impl GeometryPass {
         );
 
         if !is_mesh {
+            let ibo = &(buffers.iter()
+                .find(|(name, _)| name == &MarchingCubesPass::index_buffer_name(drawable.entity)).unwrap().1);
+
             let indirect_buffer_offset = *(marching_cubes_map.get(&drawable.entity).unwrap());
-            let ibo = resources.access_buffer(
-                cmd_buffer,
-                &MarchingCubesPass::index_buffer_name(drawable.entity),
-                BarrierSync::INDEX_INPUT,
-                BarrierAccess::INDEX_READ,
-                HistoryResourceEntry::Current,
-            );
             cmd_buffer.set_index_buffer(BufferRef::Regular(&*ibo), 0u64, IndexFormat::U32);
 
             cmd_buffer.finish_binding();
@@ -985,12 +996,18 @@ impl GeometryPass {
                 std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
             );
         } else {
-            cmd_buffer.bind_uniform_buffer(BindingFrequency::Frequent, 7, BufferRef::Regular(tris_table), 0, WHOLE_BUFFER);
+            let culling_buffer = &(buffers.iter()
+                .find(|(name, _)| name == &MarchingCubesPass::culling_buffer_name(drawable.entity)).unwrap().1);
+
+            cmd_buffer.bind_storage_buffer(BindingFrequency::Frequent, 8,
+                                           BufferRef::Regular(&culling_buffer),
+                                           (std::mem::size_of::<u32>() * 4) as u64, WHOLE_BUFFER);
+            cmd_buffer.bind_uniform_buffer(BindingFrequency::Frequent, 7,
+                                           BufferRef::Regular(tris_table), 0, WHOLE_BUFFER);
             cmd_buffer.finish_binding();
-            cmd_buffer.draw_mesh_tasks(
-                (volume_texture_lod_extents.x + 3) / 4,
-                (volume_texture_lod_extents.y + 3) / 4,
-                (volume_texture_lod_extents.z + 1) / 2,
+            cmd_buffer.draw_mesh_tasks_indirect(
+                BufferRef::Regular(&culling_buffer),
+                0, 1, (3 * std::mem::size_of::<u32>()) as u32
             );
         }
 
