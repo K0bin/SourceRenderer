@@ -112,6 +112,8 @@ uint buildVertexKey(uint index) {
 
 const uint maxIndices = (512u * 512u * 512u) / 100u * 15u;
 
+const bool CullingDebug = true;
+
 
 layout(constant_id = 1) const bool renderDebugCube = false;
 const uvec3 cubePositions[8] = uvec3[8](
@@ -132,6 +134,19 @@ const uvec3 cubeIndices[12] = uvec3[12](
 void main() {
     uvec3 workgroupBase = workgroupPositions[gl_WorkGroupID.x].xyz;
     uvec3 base = workgroupBase + gl_LocalInvocationID;
+
+    if (CullingDebug) {
+        uint indexCount = 12u * 3u;
+        uint firstIndex = atomicAdd(commands[0u].indexCount, indexCount);
+        commands[0u].instanceCount = 1u;
+        for (uint i = 0u; i < 12u * 3u && firstIndex + indexCount < maxIndices; i++) {
+            uvec3 vtx = cubePositions[cubeIndices[i / 3u][i % 3u]] + workgroupBase + gl_LocalInvocationID;
+            indicesBuffers[0u].indices[firstIndex + i] = vertexKey(vtx, vtx);
+        }
+
+        return;
+    }
+
 
     if (subgroupAll(any(greaterThanEqual(base + uvec3(1u), lodExtents))))
     return;

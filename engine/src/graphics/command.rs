@@ -78,6 +78,18 @@ impl<'a> From<&'a super::ComputePipeline> for PipelineBinding<'a> {
     }
 }
 
+pub struct CommandBufferLabel<'a> {
+    cmd_buffer: &'a mut active_gpu_backend::CommandBuffer
+}
+
+impl<'a> Drop for CommandBufferLabel<'a> {
+    fn drop(&mut self) {
+        unsafe {
+            self.cmd_buffer.end_label();
+        }
+    }
+}
+
 pub struct CommandBuffer<'a> {
     command_pool: AtomicRefMut<'a, CommandPool>,
     cmd_buffer_handle: ManuallyDrop<active_gpu_backend::CommandBuffer>,
@@ -609,6 +621,15 @@ impl<'a> CommandBuffer<'a> {
     pub fn end_label(&mut self) {
         unsafe {
             self.cmd_buffer_handle.end_label();
+        }
+    }
+
+    pub fn label(&mut self, label: &str) -> CommandBufferLabel {
+        unsafe {
+            self.cmd_buffer_handle.begin_label(label);
+        }
+        CommandBufferLabel {
+            cmd_buffer: &mut self.cmd_buffer_handle
         }
     }
 

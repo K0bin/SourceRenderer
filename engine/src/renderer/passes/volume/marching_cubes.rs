@@ -14,6 +14,7 @@ use sourcerenderer_core::gpu::SpecConstValue;
 use std::cell::Ref;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use bevy_math::UVec3;
 use crate::renderer::{VolumeRendererOptions};
 
 pub const MAX_SIZE: u32 = 512;
@@ -24,6 +25,15 @@ struct MarchingCubesConfig {
     pub extent: Vec3UI,
     pub lod: u32,
     pub min: Vec3UI,
+    pub thresholds_count: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Zeroable, Pod)]
+struct MarchingCubesCullingConfig {
+    pub extent: Vec3UI,
+    pub lod: u32,
+    pub reduction: u32,
     pub thresholds_count: u32,
 }
 
@@ -102,6 +112,7 @@ impl MarchingCubesPass {
             }));
         }
 
+        let culling_shader_path = crate::renderer::shader_path!("marching_cubes_precull.comp");
         let mut culling_pipelines = SmallVec::<[ComputePipelineHandle; 4]>::with_capacity(4);
         spec_consts.insert(1u32, SpecConstValue::UInt(8));
         spec_consts.insert(2u32, SpecConstValue::UInt(8));
@@ -109,7 +120,7 @@ impl MarchingCubesPass {
         for i in 0..4 {
             spec_consts.insert(0u32, SpecConstValue::UInt(i));
             culling_pipelines.push(assets.request_compute_pipeline(PathPipelineShaderStage {
-                shader_path: &shader_path,
+                shader_path: &culling_shader_path,
                 spec_consts: Some(&spec_consts),
             }));
         }
@@ -516,53 +527,11 @@ impl MarchingCubesPass {
         }
     }
 
-    fn create_buffers_for_entity(resources: &mut RendererResources, entity: Entity, use_mesh_shaders: bool) {
-        // The texture might not be loaded yet, it might not be loaded yet.
-        let mut resolution_multiplied = 512 * 512 * 512;
-
-        // Assume there's a lot of empty space/fully filled space and voxels with fewer triangles
-        // to avoid huge buffers.
-        // Besides, the theoretical worst-case space we need is ~7.7 GB per model. That's not feasible!
-        resolution_multiplied /= 50;
-
-        // The theoretical maximum is that every voxel adds 5 triangles, so 15 indices.
-        if !use_mesh_shaders {
-            let name = Self::buffer_name(entity);
-            if !resources.has_buffer(&name) {
-                resources.create_buffer(
-                    &name,
-                    &BufferInfo {
-                        size: (std::mem::size_of::<u32>() * 15 * resolution_multiplied) as u64,
-                        usage: BufferUsage::STORAGE | BufferUsage::INDEX | BufferUsage::COPY_DST,
-                        sharing_mode: QueueSharingMode::Exclusive,
-                    },
-                    MemoryUsage::GPUMemory,
-                    false,
-                );
-            }
-        } else {
-            let name = Self::culling_buffer_name(entity);
-            let workgroup_count: usize = ((512 + 7) / 8) * ((512 + 7) / 8) * ((512 + 7) / 8);
-            if !resources.has_buffer(&name) {
-                resources.create_buffer(
-                    &name,
-                    &BufferInfo {
-                        size: (std::mem::size_of::<IndirectCommand>() + std::mem::size_of::<u32>() + std::mem::size_of::<Vec4UI>() * workgroup_count) as u64,
-                        usage: BufferUsage::CONSTANT | BufferUsage::STORAGE | BufferUsage::INDIRECT | BufferUsage::COPY_DST,
-                        sharing_mode: QueueSharingMode::Exclusive,
-                    },
-                    MemoryUsage::GPUMemory,
-                    false,
-                );
-            }
-        }
-    }
-
     fn buffer_name_prefix() -> &'static str {
         "marching_cubes"
     }
 
-    pub fn buffer_name(entity: Entity) -> String {
+    pub fn index_buffer_name(entity: Entity) -> String {
         format!(
             "{}_{}",
             Self::buffer_name_prefix(),
@@ -578,13 +547,13 @@ impl MarchingCubesPass {
         )
     }
 
-    pub fn culling_dispatch_buffer_name(dispatch: &Dispatch) -> String {
+    pub fn culling_dispatch_buffer_name(handle: TextureHandle, lod: u32, as_cubes: bool) -> String {
         format!(
             "{}_d_{:?}_{:?}_{:?}_culling",
             Self::buffer_name_prefix(),
-            dispatch.handle,
-            dispatch.lod,
-            dispatch.as_cubes
+            handle,
+            lod,
+            as_cubes
         )
     }
 
@@ -653,19 +622,70 @@ impl MarchingCubesPass {
                       use_mesh_shaders: bool,
     ) {
         let mut active_buffer_names = HashSet::<String>::with_capacity(pass_params.scene.scene.volume_mesh_instances().len());
-        for RendererVolumeDrawable { entity, .. } in pass_params
+        for RendererVolumeDrawable { entity, volume_texture, texture_lod, render_as_cubes, .. } in pass_params
             .scene
             .scene
             .volume_mesh_instances() {
-            let newly_inserted = if use_mesh_shaders {
-                active_buffer_names.insert(Self::culling_buffer_name(*entity))
+            if use_mesh_shaders {
+                // Mesh shaders need 1 culling buffer per entity
+
+                let name = Self::culling_buffer_name(*entity);
+                if !pass_params.resources.has_buffer(&name) {
+                    let workgroup_count: usize = ((512 + 7) / 8) * ((512 + 7) / 8) * ((512 + 7) / 8);
+                    pass_params.resources.create_buffer(
+                        &name,
+                        &BufferInfo {
+                            size: (std::mem::size_of::<IndirectCommand>() + std::mem::size_of::<u32>() + std::mem::size_of::<Vec4UI>() * workgroup_count) as u64,
+                            usage: BufferUsage::CONSTANT | BufferUsage::STORAGE | BufferUsage::INDIRECT | BufferUsage::COPY_DST,
+                            sharing_mode: QueueSharingMode::Exclusive,
+                        },
+                        MemoryUsage::GPUMemory,
+                        false,
+                    );
+                }
+                active_buffer_names.insert(name);
             } else {
-                active_buffer_names.insert(Self::buffer_name(*entity))
-            };
-            if !newly_inserted {
-                continue;
+                // Legacy graphics needs 1 index buffer per entity 1 culling buffer per dispatch (grouped by texture + lod + cube?
+
+                let dispatch_buffer_name = Self::culling_dispatch_buffer_name(*volume_texture, *texture_lod, *render_as_cubes);
+                if !pass_params.resources.has_buffer(&dispatch_buffer_name) {
+                    let workgroup_count: usize = ((512 + 7) / 8) * ((512 + 7) / 8) * ((512 + 7) / 8);
+                    pass_params.resources.create_buffer(
+                        &dispatch_buffer_name,
+                        &BufferInfo {
+                            size: (std::mem::size_of::<IndirectCommand>() + std::mem::size_of::<u32>() + std::mem::size_of::<Vec4UI>() * workgroup_count) as u64,
+                            usage: BufferUsage::CONSTANT | BufferUsage::STORAGE | BufferUsage::INDIRECT | BufferUsage::COPY_DST,
+                            sharing_mode: QueueSharingMode::Exclusive,
+                        },
+                        MemoryUsage::GPUMemory,
+                        false,
+                    );
+                }
+                active_buffer_names.insert(dispatch_buffer_name);
+
+                let name = Self::index_buffer_name(*entity);
+                if !pass_params.resources.has_buffer(&name) {
+                    // The texture might not be loaded yet, it might not be loaded yet.
+                    let mut resolution_multiplied = 512 * 512 * 512;
+
+                    // Assume there's a lot of empty space/fully filled space and voxels with fewer triangles
+                    // to avoid huge buffers.
+                    // Besides, the theoretical worst-case space we need is ~7.7 GB per model. That's not feasible!
+                    resolution_multiplied /= 50;
+
+                    pass_params.resources.create_buffer(
+                        &name,
+                        &BufferInfo {
+                            size: (std::mem::size_of::<u32>() * 15 * resolution_multiplied) as u64,
+                            usage: BufferUsage::STORAGE | BufferUsage::INDEX | BufferUsage::COPY_DST,
+                            sharing_mode: QueueSharingMode::Exclusive,
+                        },
+                        MemoryUsage::GPUMemory,
+                        false,
+                    );
+                }
+                active_buffer_names.insert(name);
             }
-            Self::create_buffers_for_entity(pass_params.resources, *entity, use_mesh_shaders);
         }
 
         let mut buffers_to_destroy = SmallVec::<[String; 2]>::new();
@@ -686,11 +706,14 @@ impl MarchingCubesPass {
                      command_buffer: &mut CommandBuffer,
                      pass_params: &RenderPassParameters)
     {
+        command_buffer.begin_label("Clearing");
+
         // Access all of them here to batch barriers
         let mut buffer_slices = HashMap::<String, Ref<Arc<BufferSlice>>>::with_capacity(pass_params.scene.scene.volume_mesh_instances().len());
-        for RendererVolumeDrawable { entity, .. } in pass_params.scene.scene.volume_mesh_instances() {
-            let buffer_name = Self::buffer_name(*entity);
+        for RendererVolumeDrawable { entity, volume_texture, texture_lod, render_as_cubes, .. } in pass_params.scene.scene.volume_mesh_instances() {
+            let buffer_name = Self::index_buffer_name(*entity);
             let culling_name = Self::culling_buffer_name(*entity);
+            let dispatch_buffer_name = Self::culling_dispatch_buffer_name(*volume_texture, *texture_lod, *render_as_cubes);
 
             if pass_params.resources.has_buffer(&buffer_name) {
                 let slice = pass_params.resources.access_buffer(
@@ -712,6 +735,20 @@ impl MarchingCubesPass {
                     HistoryResourceEntry::Current,
                 );
                 buffer_slices.insert(culling_name, culling_slice);
+            }
+
+            if pass_params.resources.has_buffer(&dispatch_buffer_name) {
+                let exists = buffer_slices.iter().any(|(name, _)| name == &dispatch_buffer_name);
+                if !exists {
+                    let culling_buffer_slice = pass_params.resources.access_buffer(
+                        command_buffer,
+                        &dispatch_buffer_name,
+                        BarrierSync::COPY,
+                        BarrierAccess::COPY_WRITE,
+                        HistoryResourceEntry::Current,
+                    );
+                    buffer_slices.insert(dispatch_buffer_name, culling_buffer_slice);
+                }
             }
         }
 
@@ -743,6 +780,8 @@ impl MarchingCubesPass {
             );
         }
         buffer_slices.clear();
+
+        command_buffer.end_label();
     }
 
     pub fn execute(
@@ -756,81 +795,88 @@ impl MarchingCubesPass {
 
         let use_mesh_shader = pass_params.device.supports_mesh_shader() && options.use_mesh_shader;
 
+        command_buffer.begin_label("Marching Cubes pass");
+
         self.manage_buffers(pass_params, use_mesh_shader);
         let batches = self.build_batches(pass_params);
         let map = self.build_drawing_map(&batches);
         self.clear_buffers(command_buffer, pass_params);
 
-        command_buffer.begin_label("Marching Cubes pass");
-
-        // Access all of them here to batch barriers
-        let mut buffer_slices: SmallVec<[(String, Ref<Arc<BufferSlice>>); 2]> =
-            SmallVec::with_capacity(pass_params.scene.scene.volume_mesh_instances().len());
-        for RendererVolumeDrawable { entity, .. } in pass_params.scene.scene.volume_mesh_instances() {
-            let buffer_name = Self::buffer_name(*entity);
-            let buffer_slice = pass_params.resources.access_buffer(
-                command_buffer,
-                &buffer_name,
-                BarrierSync::COPY,
-                BarrierAccess::COPY_WRITE,
-                HistoryResourceEntry::Current,
-            );
-            buffer_slices.push((buffer_name, buffer_slice));
-
-            let culling_buffer_name = Self::buffer_name(*entity);
-            let culling_buffer_slice = pass_params.resources.access_buffer(
-                command_buffer,
-                &Self::culling_buffer_name(*entity),
-                BarrierSync::COPY,
-                BarrierAccess::COPY_WRITE,
-                HistoryResourceEntry::Current,
-            );
-            buffer_slices.push((culling_buffer_name, culling_buffer_slice));
-        }
-
-        let atomics_slice = pass_params.resources.access_buffer(
-            command_buffer,
-            Self::ATOMICS_BUFFER_NAME,
-            BarrierSync::COPY,
-            BarrierAccess::COPY_WRITE,
-            HistoryResourceEntry::Current,
-        );
-        command_buffer.flush_barriers();
-        command_buffer.copy_clear_buffer(
-            BufferRef::Regular(&atomics_slice),
-            0u64,
-            pass_params
-                .resources
-                .buffer_range(Self::ATOMICS_BUFFER_NAME)
-                .length
-                / 4,
-            0u32,
-        );
-
-        for slice in buffer_slices.iter() {
-            command_buffer.copy_clear_buffer(
-                BufferRef::Regular(&slice.1),
-                0u64,
-                slice.1.length() / 4,
-                0u32,
-            );
-        }
-        buffer_slices.clear();
-
         // Culling pass
 
         command_buffer.begin_label("Culling");
 
-        for RendererVolumeDrawable { entity, .. } in pass_params.scene.scene.volume_mesh_instances() {
+        // Access all of them here to batch barriers
+        let mut buffer_slices: SmallVec<[(String, Ref<Arc<BufferSlice>>); 2]> =
+            SmallVec::with_capacity(pass_params.scene.scene.volume_mesh_instances().len());
+        for RendererVolumeDrawable { entity, texture_lod, volume_texture, render_as_cubes, .. } in pass_params.scene.scene.volume_mesh_instances() {
+            let buffer_name = Self::index_buffer_name(*entity);
+            if pass_params.resources.has_buffer(&buffer_name) {
+                let buffer_slice = pass_params.resources.access_buffer(
+                    command_buffer,
+                    &buffer_name,
+                    BarrierSync::COPY,
+                    BarrierAccess::COPY_WRITE,
+                    HistoryResourceEntry::Current,
+                );
+                buffer_slices.push((buffer_name, buffer_slice));
+            }
+
             let culling_buffer_name = Self::culling_buffer_name(*entity);
-            let culling_buffer_slice = pass_params.resources.access_buffer(
-                command_buffer,
-                &culling_buffer_name,
-                BarrierSync::COMPUTE_SHADER,
-                BarrierAccess::STORAGE_WRITE,
-                HistoryResourceEntry::Current,
-            );
-            buffer_slices.push((culling_buffer_name, culling_buffer_slice));
+            if pass_params.resources.has_buffer(&culling_buffer_name) {
+                let culling_buffer_slice = pass_params.resources.access_buffer(
+                    command_buffer,
+                    &culling_buffer_name,
+                    BarrierSync::COPY,
+                    BarrierAccess::COPY_WRITE,
+                    HistoryResourceEntry::Current,
+                );
+                buffer_slices.push((culling_buffer_name, culling_buffer_slice));
+            }
+
+            let dispatch_buffer_name = Self::culling_dispatch_buffer_name(*volume_texture, *texture_lod, *render_as_cubes);
+            if pass_params.resources.has_buffer(&dispatch_buffer_name) {
+                let exists = buffer_slices.iter().any(|(name, _)| name == &dispatch_buffer_name);
+                if !exists {
+                    let culling_buffer_slice = pass_params.resources.access_buffer(
+                        command_buffer,
+                        &dispatch_buffer_name,
+                        BarrierSync::COPY,
+                        BarrierAccess::COPY_WRITE,
+                        HistoryResourceEntry::Current,
+                    );
+                    buffer_slices.push((dispatch_buffer_name, culling_buffer_slice));
+                }
+            }
+        }
+
+        for RendererVolumeDrawable { entity, volume_texture, texture_lod, render_as_cubes, .. } in pass_params.scene.scene.volume_mesh_instances() {
+            let culling_buffer_name = Self::culling_buffer_name(*entity);
+            if pass_params.resources.has_buffer(&culling_buffer_name) {
+                let culling_buffer_slice = pass_params.resources.access_buffer(
+                    command_buffer,
+                    &culling_buffer_name,
+                    BarrierSync::COMPUTE_SHADER,
+                    BarrierAccess::STORAGE_WRITE,
+                    HistoryResourceEntry::Current,
+                );
+                buffer_slices.push((culling_buffer_name, culling_buffer_slice));
+            }
+
+            let dispatch_buffer_name = Self::culling_dispatch_buffer_name(*volume_texture, *texture_lod, *render_as_cubes);
+            if pass_params.resources.has_buffer(&dispatch_buffer_name) {
+                let exists = buffer_slices.iter().any(|(name, _)| name == &dispatch_buffer_name);
+                if !exists {
+                    let culling_buffer_slice = pass_params.resources.access_buffer(
+                        command_buffer,
+                        &dispatch_buffer_name,
+                        BarrierSync::COPY,
+                        BarrierAccess::COPY_WRITE,
+                        HistoryResourceEntry::Current,
+                    );
+                    buffer_slices.push((dispatch_buffer_name, culling_buffer_slice));
+                }
+            }
         }
 
         command_buffer.flush_barriers();
@@ -841,11 +887,14 @@ impl MarchingCubesPass {
 
         command_buffer.end_label();
 
-        if pass_params.device.supports_mesh_shader() && options.use_mesh_shader {
+        if use_mesh_shader {
+            command_buffer.end_label();
             return map;
         }
 
         // Marching cubes pass
+
+        command_buffer.begin_label("Marching cubes");
 
         let atomics_slice = pass_params.resources.access_buffer(
             command_buffer,
@@ -854,8 +903,8 @@ impl MarchingCubesPass {
             BarrierAccess::STORAGE_WRITE | BarrierAccess::STORAGE_READ,
             HistoryResourceEntry::Current,
         );
-        for RendererVolumeDrawable { entity, .. } in pass_params.scene.scene.volume_mesh_instances() {
-            let buffer_name = Self::buffer_name(*entity);
+        for RendererVolumeDrawable { entity, volume_texture, texture_lod, render_as_cubes, .. } in pass_params.scene.scene.volume_mesh_instances() {
+            let buffer_name = Self::index_buffer_name(*entity);
             let buffer_slice = pass_params.resources.access_buffer(
                 command_buffer,
                 &buffer_name,
@@ -866,14 +915,31 @@ impl MarchingCubesPass {
             buffer_slices.push((buffer_name, buffer_slice));
 
             let culling_buffer_name = Self::culling_buffer_name(*entity);
-            let culling_buffer_slice = pass_params.resources.access_buffer(
-                command_buffer,
-                &culling_buffer_name,
-                BarrierSync::COMPUTE_SHADER,
-                BarrierAccess::INDIRECT_READ | BarrierAccess::STORAGE_READ,
-                HistoryResourceEntry::Current,
-            );
-            buffer_slices.push((culling_buffer_name, culling_buffer_slice));
+            if pass_params.resources.has_buffer(&culling_buffer_name) {
+                let culling_buffer_slice = pass_params.resources.access_buffer(
+                    command_buffer,
+                    &culling_buffer_name,
+                    BarrierSync::COMPUTE_SHADER,
+                    BarrierAccess::INDIRECT_READ | BarrierAccess::STORAGE_READ,
+                    HistoryResourceEntry::Current,
+                );
+                buffer_slices.push((culling_buffer_name, culling_buffer_slice));
+            }
+
+            let dispatch_buffer_name = Self::culling_dispatch_buffer_name(*volume_texture, *texture_lod, *render_as_cubes);
+            if pass_params.resources.has_buffer(&dispatch_buffer_name) {
+                let exists = buffer_slices.iter().any(|(name, _)| name == &dispatch_buffer_name);
+                if !exists {
+                    let culling_buffer_slice = pass_params.resources.access_buffer(
+                        command_buffer,
+                        &dispatch_buffer_name,
+                        BarrierSync::COPY,
+                        BarrierAccess::COPY_WRITE,
+                        HistoryResourceEntry::Current,
+                    );
+                    buffer_slices.push((dispatch_buffer_name, culling_buffer_slice));
+                }
+            }
         }
 
         command_buffer.flush_barriers();
@@ -886,6 +952,7 @@ impl MarchingCubesPass {
                 batch.drawables.len() * std::mem::size_of::<MarchingCubesIndirectCall>();
         }
 
+        command_buffer.end_label();
         command_buffer.end_label();
         map
     }
@@ -904,7 +971,7 @@ impl MarchingCubesPass {
 
         if !use_mesh_shader {
             // Find the buffer for the entire dispatch
-            let culling_buffer_name = Self::culling_dispatch_buffer_name(&batch.dispatch);
+            let culling_buffer_name = Self::culling_dispatch_buffer_name(batch.dispatch.handle, batch.dispatch.lod, batch.dispatch.as_cubes);
             for (name, slice) in buffer_slices {
                 if name == &culling_buffer_name {
                     batch_buffer_slices.push(slice);
@@ -945,21 +1012,16 @@ impl MarchingCubesPass {
             })
             .collect();
 
-        let pipeline_index = if entries.len() < self.pipelines.len() {
+        let pipeline_index = if entries.len() < self.culling_pipelines.len() {
             entries.len()
         } else {
             0 // Spec const value 0 makes it use the dynamic value
         };
         let pipeline = pass_params
             .assets
-            .get_compute_pipeline(self.pipelines[pipeline_index])
+            .get_compute_pipeline(self.culling_pipelines[pipeline_index])
             .unwrap();
         command_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
-
-        command_buffer.begin_label(&format!(
-            "Marching Cube Cull Texture: {:?} with lod: {}",
-            batch.dispatch.handle, batch.dispatch.lod
-        ));
 
         command_buffer.bind_storage_buffer_array(BindingFrequency::Frequent, 3, &entries);
 
@@ -971,17 +1033,38 @@ impl MarchingCubesPass {
         let volume_texture_max = pass_params
             .assets
             .get_texture(batch.drawables.first().unwrap().volume_texture_max);
-        command_buffer.bind_sampling_view(BindingFrequency::Frequent, 2, &volume_texture.view);
+        command_buffer.bind_sampling_view(BindingFrequency::Frequent, 0, &volume_texture.view);
         command_buffer.bind_sampling_view(
             BindingFrequency::Frequent,
-            8,
+            1,
             &volume_texture_min.view,
         );
         command_buffer.bind_sampling_view(
             BindingFrequency::Frequent,
-            9,
+            2,
             &volume_texture_max.view,
         );
+
+        command_buffer.bind_storage_buffer_array(
+            BindingFrequency::Frequent,
+            3,
+            &entries,
+        );
+
+        let target_work_group_size = UVec3::new(8, 8, 8);
+        let max_grooup_size_dimension = target_work_group_size.x
+            .max(target_work_group_size.y)
+            .max(target_work_group_size.z);
+        let reduction = 1u32.max(max_grooup_size_dimension.ilog2());
+
+        let mut extent = Vec3UI::new(512, 512, 512);
+        let texture_view = &volume_texture.view;
+        if let Some(texture) = texture_view.texture().as_ref() {
+            let texture_info = texture.info();
+            extent.x = texture_info.width >> batch.dispatch.lod;
+            extent.y = texture_info.height >> batch.dispatch.lod;
+            extent.z = texture_info.depth >> batch.dispatch.lod;
+        }
 
         let thresholds_buffer = command_buffer
             .upload_dynamic_data(pass_params.device, &thresholds, BufferUsage::CONSTANT)
@@ -995,9 +1078,21 @@ impl MarchingCubesPass {
             WHOLE_BUFFER,
         );
 
-        command_buffer.dispatch((volume_texture_info.width + 3) / 4,
-                                (volume_texture_info.height + 3) / 4,
-                                (volume_texture_info.depth + 3) / 4);
+        command_buffer.set_push_constant_data(
+            &[MarchingCubesCullingConfig {
+                lod: batch.dispatch.lod,
+                extent,
+                reduction,
+                thresholds_count: thresholds.len() as u32,
+            }],
+        );
+
+        command_buffer.finish_binding();
+
+        let culling_extent = Vec3UI::new(extent.x >> reduction, extent.y >> reduction, extent.z >> reduction);
+        command_buffer.dispatch((culling_extent.x + 7) / 8,
+                                (culling_extent.y + 7) / 8,
+                                (culling_extent.z + 7) / 8);
 
         command_buffer.end_label();
     }
@@ -1016,7 +1111,7 @@ impl MarchingCubesPass {
         let mut batch_buffer_slices = SmallVec::<[&Ref<Arc<BufferSlice>>; 4]>::new();
         let mut thresholds = SmallVec::<[f32; 4]>::new();
 
-        let culling_name = Self::culling_dispatch_buffer_name(&batch.dispatch);
+        let culling_name = Self::culling_dispatch_buffer_name(batch.dispatch.handle, batch.dispatch.lod, batch.dispatch.as_cubes);
         let indirect_slice = buffer_slices.iter().find_map(|(name, slice)| if name == &culling_name { Some(slice) } else { None }).unwrap();
 
         for (index, d) in batch.drawables.iter().enumerate() {
@@ -1028,7 +1123,7 @@ impl MarchingCubesPass {
             thresholds.push(d.min_threshold);
 
             // Quadratic but fine due to tiny counts
-            let drawable_buffer_name = Self::buffer_name(d.entity);
+            let drawable_buffer_name = Self::index_buffer_name(d.entity);
             for (name, slice) in buffer_slices {
                 if name == &drawable_buffer_name {
                     batch_buffer_slices.push(slice);

@@ -72,6 +72,7 @@ void spawnWorkgroups(uvec3 count, uint targetBufferIndex) {
         for (uint y = 0u; y < count.y; y++) {
             for (uint z = 0u; z < count.z; z++) {
                 uint index = mortonCode(uvec3(x, y, z), count);
+                // TODO: multiply scale up pos to target res
                 indirectBuffers[targetBufferIndex].workgroupPositions[firstGlobalWorkgroupIndex + index] = uvec4(gl_GlobalInvocationID, 1u);
             }
         }
@@ -81,7 +82,7 @@ void spawnWorkgroups(uvec3 count, uint targetBufferIndex) {
 void main() {
     // When targetting a workgroup size of 4x4x4, reduction should be at least 2. For 8x8x8 at least 3.
     uint maxGroupSizeDimension = max(TargetWorkGroupSizeX, max(TargetWorkGroupSizeY, TargetWorkGroupSizeZ));
-    uint actualReduction = max(reduction, 1u << findMSB(maxGroupSizeDimension));
+    uint actualReduction = max(reduction, findMSB(maxGroupSizeDimension));
 
     // Naive count is 1 << reduction but that breaks due to rounding.
     uvec3 cullingVoxelSize = divCeil(targetLodExtents, targetLodExtents >> actualReduction);

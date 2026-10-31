@@ -598,7 +598,7 @@ impl GeometryPass {
             for drawable in params.scene.scene.volume_mesh_instances() {
                 slices.push(resources.access_buffer(
                     cmd_buffer,
-                    &MarchingCubesPass::buffer_name(drawable.entity),
+                    &MarchingCubesPass::index_buffer_name(drawable.entity),
                     BarrierSync::INDEX_INPUT,
                     BarrierAccess::INDEX_READ,
                     HistoryResourceEntry::Current,
@@ -969,7 +969,7 @@ impl GeometryPass {
             let indirect_buffer_offset = *(marching_cubes_map.get(&drawable.entity).unwrap());
             let ibo = resources.access_buffer(
                 cmd_buffer,
-                &MarchingCubesPass::buffer_name(drawable.entity),
+                &MarchingCubesPass::index_buffer_name(drawable.entity),
                 BarrierSync::INDEX_INPUT,
                 BarrierAccess::INDEX_READ,
                 HistoryResourceEntry::Current,
