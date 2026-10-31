@@ -14,7 +14,7 @@
 
 layout(constant_id = 0) const uint thresholdsCountConst = 0u;
 
-layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+layout(local_size_x = 4u, local_size_y = 4u, local_size_z = 4u) in;
 
 #include "descriptor_sets.inc.glsl"
 #include "frame_set_common.inc.glsl"
@@ -83,16 +83,14 @@ uint vertexKey(uvec3 pos1, uvec3 pos2) {
     return mortonCode(pos, size);
 }
 
-uint vertexKeyFromIndexOffsets(uint idx1, uint idx2) {
-    uvec3 workgroupBase = workgroupPositions[gl_WorkGroupID.x].xyz;
-    uvec3 base = workgroupBase + gl_LocalInvocationID;
-    uvec3 vertexPos1 = base + indexOffset(idx1);
-    uvec3 vertexPos2 = base + indexOffset(idx2);
+uint vertexKeyFromIndexOffsets(uvec3 invocationPos, uint idx1, uint idx2) {
+    uvec3 vertexPos1 = invocationPos + indexOffset(idx1);
+    uvec3 vertexPos2 = invocationPos + indexOffset(idx2);
     uint vtxKey = vertexKey(vertexPos1, vertexPos2);
     return vtxKey;
 }
 
-uint buildVertexKey(uint index) {
+uint marchingCubesVertexKey(uvec3 invocationPos, uint index) {
     // Naming of those two is confusing because I named them when I translated the loop and built the array index
     // from the loop index.
     // This function goes the other way around (array index -> loop index).
@@ -106,14 +104,13 @@ uint buildVertexKey(uint index) {
     uint idx1 = iDiv3 + uint(iMod3 == 1u) * 4u;
     uint idx2 = (iDiv3 + uint(iMod3 != 2u)) % 4u + uint(iMod3 != 0u) * 4u;
 
-    uint vtxKey = vertexKeyFromIndexOffsets(idx1, idx2);
+    uint vtxKey = vertexKeyFromIndexOffsets(invocationPos, idx1, idx2);
     return vtxKey;
 }
 
 const uint maxIndices = (512u * 512u * 512u) / 100u * 15u;
 
-const bool cullingDebug = true;
-
+const bool debugCullingAsPoints = false;
 
 layout(constant_id = 1) const bool renderDebugCube = false;
 const uvec3 cubePositions[8] = uvec3[8](
@@ -136,16 +133,12 @@ void main() {
     uvec3 workgroupBase = workgroupPositions[gl_WorkGroupID.x].xyz;
     uvec3 base = workgroupBase + gl_LocalInvocationID;
 
-    if (cullingDebug) {
-        uint firstIndex = atomicAdd(commands[0u].indexCount, cubeIndexCount);
+    if (debugCullingAsPoints) {
+        uint firstIndex = atomicAdd(commands[0u].indexCount, 1);
         commands[0u].instanceCount = 1u;
-        for (uint i = 0u; i < cubeIndexCount && firstIndex + cubeIndexCount < maxIndices; i++) {
-            uvec3 vtx = cubePositions[cubeIndices[i / 3u][i % 3u]] + base;
-            indicesBuffers[0u].indices[firstIndex + i] = vertexKey(vtx, vtx);
-        }
+        indicesBuffers[0u].indices[firstIndex] = vertexKey(base, base);
         return;
     }
-
 
     if (subgroupAll(any(greaterThanEqual(base + uvec3(1u), lodExtents))))
     return;
@@ -226,9 +219,9 @@ void main() {
 
         if (!renderDebugCube) {
             for (uint i = 0u; i < indexCount && firstIndex + indexCount < maxIndices; i += 3u) {
-                indicesBuffers[j].indices[firstIndex + i + 0u] = buildVertexKey(tris[voxelKey][1u + i + 0u]);
-                indicesBuffers[j].indices[firstIndex + i + 1u] = buildVertexKey(tris[voxelKey][1u + i + 1u]);
-                indicesBuffers[j].indices[firstIndex + i + 2u] = buildVertexKey(tris[voxelKey][1u + i + 2u]);
+                indicesBuffers[j].indices[firstIndex + i + 0u] = marchingCubesVertexKey(base, tris[voxelKey][1u + i + 0u]);
+                indicesBuffers[j].indices[firstIndex + i + 1u] = marchingCubesVertexKey(base, tris[voxelKey][1u + i + 1u]);
+                indicesBuffers[j].indices[firstIndex + i + 2u] = marchingCubesVertexKey(base, tris[voxelKey][1u + i + 2u]);
             }
         } else {
             for (uint i = 0u; i < indexCount && firstIndex + indexCount < maxIndices; i++) {
