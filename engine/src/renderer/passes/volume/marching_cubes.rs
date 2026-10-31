@@ -62,8 +62,12 @@ pub struct MarchingCubesIndirectCall {
     _pad_to_16_1: u32,
 }
 
+const WORK_GROUP_SIZE: UVec3 = UVec3::new(4, 4, 4);
+const MESH_WORK_GROUP_SIZE: UVec3 = UVec3::new(4, 4, 2);
+
 pub struct MarchingCubesPass {
     culling_pipelines: [ComputePipelineHandle; 4],
+    mesh_culling_pipelines: [ComputePipelineHandle; 4],
     pipelines: [ComputePipelineHandle; 4],
     cube_pipelines: [ComputePipelineHandle; 4],
     edges_buffer: Arc<BufferSlice>,
@@ -118,12 +122,26 @@ impl MarchingCubesPass {
 
         let culling_shader_path = crate::renderer::shader_path!("marching_cubes_precull.comp");
         let mut culling_pipelines = SmallVec::<[ComputePipelineHandle; 4]>::with_capacity(4);
-        spec_consts.insert(1u32, SpecConstValue::UInt(8));
-        spec_consts.insert(2u32, SpecConstValue::UInt(8));
-        spec_consts.insert(3u32, SpecConstValue::UInt(8));
+        spec_consts.insert(1u32, SpecConstValue::UInt(WORK_GROUP_SIZE.x));
+        spec_consts.insert(2u32, SpecConstValue::UInt(WORK_GROUP_SIZE.y));
+        spec_consts.insert(3u32, SpecConstValue::UInt(WORK_GROUP_SIZE.z));
+        spec_consts.insert(4u32, SpecConstValue::Bool(true));
         for i in 0..4 {
             spec_consts.insert(0u32, SpecConstValue::UInt(i));
             culling_pipelines.push(assets.request_compute_pipeline(PathPipelineShaderStage {
+                shader_path: &culling_shader_path,
+                spec_consts: Some(&spec_consts),
+            }));
+        }
+
+        let mut mesh_culling_pipelines = SmallVec::<[ComputePipelineHandle; 4]>::with_capacity(4);
+        spec_consts.insert(1u32, SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.x));
+        spec_consts.insert(2u32, SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.y));
+        spec_consts.insert(3u32, SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.z));
+        spec_consts.insert(4u32, SpecConstValue::Bool(false));
+        for i in 0..4 {
+            spec_consts.insert(0u32, SpecConstValue::UInt(i));
+            mesh_culling_pipelines.push(assets.request_compute_pipeline(PathPipelineShaderStage {
                 shader_path: &culling_shader_path,
                 spec_consts: Some(&spec_consts),
             }));
@@ -524,6 +542,7 @@ impl MarchingCubesPass {
 
         Self {
             culling_pipelines: culling_pipelines.as_array().unwrap().clone(),
+            mesh_culling_pipelines: mesh_culling_pipelines.as_array().unwrap().clone(),
             pipelines: pipelines.as_array().unwrap().clone(),
             cube_pipelines: cube_pipelines.as_array().unwrap().clone(),
             edges_buffer,
@@ -973,14 +992,17 @@ impl MarchingCubesPass {
         };
         let pipeline = pass_params
             .assets
-            .get_compute_pipeline(self.culling_pipelines[pipeline_index])
+            .get_compute_pipeline(if use_mesh_shader {
+                self.mesh_culling_pipelines[pipeline_index]
+            } else {
+                self.culling_pipelines[pipeline_index]
+            })
             .unwrap();
         command_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
 
         command_buffer.bind_storage_buffer_array(BindingFrequency::Frequent, 3, &entries);
 
         let volume_texture = pass_params.assets.get_texture(batch.dispatch.handle);
-        let volume_texture_info = volume_texture.texture().info();
         let volume_texture_min = pass_params
             .assets
             .get_texture(batch.drawables.first().unwrap().volume_texture_min);
@@ -1006,9 +1028,9 @@ impl MarchingCubesPass {
         );
 
         let target_work_group_size = if use_mesh_shader {
-            Vec3UI::new(4u32, 4u32, 2u32)
+            MESH_WORK_GROUP_SIZE
         } else {
-            Vec3UI::new(4u32, 4u32, 4u32)
+            WORK_GROUP_SIZE
         };
         let max_group_size_dimension = target_work_group_size.x
             .max(target_work_group_size.y)
