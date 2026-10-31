@@ -1011,7 +1011,7 @@ impl MarchingCubesPass {
         let max_group_size_dimension = target_work_group_size.x
             .max(target_work_group_size.y)
             .max(target_work_group_size.z);
-        let reduction = 1u32.max(max_group_size_dimension.ilog2());
+        let reduction = 2u32.max(max_group_size_dimension.ilog2());
 
         let mut extent = Vec3UI::new(512, 512, 512);
         let texture_view = &volume_texture.view;

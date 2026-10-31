@@ -90,23 +90,23 @@ void main() {
     uvec3 targetWorkGroupSize = uvec3(TargetWorkGroupSizeX, TargetWorkGroupSizeY, TargetWorkGroupSizeZ);
     uvec3 workgroups = divCeil(cullingVoxelSize, targetWorkGroupSize);
 
-    // Round up for calculating the lod and the number of workgroups, round down for the actual size.
-    cullingVoxelSize = targetLodExtents / totalInvocations;
-
     uint finalThresholdsCount = thresholdsCountConst == 0u ? thresholdsCount : thresholdsCountConst;
 
-    uint maxTextureLod = mipLod - 1u; // the max texture doesn't have the top mip
-    float density = texelFetch(sampler3D(densityImageMax, samplerNearest), ivec3(gl_GlobalInvocationID), int(maxTextureLod)).r;
-    bool empty = true;
+    uint minMaxTextureLod = mipLod - 1u; // the min/max textures don't have the top mip
+    float maxDensity = texelFetch(sampler3D(densityImageMax, samplerNearest), ivec3(gl_GlobalInvocationID), int(minMaxTextureLod)).r;
+    float minDensity = texelFetch(sampler3D(densityImageMin, samplerNearest), ivec3(gl_GlobalInvocationID), int(minMaxTextureLod)).r;
+    bool dispatchBatch = PrepareBatchedDispatch;
     for (uint i = 0u; i < finalThresholdsCount; i++) {
         float threshold = minThresholds[i];
-        bool notEmptyDrawable = density >= threshold;
-        empty = empty && !notEmptyDrawable;
+        bool notEmpty = maxDensity >= threshold;
+        bool notFull = minDensity < threshold;
+        dispatchBatch = dispatchBatch && notEmpty;
+        dispatchBatch = dispatchBatch && notFull;
 
-        if (!PrepareBatchedDispatch && notEmptyDrawable)
+        if (!PrepareBatchedDispatch && notEmpty && notFull)
             spawnWorkgroups(workgroups, cullingVoxelSize, i);
     }
 
-    if (PrepareBatchedDispatch && !empty)
+    if (dispatchBatch)
         spawnWorkgroups(workgroups, cullingVoxelSize, 0u);
 }
