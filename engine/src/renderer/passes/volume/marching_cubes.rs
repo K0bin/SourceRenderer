@@ -20,6 +20,8 @@ use crate::renderer::{VolumeRendererOptions};
 // TODO:
 //  - Switch to transient buffers
 //  - Remove indirect commands buffer and put it into the start of every indices buffer
+//  - Skip culling if small mips are selected
+//  - Make it actually work with mesh shaders
 
 pub const MAX_SIZE: u32 = 512;
 
