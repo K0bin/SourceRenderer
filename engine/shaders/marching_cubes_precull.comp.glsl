@@ -12,7 +12,7 @@
 #extension GL_EXT_maximal_reconvergence : enable
 #extension GL_EXT_nonuniform_qualifier : enable
 
-layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
 #include "descriptor_sets.inc.glsl"
 #include "frame_set_common.inc.glsl"
@@ -23,9 +23,9 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 1) uniform texture3D densityImag
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform texture3D densityImageMax;
 
 layout(constant_id = 0) const uint thresholdsCountConst = 0u;
-layout(constant_id = 1) const uint TargetWorkGroupSizeX = 8;
-layout(constant_id = 2) const uint TargetWorkGroupSizeY = 8;
-layout(constant_id = 3) const uint TargetWorkGroupSizeZ = 8;
+layout(constant_id = 1) const uint TargetWorkGroupSizeX = 4u;
+layout(constant_id = 2) const uint TargetWorkGroupSizeY = 4u;
+layout(constant_id = 3) const uint TargetWorkGroupSizeZ = 4u;
 layout(constant_id = 4) const bool PrepareBatchedDispatch = true;
 
 struct IndirectCommand {
@@ -89,6 +89,9 @@ void main() {
     // Number of workgroups
     uvec3 targetWorkGroupSize = uvec3(TargetWorkGroupSizeX, TargetWorkGroupSizeY, TargetWorkGroupSizeZ);
     uvec3 workgroups = divCeil(cullingVoxelSize, targetWorkGroupSize);
+
+    // Round up for calculating the lod and the number of workgroups, round down for the actual size.
+    cullingVoxelSize = targetLodExtents / totalInvocations;
 
     uint finalThresholdsCount = thresholdsCountConst == 0u ? thresholdsCount : thresholdsCountConst;
 
