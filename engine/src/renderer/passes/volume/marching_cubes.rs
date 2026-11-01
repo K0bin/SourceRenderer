@@ -601,7 +601,7 @@ impl MarchingCubesPass {
     pub fn culling_dispatch_buffer_name(handle: TextureHandle, lod: u32, as_cubes: bool) -> String {
         let asset_handle: AssetHandle = handle.into();
         format!(
-            "{}_d_{:?}_{:?}_{:?}_culling",
+            "{}_d_t{:?}_{:?}_{:?}_culling",
             Self::buffer_name_prefix(),
             asset_handle.index(),
             lod,
