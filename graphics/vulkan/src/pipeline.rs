@@ -760,23 +760,23 @@ impl VkPipeline {
         let mut _ts_spec_data = Option::<Box<[u32]>>::None;
         let mut _ts_spec_map = Option::<Box<[vk::SpecializationMapEntry]>>::None;
 
-        if let Some(shader) = info.ts.clone() {
+        if let Some(pipeline_shader) = info.ts.clone() {
             let (spec_info, spec_data, spec_map) =
-                unsafe { Self::get_spec_map(info.ms.spec_consts) };
+                unsafe { Self::get_spec_map(pipeline_shader.spec_consts) };
 
             _ts_spec_info = spec_info;
             _ts_spec_data = Some(spec_data);
             _ts_spec_map = Some(spec_map);
 
             let shader_stage = vk::PipelineShaderStageCreateInfo {
-                module: shader.shader.shader_module(),
+                module: pipeline_shader.shader.shader_module(),
                 p_name: entry_point.as_ptr() as *const c_char,
-                stage: shader_type_to_vk(shader.shader.shader_type()),
+                stage: shader_type_to_vk(pipeline_shader.shader.shader_type()),
                 p_specialization_info: &_ts_spec_info as *const vk::SpecializationInfo,
                 ..Default::default()
             };
             shader_stages.push(shader_stage);
-            add_shader_to_descriptor_set_layout_setup(device, shader.shader, &mut context);
+            add_shader_to_descriptor_set_layout_setup(device, pipeline_shader.shader, &mut context);
         }
 
         let (ms_spec_info, _ms_spec_data, _ms_spec_map) =
