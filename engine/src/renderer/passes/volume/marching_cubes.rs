@@ -11,8 +11,7 @@ use bytemuck::{Pod, Zeroable};
 use smallvec::{smallvec, SmallVec};
 use sourcerenderer_core::{Vec3UI, Vec4UI};
 use sourcerenderer_core::gpu::SpecConstValue;
-use std::cell::Ref;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use bevy_math::UVec3;
 use crate::renderer::VolumeRendererOptions;
@@ -669,95 +668,68 @@ impl MarchingCubesPass {
     /// Creates required buffers for every active volume mesh instance.
     /// Also destroys the ones that are no longer needed.
     fn manage_buffers(&mut self,
+                      cmd_buffer: &mut CommandBuffer,
                       pass_params: &mut RenderPassParameters,
                       use_mesh_shaders: bool,
     ) {
-        let mut active_buffer_names = HashSet::<String>::with_capacity(pass_params.scene.scene.volume_mesh_instances().len());
         for RendererVolumeDrawable { entity, volume_texture, texture_lod, render_as_cubes, .. } in pass_params
             .scene
             .scene
             .volume_mesh_instances() {
             if use_mesh_shaders {
                 // Mesh shaders need 1 culling buffer per entity
+                let workgroup_count: usize = (((512 + MESH_WORK_GROUP_SIZE.x - 1) / MESH_WORK_GROUP_SIZE.x)
+                    * (512 + MESH_WORK_GROUP_SIZE.y - 1) / MESH_WORK_GROUP_SIZE.y
+                    * (512 + MESH_WORK_GROUP_SIZE.z - 1) / MESH_WORK_GROUP_SIZE.z) as usize;
 
+                let culling_buffer = cmd_buffer.create_temporary_buffer(
+                    &BufferInfo {
+                    size: (std::mem::size_of::<IndirectCommand>() + std::mem::size_of::<u32>() + std::mem::size_of::<Vec4UI>() * workgroup_count) as u64,
+                    usage: BufferUsage::CONSTANT | BufferUsage::STORAGE | BufferUsage::INDIRECT | BufferUsage::COPY_DST,
+                    sharing_mode: QueueSharingMode::Exclusive,
+                    },
+                    MemoryUsage::GPUMemory
+                ).unwrap();
                 let name = Self::culling_buffer_name(*entity);
-                if !pass_params.resources.has_buffer(&name) {
-                    log::info!("Creating marching cubes buffer: {:?}", &name);
-
-                    let workgroup_count: usize = (((512 + MESH_WORK_GROUP_SIZE.x - 1) / MESH_WORK_GROUP_SIZE.x)
-                        * (512 + MESH_WORK_GROUP_SIZE.y - 1) / MESH_WORK_GROUP_SIZE.y
-                        * (512 + MESH_WORK_GROUP_SIZE.z - 1) / MESH_WORK_GROUP_SIZE.z) as usize;
-                    pass_params.resources.create_buffer(
-                        &name,
-                        &BufferInfo {
-                            size: (std::mem::size_of::<IndirectCommand>() + std::mem::size_of::<u32>() + std::mem::size_of::<Vec4UI>() * workgroup_count) as u64,
-                            usage: BufferUsage::CONSTANT | BufferUsage::STORAGE | BufferUsage::INDIRECT | BufferUsage::COPY_DST,
-                            sharing_mode: QueueSharingMode::Exclusive,
-                        },
-                        MemoryUsage::GPUMemory,
-                        false,
-                    );
-                }
-                assert!(active_buffer_names.insert(name));
+                pass_params.resources.track_transient_buffer(&name, culling_buffer);
             } else {
                 // Legacy graphics needs 1 index buffer per entity 1 culling buffer per dispatch (grouped by texture + lod + cube?
 
                 let dispatch_buffer_name = Self::culling_dispatch_buffer_name(*volume_texture, *texture_lod, *render_as_cubes);
                 if !pass_params.resources.has_buffer(&dispatch_buffer_name) {
-                    log::info!("Creating marching cubes buffer: {:?}", &dispatch_buffer_name);
-
                     let workgroup_count: usize = (((512 + WORK_GROUP_SIZE.x - 1) / WORK_GROUP_SIZE.x)
                         * (512 + WORK_GROUP_SIZE.y - 1) / WORK_GROUP_SIZE.y
                         * (512 + WORK_GROUP_SIZE.z - 1) / WORK_GROUP_SIZE.z) as usize;
-                    pass_params.resources.create_buffer(
-                        &dispatch_buffer_name,
+
+                    let batch_culling_buffer = cmd_buffer.create_temporary_buffer(
                         &BufferInfo {
                             size: (std::mem::size_of::<IndirectCommand>() + std::mem::size_of::<u32>() + std::mem::size_of::<Vec4UI>() * workgroup_count) as u64,
                             usage: BufferUsage::CONSTANT | BufferUsage::STORAGE | BufferUsage::INDIRECT | BufferUsage::COPY_DST,
                             sharing_mode: QueueSharingMode::Exclusive,
                         },
-                        MemoryUsage::GPUMemory,
-                        false,
-                    );
+                        MemoryUsage::GPUMemory
+                    ).unwrap();
+                    pass_params.resources.track_transient_buffer(&dispatch_buffer_name, batch_culling_buffer);
                 }
-                active_buffer_names.insert(dispatch_buffer_name);
 
+                // The texture might not be loaded yet, it might not be loaded yet.
+                let mut resolution_multiplied = 512 * 512 * 512;
+
+                // Assume there's a lot of empty space/fully filled space and voxels with fewer triangles
+                // to avoid huge buffers.
+                // Besides, the theoretical worst-case space we need is ~7.7 GB per model. That's not feasible!
+                resolution_multiplied /= 50;
+                let index_buffer = cmd_buffer.create_temporary_buffer(
+                    &BufferInfo {
+                        size: (std::mem::size_of::<u32>() * 15 * resolution_multiplied) as u64,
+                        usage: BufferUsage::STORAGE | BufferUsage::INDEX | BufferUsage::COPY_DST,
+                        sharing_mode: QueueSharingMode::Exclusive,
+                    },
+                    MemoryUsage::GPUMemory
+                ).unwrap();
                 let name = Self::index_buffer_name(*entity);
-                if !pass_params.resources.has_buffer(&name) {
-                    // The texture might not be loaded yet, it might not be loaded yet.
-                    let mut resolution_multiplied = 512 * 512 * 512;
-
-                    // Assume there's a lot of empty space/fully filled space and voxels with fewer triangles
-                    // to avoid huge buffers.
-                    // Besides, the theoretical worst-case space we need is ~7.7 GB per model. That's not feasible!
-                    resolution_multiplied /= 50;
-
-                    log::info!("Creating marching cubes buffer: {:?}", &name);
-                    pass_params.resources.create_buffer(
-                        &name,
-                        &BufferInfo {
-                            size: (std::mem::size_of::<u32>() * 15 * resolution_multiplied) as u64,
-                            usage: BufferUsage::STORAGE | BufferUsage::INDEX | BufferUsage::COPY_DST,
-                            sharing_mode: QueueSharingMode::Exclusive,
-                        },
-                        MemoryUsage::GPUMemory,
-                        false,
-                    );
-                }
-                assert!(active_buffer_names.insert(name));
+                pass_params.resources.track_transient_buffer(&name, index_buffer);
             }
-        }
-
-        let mut buffers_to_destroy = SmallVec::<[String; 2]>::new();
-        for buffer_name in pass_params.resources.buffer_keys() {
-            if !buffer_name.starts_with(Self::buffer_name_prefix()) || active_buffer_names.contains(buffer_name) {
-                continue;
-            }
-            buffers_to_destroy.push(buffer_name.to_string());
-        }
-        for buffer_name in buffers_to_destroy {
-            log::info!("Destroying marching cubes buffer: {:?}", &buffer_name);
-            pass_params.resources.destroy_buffer(&buffer_name);
         }
     }
 
@@ -851,7 +823,7 @@ impl MarchingCubesPass {
 
         command_buffer.begin_label("Marching Cubes pass");
 
-        self.manage_buffers(pass_params, use_mesh_shader);
+        self.manage_buffers(command_buffer, pass_params, use_mesh_shader);
         let batches = self.build_batches(pass_params);
         let map = self.build_drawing_map(&batches);
         self.clear_buffers(command_buffer, pass_params);
