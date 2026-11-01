@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::Iter;
 use std::hash::Hash;
 use std::sync::Arc;
-
+use itertools::Itertools;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{GPUMaybeSend, GPUMaybeSync, SpecConstValue};
 
@@ -42,7 +42,9 @@ pub trait PipelineCompileTask: Clone + Sized {
         assets: &'a RendererAssetsReadOnly,
     ) -> Iter<'a, Self::TPipelineHandle, CompiledPipeline<Self>>;
 
-    fn name(&self) -> Option<String>;
+    fn name(&self, shaders: &Self::TShaders) -> Option<String> {
+        None
+    }
     fn handle(&self) -> Self::TPipelineHandle;
     fn contains_shader(&self, handle: ShaderHandle) -> Option<ShaderType>;
     fn request_shader_refresh(&self, asset_manager: &Arc<AssetManager>);
@@ -207,6 +209,7 @@ pub struct GraphicsCompileTask {
 pub struct ArcPipelineShaderStage {
     shader: Arc<Shader>,
     spec_consts: HashMap<u32, SpecConstValue>,
+    name: String,
 }
 
 impl<'a> Into<ActualPipelineShaderStage<'a>> for &'a ArcPipelineShaderStage {
@@ -216,6 +219,38 @@ impl<'a> Into<ActualPipelineShaderStage<'a>> for &'a ArcPipelineShaderStage {
             spec_consts: &self.spec_consts,
         }
     }
+}
+
+fn shader_stage_to_string(assets: &RendererAssetsReadOnly, stage: &HandlePipelineShaderStage) -> String {
+    let mut str: String;
+    if let Some(path) = assets.get_path(stage.shader_handle.into()) {
+        let shader_built_dir = env!("SHADERS_BUILT_DIR");
+        let shaders_idx = path.find(shader_built_dir);
+        if let Some(mut shaders_idx) = shaders_idx {
+            shaders_idx += shader_built_dir.len() + 1;
+            str = (&path[shaders_idx..]).to_string();
+        } else {
+            str = path;
+        }
+    } else {
+        let asset_handle: AssetHandle = stage.shader_handle.into();
+        str = format!("{}", asset_handle.index());
+    }
+    if stage.spec_consts.is_empty() {
+        return str;
+    } else {
+        str += " with: ";
+        for (idx, val) in stage.spec_consts.iter().sorted_by_key(|(a, _)| *a) {
+            str += &format!("{}:{},", idx, match val {
+                SpecConstValue::Bool(val) => val.to_string(),
+                SpecConstValue::Int(val) => val.to_string(),
+                SpecConstValue::UInt(val) => val.to_string(),
+                SpecConstValue::Float(val) => val.to_string(),
+            });
+        }
+        str.truncate(str.len() - 1)
+    }
+    str
 }
 
 pub struct GraphicsShaders {
@@ -232,11 +267,11 @@ impl PipelineCompileTask for GraphicsCompileTask {
         AssetType::GraphicsPipeline
     }
 
-    fn name(&self) -> Option<String> {
+    fn name(&self, shaders: &Self::TShaders) -> Option<String> {
         Some(format!(
-            "GraphicsPipeline: VS: {:?}, FS: {:?}",
-            &self.vs,
-            self.fs.as_ref()
+            "GraphicsPipeline: VS: {:?}; FS: {:?}",
+            &shaders.vs.name,
+            shaders.fs.as_ref().map_or("None", |s| &s.name),
         ))
     }
 
@@ -290,6 +325,7 @@ impl PipelineCompileTask for GraphicsCompileTask {
                     .cloned()
                     .unwrap(),
                 spec_consts: self.vs.spec_consts.clone(),
+                name: shader_stage_to_string(renderer_assets_read, &self.vs),
             },
             fs: self.fs.as_ref().map(|fs| ArcPipelineShaderStage {
                 shader: renderer_assets_read
@@ -297,6 +333,7 @@ impl PipelineCompileTask for GraphicsCompileTask {
                     .cloned()
                     .unwrap(),
                 spec_consts: fs.spec_consts.clone(),
+                name: shader_stage_to_string(renderer_assets_read, fs),
             }),
         }
     }
@@ -333,7 +370,7 @@ impl PipelineCompileTask for GraphicsCompileTask {
             depth_stencil_format: self.depth_stencil_format,
         };
 
-        device.create_graphics_pipeline(&info, self.name().as_ref().map(|n| n as &str))
+        device.create_graphics_pipeline(&info, self.name(&shaders).as_ref().map(|n| n as &str))
     }
 }
 
@@ -377,7 +414,7 @@ impl<'a> MeshGraphicsPipelineInfo<'a> {
             rasterizer: info.rasterizer.clone(),
             depth_stencil: info.depth_stencil.clone(),
             blend: info.blend.clone(),
-            render_target_formats: info.render_target_formats.clone(),
+            render_target_formats: info.render_target_formats,
             depth_stencil_format: info.depth_stencil_format,
         }
     }
@@ -412,12 +449,12 @@ impl PipelineCompileTask for MeshGraphicsCompileTask {
         AssetType::MeshGraphicsPipeline
     }
 
-    fn name(&self) -> Option<String> {
+    fn name(&self, shaders: &Self::TShaders) -> Option<String> {
         Some(format!(
-            "GraphicsPipeline: TS: {:?}, MS: {:?}, FS: {:?}",
-            self.ts.as_ref(),
-            &self.ms,
-            self.fs.as_ref()
+            "GraphicsPipeline: TS: {:?}; MS: {:?}; FS: {:?}",
+            shaders.ts.as_ref().map_or("None", |s| &s.name),
+            &shaders.ms.name,
+            shaders.fs.as_ref().map_or("None", |s| &s.name),
         ))
     }
 
@@ -487,6 +524,7 @@ impl PipelineCompileTask for MeshGraphicsCompileTask {
                     .cloned()
                     .unwrap(),
                 spec_consts: ts.spec_consts.clone(),
+                name: shader_stage_to_string(renderer_assets_read, ts),
             }),
             ms: ArcPipelineShaderStage {
                 shader: renderer_assets_read
@@ -494,6 +532,7 @@ impl PipelineCompileTask for MeshGraphicsCompileTask {
                     .cloned()
                     .unwrap(),
                 spec_consts: self.ms.spec_consts.clone(),
+                name: shader_stage_to_string(renderer_assets_read, &self.ms),
             },
             fs: self.fs.as_ref().map(|fs| ArcPipelineShaderStage {
                 shader: renderer_assets_read
@@ -501,6 +540,7 @@ impl PipelineCompileTask for MeshGraphicsCompileTask {
                     .cloned()
                     .unwrap(),
                 spec_consts: fs.spec_consts.clone(),
+                name: shader_stage_to_string(renderer_assets_read, fs),
             }),
         }
     }
@@ -540,7 +580,7 @@ impl PipelineCompileTask for MeshGraphicsCompileTask {
             depth_stencil_format: self.depth_stencil_format,
         };
 
-        device.create_mesh_graphics_pipeline(&info, self.name().as_ref().map(|n| n as &str))
+        device.create_mesh_graphics_pipeline(&info, self.name(&shaders).as_ref().map(|n| n as &str))
     }
 }
 
@@ -579,8 +619,8 @@ impl PipelineCompileTask for ComputeCompileTask {
         AssetType::ComputePipeline
     }
 
-    fn name(&self) -> Option<String> {
-        Some(format!("ComputePipeline: {:?}", self.shader.shader_handle))
+    fn name(&self, shaders: &Self::TShaders) -> Option<String> {
+        Some(format!("ComputePipeline: {:?}", &shaders.name))
     }
 
     fn handle(&self) -> Self::TPipelineHandle {
@@ -616,6 +656,7 @@ impl PipelineCompileTask for ComputeCompileTask {
                 .cloned()
                 .unwrap(),
             spec_consts: self.shader.spec_consts.clone(),
+            name: shader_stage_to_string(renderer_assets_read, &self.shader),
         }
     }
 
@@ -631,7 +672,7 @@ impl PipelineCompileTask for ComputeCompileTask {
                 shader: &shader.shader,
                 spec_consts: &shader.spec_consts,
             },
-            self.name().as_ref().map(|n| n as &str),
+            self.name(&shader).as_ref().map(|n| n as &str),
         )
     }
 }
@@ -687,10 +728,6 @@ impl PipelineCompileTask for RayTracingCompileTask {
 
     fn asset_type() -> AssetType {
         AssetType::RayTracingPipeline
-    }
-
-    fn name(&self) -> Option<String> {
-        None
     }
 
     fn handle(&self) -> Self::TPipelineHandle {
@@ -778,6 +815,7 @@ impl PipelineCompileTask for RayTracingCompileTask {
                     .cloned()
                     .unwrap(),
                 spec_consts: self.ray_gen_shader.spec_consts.clone(),
+                name: shader_stage_to_string(renderer_assets_read, &self.ray_gen_shader),
             },
             closest_hit_shaders: self
                 .closest_hit_shaders
@@ -788,6 +826,7 @@ impl PipelineCompileTask for RayTracingCompileTask {
                         .cloned()
                         .unwrap(),
                     spec_consts: shader.spec_consts.clone(),
+                    name: shader_stage_to_string(renderer_assets_read, shader),
                 })
                 .collect(),
             any_hit_shaders: self
@@ -799,6 +838,7 @@ impl PipelineCompileTask for RayTracingCompileTask {
                         .cloned()
                         .unwrap(),
                     spec_consts: shader.spec_consts.clone(),
+                    name: shader_stage_to_string(renderer_assets_read, shader),
                 })
                 .collect(),
             miss_shaders: self
@@ -810,6 +850,7 @@ impl PipelineCompileTask for RayTracingCompileTask {
                         .cloned()
                         .unwrap(),
                     spec_consts: shader.spec_consts.clone(),
+                    name: shader_stage_to_string(renderer_assets_read, shader),
                 })
                 .collect(),
         }
@@ -857,7 +898,7 @@ impl PipelineCompileTask for RayTracingCompileTask {
             miss_shaders: &miss_shaders_refs[..],
         };
         device
-            .create_raytracing_pipeline(&info, self.name().as_ref().map(|n| n as &str))
+            .create_raytracing_pipeline(&info, self.name(&shaders).as_ref().map(|n| n as &str))
             .unwrap()
     }
 }
@@ -1015,6 +1056,8 @@ impl ShaderManager {
                 .into(),
             spec_consts: fs.spec_consts.map(|s| (*s).clone()).unwrap_or_default(),
         });
+
+        log::info!("MeshGraphicsPipeline: {:?}", ts_handle.as_ref().map(|ts| &ts.spec_consts));
 
         let handle: MeshGraphicsPipelineHandle = asset_manager
             .reserve_handle_without_path(AssetType::MeshGraphicsPipeline)
