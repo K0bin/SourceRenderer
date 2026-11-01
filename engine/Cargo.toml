@@ -21,6 +21,7 @@ sourcerenderer_vtx = { path = "../valve_formats/vtx" }
 sourcerenderer_vvd = { path = "../valve_formats/vvd" }
 io_util = { path = "../io_util", features = ["async"] }
 smallvec = { version = "1.16", features = ["union", "const_generics", "const_new"] }
+smol_str = "0.3"
 gltf = { version = "1.4", features = ["KHR_lights_punctual"] }
 rand = "0.10"
 bitset-core = "0.1"
