@@ -1,2 +1,0 @@
-khronos_validation.printf_buffer_size=64000
-khronos_validation.enables = VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT
