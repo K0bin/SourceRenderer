@@ -1805,7 +1805,13 @@ pub(super) fn barrier_sync_to_stage(sync: gpu::BarrierSync) -> vk::PipelineStage
         stages |= vk::PipelineStageFlags2::COMPUTE_SHADER;
     }
     if sync.contains(gpu::BarrierSync::COPY) {
-        stages |= vk::PipelineStageFlags2::TRANSFER;
+        stages |= vk::PipelineStageFlags2::COPY;
+    }
+    if sync.contains(gpu::BarrierSync::CLEAR) {
+        stages |= vk::PipelineStageFlags2::CLEAR;
+    }
+    if sync.contains(gpu::BarrierSync::BLIT) {
+        stages |= vk::PipelineStageFlags2::BLIT;
     }
     if sync.contains(gpu::BarrierSync::EARLY_DEPTH) {
         stages |= vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS;
@@ -1880,6 +1886,15 @@ fn barrier_access_to_access(access: gpu::BarrierAccess) -> vk::AccessFlags2 {
     }
     if access.contains(gpu::BarrierAccess::COPY_WRITE) {
         vk_access |= vk::AccessFlags2::TRANSFER_WRITE;
+    }
+    if access.contains(gpu::BarrierAccess::CLEAR_WRITE) {
+        vk_access |= vk::AccessFlags2::TRANSFER_WRITE;
+    }
+    if access.contains(gpu::BarrierAccess::BLIT_WRITE) {
+        vk_access |= vk::AccessFlags2::TRANSFER_WRITE;
+    }
+    if access.contains(gpu::BarrierAccess::BLIT_READ) {
+        vk_access |= vk::AccessFlags2::TRANSFER_READ;
     }
     if access.contains(gpu::BarrierAccess::RESOLVE_READ) {
         vk_access |= vk::AccessFlags2::TRANSFER_READ;

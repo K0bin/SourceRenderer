@@ -459,6 +459,7 @@ bitflags! {
     const RAY_TRACING_SHADER           = 0b100000000000000;
     const MESH_SHADER                  = 0b1000000000000000;
     const TASK_SHADER                  = 0b10000000000000000;
+    const CLEAR                        = 0b100000000000000000;
   }
 }
 
@@ -488,6 +489,9 @@ bitflags! {
     const HOST_WRITE                   = 0b100000000000000000000;
     const ACCELERATION_STRUCTURE_READ  = 0b1000000000000000000000;
     const ACCELERATION_STRUCTURE_WRITE = 0b10000000000000000000000;
+    const CLEAR_WRITE                  = 0b100000000000000000000000;
+    const BLIT_READ                    = 0b1000000000000000000000000;
+    const BLIT_WRITE                   = 0b10000000000000000000000000;
   }
 }
 
@@ -502,6 +506,8 @@ impl BarrierAccess {
             | BarrierAccess::SHADER_WRITE
             | BarrierAccess::MEMORY_WRITE
             | BarrierAccess::HOST_WRITE
+            | BarrierAccess::BLIT_WRITE
+            | BarrierAccess::CLEAR_WRITE
             | BarrierAccess::ACCELERATION_STRUCTURE_WRITE
     }
 
@@ -511,11 +517,14 @@ impl BarrierAccess {
         self.intersects(writes)
     }
 
-    pub fn applies_to_graphics(self) -> bool {
+    pub fn applies_to_renderpass(self) -> bool {
         (self
             & !(Self::ACCELERATION_STRUCTURE_WRITE
                 | Self::HOST_WRITE
                 | Self::HOST_READ
+                | Self::BLIT_READ
+                | Self::BLIT_WRITE
+                | Self::CLEAR_WRITE
                 | Self::COPY_READ
                 | Self::COPY_WRITE))
             != Self::empty()
@@ -534,6 +543,7 @@ impl BarrierAccess {
                 | Self::MEMORY_WRITE
                 | Self::SHADER_READ
                 | Self::SHADER_WRITE
+                | Self::CLEAR_WRITE
                 | Self::SAMPLING_READ,
         )
     }
@@ -546,6 +556,9 @@ impl BarrierAccess {
                 | Self::HOST_WRITE
                 | Self::HOST_READ
                 | Self::CONSTANT_READ
+                | Self::CLEAR_WRITE
+                | Self::BLIT_READ
+                | Self::BLIT_WRITE
                 | Self::ACCELERATION_STRUCTURE_READ
                 | Self::ACCELERATION_STRUCTURE_WRITE))
             != Self::empty()
@@ -559,6 +572,7 @@ impl BarrierAccess {
                 | Self::RENDER_TARGET_READ
                 | Self::RENDER_TARGET_WRITE
                 | Self::DEPTH_STENCIL_READ
+                | Self::CLEAR_WRITE
                 | Self::DEPTH_STENCIL_WRITE))
             != Self::empty()
     }
@@ -627,6 +641,10 @@ impl BarrierAccess {
                     | Self::MEMORY_READ
                     | Self::MEMORY_WRITE,
             ) && stages.contains(BarrierSync::RENDER_TARGET))
+            || (self.contains(Self::BLIT_WRITE | Self::BLIT_READ | Self::MEMORY_READ | Self::MEMORY_WRITE)
+                && stages.contains(BarrierSync::BLIT))
+            || (self.contains(Self::CLEAR_WRITE | Self::MEMORY_WRITE)
+                && stages.contains(BarrierSync::CLEAR))
     }
 }
 
