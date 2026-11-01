@@ -175,8 +175,6 @@ impl RenderPath for VolumeRenderer {
         resources: &mut RendererResources,
         assets: &RendererAssets,
     ) -> Result<RenderPathResult, SwapchainError> {
-        let backbuffer = swapchain.next_backbuffer()?;
-
         let mut cmd_buffer = context.get_command_buffer(QueueType::Graphics);
 
         let read_assets = assets.read();
@@ -186,6 +184,7 @@ impl RenderPath for VolumeRenderer {
             all_done = all_done && read_assets.get_texture_opt(d.volume_texture).is_some();
         }
         if !all_done {
+            let backbuffer = swapchain.next_backbuffer()?;
             let backbuffer_handle = swapchain.backbuffer_handle(&backbuffer);
             cmd_buffer.barrier(&[Barrier::RawTextureBarrier {
                 old_sync: BarrierSync::empty(),
@@ -293,6 +292,7 @@ impl RenderPath for VolumeRenderer {
             0.015,
         );
 
+        let backbuffer = swapchain.next_backbuffer()?;
         let backbuffer_view = swapchain.backbuffer_view(&backbuffer);
         let backbuffer_handle = swapchain.backbuffer_handle(&backbuffer);
 
