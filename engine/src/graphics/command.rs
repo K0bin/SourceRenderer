@@ -683,6 +683,9 @@ impl<'a> CommandBuffer<'a> {
         dst_array_layer: u32,
         dst_mip_level: u32,
     ) {
+        if DEBUG_FORCE_FAT_BARRIER {
+            self.fat_barrier();
+        }
         unsafe {
             self.cmd_buffer_handle.blit(
                 src_texture.handle(),
@@ -692,6 +695,9 @@ impl<'a> CommandBuffer<'a> {
                 dst_array_layer,
                 dst_mip_level,
             );
+        }
+        if DEBUG_FORCE_FAT_BARRIER {
+            self.fat_barrier();
         }
     }
 
@@ -704,6 +710,9 @@ impl<'a> CommandBuffer<'a> {
         dst_array_layer: u32,
         dst_mip_level: u32,
     ) {
+        if DEBUG_FORCE_FAT_BARRIER {
+            self.fat_barrier();
+        }
         unsafe {
             self.cmd_buffer_handle.blit(
                 src_texture.handle(),
@@ -714,6 +723,9 @@ impl<'a> CommandBuffer<'a> {
                 dst_mip_level,
             );
         }
+        if DEBUG_FORCE_FAT_BARRIER {
+            self.fat_barrier();
+        }
     }
 
     pub fn copy_buffer_to_texture(
@@ -722,6 +734,9 @@ impl<'a> CommandBuffer<'a> {
         texture: &Texture,
         region: &BufferTextureCopyRegion,
     ) {
+        if DEBUG_FORCE_FAT_BARRIER {
+            self.fat_barrier();
+        }
         let BufferHandleRef {
             handle: buffer_handle,
             offset: buffer_offset,
@@ -736,6 +751,9 @@ impl<'a> CommandBuffer<'a> {
                     ..region.clone()
                 },
             );
+        }
+        if DEBUG_FORCE_FAT_BARRIER {
+            self.fat_barrier();
         }
     }
 
@@ -763,6 +781,9 @@ impl<'a> CommandBuffer<'a> {
         mip_level: u32,
         values: [u32; 4],
     ) {
+        if DEBUG_FORCE_FAT_BARRIER {
+            self.fat_barrier();
+        }
         unsafe {
             self.cmd_buffer_handle.copy_clear_texture(
                 view.handle(),
@@ -770,6 +791,9 @@ impl<'a> CommandBuffer<'a> {
                 mip_level,
                 values,
             );
+        }
+        if DEBUG_FORCE_FAT_BARRIER {
+            self.fat_barrier();
         }
     }
 
@@ -780,6 +804,9 @@ impl<'a> CommandBuffer<'a> {
         length_in_u32s: u64,
         value: u32,
     ) {
+        if DEBUG_FORCE_FAT_BARRIER {
+            self.fat_barrier();
+        }
         let BufferHandleRef {
             handle: buffer_handle,
             offset: buffer_offset,
@@ -792,6 +819,9 @@ impl<'a> CommandBuffer<'a> {
                 length_in_u32s.min((buffer_length - offset) / 4),
                 value,
             );
+        }
+        if DEBUG_FORCE_FAT_BARRIER {
+            self.fat_barrier();
         }
     }
 
