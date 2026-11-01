@@ -1,11 +1,10 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::*;
 use crate::Mutex;
 use crate::asset::{
     AssetData, AssetHandle, AssetLoadPriority, AssetManager, AssetType, MaterialData,
-    MaterialHandle, MaterialValue, MeshData, ModelData, ShaderData, ShaderHandle, TextureData,
+    MaterialHandle, MeshData, ModelData, ShaderData, ShaderHandle, TextureData,
     TextureHandle,
 };
 use crate::graphics::*;
@@ -65,16 +64,17 @@ impl AssetIntegrator {
         priority: AssetLoadPriority,
     ) -> Option<RendererAssetWithHandle> {
         let handle: AssetHandle = handle.into();
+        let path = assets.get_path(handle);
         trace!(
             "Integrating asset: {:?} {:?} {:?}",
-            assets.get_path(handle),
+            path,
             asset_data.asset_type(),
             handle
         );
         match asset_data {
             AssetData::Texture(texture_data) => {
                 let (renderer_texture, fence) =
-                    self.integrate_texture(handle.into(), priority, texture_data);
+                    self.integrate_texture(handle.into(), path.as_ref().map(|n| n.as_str()), priority, texture_data);
                 let renderer_texture_with_handle =
                     RendererAssetWithHandle::Texture(handle.into(), renderer_texture);
 
@@ -113,11 +113,12 @@ impl AssetIntegrator {
     fn integrate_texture(
         &self,
         handle: TextureHandle,
+        name: Option<&str>,
         priority: AssetLoadPriority,
         texture_data: TextureData,
     ) -> (RendererTexture, Option<QueueFenceValue>) {
         let (view, fence) =
-            self.upload_texture(handle, texture_data, priority == AssetLoadPriority::Low);
+            self.upload_texture(handle, name, texture_data, priority == AssetLoadPriority::Low);
         let bindless_index = if self.device.supports_bindless() {
             self.device.insert_texture_into_bindless_heap(&view)
         } else {
@@ -215,10 +216,11 @@ impl AssetIntegrator {
     fn upload_texture(
         &self,
         handle: TextureHandle,
+        name: Option<&str>,
         texture: TextureData,
         do_async: bool,
     ) -> (Arc<TextureView>, Option<QueueFenceValue>) {
-        let name = format!("{:?}", handle);
+        let name = name.map_or_else(|| format!("{:?}", handle), |n| n.to_string());
         let gpu_texture = self
             .device
             .create_texture(&texture.info, Some(&name))
