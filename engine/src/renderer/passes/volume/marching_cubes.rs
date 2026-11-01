@@ -1,4 +1,4 @@
-use crate::asset::TextureHandle;
+use crate::asset::{AssetHandle, TextureHandle};
 use crate::graphics::*;
 use crate::renderer::asset::{
     ComputePipelineHandle, PathPipelineShaderStage, RendererAssets, RendererAssetsReadOnly,
@@ -599,10 +599,11 @@ impl MarchingCubesPass {
     }
 
     pub fn culling_dispatch_buffer_name(handle: TextureHandle, lod: u32, as_cubes: bool) -> String {
+        let asset_handle: AssetHandle = handle.into();
         format!(
             "{}_d_{:?}_{:?}_{:?}_culling",
             Self::buffer_name_prefix(),
-            handle,
+            asset_handle.index(),
             lod,
             as_cubes
         )
