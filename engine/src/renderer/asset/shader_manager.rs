@@ -1489,7 +1489,7 @@ const SPEC_CONST_COUNT: usize = 8;
 pub struct PipelinePermutations<THandle : PipelineHandle, const PIPELINE_SHADER_STAGES: usize> {
     pipelines: HashMap<([[Option<SpecConstValue>; SPEC_CONST_COUNT]; PIPELINE_SHADER_STAGES]), THandle>
 }
-pub type ComputePipelinePermutations = PipelinePermutations<ComputePipeline, 1>;
+pub type ComputePipelinePermutations = PipelinePermutations<ComputePipelineHandle, 1>;
 pub type GraphicsPipelinePermutations = PipelinePermutations<GraphicsPipelineHandle, 2>;
 pub type MeshGraphicsPipelinePermutations = PipelinePermutations<MeshGraphicsPipelineHandle, 3>;
 
@@ -1538,11 +1538,11 @@ fn opt_spec_const_hashmap_from_array(spec_consts: &[Option<SpecConstValue>; SPEC
 
 impl PipelinePermutations<ComputePipelineHandle, 1> {
     pub fn request(manager: &RendererAssets, info: &PathPipelineShaderStage,
-                            vs_spec_constants_permutations: &[[Option<SpecConstValue>; SPEC_CONST_COUNT]]) -> Self {
+                            spec_constants_permutations: &[[Option<SpecConstValue>; SPEC_CONST_COUNT]]) -> Self {
         let mut pipelines: HashMap<[[Option<SpecConstValue>; SPEC_CONST_COUNT]; 1], ComputePipelineHandle> = HashMap::new();
 
         let empty_permutations = [[None; SPEC_CONST_COUNT]];
-        let sanitized_spec_permutations = if vs_spec_constants_permutations.is_empty() { &empty_permutations } else { vs_spec_constants_permutations };
+        let sanitized_spec_permutations = if spec_constants_permutations.is_empty() { &empty_permutations } else { spec_constants_permutations };
 
         for permutation in sanitized_spec_permutations {
             let mut cs_info = info.clone();
