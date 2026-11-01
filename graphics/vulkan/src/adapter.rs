@@ -744,6 +744,8 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             | vk::PipelineStageFlags2::COMPUTE_SHADER
             | vk::PipelineStageFlags2::VERTEX_ATTRIBUTE_INPUT
             | vk::PipelineStageFlags2::INDEX_INPUT
+            | vk::PipelineStageFlags2::ALL_COMMANDS
+            | vk::PipelineStageFlags2::ALL_GRAPHICS
             | vk::PipelineStageFlags2::VERTEX_INPUT;
 
         let mut supported_access_flags = vk::AccessFlags2::SHADER_READ
@@ -762,6 +764,8 @@ impl gpu::Adapter<VkBackend> for VkAdapter {
             | vk::AccessFlags2::UNIFORM_READ
             | vk::AccessFlags2::HOST_READ
             | vk::AccessFlags2::HOST_WRITE
+            | vk::AccessFlags2::MEMORY_READ
+            | vk::AccessFlags2::MEMORY_WRITE
             | vk::AccessFlags2::SHADER_SAMPLED_READ;
 
         if supports_rt_pipeline || supports_rt_query {
