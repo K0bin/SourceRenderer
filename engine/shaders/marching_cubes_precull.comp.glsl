@@ -1,0 +1,112 @@
+#version 450
+#extension GL_GOOGLE_include_directive : enable
+// #extension GL_EXT_debug_printf : enable
+
+#extension GL_EXT_scalar_block_layout : enable
+
+#extension GL_KHR_shader_subgroup_basic : enable
+#extension GL_KHR_shader_subgroup_arithmetic : enable
+#extension GL_KHR_shader_subgroup_vote : enable
+#extension GL_KHR_shader_subgroup_ballot : enable
+#extension GL_KHR_shader_subgroup_shuffle : enable
+#extension GL_EXT_maximal_reconvergence : enable
+#extension GL_EXT_nonuniform_qualifier : enable
+
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+#include "descriptor_sets.inc.glsl"
+#include "frame_set_common.inc.glsl"
+#include "morton_code.inc.glsl"
+
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform texture3D densityImage;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 1) uniform texture3D densityImageMin;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform texture3D densityImageMax;
+
+layout(constant_id = 0) const uint thresholdsCountConst = 0u;
+layout(constant_id = 1) const uint TargetWorkGroupSizeX = 4u;
+layout(constant_id = 2) const uint TargetWorkGroupSizeY = 4u;
+layout(constant_id = 3) const uint TargetWorkGroupSizeZ = 4u;
+layout(constant_id = 4) const bool PrepareBatchedDispatch = true;
+
+struct IndirectCommand {
+    uint x;
+    uint y;
+    uint z;
+};
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 3, scalar) buffer indirectbuffers{
+    IndirectCommand command;
+    uint _padding;
+    uvec4[] workgroupPositions;
+} indirectBuffers[16u];
+
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 4, scalar) uniform thresholds {
+    float[16u] minThresholds;
+};
+
+layout(push_constant, std430) uniform Config {
+    uvec3 targetLodExtents;
+    uint targetLod;
+    uint thresholdsCount;
+};
+
+uint divCeil(uint numerator, uint denominator) {
+    return (numerator + denominator - 1u) / denominator;
+}
+
+uvec3 divCeil(uvec3 numerator, uvec3 denominator) {
+    return (numerator + denominator - uvec3(1u)) / denominator;
+}
+
+void spawnWorkgroups(uvec3 count, uvec3 cullingVoxelSize, uint targetBufferIndex) {
+    // Assume that the number of workgroups spawned by one culling invocation is never more than 65k.
+    // Culling voxel size of 32x32x32 (reduction by 5) is 32k.
+
+    uint totalWorkgroupsToSpawn = count.x * count.y * count.z;
+    uint firstGlobalWorkgroupIndex = atomicAdd(indirectBuffers[targetBufferIndex].command.x, totalWorkgroupsToSpawn);
+    indirectBuffers[targetBufferIndex].command.y = 1;
+    indirectBuffers[targetBufferIndex].command.z = 1;
+    // TODO spread this out on Qualcomm because max workgroups x there is 65535
+
+    uvec3 targetWorkGroupSize = uvec3(TargetWorkGroupSizeX, TargetWorkGroupSizeY, TargetWorkGroupSizeZ);
+
+    for (uint x = 0u; x < count.x; x++) {
+        for (uint y = 0u; y < count.y; y++) {
+            for (uint z = 0u; z < count.z; z++) {
+                uint index = mortonCode(uvec3(x, y, z), count);
+                indirectBuffers[targetBufferIndex].workgroupPositions[firstGlobalWorkgroupIndex + index] =
+                    uvec4(gl_GlobalInvocationID * cullingVoxelSize + uvec3(x, y, z) * targetWorkGroupSize, 1u);
+            }
+        }
+    }
+}
+
+void main() {
+    // When targeting a workgroup size of 4x4x4, reduction should be at least 2. For 8x8x8 at least 3.
+    uvec3 totalInvocations = gl_NumWorkGroups * gl_WorkGroupSize;
+    uvec3 cullingVoxelSize = divCeil(targetLodExtents, totalInvocations);
+    uint mipLod = targetLod + uint(findMSB(max(cullingVoxelSize.x, max(cullingVoxelSize.y, cullingVoxelSize.z))));
+
+    // Number of workgroups
+    uvec3 targetWorkGroupSize = uvec3(TargetWorkGroupSizeX, TargetWorkGroupSizeY, TargetWorkGroupSizeZ);
+    uvec3 workgroups = divCeil(cullingVoxelSize, targetWorkGroupSize);
+
+    uint finalThresholdsCount = thresholdsCountConst == 0u ? thresholdsCount : thresholdsCountConst;
+
+    uint minMaxTextureLod = mipLod - 1u; // the min/max textures don't have the top mip
+    float maxDensity = texelFetch(sampler3D(densityImageMax, samplerNearest), ivec3(gl_GlobalInvocationID), int(minMaxTextureLod)).r;
+    float minDensity = texelFetch(sampler3D(densityImageMin, samplerNearest), ivec3(gl_GlobalInvocationID), int(minMaxTextureLod)).r;
+    bool dispatchBatch = PrepareBatchedDispatch;
+    for (uint i = 0u; i < finalThresholdsCount; i++) {
+        float threshold = minThresholds[i];
+        bool notEmpty = maxDensity >= threshold;
+        bool notFull = minDensity < threshold;
+        dispatchBatch = dispatchBatch && notEmpty;
+        dispatchBatch = dispatchBatch && notFull;
+
+        if (!PrepareBatchedDispatch && notEmpty && notFull)
+            spawnWorkgroups(workgroups, cullingVoxelSize, i);
+    }
+
+    if (dispatchBatch)
+        spawnWorkgroups(workgroups, cullingVoxelSize, 0u);
+}

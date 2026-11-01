@@ -64,6 +64,9 @@ fn renderer_options_ui_system(
             ui.text("Use Mesh Shader");
             ui.same_line();
             ui.checkbox("##meshshader", &mut options.use_mesh_shader);
+            ui.text("Culling pass");
+            ui.same_line();
+            ui.checkbox("##culling", &mut options.culling);
         });
 }
 

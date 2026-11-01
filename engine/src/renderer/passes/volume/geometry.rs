@@ -1,5 +1,5 @@
 use crate::graphics::*;
-use crate::renderer::asset::{GraphicsPipelineHandle, GraphicsPipelineInfo, MeshGraphicsPipelineInfo, MeshGraphicsPipelineHandle, PathPipelineShaderStage, RendererAssets, RendererAssetsReadOnly, RendererMaterial};
+use crate::renderer::asset::{GraphicsPipelineHandle, GraphicsPipelineInfo, MeshGraphicsPipelineInfo, MeshGraphicsPipelineHandle, PathPipelineShaderStage, RendererAssets, RendererAssetsReadOnly, RendererMaterial, PipelinePermutations, PipelineHandle, GraphicsPipelinePermutations, MeshGraphicsPipelinePermutations};
 use crate::renderer::drawable::{RendererVolumeDrawable, VolumeDrawableTransparencyMode};
 use crate::renderer::passes::volume::ibl::ImageBasedLightingTextures;
 use crate::renderer::passes::volume::marching_cubes::{
@@ -12,10 +12,9 @@ use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{SpecConstValue, StencilOp, TexturePlane};
 use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec3UI};
 use std::cell::Ref;
-use std::collections::HashMap;
 use std::default::Default;
 use std::sync::Arc;
-use crate::asset::{AssetHandle, MaterialHandle};
+use crate::asset::MaterialHandle;
 use crate::renderer::VolumeRendererOptions;
 
 #[repr(C)]
@@ -47,66 +46,62 @@ struct MaterialData {
     _padding2: u32,
 }
 
-struct GeometryPassPipelines<T : Clone + Copy + From<AssetHandle> + Into<AssetHandle>> {
-    opaque: T,
-    non_overlapping: T,
-    transparent: T,
-    transparent_prepass: T,
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+enum GeometryPassPipelineType {
+    Opaque, NonOverlapping, Transparent, TransparentPrepass
 }
 
-impl<T: Clone + Copy + From<AssetHandle> + Into<AssetHandle>> GeometryPassPipelines<T> {
+struct GeometryPassPipelines<T : PipelineHandle, const PIPELINE_SHADER_STAGES: usize> {
+    opaque: PipelinePermutations<T, PIPELINE_SHADER_STAGES>,
+    non_overlapping: PipelinePermutations<T, PIPELINE_SHADER_STAGES>,
+    transparent: PipelinePermutations<T, PIPELINE_SHADER_STAGES>,
+    transparent_prepass: PipelinePermutations<T, PIPELINE_SHADER_STAGES>,
+}
+
+impl<T: PipelineHandle, const PIPELINE_SHADER_STAGES: usize> GeometryPassPipelines<T, PIPELINE_SHADER_STAGES> {
     fn is_ready(&self, assets: &RendererAssetsReadOnly) -> bool {
-        assets.has_pipeline(self.opaque.into())
-            && assets.has_pipeline(self.non_overlapping.into())
-            && assets.has_pipeline(self.transparent.into())
-            && assets.has_pipeline(self.transparent_prepass.into())
+        self.opaque.all_ready(assets)
+        && self.non_overlapping.all_ready(assets)
+        && self.transparent.all_ready(assets)
+        && self.transparent_prepass.all_ready(assets)
     }
 }
 
-struct GeometryPassPipelineRefs<'a, T> {
-    opaque: &'a Arc<T>,
-    non_overlapping: &'a Arc<T>,
-    transparent: &'a Arc<T>,
-    transparent_prepass: &'a Arc<T>,
-}
+impl GeometryPassPipelines<GraphicsPipelineHandle, 2> {
+    fn get<'a>(&self, renderer_assets: &'a RendererAssetsReadOnly<'a>, pipeline_type: GeometryPassPipelineType, raymarch_normals: bool) -> Option<&'a Arc<GraphicsPipeline>> {
+        let mut fs_spec_consts: [Option::<SpecConstValue>; 8] = [None; 8];
+        fs_spec_consts[0] = Some(SpecConstValue::Bool(raymarch_normals));
 
-impl<'a> GeometryPassPipelineRefs<'a, GraphicsPipeline> {
-    fn load(handles: &GeometryPassPipelines<GraphicsPipelineHandle>, renderer_assets: &'a RendererAssetsReadOnly<'a>) -> Self {
-        Self {
-            opaque: renderer_assets.get_graphics_pipeline(handles.opaque)
-                .expect("Pipeline is not compiled yet"),
-            non_overlapping: renderer_assets.get_graphics_pipeline(handles.non_overlapping)
-                .expect("Pipeline is not compiled yet"),
-            transparent: renderer_assets.get_graphics_pipeline(handles.transparent)
-                .expect("Pipeline is not compiled yet"),
-            transparent_prepass: renderer_assets.get_graphics_pipeline(handles.transparent_prepass)
-                .expect("Pipeline is not compiled yet"),
+        match pipeline_type {
+            GeometryPassPipelineType::Opaque => self.opaque.get_pipeline(renderer_assets, &[None; 8], &fs_spec_consts),
+            GeometryPassPipelineType::NonOverlapping => self.non_overlapping.get_pipeline(renderer_assets, &[None; 8], &fs_spec_consts),
+            GeometryPassPipelineType::Transparent => self.transparent.get_pipeline(renderer_assets, &[None; 8], &fs_spec_consts),
+            GeometryPassPipelineType::TransparentPrepass => self.transparent_prepass.get_pipeline(renderer_assets, &[None; 8], &[None; 8]),
         }
     }
 }
 
-impl<'a> GeometryPassPipelineRefs<'a, MeshGraphicsPipeline> {
-    fn load(handles: &GeometryPassPipelines<MeshGraphicsPipelineHandle>, renderer_assets: &'a RendererAssetsReadOnly<'a>) -> Self {
-        Self {
-            opaque: renderer_assets.get_mesh_graphics_pipeline(handles.opaque)
-                .expect("Pipeline is not compiled yet"),
-            non_overlapping: renderer_assets.get_mesh_graphics_pipeline(handles.non_overlapping)
-                .expect("Pipeline is not compiled yet"),
-            transparent: renderer_assets.get_mesh_graphics_pipeline(handles.transparent)
-                .expect("Pipeline is not compiled yet"),
-            transparent_prepass: renderer_assets.get_mesh_graphics_pipeline(handles.transparent_prepass)
-                .expect("Pipeline is not compiled yet"),
+impl GeometryPassPipelines<MeshGraphicsPipelineHandle, 3> {
+    fn get<'a>(&self, renderer_assets: &'a RendererAssetsReadOnly<'a>, pipeline_type: GeometryPassPipelineType,
+               raymarch_normals: bool, render_as_cubes: bool, culled: bool) -> Option<&'a Arc<MeshGraphicsPipeline>> {
+        let mut ts_spec_consts: [Option::<SpecConstValue>; 8] = [None; 8];
+        ts_spec_consts[0] = Some(SpecConstValue::Bool(render_as_cubes));
+        ts_spec_consts[1] = Some(SpecConstValue::Bool(culled));
+        let mut fs_spec_consts: [Option::<SpecConstValue>; 8] = [None; 8];
+        fs_spec_consts[0] = Some(SpecConstValue::Bool(raymarch_normals));
+
+        match pipeline_type {
+            GeometryPassPipelineType::Opaque => self.opaque.get_pipeline(renderer_assets, &ts_spec_consts, &[None; 8], &fs_spec_consts),
+            GeometryPassPipelineType::NonOverlapping => self.non_overlapping.get_pipeline(renderer_assets, &ts_spec_consts, &[None; 8], &fs_spec_consts),
+            GeometryPassPipelineType::Transparent => self.transparent.get_pipeline(renderer_assets, &ts_spec_consts, &[None; 8], &fs_spec_consts),
+            GeometryPassPipelineType::TransparentPrepass => self.transparent_prepass.get_pipeline(renderer_assets, &ts_spec_consts, &[None; 8], &[None; 8]),
         }
     }
 }
 
 pub struct GeometryPass {
-    pipelines: GeometryPassPipelines<GraphicsPipelineHandle>,
-    pipelines_non_raymarch: GeometryPassPipelines<GraphicsPipelineHandle>,
-    mesh_pipelines: Option<GeometryPassPipelines<MeshGraphicsPipelineHandle>>,
-    mesh_pipelines_non_raymarch: Option<GeometryPassPipelines<MeshGraphicsPipelineHandle>>,
-    mesh_pipelines_cube: Option<GeometryPassPipelines<MeshGraphicsPipelineHandle>>,
-    mesh_pipelines_non_raymarch_cube: Option<GeometryPassPipelines<MeshGraphicsPipelineHandle>>,
+    pipelines: GeometryPassPipelines<GraphicsPipelineHandle, 2>,
+    mesh_pipelines: Option<GeometryPassPipelines<MeshGraphicsPipelineHandle, 3>>,
 }
 
 impl GeometryPass {
@@ -130,10 +125,45 @@ impl GeometryPass {
         let ts_stage_path_opt = Some(PathPipelineShaderStage::empty_spec_consts(ts_path));
         let ms_stage_path = PathPipelineShaderStage::empty_spec_consts(ms_path);
 
+        let mut ts_spec_consts: [Option::<SpecConstValue>; 8] = [None; 8];
+        ts_spec_consts[0] = Some(SpecConstValue::Bool(false));
+        ts_spec_consts[1] = Some(SpecConstValue::Bool(false));
+
+        let mut ts_culled_cube_spec_consts: [Option::<SpecConstValue>; 8] = [None; 8];
+        ts_culled_cube_spec_consts[0] = Some(SpecConstValue::Bool(true));
+        ts_culled_cube_spec_consts[1] = Some(SpecConstValue::Bool(true));
+
+        let mut ts_culled_spec_consts: [Option::<SpecConstValue>; 8] = [None; 8];
+        ts_culled_spec_consts[0] = Some(SpecConstValue::Bool(false));
+        ts_culled_spec_consts[1] = Some(SpecConstValue::Bool(true));
+
+        let mut ts_cube_spec_consts: [Option::<SpecConstValue>; 8] = [None; 8];
+        ts_cube_spec_consts[0] = Some(SpecConstValue::Bool(true));
+        ts_cube_spec_consts[1] = Some(SpecConstValue::Bool(false));
+
+        let mut fs_spec_consts: [Option::<SpecConstValue>; 8] = [None; 8];
+        fs_spec_consts[0] = Some(SpecConstValue::Bool(false));
+
+        let mut fs_spec_consts_raymarched: [Option::<SpecConstValue>; 8] = [None; 8];
+        fs_spec_consts_raymarched[0] = Some(SpecConstValue::Bool(true));
+
+        let fs_permutations = [
+            fs_spec_consts,
+            fs_spec_consts_raymarched,
+        ];
+
+        let ts_permutations = [
+            ts_spec_consts,
+            ts_cube_spec_consts,
+            ts_culled_cube_spec_consts,
+            ts_culled_spec_consts,
+        ];
+
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
             vs: PathPipelineShaderStage::empty_spec_consts(&vs_path),
             fs: Some(PathPipelineShaderStage::empty_spec_consts(&fs_path)),
             primitive_type: PrimitiveType::Triangles,
+            //primitive_type: PrimitiveType::Points, // Uncomment to debug culling
             vertex_layout: VertexLayoutInfo {
                 input_assembler: &[],
                 shader_inputs: &[],
@@ -190,11 +220,12 @@ impl GeometryPass {
             render_target_formats: &[Format::RGBA16UNorm, Format::R8UNorm],
             depth_stencil_format: Format::D32S8, // I'd prefer D24S8 but AMD & Apple don't support that.
         };
-        let pipeline = assets.request_graphics_pipeline(&pipeline_info);
+        let pipeline = GraphicsPipelinePermutations::request(
+            assets, &pipeline_info, &[], &fs_permutations);
 
-        let mut pipeline_transparency_non_overlapping_info: GraphicsPipelineInfo =
+        let mut pipeline_non_overlapping_info: GraphicsPipelineInfo =
             pipeline_info.clone();
-        pipeline_transparency_non_overlapping_info
+        pipeline_non_overlapping_info
             .depth_stencil
             .stencil_front = StencilInfo {
             pass_op: StencilOp::Keep,
@@ -202,8 +233,8 @@ impl GeometryPass {
             func: CompareFunc::Greater,
             depth_fail_op: StencilOp::Keep,
         };
-        let pipeline_non_overlapping =
-            assets.request_graphics_pipeline(&pipeline_transparency_non_overlapping_info);
+        let pipeline_non_overlapping = GraphicsPipelinePermutations::request(
+            assets, &pipeline_non_overlapping_info, &[], &fs_permutations);
 
         let mut pipeline_transparency_prepass_info: GraphicsPipelineInfo = pipeline_info.clone();
         pipeline_transparency_prepass_info.fs = None;
@@ -234,8 +265,8 @@ impl GeometryPass {
             func: CompareFunc::LessEqual,
             depth_fail_op: StencilOp::Keep,
         };
-        let pipeline_transparent_prepass =
-            assets.request_graphics_pipeline(&pipeline_transparency_prepass_info);
+        let pipeline_transparent_prepass = GraphicsPipelinePermutations::request(
+            assets, &pipeline_transparency_prepass_info, &[], &[]);
 
         let mut pipeline_transparency_info: GraphicsPipelineInfo = pipeline_info.clone();
         pipeline_transparency_info.depth_stencil.depth_func = CompareFunc::Equal;
@@ -275,131 +306,35 @@ impl GeometryPass {
             constants: [0f32, 0f32, 0f32, 0f32],
             attachments: &blend_attachments,
         };
-        let pipeline_transparent = assets.request_graphics_pipeline(&pipeline_transparency_info);
+        let pipeline_transparent = GraphicsPipelinePermutations::request(
+            assets, &pipeline_transparency_info, &[], &fs_permutations);
 
-        fn request_with_fs_spec_consts(
-            assets: &RendererAssets,
-            info: &GraphicsPipelineInfo,
-            spec_consts: &HashMap<u32, SpecConstValue>,
-        ) -> GraphicsPipelineHandle {
-            let mut new_pipeline_info = info.clone();
-            new_pipeline_info.fs = Some(info.fs.as_ref().unwrap().with_spec_consts(&spec_consts));
-            assets.request_graphics_pipeline(&new_pipeline_info)
-        }
-        fn request_mesh_with_spec_consts(
-            assets: &RendererAssets,
-            info: &MeshGraphicsPipelineInfo,
-            fs_spec_consts: Option<&HashMap<u32, SpecConstValue>>,
-            ms_ts_spec_consts: Option<&HashMap<u32, SpecConstValue>>,
-        ) -> MeshGraphicsPipelineHandle {
-            let mut new_pipeline_info = info.clone();
-            if let Some(fs) = info.fs.as_ref() {
-                new_pipeline_info.fs = Some(fs.with_spec_consts_opt(fs_spec_consts));
-            } else if fs_spec_consts.is_some() {
-                log::warn!("Providing spec constant to a non-existant fragment shader");
-            }
-            new_pipeline_info.ms = info.ms.with_spec_consts_opt(ms_ts_spec_consts);
-            new_pipeline_info.ts = Some(info.ts.as_ref().unwrap().with_spec_consts_opt(ms_ts_spec_consts));
-            assets.request_mesh_graphics_pipeline(&new_pipeline_info)
-        }
-
-        let mut raymarch_spec_consts_hashmap = HashMap::<u32, SpecConstValue>::new();
-        raymarch_spec_consts_hashmap.insert(0, SpecConstValue::Bool(false));
-
-        let non_raymarch_pipeline =
-            request_with_fs_spec_consts(assets, &pipeline_info, &raymarch_spec_consts_hashmap);
-        let non_raymarch_non_overlapping_pipeline = request_with_fs_spec_consts(
-            assets,
-            &pipeline_transparency_non_overlapping_info,
-            &raymarch_spec_consts_hashmap,
-        );
-        let non_raymarch_transparency_pipeline = request_with_fs_spec_consts(
-            assets,
-            &pipeline_transparency_info,
-            &raymarch_spec_consts_hashmap,
-        );
-
-        let (mesh_pipelines, mesh_pipelines_non_raymarch, mesh_pipelines_cube, mesh_pipelines_non_raymarch_cube) = if device.supports_mesh_shader() {
-            let mut cube_spec_consts = HashMap::<u32, SpecConstValue>::with_capacity(1);
-            cube_spec_consts.insert(0, SpecConstValue::Bool(true));
-
+        let mesh_pipelines = if device.supports_mesh_shader() {
             let pipeline_info_mesh = MeshGraphicsPipelineInfo::from_legacy(&pipeline_info, &ts_stage_path_opt, &ms_stage_path);
-            let pipeline_mesh = assets.request_mesh_graphics_pipeline(&pipeline_info_mesh);
-            let pipeline_mesh_cube = request_mesh_with_spec_consts(assets, &pipeline_info_mesh, None, Some(&cube_spec_consts));
+            let pipeline_mesh = MeshGraphicsPipelinePermutations::request(
+                assets, &pipeline_info_mesh, &ts_permutations, &[], &fs_permutations);
 
-            let pipeline_non_overlapping_info_mesh = MeshGraphicsPipelineInfo::from_legacy(&pipeline_transparency_non_overlapping_info, &ts_stage_path_opt, &ms_stage_path);
-            let pipeline_non_overlapping_mesh = assets.request_mesh_graphics_pipeline(&pipeline_non_overlapping_info_mesh);
-            let pipeline_non_overlapping_mesh_cube = request_mesh_with_spec_consts(assets, &pipeline_non_overlapping_info_mesh, None, Some(&cube_spec_consts));
+            let pipeline_non_overlapping_info_mesh = MeshGraphicsPipelineInfo::from_legacy(&pipeline_non_overlapping_info, &ts_stage_path_opt, &ms_stage_path);
+            let pipeline_non_overlapping_mesh = MeshGraphicsPipelinePermutations::request(
+                assets, &pipeline_non_overlapping_info_mesh, &ts_permutations, &[], &fs_permutations);
 
             let pipeline_transparency_prepass_info_mesh = MeshGraphicsPipelineInfo::from_legacy(&pipeline_transparency_prepass_info, &ts_stage_path_opt, &ms_stage_path);
-            let pipeline_transparent_prepass_mesh = assets.request_mesh_graphics_pipeline(&pipeline_transparency_prepass_info_mesh);
-            let pipeline_transparent_prepass_mesh_cube = request_mesh_with_spec_consts(assets, &pipeline_transparency_prepass_info_mesh, None, Some(&cube_spec_consts));
+            let pipeline_transparent_prepass_mesh = MeshGraphicsPipelinePermutations::request(
+                assets, &pipeline_transparency_prepass_info_mesh, &ts_permutations, &[], &[]);
 
             let pipeline_info_transparency_mesh = MeshGraphicsPipelineInfo::from_legacy(&pipeline_transparency_info, &ts_stage_path_opt, &ms_stage_path);
-            let pipeline_transparent_mesh = assets.request_mesh_graphics_pipeline(&pipeline_info_transparency_mesh);
-            let pipeline_transparent_mesh_cube = request_mesh_with_spec_consts(assets, &pipeline_info_transparency_mesh, None, Some(&cube_spec_consts));
+            let pipeline_transparent_mesh = MeshGraphicsPipelinePermutations::request(
+                assets, &pipeline_info_transparency_mesh, &ts_permutations, &[], &fs_permutations);
 
-            let non_raymarch_pipeline_mesh =
-                request_mesh_with_spec_consts(assets, &pipeline_info_mesh, Some(&raymarch_spec_consts_hashmap), None);
-            let non_raymarch_pipeline_non_overlapping_mesh = request_mesh_with_spec_consts(
-                assets,
-                &pipeline_non_overlapping_info_mesh,
-                Some(&raymarch_spec_consts_hashmap),
-                None,
-            );
-            let non_raymarch_transparency_pipeline_mesh = request_mesh_with_spec_consts(
-                assets,
-                &pipeline_info_transparency_mesh,
-                Some(&raymarch_spec_consts_hashmap),
-                None,
-            );
-
-            let non_raymarch_pipeline_non_overlapping_mesh_cube = request_mesh_with_spec_consts(
-                assets,
-                &pipeline_non_overlapping_info_mesh,
-                Some(&raymarch_spec_consts_hashmap),
-                Some(&cube_spec_consts),
-            );
-            let non_raymarch_pipeline_mesh_cube = request_mesh_with_spec_consts(
-                assets,
-                &pipeline_info_mesh,
-                Some(&raymarch_spec_consts_hashmap),
-                Some(&cube_spec_consts),
-            );
-            let non_raymarch_transparency_pipeline_mesh_cube = request_mesh_with_spec_consts(
-                assets,
-                &pipeline_info_transparency_mesh,
-                Some(&raymarch_spec_consts_hashmap),
-                Some(&cube_spec_consts),
-            );
-
-            (Some(GeometryPassPipelines {
+            Some(GeometryPassPipelines {
                 opaque: pipeline_mesh,
                 non_overlapping: pipeline_non_overlapping_mesh,
                 transparent: pipeline_transparent_mesh,
                 transparent_prepass: pipeline_transparent_prepass_mesh,
-            }),
-             Some(GeometryPassPipelines {
-                 opaque: non_raymarch_pipeline_mesh,
-                 non_overlapping: non_raymarch_pipeline_non_overlapping_mesh,
-                 transparent: non_raymarch_transparency_pipeline_mesh,
-                 transparent_prepass: pipeline_transparent_prepass_mesh,
-             }),
-             Some(GeometryPassPipelines {
-                 opaque: pipeline_mesh_cube,
-                 non_overlapping: pipeline_non_overlapping_mesh_cube,
-                 transparent: pipeline_transparent_mesh_cube,
-                 transparent_prepass: pipeline_transparent_prepass_mesh_cube,
-             }),
-             Some(GeometryPassPipelines {
-                 opaque: non_raymarch_pipeline_mesh_cube,
-                 non_overlapping: non_raymarch_pipeline_non_overlapping_mesh_cube,
-                 transparent: non_raymarch_transparency_pipeline_mesh_cube,
-                 transparent_prepass: pipeline_transparent_prepass_mesh_cube,
-             }))
+            })
         } else {
             log::warn!("Mesh shaders are not supported. Ignoring mesh shader option.");
-            (None, None, None, None)
+            None
         };
 
         Self {
@@ -409,16 +344,7 @@ impl GeometryPass {
                 transparent: pipeline_transparent,
                 transparent_prepass: pipeline_transparent_prepass,
             },
-            pipelines_non_raymarch: GeometryPassPipelines {
-                opaque: non_raymarch_pipeline,
-                non_overlapping: non_raymarch_non_overlapping_pipeline,
-                transparent: non_raymarch_transparency_pipeline,
-                transparent_prepass: pipeline_transparent_prepass,
-            },
-            mesh_pipelines,
-            mesh_pipelines_non_raymarch,
-            mesh_pipelines_cube,
-            mesh_pipelines_non_raymarch_cube,
+            mesh_pipelines
         }
     }
 
@@ -478,11 +404,7 @@ impl GeometryPass {
     #[inline(always)]
     pub(crate) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         self.pipelines.is_ready(assets)
-            && self.pipelines_non_raymarch.is_ready(assets)
-            && self.mesh_pipelines.as_ref().map(|p| p.is_ready(assets)).unwrap_or(true)
-            && self.mesh_pipelines_cube.as_ref().map(|p| p.is_ready(assets)).unwrap_or(true)
-            && self.mesh_pipelines_non_raymarch.as_ref().map(|p| p.is_ready(assets)).unwrap_or(true)
-            && self.mesh_pipelines_non_raymarch_cube.as_ref().map(|p| p.is_ready(assets)).unwrap_or(true)
+        && self.mesh_pipelines.as_ref().map_or(true, |p| p.is_ready(assets))
     }
 
     pub(crate) fn execute(
@@ -496,6 +418,8 @@ impl GeometryPass {
     ) {
         cmd_buffer.clear_all_bindings(BindingFrequency::Frequent);
         cmd_buffer.clear_all_bindings(BindingFrequency::VeryFrequent);
+
+        let use_mesh_shader = params.device.supports_mesh_shader() && options.use_mesh_shader;
 
         let resources = &params.resources;
 
@@ -592,22 +516,36 @@ impl GeometryPass {
             HistoryResourceEntry::Current,
         );
 
-        let mut slices: SmallVec<[Ref<Arc<BufferSlice>>; 4]> =
+        let mut slices: SmallVec<[(String, Ref<Arc<BufferSlice>>); 4]> =
             SmallVec::with_capacity(params.scene.scene.volume_mesh_instances().len());
-        if !params.device.supports_mesh_shader() || !options.use_mesh_shader {
+        if !use_mesh_shader {
             for drawable in params.scene.scene.volume_mesh_instances() {
-                slices.push(resources.access_buffer(
+                let name = MarchingCubesPass::index_buffer_name(drawable.entity);
+                let slice = resources.access_buffer(
                     cmd_buffer,
-                    &MarchingCubesPass::buffer_name(drawable.entity),
+                    &MarchingCubesPass::index_buffer_name(drawable.entity),
                     BarrierSync::INDEX_INPUT,
                     BarrierAccess::INDEX_READ,
                     HistoryResourceEntry::Current,
-                ));
+                );
+                slices.push((name, slice));
+            }
+        } else {
+            for drawable in params.scene.scene.volume_mesh_instances() {
+                let name = MarchingCubesPass::culling_buffer_name(drawable.entity);
+                let slice = resources.access_buffer(
+                    cmd_buffer,
+                    &name,
+                    BarrierSync::INDIRECT | BarrierSync::TASK_SHADER,
+                    BarrierAccess::INDIRECT_READ | BarrierAccess::STORAGE_READ,
+                    HistoryResourceEntry::Current,
+                );
+                slices.push((name, slice));
             }
         }
+        slices.push((MarchingCubesPass::ATOMICS_BUFFER_NAME.to_string(), marchingcubes_indirect));
 
         cmd_buffer.flush_barriers();
-        std::mem::drop(slices);
 
         cmd_buffer.begin_label("Geometry");
 
@@ -643,14 +581,6 @@ impl GeometryPass {
             resume_suspend: RenderPassResumeSuspend::empty(),
         });
 
-        let pipelines = GeometryPassPipelineRefs::<GraphicsPipeline>::load(&self.pipelines, params.assets);
-        let pipelines_non_raymarch = GeometryPassPipelineRefs::<GraphicsPipeline>::load(&self.pipelines_non_raymarch, params.assets);
-
-        let pipelines_mesh = self.mesh_pipelines.as_ref().map(|p| GeometryPassPipelineRefs::<MeshGraphicsPipeline>::load(&p, params.assets));
-        let pipelines_mesh_cube = self.mesh_pipelines_cube.as_ref().map(|p| GeometryPassPipelineRefs::<MeshGraphicsPipeline>::load(&p, params.assets));
-        let pipelines_mesh_non_raymarch = self.mesh_pipelines_non_raymarch.as_ref().map(|p| GeometryPassPipelineRefs::<MeshGraphicsPipeline>::load(&p, params.assets));
-        let pipelines_mesh_non_raymarch_cube = self.mesh_pipelines_non_raymarch_cube.as_ref().map(|p| GeometryPassPipelineRefs::<MeshGraphicsPipeline>::load(&p, params.assets));
-
         cmd_buffer.set_viewports(&[Viewport {
             position: Vec2::new(0.0f32, 0.0f32),
             extent: Vec2::new(color_tex_extent.x as f32, color_tex_extent.y as f32),
@@ -663,7 +593,7 @@ impl GeometryPass {
         }]);
         cmd_buffer.set_stencil_reference(1u32);
 
-        let mut base_pass = |ray_march_normals: bool| {
+        let base_pass = |cmd_buffer: &mut CommandBuffer, ray_march_normals: bool| {
             cmd_buffer.bind_sampling_view(
                 BindingFrequency::Frequent,
                 4u32,
@@ -692,36 +622,18 @@ impl GeometryPass {
                 if drawable.ray_march_normals != ray_march_normals {
                     continue;
                 }
-
-                let pipeline: PipelineBinding = if options.use_mesh_shader && pipelines_mesh.is_some() {
-                    if drawable.render_as_cubes {
-                        if drawable.ray_march_normals {
-                            pipelines_mesh_cube.as_ref().unwrap().opaque
-                        } else {
-                            pipelines_mesh_non_raymarch_cube.as_ref().unwrap().opaque
-                        }.as_ref().into()
-                    } else {
-                        if drawable.ray_march_normals {
-                            pipelines_mesh.as_ref().unwrap().opaque
-                        } else {
-                            pipelines_mesh_non_raymarch.as_ref().unwrap().opaque
-                        }.as_ref().into()
-                    }
-                } else {
-                    if drawable.ray_march_normals {
-                        pipelines.opaque
-                    } else {
-                        pipelines_non_raymarch.opaque
-                    }.as_ref().into()
-                };
-                Self::draw(cmd_buffer, params.assets, color_tex_extent, params.resources,
-                           marching_cubes_map, &marchingcubes_indirect, pipeline, tris_table, drawable);
+                self.draw(cmd_buffer, params.assets, color_tex_extent, marching_cubes_map, &slices,
+                          use_mesh_shader, GeometryPassPipelineType::Opaque, options.culling, tris_table, drawable);
             }
         };
 
         // Iterate over the meshes twice to reduce pipeline binding changes.
-        base_pass(true);
-        base_pass(false);
+        cmd_buffer.begin_label("Opaque");
+        base_pass(cmd_buffer, false);
+        cmd_buffer.end_label();
+        cmd_buffer.begin_label("Opaque with ray marched normals");
+        base_pass(cmd_buffer, true);
+        cmd_buffer.end_label();
 
         // Geometry 2 - Non overlapping
 
@@ -736,6 +648,7 @@ impl GeometryPass {
         transparent_drawables.sort_by_key(|d| (d.min_threshold * 1000.0f32) as u32); // good enough
 
         // Decide pipeline per-mesh here because he have a fixed order.
+        cmd_buffer.begin_label("Non overlapping");
         for drawable in &transparent_drawables {
             if !has_opaque {
                 break;
@@ -743,35 +656,15 @@ impl GeometryPass {
             if drawable.transparent != VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque {
                 continue;
             }
-
-            let pipeline: PipelineBinding = if options.use_mesh_shader && pipelines_mesh.is_some() {
-                if drawable.render_as_cubes {
-                    if drawable.ray_march_normals {
-                        pipelines_mesh_cube.as_ref().unwrap().non_overlapping
-                    } else {
-                        pipelines_mesh_non_raymarch_cube.as_ref().unwrap().non_overlapping
-                    }.as_ref().into()
-                } else {
-                    if drawable.ray_march_normals {
-                        pipelines_mesh.as_ref().unwrap().non_overlapping
-                    } else {
-                        pipelines_mesh_non_raymarch.as_ref().unwrap().non_overlapping
-                    }.as_ref().into()
-                }
-            } else {
-                if drawable.ray_march_normals {
-                    pipelines.non_overlapping
-                } else {
-                    pipelines_non_raymarch.non_overlapping
-                }.as_ref().into()
-            };
-            Self::draw(cmd_buffer, params.assets, color_tex_extent, params.resources,
-                       marching_cubes_map, &marchingcubes_indirect, pipeline, tris_table, drawable);
+            self.draw(cmd_buffer, params.assets, color_tex_extent, marching_cubes_map, &slices,
+                      use_mesh_shader, GeometryPassPipelineType::NonOverlapping, options.culling, tris_table, drawable);
         }
+        cmd_buffer.end_label();
 
         // Geometry 2 - Depth prepass
 
         // Decide pipeline per-mesh here because we have a fixed order.
+        cmd_buffer.begin_label("Transparency depth prepass");
         for drawable in &transparent_drawables {
             if drawable.transparent == VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque {
                 if !has_opaque {
@@ -781,22 +674,14 @@ impl GeometryPass {
             } else if drawable.transparent == VolumeDrawableTransparencyMode::Transparent {
                 cmd_buffer.set_stencil_reference(0u32);
             }
-            let pipeline: PipelineBinding = if options.use_mesh_shader && pipelines_mesh.is_some() {
-                if drawable.render_as_cubes {
-                    pipelines_mesh_cube.as_ref().unwrap().transparent_prepass.as_ref().into()
-                } else {
-                    pipelines_mesh.as_ref().unwrap().transparent_prepass.as_ref().into()
-                }
-            } else {
-                pipelines.transparent_prepass.as_ref().into()
-            };
-
-            Self::draw(cmd_buffer, params.assets, color_tex_extent, params.resources, marching_cubes_map, &marchingcubes_indirect,
-                       pipeline, tris_table, drawable);
+            self.draw(cmd_buffer, params.assets, color_tex_extent, marching_cubes_map, &slices,
+                      use_mesh_shader, GeometryPassPipelineType::TransparentPrepass, options.culling, tris_table, drawable);
         }
+        cmd_buffer.end_label();
 
         // Geometry 2 - Transparent
 
+        cmd_buffer.begin_label("Transparent");
         for drawable in &transparent_drawables {
             if drawable.transparent == VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque {
                 if !has_opaque {
@@ -806,31 +691,10 @@ impl GeometryPass {
             } else if drawable.transparent == VolumeDrawableTransparencyMode::Transparent {
                 cmd_buffer.set_stencil_reference(0u32);
             }
-
-            let pipeline: PipelineBinding = if options.use_mesh_shader && pipelines_mesh.is_some() {
-                if drawable.render_as_cubes {
-                    if drawable.ray_march_normals {
-                        pipelines_mesh_cube.as_ref().unwrap().transparent
-                    } else {
-                        pipelines_mesh_non_raymarch_cube.as_ref().unwrap().transparent
-                    }.as_ref().into()
-                } else {
-                    if drawable.ray_march_normals {
-                        pipelines_mesh.as_ref().unwrap().transparent
-                    } else {
-                        pipelines_mesh_non_raymarch.as_ref().unwrap().transparent
-                    }.as_ref().into()
-                }
-            } else {
-                if drawable.ray_march_normals {
-                    pipelines.transparent
-                } else {
-                    pipelines_non_raymarch.transparent
-                }.as_ref().into()
-            };
-            Self::draw(cmd_buffer, params.assets, color_tex_extent, params.resources,
-                       marching_cubes_map, &marchingcubes_indirect, pipeline, tris_table, drawable);
+            self.draw(cmd_buffer, params.assets, color_tex_extent, marching_cubes_map, &slices,
+                       use_mesh_shader, GeometryPassPipelineType::Transparent, options.culling, tris_table, drawable);
         }
+        cmd_buffer.end_label();
 
         cmd_buffer.end_render_pass();
 
@@ -902,18 +766,21 @@ impl GeometryPass {
     }
 
     fn draw(
+        &self,
         cmd_buffer: &mut CommandBuffer,
         assets: &RendererAssetsReadOnly,
         rt_extent: Vec2UI,
-        resources: &RendererResources,
         marching_cubes_map: &super::marching_cubes::OffsetsMap,
-        indirect_buffer: &Arc<BufferSlice>,
-        pipeline: PipelineBinding,
+        buffers: &[(String, Ref<Arc<BufferSlice>>)],
+        use_mesh_shader: bool,
+        pipeline_type: GeometryPassPipelineType,
+        culling_enabled: bool,
         tris_table: &Arc<BufferSlice>,
         drawable: &RendererVolumeDrawable) -> bool {
         let volume_texture = assets.get_texture(drawable.volume_texture);
         let volume_texture_base_opt = volume_texture.view.texture();
         if volume_texture_base_opt.is_none() {
+            log::error!("Could not load texture for volume geometry pass: {:?}", drawable.volume_texture);
             return false;
         }
         let volume_texture_base = volume_texture_base_opt.unwrap();
@@ -924,6 +791,8 @@ impl GeometryPass {
             (volume_texture_info.depth >> drawable.texture_lod).max(1u32),
         );
 
+        let drawable_culling = culling_enabled && MarchingCubesPass::use_culling(volume_texture_lod_extents);
+
         let mut model_matrix = drawable.transform.into();
         model_matrix *= Matrix4::from_scale(Vec3::new(
             (volume_texture_info.width as f32) / (volume_texture_lod_extents.x as f32),
@@ -931,8 +800,15 @@ impl GeometryPass {
             (volume_texture_info.depth as f32) / (volume_texture_lod_extents.z as f32),
         ));
 
-        let is_mesh = if let &PipelineBinding::MeshGraphics(_) = &pipeline { true } else { false };
-
+        let pipeline = if !use_mesh_shader {
+            PipelineBinding::Graphics(self.pipelines
+                .get(assets, pipeline_type, drawable.ray_march_normals)
+                .expect("Pipeline is not compiled yet"))
+        } else {
+            PipelineBinding::MeshGraphics(self.mesh_pipelines.as_ref().unwrap()
+                .get(assets, pipeline_type, drawable.ray_march_normals, drawable.render_as_cubes, drawable_culling)
+                .expect("Pipeline is not compiled yet"))
+        };
         cmd_buffer.set_pipeline(pipeline);
 
         cmd_buffer.bind_sampling_view(
@@ -965,15 +841,13 @@ impl GeometryPass {
             }],
         );
 
-        if !is_mesh {
+        if !use_mesh_shader {
+            let ibo = &(buffers.iter()
+                .find(|(name, _)| name == &MarchingCubesPass::index_buffer_name(drawable.entity)).unwrap().1);
+            let indirect_buffer = &(buffers.iter()
+                .find(|(name, _)| name == MarchingCubesPass::ATOMICS_BUFFER_NAME).unwrap().1);
+
             let indirect_buffer_offset = *(marching_cubes_map.get(&drawable.entity).unwrap());
-            let ibo = resources.access_buffer(
-                cmd_buffer,
-                &MarchingCubesPass::buffer_name(drawable.entity),
-                BarrierSync::INDEX_INPUT,
-                BarrierAccess::INDEX_READ,
-                HistoryResourceEntry::Current,
-            );
             cmd_buffer.set_index_buffer(BufferRef::Regular(&*ibo), 0u64, IndexFormat::U32);
 
             cmd_buffer.finish_binding();
@@ -984,13 +858,27 @@ impl GeometryPass {
                 std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
             );
         } else {
-            cmd_buffer.bind_uniform_buffer(BindingFrequency::Frequent, 7, BufferRef::Regular(tris_table), 0, WHOLE_BUFFER);
+            cmd_buffer.bind_uniform_buffer(BindingFrequency::Frequent, 7,
+                                           BufferRef::Regular(tris_table), 0, WHOLE_BUFFER);
+
+            let culling_buffer = &(buffers.iter()
+                .find(|(name, _)| name == &MarchingCubesPass::culling_buffer_name(drawable.entity)).unwrap().1);
+            cmd_buffer.bind_storage_buffer(BindingFrequency::Frequent, 8,
+                                           BufferRef::Regular(&culling_buffer), 0u64, WHOLE_BUFFER);
             cmd_buffer.finish_binding();
-            cmd_buffer.draw_mesh_tasks(
-                (volume_texture_lod_extents.x + 3) / 4,
-                (volume_texture_lod_extents.y + 3) / 4,
-                (volume_texture_lod_extents.z + 1) / 2,
-            );
+
+            if drawable_culling {
+                cmd_buffer.draw_mesh_tasks_indirect(
+                    BufferRef::Regular(&culling_buffer),
+                    0, 1, (3 * std::mem::size_of::<u32>()) as u32
+                );
+            } else {
+                cmd_buffer.draw_mesh_tasks(
+                    (volume_texture_lod_extents.x + 3) / 4,
+                    (volume_texture_lod_extents.y + 3) / 4,
+                    (volume_texture_lod_extents.z + 1) / 2,
+                );
+            }
         }
 
         true

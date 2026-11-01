@@ -13,8 +13,9 @@
 #extension GL_EXT_nonuniform_qualifier : enable
 
 layout(constant_id = 0) const uint thresholdsCountConst = 0u;
+layout(constant_id = 2) const bool culling = false;
 
-layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+layout(local_size_x = 4u, local_size_y = 4u, local_size_z = 4u) in;
 
 #include "descriptor_sets.inc.glsl"
 #include "frame_set_common.inc.glsl"
@@ -43,12 +44,17 @@ struct IndirectCommand {
     uint firstIndex;
     int vertexOffset;
     uint firstInstance;
-    uint vertexCount;
     uint _pad_to_16_0;
     uint _pad_to_16_1;
+    uint _pad_to_16_2;
 };
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 5, scalar) buffer bufferatomics {
     IndirectCommand[] commands;
+};
+
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 6, scalar) readonly buffer indirectBuffer {
+    uvec4 _padding;
+    uvec4[] workgroupPositions;
 };
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 8) uniform texture3D densityImageMin;
@@ -57,7 +63,6 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 9) uniform texture3D densityImag
 layout(push_constant, std430) uniform Config {
     uvec3 lodExtents;
     uint lod;
-    uvec3 minBox;
     uint thresholdsCount;
 };
 
@@ -76,16 +81,14 @@ uint vertexKey(uvec3 pos1, uvec3 pos2) {
     return mortonCode(pos, size);
 }
 
-uint vertexKeyFromIndexOffsets(uint idx1, uint idx2) {
-    uvec3 workgroupBase = gl_WorkGroupID * gl_WorkGroupSize + minBox;
-    uvec3 base = workgroupBase + gl_LocalInvocationID;
-    uvec3 vertexPos1 = base + indexOffset(idx1);
-    uvec3 vertexPos2 = base + indexOffset(idx2);
+uint vertexKeyFromIndexOffsets(uvec3 invocationPos, uint idx1, uint idx2) {
+    uvec3 vertexPos1 = invocationPos + indexOffset(idx1);
+    uvec3 vertexPos2 = invocationPos + indexOffset(idx2);
     uint vtxKey = vertexKey(vertexPos1, vertexPos2);
     return vtxKey;
 }
 
-uint buildVertexKey(uint index) {
+uint marchingCubesVertexKey(uvec3 invocationPos, uint index) {
     // Naming of those two is confusing because I named them when I translated the loop and built the array index
     // from the loop index.
     // This function goes the other way around (array index -> loop index).
@@ -99,12 +102,13 @@ uint buildVertexKey(uint index) {
     uint idx1 = iDiv3 + uint(iMod3 == 1u) * 4u;
     uint idx2 = (iDiv3 + uint(iMod3 != 2u)) % 4u + uint(iMod3 != 0u) * 4u;
 
-    uint vtxKey = vertexKeyFromIndexOffsets(idx1, idx2);
+    uint vtxKey = vertexKeyFromIndexOffsets(invocationPos, idx1, idx2);
     return vtxKey;
 }
 
 const uint maxIndices = (512u * 512u * 512u) / 100u * 15u;
 
+const bool debugCullingAsPoints = false;
 
 layout(constant_id = 1) const bool renderDebugCube = false;
 const uvec3 cubePositions[8] = uvec3[8](
@@ -121,10 +125,20 @@ const uvec3 cubeIndices[12] = uvec3[12](
         uvec3(6, 2, 3), uvec3(3, 7, 6), // Top
         uvec3(1, 5, 4), uvec3(4, 0, 1)  // Bottom
 );
+const uint cubeIndexCount = 12u * 3u;
 
 void main() {
-    uvec3 workgroupBase = gl_WorkGroupID * gl_WorkGroupSize + minBox;
+    uvec3 workgroupBase = culling ? workgroupPositions[gl_WorkGroupID.x].xyz : (gl_WorkGroupID * gl_WorkGroupSize);
     uvec3 base = workgroupBase + gl_LocalInvocationID;
+
+    if (debugCullingAsPoints) {
+        uint firstIndex = atomicAdd(commands[0u].indexCount, 1);
+        commands[0u].instanceCount = 1u;
+        if (firstIndex < maxIndices)
+            indicesBuffers[0u].indices[firstIndex] = vertexKey(base, base);
+
+        return;
+    }
 
     if (subgroupAll(any(greaterThanEqual(base + uvec3(1u), lodExtents))))
     return;
@@ -133,20 +147,6 @@ void main() {
     return;
 
     uint finalThresholdsCount = thresholdsCountConst == 0u ? thresholdsCount : thresholdsCountConst;
-
-    if (!any(greaterThanEqual(gl_LocalInvocationID, gl_WorkGroupSize - uvec3(1u)))) {
-        uvec3 lowResPos = workgroupBase / uvec3(8u);
-        // Workgroup 8x8x8 => +3 mip levels but min/max textures don't have the top mip level, so +2
-        float densityMax = texelFetch(sampler3D(densityImageMax, samplerNearest), ivec3(lowResPos), int(lod + 2u)).x;
-        bool empty = true;
-        bool full = true;
-        for (uint i = 0u; i < finalThresholdsCount; i++) {
-            float threshold = minThresholds[i];
-            empty = empty && (densityMax < threshold);
-        }
-        if (empty)
-        return;
-    }
 
     uint[thresholdsCountConst == 0u ? 16u : thresholdsCountConst] voxelKeys;
     for (uint i = 0u; i < finalThresholdsCount; i++) {
@@ -190,7 +190,7 @@ void main() {
             if (indexCount == 0u)
             continue;
         } else {
-            indexCount = 12u * 3u;
+            indexCount = cubeIndexCount;
         }
 
         uint subgroupTotalIndices = subgroupAdd(indexCount);
@@ -205,13 +205,13 @@ void main() {
 
         if (!renderDebugCube) {
             for (uint i = 0u; i < indexCount && firstIndex + indexCount < maxIndices; i += 3u) {
-                indicesBuffers[j].indices[firstIndex + i + 0u] = buildVertexKey(tris[voxelKey][1u + i + 0u]);
-                indicesBuffers[j].indices[firstIndex + i + 1u] = buildVertexKey(tris[voxelKey][1u + i + 1u]);
-                indicesBuffers[j].indices[firstIndex + i + 2u] = buildVertexKey(tris[voxelKey][1u + i + 2u]);
+                indicesBuffers[j].indices[firstIndex + i + 0u] = marchingCubesVertexKey(base, tris[voxelKey][1u + i + 0u]);
+                indicesBuffers[j].indices[firstIndex + i + 1u] = marchingCubesVertexKey(base, tris[voxelKey][1u + i + 1u]);
+                indicesBuffers[j].indices[firstIndex + i + 2u] = marchingCubesVertexKey(base, tris[voxelKey][1u + i + 2u]);
             }
         } else {
-            for (uint i = 0u; i < 12u * 3u && firstIndex + indexCount < maxIndices; i++) {
-                uvec3 vtx = cubePositions[cubeIndices[i / 3u][i % 3u]] + gl_GlobalInvocationID;
+            for (uint i = 0u; i < indexCount && firstIndex + indexCount < maxIndices; i++) {
+                uvec3 vtx = cubePositions[cubeIndices[i / 3u][i % 3u]] + base;
                 indicesBuffers[j].indices[firstIndex + i] = vertexKey(vtx, vtx);
             }
         }
