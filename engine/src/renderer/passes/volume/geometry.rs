@@ -6,7 +6,7 @@ use crate::renderer::passes::volume::marching_cubes::{
     MarchingCubesIndirectCall, MarchingCubesPass,
 };
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
+use crate::renderer::renderer_resources::{BufferAccessor, HistoryResourceEntry, RendererResources};
 use bytemuck::{Pod, Zeroable};
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{SpecConstValue, StencilOp, TexturePlane};
@@ -431,7 +431,6 @@ impl GeometryPass {
 
         let color_tex_info = resources.texture_info(Self::COLOR_TEXTURE_NAME);
         let color_tex_extent = Vec2UI::new(color_tex_info.width, color_tex_info.height);
-        std::mem::drop(color_tex_info);
 
         let color_view = resources.access_view(
             cmd_buffer,
@@ -497,7 +496,6 @@ impl GeometryPass {
         let env_specular_info =
             resources.texture_info(ibl_textures.filtered_specular_environment_map_teture_name);
         let env_specular_mips = env_specular_info.mip_levels;
-        std::mem::drop(env_specular_info);
         let env_map_specular = resources.access_view(
             cmd_buffer,
             ibl_textures.filtered_specular_environment_map_teture_name,
@@ -516,7 +514,7 @@ impl GeometryPass {
             HistoryResourceEntry::Current,
         );
 
-        let mut slices: SmallVec<[(String, Ref<Arc<BufferSlice>>); 4]> =
+        let mut slices: SmallVec<[(String, BufferAccessor); 4]> =
             SmallVec::with_capacity(params.scene.scene.volume_mesh_instances().len());
         if !use_mesh_shader {
             for drawable in params.scene.scene.volume_mesh_instances() {
@@ -559,18 +557,18 @@ impl GeometryPass {
         cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
             render_targets: &[
                 RenderTarget {
-                    view: &color_view,
+                    view: color_view.view(),
                     load_op: LoadOpColor::Load,
                     store_op: StoreOp::Store,
                 },
                 RenderTarget {
-                    view: &sss_view,
+                    view: sss_view.view(),
                     load_op: LoadOpColor::Clear(ClearColor::BLACK),
                     store_op: StoreOp::Store,
                 },
             ],
             depth_stencil: Some(&DepthStencilAttachment {
-                view: &dsv,
+                view: dsv.view(),
                 load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue {
                     depth: 1.0f32,
                     stencil: 0u32,
@@ -597,17 +595,17 @@ impl GeometryPass {
             cmd_buffer.bind_sampling_view(
                 BindingFrequency::Frequent,
                 4u32,
-                &env_map_diffuse,
+                env_map_diffuse.view(),
             );
             cmd_buffer.bind_sampling_view(
                 BindingFrequency::Frequent,
                 5u32,
-                &env_map_specular,
+                env_map_specular.view(),
             );
             cmd_buffer.bind_sampling_view(
                 BindingFrequency::Frequent,
                 6u32,
-                &integration_lut,
+                integration_lut.view(),
             );
 
             for drawable in params.scene.scene.volume_mesh_instances() {
@@ -771,7 +769,7 @@ impl GeometryPass {
         assets: &RendererAssetsReadOnly,
         rt_extent: Vec2UI,
         marching_cubes_map: &super::marching_cubes::OffsetsMap,
-        buffers: &[(String, Ref<Arc<BufferSlice>>)],
+        buffers: &[(String, BufferAccessor)],
         use_mesh_shader: bool,
         pipeline_type: GeometryPassPipelineType,
         culling_enabled: bool,
@@ -848,11 +846,11 @@ impl GeometryPass {
                 .find(|(name, _)| name == MarchingCubesPass::ATOMICS_BUFFER_NAME).unwrap().1);
 
             let indirect_buffer_offset = *(marching_cubes_map.get(&drawable.entity).unwrap());
-            cmd_buffer.set_index_buffer(BufferRef::Regular(&*ibo), 0u64, IndexFormat::U32);
+            cmd_buffer.set_index_buffer(ibo.buffer_ref(), 0u64, IndexFormat::U32);
 
             cmd_buffer.finish_binding();
             cmd_buffer.draw_indexed_indirect(
-                BufferRef::Regular(&*indirect_buffer),
+                indirect_buffer.buffer_ref(),
                 indirect_buffer_offset as u64,
                 1u32,
                 std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
@@ -864,12 +862,12 @@ impl GeometryPass {
             let culling_buffer = &(buffers.iter()
                 .find(|(name, _)| name == &MarchingCubesPass::culling_buffer_name(drawable.entity)).unwrap().1);
             cmd_buffer.bind_storage_buffer(BindingFrequency::Frequent, 8,
-                                           BufferRef::Regular(&culling_buffer), 0u64, WHOLE_BUFFER);
+                                           culling_buffer.buffer_ref(), 0u64, WHOLE_BUFFER);
             cmd_buffer.finish_binding();
 
             if drawable_culling {
                 cmd_buffer.draw_mesh_tasks_indirect(
-                    BufferRef::Regular(&culling_buffer),
+                    culling_buffer.buffer_ref(),
                     0, 1, (3 * std::mem::size_of::<u32>()) as u32
                 );
             } else {

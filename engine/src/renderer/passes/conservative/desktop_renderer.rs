@@ -499,7 +499,7 @@ impl RenderPath for ConservativeRenderer {
             context,
             &mut cmd_buf,
             &params.assets,
-            &sharpened_view,
+            sharpened_view.view(),
             &backbuffer_view,
             sampler,
             resolution,

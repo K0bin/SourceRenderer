@@ -57,6 +57,14 @@ impl TransientBufferSlice {
     }
 
     #[inline(always)]
+    pub fn range(&self) -> Range {
+        Range {
+            offset: self.offset(),
+            length: self.length(),
+        }
+    }
+
+    #[inline(always)]
     pub unsafe fn map(&self, generation: u64) -> Option<*mut c_void> {
         let handle = self.handle(generation);
         debug_assert!(handle.map_ptr().is_some());

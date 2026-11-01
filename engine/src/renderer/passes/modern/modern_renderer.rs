@@ -419,8 +419,7 @@ impl RenderPath for ModernRenderer {
         );
 
         let resolution = {
-            let info: std::cell::Ref<'_, TextureInfo> =
-                resources.texture_info(VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME);
+            let info = resources.texture_info(VisibilityBufferPass::BARYCENTRICS_TEXTURE_NAME);
             Vec2UI::new(info.width, info.height)
         };
 

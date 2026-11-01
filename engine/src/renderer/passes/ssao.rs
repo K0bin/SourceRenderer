@@ -7,7 +7,7 @@ use sourcerenderer_core::{Vec2UI, Vec4};
 use crate::graphics::*;
 use crate::renderer::asset::*;
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources, TextureAccessor};
 
 pub struct SsaoPass {
     pipeline: ComputePipelineHandle,
@@ -162,9 +162,9 @@ impl SsaoPass {
             HistoryResourceEntry::Current,
         );
 
-        let mut motion_srv = Option::<Ref<Arc<TextureView>>>::None;
-        let mut id_view = Option::<Ref<Arc<TextureView>>>::None;
-        let mut barycentrics_view = Option::<Ref<Arc<TextureView>>>::None;
+        let mut motion_srv = Option::<TextureAccessor>::None;
+        let mut id_view = Option::<TextureAccessor>::None;
+        let mut barycentrics_view = Option::<TextureAccessor>::None;
         if !visibility_buffer {
             motion_srv = Some(pass_params.resources.access_view(
                 cmd_buffer,
@@ -221,16 +221,16 @@ impl SsaoPass {
         cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             2,
-            &*depth_srv,
+            depth_srv.view(),
         );
-        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 3, &*ssao_uav);
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 3, ssao_uav.view());
         cmd_buffer.bind_sampler(
             BindingFrequency::VeryFrequent,
             4,
             blue_noise_sampler,
         );
         cmd_buffer.finish_binding();
-        let ssao_info = ssao_uav.texture().unwrap().info();
+        let ssao_info = ssao_uav.texture().info();
         cmd_buffer.dispatch(
             (ssao_info.width + 7) / 8,
             (ssao_info.height + 7) / 8,
@@ -277,29 +277,29 @@ impl SsaoPass {
             .unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&blur_pipeline));
         cmd_buffer.flush_barriers();
-        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0, &*blurred_uav);
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0, blurred_uav.view());
         cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             1,
-            &*ssao_srv,
+            ssao_srv.view(),
         );
         cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             2,
-            &*blurred_srv_b,
+            blurred_srv_b.view(),
         );
         if !visibility_buffer {
             cmd_buffer.bind_sampling_view(
                 BindingFrequency::VeryFrequent,
                 3,
-                &motion_srv.unwrap(),
+                motion_srv.unwrap().view(),
             );
         } else {
-            cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 3, &id_view.unwrap());
+            cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 3, id_view.unwrap().view());
             cmd_buffer.bind_storage_texture(
                 BindingFrequency::VeryFrequent,
                 4,
-                &barycentrics_view.unwrap(),
+                barycentrics_view.unwrap().view(),
             );
         }
         cmd_buffer.bind_sampler(
@@ -315,7 +315,7 @@ impl SsaoPass {
             );
         }
         cmd_buffer.finish_binding();
-        let blur_info = blurred_uav.texture().unwrap().info();
+        let blur_info = blurred_uav.texture().info();
         cmd_buffer.dispatch(
             (blur_info.width + 7) / 8,
             (blur_info.height + 7) / 8,

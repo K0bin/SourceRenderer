@@ -125,7 +125,7 @@ impl ImageBasedLightingPreparation {
             .unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(pipeline));
 
-        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0u32, &lut);
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0u32, lut.view());
         cmd_buffer.finish_binding();
         cmd_buffer.dispatch((512 + 7) / 8, (512 + 7) / 8, 6);
         cmd_buffer.end_label();
@@ -229,7 +229,7 @@ impl ImageBasedLightingPreparation {
             0u32,
             &texture.view,
         );
-        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1u32, &cube);
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1u32, cube.view());
         cmd_buffer.finish_binding();
         cmd_buffer.dispatch((size + 7) / 8, (size + 7) / 8, 6);
         cmd_buffer.end_label();
@@ -302,9 +302,9 @@ impl ImageBasedLightingPreparation {
         cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             0u32,
-            &cube,
+            cube.view(),
         );
-        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1u32, &filtered_cube);
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1u32, filtered_cube.view());
         cmd_buffer.finish_binding();
         cmd_buffer.dispatch((info.width + 7) / 8, (info.height + 7) / 8, 6);
 
@@ -414,9 +414,9 @@ impl ImageBasedLightingPreparation {
         );
         cmd_buffer.flush_barriers();
 
-        cmd_buffer.copy_clear_texture(&diffuse, 0, 0, [0u32, 0u32, 0u32, 0u32]);
+        cmd_buffer.copy_clear_texture(diffuse.texture(), 0, 0, [0u32, 0u32, 0u32, 0u32]);
         for mip in 0..info.mip_levels {
-            cmd_buffer.copy_clear_texture(&specular, 0, mip, [0u32, 0u32, 0u32, 0u32]);
+            cmd_buffer.copy_clear_texture(specular.texture(), 0, mip, [0u32, 0u32, 0u32, 0u32]);
         }
     }
 

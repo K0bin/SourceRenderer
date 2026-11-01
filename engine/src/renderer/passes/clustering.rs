@@ -81,7 +81,7 @@ impl ClusteringPass {
             HistoryResourceEntry::Current,
         );
         debug_assert!(
-            clusters_buffer.info().size as u32
+            clusters_buffer.length() as u32
                 >= cluster_count.x
                     * cluster_count.y
                     * cluster_count.z
@@ -99,7 +99,7 @@ impl ClusteringPass {
         command_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
             0,
-            BufferRef::Regular(&*clusters_buffer),
+            clusters_buffer.buffer_ref(),
             0,
             WHOLE_BUFFER,
         );

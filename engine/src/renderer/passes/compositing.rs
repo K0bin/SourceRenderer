@@ -82,7 +82,7 @@ impl CompositingPass {
             HistoryResourceEntry::Current,
         );
 
-        let output: std::cell::Ref<'_, std::sync::Arc<TextureView>> = params.resources.access_view(
+        let output = params.resources.access_view(
             cmd_buffer,
             Self::COMPOSITION_TEXTURE_NAME,
             BarrierSync::COMPUTE_SHADER,
@@ -118,16 +118,16 @@ impl CompositingPass {
             )
             .unwrap();
 
-        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0, &output);
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0, output.view());
         cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             1,
-            &input_image,
+            input_image.view(),
         );
         cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             2,
-            &ssr,
+            ssr.view(),
         );
         cmd_buffer.bind_uniform_buffer(
             BindingFrequency::VeryFrequent,
@@ -138,7 +138,7 @@ impl CompositingPass {
         );
         cmd_buffer.finish_binding();
 
-        let info = output.texture().unwrap().info();
+        let info = output.texture().info();
         cmd_buffer.dispatch((info.width + 7) / 8, (info.height + 7) / 8, 1);
         cmd_buffer.end_label();
     }

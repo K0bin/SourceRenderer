@@ -12,7 +12,7 @@ use crate::renderer::asset::{
 };
 use crate::renderer::passes::ssao::SsaoPass;
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources, TextureAccessor};
 
 pub struct ShadingPass {
     sampler: Arc<crate::graphics::Sampler>,
@@ -163,7 +163,7 @@ impl ShadingPass {
             HistoryResourceEntry::Current,
         );
 
-        let rt_shadows: Ref<Arc<TextureView>>;
+        let rt_shadows: TextureAccessor;
         let shadows = if pass_params.device.supports_ray_tracing_pipeline() {
             rt_shadows = pass_params.resources.access_view(
                 cmd_buffer,
@@ -175,7 +175,7 @@ impl ShadingPass {
                 &TextureViewInfo::default(),
                 HistoryResourceEntry::Current,
             );
-            Some(&*rt_shadows)
+            Some(rt_shadows)
         } else {
             None
         };
@@ -210,14 +210,14 @@ impl ShadingPass {
             .get_compute_pipeline(self.pipeline)
             .unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
-        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &ids);
-        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 2, &barycentrics);
-        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 3, &output);
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, ids.view());
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 2, barycentrics.view());
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 3, output.view());
         cmd_buffer.bind_sampler(BindingFrequency::VeryFrequent, 4, &self.sampler);
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
             5,
-            BufferRef::Regular(&light_bitmask_buffer),
+            light_bitmask_buffer.buffer_ref(),
             0,
             WHOLE_BUFFER,
         );
@@ -230,19 +230,19 @@ impl ShadingPass {
             cmd_buffer.bind_sampling_view(
                 BindingFrequency::VeryFrequent,
                 7,
-                shadows,
+                shadows.view(),
             );
         }
         cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             8,
-            &ssao,
+            ssao.view(),
         );
 
         cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             9,
-            &shadow_map,
+            shadow_map.view(),
         );
         cmd_buffer.bind_sampler(
             BindingFrequency::VeryFrequent,

@@ -627,7 +627,7 @@ impl<'a> CommandBuffer<'a> {
         }
     }
 
-    pub fn dispatch_indirect(&mut self, buffer: &BufferRef, offset: u64) {
+    pub fn dispatch_indirect(&mut self, buffer: BufferRef, offset: u64) {
         if DEBUG_FORCE_FAT_BARRIER {
             self.fat_barrier();
         }

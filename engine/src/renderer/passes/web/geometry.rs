@@ -190,7 +190,7 @@ impl GeometryPass {
                 store_op: StoreOp::Store,
             }],
             depth_stencil: Some(&DepthStencilAttachment {
-                view: &dsv,
+                view: dsv.view(),
                 load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
                 store_op: StoreOp::Store,
             }),

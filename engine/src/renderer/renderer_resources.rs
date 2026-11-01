@@ -1,8 +1,8 @@
 use crate::graphics::*;
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
-use std::ops::Deref;
 use std::sync::Arc;
+use smallvec::SmallVec;
 
 struct AB<T> {
     a: T,
@@ -26,16 +26,76 @@ impl Default for TrackedTextureSubresource {
     }
 }
 
-struct TrackedTexture {
-    subresources: Vec<TrackedTextureSubresource>,
+pub struct TrackedTexture {
+    subresources: Vec<RefCell<TrackedTextureSubresource>>,
     texture: Arc<Texture>,
-    views: HashMap<TextureViewInfo, Arc<TextureView>>,
+    views: RefCell<HashMap<TextureViewInfo, Arc<TextureView>>>,
 }
 
-struct TrackedBuffer {
+enum TrackedBufferType {
+    Transient(TransientBufferSlice),
+    Regular(Arc<BufferSlice>)
+}
+
+pub struct TrackedBuffer {
     stages: BarrierSync,
     access: BarrierAccess,
-    buffer: Arc<BufferSlice>,
+    buffer: TrackedBufferType,
+}
+
+impl TrackedBufferType {
+    fn buffer_ref(&self) -> BufferRef<'_> {
+        match self {
+            TrackedBufferType::Transient(b) => BufferRef::Transient(b),
+            TrackedBufferType::Regular(b) => BufferRef::Regular(b)
+        }
+    }
+
+    fn length(&self) -> u64 {
+        match self {
+            TrackedBufferType::Transient(b) => b.length(),
+            TrackedBufferType::Regular(b) => b.length(),
+        }
+    }
+}
+
+pub enum ResourceViewType<'a, T> {
+    Mut(RefMut<'a, T>),
+    Ref(Ref<'a, T>),
+}
+
+pub struct BufferAccessor<'a> {
+    view_type: ResourceViewType<'a, TrackedBuffer>,
+}
+impl BufferAccessor<'_> {
+    pub fn buffer_ref(&self) -> BufferRef<'_> {
+        match &self.view_type {
+            ResourceViewType::Mut(b) => b.buffer.buffer_ref(),
+            ResourceViewType::Ref(b) => b.buffer.buffer_ref(),
+        }
+    }
+
+    pub fn length(&self) -> u64 {
+        match &self.view_type {
+            ResourceViewType::Mut(b) => b.buffer.length(),
+            ResourceViewType::Ref(b) => b.buffer.length(),
+        }
+    }
+}
+
+pub struct TextureAccessor<'a> {
+    _subresources: SmallVec<[ResourceViewType<'a, TrackedTextureSubresource>; 1]>,
+    texture: &'a Arc<Texture>,
+    view: Option<Arc<TextureView>>,
+}
+
+impl TextureAccessor<'_> {
+    pub fn view(&self) -> &Arc<TextureView> {
+        self.view.as_ref().unwrap()
+    }
+    pub fn texture(&self) -> &Arc<Texture> {
+        self.texture
+    }
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -64,7 +124,7 @@ fn calculate_subresource(mip_level: u32, mip_length: u32, array_layer: u32) -> u
 
 pub struct RendererResources {
     device: Arc<Device>,
-    textures: HashMap<String, AB<RefCell<TrackedTexture>>>,
+    textures: HashMap<String, AB<TrackedTexture>>,
     buffers: HashMap<String, AB<RefCell<TrackedBuffer>>>,
     nearest_sampler: Arc<Sampler>,
     linear_sampler: Arc<Sampler>,
@@ -134,7 +194,7 @@ impl RendererResources {
     }
 
     pub fn create_texture(&mut self, name: &str, info: &TextureInfo, has_history: bool) {
-        let mut subresources: Vec<TrackedTextureSubresource> = Vec::new();
+        let mut subresources: Vec<RefCell<TrackedTextureSubresource>> = Vec::new();
         let array_layers = info.array_length
             * if info.dimension == TextureDimension::Cube
                 || info.dimension == TextureDimension::CubeArray
@@ -145,26 +205,26 @@ impl RendererResources {
             };
         subresources.resize(
             calculate_subresources(info.mip_levels, array_layers) as usize,
-            TrackedTextureSubresource::default(),
+            RefCell::new(TrackedTextureSubresource::default()),
         );
 
         let old = self.textures.insert(
             name.to_string(),
             AB {
-                a: RefCell::new(TrackedTexture {
+                a: TrackedTexture {
                     subresources: subresources.clone(),
                     texture: self.device.create_texture(info, Some(name)).unwrap(),
-                    views: HashMap::new(),
-                }),
+                    views: RefCell::new(HashMap::new()),
+                },
                 b: has_history.then(|| {
-                    RefCell::new(TrackedTexture {
+                    TrackedTexture {
                         subresources,
                         texture: self
                             .device
                             .create_texture(info, Some(&(name.to_string() + "_b")))
                             .unwrap(),
-                        views: HashMap::new(),
-                    })
+                        views: RefCell::new(HashMap::new()),
+                    }
                 }),
             },
         );
@@ -188,19 +248,19 @@ impl RendererResources {
                 a: RefCell::new(TrackedBuffer {
                     stages: BarrierSync::empty(),
                     access: BarrierAccess::empty(),
-                    buffer: self
+                    buffer: TrackedBufferType::Regular(self
                         .device
                         .create_buffer(info, memory_usage, Some(name))
-                        .unwrap(),
+                        .unwrap()),
                 }),
                 b: has_history.then(|| {
                     RefCell::new(TrackedBuffer {
                         stages: BarrierSync::empty(),
                         access: BarrierAccess::empty(),
-                        buffer: self
+                        buffer: TrackedBufferType::Regular(self
                             .device
                             .create_buffer(info, memory_usage, Some(&(name.to_string() + "_b")))
-                            .unwrap(),
+                            .unwrap()),
                     })
                 }),
             },
@@ -212,18 +272,9 @@ impl RendererResources {
     }
 
     #[inline]
-    pub fn texture_info(&self, name: &str) -> Ref<'_, TextureInfo> {
+    pub fn texture_info(&self, name: &str) -> &TextureInfo {
         let entry = self.textures.get(name);
-        let texture_ref = entry.unwrap().a.borrow();
-        Ref::map(texture_ref, |texture| texture.texture.info())
-    }
-
-    #[allow(unused)]
-    #[inline]
-    pub fn buffer_info(&self, name: &str) -> Ref<'_, BufferInfo> {
-        let entry = self.buffers.get(name);
-        let buffer_ref = entry.unwrap().a.borrow();
-        Ref::map(buffer_ref, |buffer| buffer.buffer.info())
+        &entry.as_ref().unwrap().a.texture.info()
     }
 
     pub fn has_buffer(&self, name: &str) -> bool {
@@ -239,7 +290,10 @@ impl RendererResources {
     pub fn buffer_range(&self, name: &str) -> Range {
         let entry = self.buffers.get(name);
         let buffer_ref = entry.unwrap().a.borrow();
-        buffer_ref.buffer.range()
+        match &buffer_ref.buffer {
+            TrackedBufferType::Transient(b) => b.range(),
+            TrackedBufferType::Regular(b) => b.range()
+        }
     }
 
     pub fn destroy_buffer(&mut self, name: &str) {
@@ -258,17 +312,17 @@ impl RendererResources {
         self.textures.keys().map(|k| k.as_str()).collect()
     }
 
-    fn access_texture_internal(
-        &self,
+    pub fn access_texture<'a>(
+        &'a self,
         cmd_buffer: &mut CommandBuffer,
         name: &str,
-        mut stages: BarrierSync,
         range: &BarrierTextureRange,
+        mut stages: BarrierSync,
         mut access: BarrierAccess,
         layout: TextureLayout,
         discard: bool,
         history: HistoryResourceEntry,
-    ) {
+    ) -> TextureAccessor<'a> {
         let texture_ab = self
             .textures
             .get(name)
@@ -294,23 +348,26 @@ impl RendererResources {
             == (self.current_pass == ABEntry::A)
             && texture_ab.b.is_some();
 
-        let mut texture_mut = if !use_b_resource {
-            texture_ab.a.borrow_mut()
+        let texture = if !use_b_resource {
+            &texture_ab.a
         } else {
-            texture_ab.b.as_ref().unwrap().borrow_mut()
+            texture_ab.b.as_ref().unwrap()
         };
 
-        let total_mip_level_count = texture_mut.texture.info().mip_levels;
+        let mut subresources: SmallVec<[ResourceViewType<TrackedTextureSubresource>; 1]> = SmallVec::new();
+        let total_mip_level_count = texture.texture.info().mip_levels;
         for array_index in range.base_array_layer..range.base_array_layer + range.array_layer_length
         {
             for mip_index in range.base_mip_level..range.base_mip_level + range.mip_level_length {
                 let subresource_index =
                     calculate_subresource(mip_index, total_mip_level_count, array_index);
 
-                let subresource_mut = texture_mut
+                let subresource_refcell = texture
                     .subresources
-                    .get_mut(subresource_index as usize)
+                    .get(subresource_index as usize)
                     .unwrap();
+                let mut subresource_mut = subresource_refcell
+                    .borrow_mut();
 
                 let needs_barrier = access.is_write()
                     || subresource_mut.access.is_write()
@@ -348,7 +405,7 @@ impl RendererResources {
                             BarrierAccess::empty()
                         },
                         new_access: access,
-                        texture: &texture_mut.texture,
+                        texture: &texture.texture,
                         range: BarrierTextureRange {
                             base_array_layer: array_index,
                             array_layer_length: 1,
@@ -367,44 +424,28 @@ impl RendererResources {
                     }
                     subresource_clone.stages = stages;
                     subresource_clone.layout = layout;
-                    texture_mut.subresources[subresource_index as usize] = subresource_clone;
+                    *subresource_mut = subresource_clone;
                 }
+
+                let inner = if access.is_write() {
+                    ResourceViewType::Mut(subresource_mut)
+                } else {
+                    std::mem::drop(subresource_mut);
+                    ResourceViewType::Ref(subresource_refcell.borrow())
+                };
+                subresources.push(inner);
             }
+        }
+
+        TextureAccessor {
+            _subresources: subresources,
+            view: None,
+            texture: &texture.texture,
         }
     }
 
-    pub fn access_texture(
-        &self,
-        cmd_buffer: &mut CommandBuffer,
-        name: &str,
-        range: &BarrierTextureRange,
-        stages: BarrierSync,
-        access: BarrierAccess,
-        layout: TextureLayout,
-        discard: bool,
-        history: HistoryResourceEntry,
-    ) -> Ref<'_, Arc<Texture>> {
-        self.access_texture_internal(
-            cmd_buffer, name, stages, range, access, layout, discard, history,
-        );
-        let texture_ab = self
-            .textures
-            .get(name)
-            .unwrap_or_else(|| panic!("No tracked texture by the name {}", name));
-        debug_assert!(history != HistoryResourceEntry::Past || texture_ab.b.is_some());
-        let use_b_resource = (history == HistoryResourceEntry::Past)
-            == (self.current_pass == ABEntry::A)
-            && texture_ab.b.is_some();
-        let texture_ref = if !use_b_resource {
-            texture_ab.a.borrow()
-        } else {
-            texture_ab.b.as_ref().unwrap().borrow()
-        };
-        Ref::map(texture_ref, |r| &r.texture)
-    }
-
-    pub fn access_view(
-        &self,
+    pub fn access_view<'a>(
+        &'a self,
         cmd_buffer: &mut CommandBuffer,
         name: &str,
         stages: BarrierSync,
@@ -413,26 +454,27 @@ impl RendererResources {
         discard: bool,
         info: &TextureViewInfo,
         history: HistoryResourceEntry,
-    ) -> Ref<'_, Arc<TextureView>> {
-        self.access_texture_internal(
+    ) -> TextureAccessor<'a> {
+        let mut accessor = self.access_texture(
             cmd_buffer,
             name,
-            stages,
             &info.into(),
+            stages,
             access,
             layout,
             discard,
             history,
         );
-        self.get_view(name, info, history)
+        accessor.view = Some(self.get_view(name, info, history).clone());
+        accessor
     }
 
-    pub fn get_view(
-        &self,
+    pub fn get_view<'a>(
+        &'a self,
         name: &str,
         info: &TextureViewInfo,
         history: HistoryResourceEntry,
-    ) -> Ref<'_, Arc<TextureView>> {
+    ) -> Ref<'a, Arc<TextureView>> {
         let texture_ab = self
             .textures
             .get(name)
@@ -441,53 +483,42 @@ impl RendererResources {
         let use_b_resource = (history == HistoryResourceEntry::Past)
             == (self.current_pass == ABEntry::A)
             && texture_ab.b.is_some();
-        {
-            let texture_ref = if !use_b_resource {
-                texture_ab.a.borrow()
-            } else {
-                texture_ab.b.as_ref().unwrap().borrow()
-            };
-            if texture_ref.views.contains_key(info) {
-                return Ref::map(texture_ref, |r| r.views.get(info).unwrap());
-            }
-        }
 
-        {
-            let mut texture_mut = if !use_b_resource {
-                texture_ab.a.borrow_mut()
-            } else {
-                texture_ab.b.as_ref().unwrap().borrow_mut()
-            };
+        let tracked_texture = if !use_b_resource {
+            &texture_ab.a
+        } else {
+            texture_ab.b.as_ref().unwrap()
+        };
+
+        let views = tracked_texture.views.borrow();
+        if !views.contains_key(&info) {
+            std::mem::drop(views);
+            let mut views = tracked_texture.views.borrow_mut();
+            let texture = &tracked_texture.texture;
             let view = self.device.create_texture_view(
-                &texture_mut.texture,
+                &texture,
                 info,
                 Some(&(name.to_string() + "_srv")),
             );
-            texture_mut.views.insert(info.clone(), view);
+            views.insert(info.clone(), view);
         }
 
-        {
-            let texture_ref = if !use_b_resource {
-                texture_ab.a.borrow()
-            } else {
-                texture_ab.b.as_ref().unwrap().borrow()
-            };
-            return Ref::map(texture_ref, |r| r.views.get(info).unwrap());
-        }
+        let views = tracked_texture.views.borrow();
+        Ref::map(views, |views| views.get(info).unwrap())
     }
 
     pub fn has_resource(&self, name: &str) -> bool {
         self.textures.contains_key(name) || self.buffers.contains_key(name)
     }
 
-    pub fn access_buffer(
-        &self,
+    pub fn access_buffer<'a>(
+        &'a self,
         cmd_buffer: &mut CommandBuffer,
         name: &str,
         mut stages: BarrierSync,
         mut access: BarrierAccess,
         history: HistoryResourceEntry,
-    ) -> Ref<'_, Arc<BufferSlice>> {
+    ) -> BufferAccessor<'a> {
         debug_assert_eq!(
             access
                 & !(BarrierAccess::VERTEX_INPUT_READ
@@ -556,11 +587,13 @@ impl RendererResources {
             == (self.current_pass == ABEntry::A)
             && buffer_ab.b.is_some();
 
-        let mut buffer_mut = if !use_b_resource {
-            buffer_ab.a.borrow_mut()
+        let buffer_refcell = if !use_b_resource {
+            &buffer_ab.a
         } else {
-            buffer_ab.b.as_ref().unwrap().borrow_mut()
+            buffer_ab.b.as_ref().unwrap()
         };
+
+        let mut buffer_mut = buffer_refcell.borrow_mut();
 
         let needs_barrier = access.is_write()
             || buffer_mut.access.is_write()
@@ -584,23 +617,26 @@ impl RendererResources {
                 new_sync: stages,
                 old_access: buffer_mut.access & BarrierAccess::write_mask(),
                 new_access: access,
-                buffer: BufferRef::Regular(&buffer_mut.buffer),
+                buffer: buffer_mut.buffer.buffer_ref(),
                 queue_ownership: None,
             }]);
             if access.is_write() || buffer_mut.access.is_write() {
                 buffer_mut.access = access;
+                buffer_mut.stages = stages;
             } else {
                 buffer_mut.access |= access;
+                buffer_mut.stages |= stages;
             }
-            buffer_mut.stages = stages;
         }
 
-        std::mem::drop(buffer_mut);
-        let buffer_ref = if !use_b_resource {
-            buffer_ab.a.borrow()
+        let inner = if access.is_write() {
+            ResourceViewType::Mut(buffer_mut)
         } else {
-            buffer_ab.b.as_ref().unwrap().borrow()
+            std::mem::drop(buffer_mut);
+            ResourceViewType::Ref(buffer_refcell.borrow())
         };
-        Ref::map(buffer_ref, |r| &r.buffer)
+        BufferAccessor {
+            view_type: inner,
+        }
     }
 }

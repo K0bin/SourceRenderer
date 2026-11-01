@@ -124,7 +124,7 @@ impl LightBinningPass {
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
             0,
-            BufferRef::Regular(&*clusters_buffer),
+            clusters_buffer.buffer_ref(),
             0,
             WHOLE_BUFFER,
         );
@@ -138,7 +138,7 @@ impl LightBinningPass {
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
             2,
-            BufferRef::Regular(&*light_bitmask_buffer),
+            light_bitmask_buffer.buffer_ref(),
             0,
             WHOLE_BUFFER,
         );

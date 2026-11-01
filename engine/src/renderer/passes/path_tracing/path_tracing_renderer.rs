@@ -401,7 +401,7 @@ impl RenderPath for PathTracingRenderer {
             context,
             &mut cmd_buf,
             &params.assets,
-            &rt_view,
+            rt_view.view(),
             &backbuffer_view,
             sampler,
             resolution,

@@ -237,18 +237,18 @@ impl SSSPass {
         cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             0,
-            &*color_view,
+            color_view.view(),
         );
         cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             4,
-            &*sss_intensity_view,
+            sss_intensity_view.view(),
         );
-        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &*sss_temp_uav);
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, sss_temp_uav.view());
         cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             2,
-            &*depth_srv,
+            depth_srv.view(),
         );
         cmd_buffer.bind_uniform_buffer(
             BindingFrequency::VeryFrequent,
@@ -261,7 +261,7 @@ impl SSSPass {
 
         cmd_buffer.begin_label("SSS horizonal pass");
 
-        let sss_temp_info = sss_temp_uav.texture().unwrap().info();
+        let sss_temp_info = sss_temp_uav.texture().info();
 
         let params = SSSParams {
             dir: Vec2::new(1.0f32, 0.0f32),
@@ -308,11 +308,11 @@ impl SSSPass {
         cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             0,
-            &*sss_temp_srv,
+            sss_temp_srv.view(),
         );
-        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &*sss_uav);
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, sss_uav.view());
         cmd_buffer.finish_binding();
-        let sss_info = sss_uav.texture().unwrap().info();
+        let sss_info = sss_uav.texture().info();
 
         let params = SSSParams {
             dir: Vec2::new(0.0f32, 1.0f32),

@@ -108,7 +108,7 @@ impl BackgroundPass {
             HistoryResourceEntry::Current,
         );
 
-        let rt_info = color_view.texture().unwrap().info();
+        let rt_info = color_view.texture().info();
 
         let env_map_specular = resources.access_view(
             cmd_buffer,
@@ -134,7 +134,7 @@ impl BackgroundPass {
 
         cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
             render_targets: &[RenderTarget {
-                view: &color_view,
+                view: color_view.view(),
                 load_op: LoadOpColor::DontCare,
                 store_op: StoreOp::Store,
             }],
@@ -162,7 +162,7 @@ impl BackgroundPass {
         cmd_buffer.bind_sampling_view(
             BindingFrequency::Frequent,
             0u32,
-            &env_map_specular,
+            env_map_specular.view(),
         );
         cmd_buffer.finish_binding();
         cmd_buffer.draw(3u32, 1u32, 0u32, 0u32);

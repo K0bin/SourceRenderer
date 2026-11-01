@@ -71,7 +71,7 @@ impl MotionVectorPass {
         );
 
         let (width, height) = {
-            let info = output_srv.texture().unwrap().info();
+            let info = output_srv.texture().info();
             (info.width, info.height)
         };
 
@@ -98,9 +98,9 @@ impl MotionVectorPass {
         );
 
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
-        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0, &output_srv);
-        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &ids);
-        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 2, &barycentrics);
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0, output_srv.view());
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, ids.view());
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 2, barycentrics.view());
         cmd_buffer.flush_barriers();
         cmd_buffer.finish_binding();
         cmd_buffer.dispatch((width + 7) / 8, (height + 7) / 8, 1);

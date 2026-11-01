@@ -106,8 +106,8 @@ impl PathTracerPass {
             0,
             acceleration_structure,
         );
-        cmd_buffer.bind_storage_texture(BindingFrequency::Frequent, 1, &*texture_uav);
-        cmd_buffer.bind_storage_texture(BindingFrequency::Frequent, 4, &*&texture_uav_history);
+        cmd_buffer.bind_storage_texture(BindingFrequency::Frequent, 1, texture_uav.view());
+        cmd_buffer.bind_storage_texture(BindingFrequency::Frequent, 4, texture_uav_history.view());
         cmd_buffer.bind_sampling_view(
             BindingFrequency::Frequent,
             2,
@@ -119,7 +119,7 @@ impl PathTracerPass {
             blue_noise_sampler,
         );
         cmd_buffer.bind_sampler(BindingFrequency::VeryFrequent, 3, &self.sampler);
-        let info = texture_uav.texture().unwrap().info();
+        let info = texture_uav.texture().info();
 
         cmd_buffer.flush_barriers();
         cmd_buffer.finish_binding();

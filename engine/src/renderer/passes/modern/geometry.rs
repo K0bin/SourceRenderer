@@ -15,7 +15,7 @@ use crate::renderer::light::DirectionalLight;
 use crate::renderer::passes::light_binning;
 use crate::renderer::passes::ssao::SsaoPass;
 use crate::renderer::passes::taa::scaled_halton_point;
-use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources, TextureAccessor};
 use crate::renderer::renderer_scene::RendererScene;
 
 #[allow(unused)]
@@ -245,7 +245,7 @@ impl GeometryPass {
             HistoryResourceEntry::Current,
         );
 
-        let rtv_ref = barriers.access_view(
+        let rtv = barriers.access_view(
             cmd_buffer,
             Self::GEOMETRY_PASS_TEXTURE_NAME,
             BarrierSync::RENDER_TARGET,
@@ -255,7 +255,6 @@ impl GeometryPass {
             &TextureViewInfo::default(),
             HistoryResourceEntry::Current,
         );
-        let rtv = &*rtv_ref;
 
         let motion = barriers.access_view(
             cmd_buffer,
@@ -279,7 +278,7 @@ impl GeometryPass {
             HistoryResourceEntry::Current,
         );
 
-        let prepass_depth_ref = barriers.access_view(
+        let prepass_depth = barriers.access_view(
             cmd_buffer,
             depth_name,
             BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
@@ -289,9 +288,8 @@ impl GeometryPass {
             &TextureViewInfo::default(),
             HistoryResourceEntry::Current,
         );
-        let prepass_depth = &*prepass_depth_ref;
 
-        let ssao_ref = barriers.access_view(
+        let ssao = barriers.access_view(
             cmd_buffer,
             SsaoPass::SSAO_TEXTURE_NAME,
             BarrierSync::FRAGMENT_SHADER | BarrierSync::COMPUTE_SHADER,
@@ -301,18 +299,16 @@ impl GeometryPass {
             &TextureViewInfo::default(),
             HistoryResourceEntry::Current,
         );
-        let ssao = &*ssao_ref;
 
-        let light_bitmask_buffer_ref = barriers.access_buffer(
+        let light_bitmask_buffer = barriers.access_buffer(
             cmd_buffer,
             light_binning::LightBinningPass::LIGHT_BINNING_BUFFER_NAME,
             BarrierSync::FRAGMENT_SHADER,
             BarrierAccess::STORAGE_READ,
             HistoryResourceEntry::Current,
         );
-        let light_bitmask_buffer = &*light_bitmask_buffer_ref;
 
-        let rt_shadows: Ref<Arc<TextureView>>;
+        let rt_shadows: TextureAccessor;
         let shadows = if device.supports_ray_tracing_pipeline() {
             rt_shadows = barriers.access_view(
                 cmd_buffer,
@@ -324,7 +320,7 @@ impl GeometryPass {
                 &TextureViewInfo::default(),
                 HistoryResourceEntry::Current,
             );
-            &*rt_shadows
+            rt_shadows.view()
         } else {
             zero_texture_view
         };
@@ -332,23 +328,23 @@ impl GeometryPass {
         cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
             render_targets: &[
                 RenderTarget {
-                    view: &rtv,
+                    view: rtv.view(),
                     load_op: LoadOpColor::Clear(ClearColor::BLACK),
                     store_op: StoreOp::Store,
                 },
                 RenderTarget {
-                    view: &*motion,
+                    view: motion.view(),
                     load_op: LoadOpColor::Clear(ClearColor::BLACK),
                     store_op: StoreOp::Store,
                 },
                 RenderTarget {
-                    view: &*normals,
+                    view: normals.view(),
                     load_op: LoadOpColor::Clear(ClearColor::BLACK),
                     store_op: StoreOp::Store,
                 },
             ],
             depth_stencil: Some(&DepthStencilAttachment {
-                view: &prepass_depth,
+                view: prepass_depth.view(),
                 load_op: LoadOpDepthStencil::Load,
                 store_op: StoreOp::Store,
             }),
@@ -356,7 +352,7 @@ impl GeometryPass {
             resume_suspend: RenderPassResumeSuspend::empty(),
         });
 
-        let rtv_info = rtv.texture().unwrap().info();
+        let rtv_info = rtv.texture().info();
         let cluster_count = Vec3UI::new(16, 9, 24);
         let near = view.near_plane;
         let far = view.far_plane;
@@ -426,14 +422,14 @@ impl GeometryPass {
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::Frequent,
             3,
-            BufferRef::Regular(light_bitmask_buffer),
+            light_bitmask_buffer.buffer_ref(),
             0,
             WHOLE_BUFFER,
         );
         cmd_buffer.bind_sampling_view(
             BindingFrequency::Frequent,
             4,
-            &ssao
+            ssao.view()
         );
         //cmd_buffer.bind_storage_buffer(BindingFrequency::Frequent, 5, clusters);
 
@@ -442,9 +438,9 @@ impl GeometryPass {
 
         cmd_buffer.finish_binding();
         cmd_buffer.draw_indexed_indirect_count(
-            BufferRef::Regular(&draw_buffer),
+            draw_buffer.buffer_ref(),
             4,
-            BufferRef::Regular(&draw_buffer),
+            draw_buffer.buffer_ref(),
             0,
             DRAW_CAPACITY,
             20,

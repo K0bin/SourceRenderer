@@ -222,9 +222,9 @@ impl ShadowMapPass {
 
             cmd_buffer.flush_barriers();
             cmd_buffer.copy_clear_buffer(
-                BufferRef::Regular(&visibility_buffer),
+                visibility_buffer.buffer_ref(),
                 0,
-                visibility_buffer.info().size / 4,
+                visibility_buffer.length() / 4,
                 !0,
             );
         }
@@ -245,14 +245,14 @@ impl ShadowMapPass {
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
             0,
-            BufferRef::Regular(&visibility_buffer),
+            visibility_buffer.buffer_ref(),
             0,
             WHOLE_BUFFER,
         );
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
             1,
-            BufferRef::Regular(&draws_buffer),
+            draws_buffer.buffer_ref(),
             0,
             WHOLE_BUFFER,
         );
@@ -319,7 +319,7 @@ impl ShadowMapPass {
             cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
                 render_targets: &[],
                 depth_stencil: Some(&DepthStencilAttachment {
-                    view: &shadow_map,
+                    view: shadow_map.view(),
                     load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
                     store_op: StoreOp::Store,
                 }),
@@ -327,7 +327,7 @@ impl ShadowMapPass {
                 resume_suspend: RenderPassResumeSuspend::empty(),
             });
 
-            let dsv_info = shadow_map.texture().unwrap().info();
+            let dsv_info = shadow_map.texture().info();
             let pipeline = pass_params
                 .assets
                 .get_graphics_pipeline(self.pipeline)
@@ -351,9 +351,9 @@ impl ShadowMapPass {
 
             cmd_buffer.finish_binding();
             cmd_buffer.draw_indexed_indirect_count(
-                BufferRef::Regular(&draw_buffer),
+                draw_buffer.buffer_ref(),
                 4,
-                BufferRef::Regular(&draw_buffer),
+                draw_buffer.buffer_ref(),
                 0,
                 DRAW_CAPACITY,
                 20,

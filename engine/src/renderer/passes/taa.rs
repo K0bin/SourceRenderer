@@ -8,7 +8,7 @@ use crate::renderer::asset::{
     ComputePipelineHandle, PathPipelineShaderStage, RendererAssets, RendererAssetsReadOnly,
 };
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources, TextureAccessor};
 
 pub(crate) fn scaled_halton_point(width: u32, height: u32, index: u32) -> Vec2 {
     let width_frac = 1.0f32 / (width as f32 * 0.5f32);
@@ -128,9 +128,9 @@ impl TAAPass {
             HistoryResourceEntry::Past,
         );
 
-        let mut motion_srv = Option::<Ref<Arc<TextureView>>>::None;
-        let mut id_view = Option::<Ref<Arc<TextureView>>>::None;
-        let mut barycentrics_view = Option::<Ref<Arc<TextureView>>>::None;
+        let mut motion_srv = Option::<TextureAccessor>::None;
+        let mut id_view = Option::<TextureAccessor>::None;
+        let mut barycentrics_view = Option::<TextureAccessor>::None;
         if !visibility_buffer {
             motion_srv = Some(pass_params.resources.access_view(
                 cmd_buf,
@@ -184,36 +184,36 @@ impl TAAPass {
         cmd_buf.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             0,
-            &*output_srv,
+            output_srv.view(),
         );
         cmd_buf.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             1,
-            &*taa_history_srv,
+            taa_history_srv.view(),
         );
-        cmd_buf.bind_storage_texture(BindingFrequency::VeryFrequent, 2, &*taa_uav);
+        cmd_buf.bind_storage_texture(BindingFrequency::VeryFrequent, 2, taa_uav.view());
         cmd_buf.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             3,
-            &*depth_srv,
+            depth_srv.view(),
         );
         if !visibility_buffer {
             cmd_buf.bind_sampling_view(
                 BindingFrequency::VeryFrequent,
                 4,
-                &motion_srv.unwrap(),
+                motion_srv.unwrap().view(),
             );
         } else {
-            cmd_buf.bind_storage_texture(BindingFrequency::VeryFrequent, 4, &id_view.unwrap());
+            cmd_buf.bind_storage_texture(BindingFrequency::VeryFrequent, 4, &id_view.unwrap().view());
             cmd_buf.bind_storage_texture(
                 BindingFrequency::VeryFrequent,
                 5,
-                &barycentrics_view.unwrap(),
+                barycentrics_view.unwrap().view(),
             );
         }
         cmd_buf.finish_binding();
 
-        let info = taa_uav.texture().unwrap().info();
+        let info = taa_uav.texture().info();
         cmd_buf.dispatch((info.width + 7) / 8, (info.height + 7) / 8, 1);
         cmd_buf.end_label();
     }

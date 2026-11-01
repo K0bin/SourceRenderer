@@ -170,12 +170,12 @@ impl CompositingPass {
         cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             0u32,
-            &color_view,
+            color_view.view(),
         );
         cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             1u32,
-            &ssao_view,
+            ssao_view.view(),
         );
 
         cmd_buffer.finish_binding();

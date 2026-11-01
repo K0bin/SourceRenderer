@@ -259,16 +259,16 @@ impl SsaoPass {
         cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             2,
-            &*depth_srv,
+            depth_srv.view(),
         );
-        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 3, &*ssao_uav);
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 3, ssao_uav.view());
         cmd_buffer.bind_sampler(
             BindingFrequency::VeryFrequent,
             4,
             &self.noise_sampler,
         );
         cmd_buffer.finish_binding();
-        let ssao_info = ssao_uav.texture().unwrap().info();
+        let ssao_info = ssao_uav.texture().info();
         cmd_buffer.dispatch(
             (ssao_info.width + 7) / 8,
             (ssao_info.height + 7) / 8,
@@ -318,16 +318,16 @@ impl SsaoPass {
             .unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buffer.flush_barriers();
-        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0u32, &smoothed_ssao_view);
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0u32, smoothed_ssao_view.view());
         cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             1u32,
-            &ssao_sampling_view,
+            ssao_sampling_view.view(),
         );
         cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             2u32,
-            &smoothed_ssao_history_view,
+            smoothed_ssao_history_view.view(),
         );
         cmd_buffer.bind_sampler(
             BindingFrequency::VeryFrequent,
@@ -335,7 +335,7 @@ impl SsaoPass {
             pass_params.resources.linear_sampler(),
         );
         cmd_buffer.finish_binding();
-        let smoothed_info = smoothed_ssao_view.texture().unwrap().info();
+        let smoothed_info = smoothed_ssao_view.texture().info();
         cmd_buffer.dispatch(
             (smoothed_info.width + 7u32) / 8u32,
             (smoothed_info.height + 7u32) / 8u32,

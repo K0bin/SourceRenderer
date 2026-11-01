@@ -7,7 +7,7 @@ use crate::graphics::*;
 use crate::renderer::asset::{ComputePipelineHandle, *};
 use crate::renderer::passes::modern::VisibilityBufferPass;
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources, TextureAccessor};
 
 pub struct SsrPass {
     pipeline: ComputePipelineHandle,
@@ -95,8 +95,8 @@ impl SsrPass {
             HistoryResourceEntry::Current,
         );
 
-        let mut ids = Option::<Ref<Arc<TextureView>>>::None;
-        let mut barycentrics = Option::<Ref<Arc<TextureView>>>::None;
+        let mut ids = Option::<TextureAccessor>::None;
+        let mut barycentrics = Option::<TextureAccessor>::None;
 
         if visibility_buffer {
             ids = Some(params.resources.access_view(
@@ -126,27 +126,27 @@ impl SsrPass {
         cmd_buffer.begin_label("SSR pass");
         cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
         cmd_buffer.flush_barriers();
-        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0, &ssr_uav);
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0, ssr_uav.view());
         cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             1,
-            &*color_srv,
+            color_srv.view(),
         );
         cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             2,
-            &*depth_srv,
+            depth_srv.view(),
         );
         if visibility_buffer {
             cmd_buffer.bind_storage_texture(
                 BindingFrequency::VeryFrequent,
                 3,
-                ids.as_ref().unwrap(),
+                ids.as_ref().unwrap().view(),
             );
             cmd_buffer.bind_storage_texture(
                 BindingFrequency::VeryFrequent,
                 4,
-                barycentrics.as_ref().unwrap(),
+                barycentrics.as_ref().unwrap().view(),
             );
         }
         cmd_buffer.bind_sampler(
@@ -155,7 +155,7 @@ impl SsrPass {
             params.resources.linear_sampler(),
         );
         cmd_buffer.finish_binding();
-        let ssr_info = ssr_uav.texture().unwrap().info();
+        let ssr_info = ssr_uav.texture().info();
         cmd_buffer.dispatch(
             (ssr_info.width + 7) / 8,
             (ssr_info.height + 7) / 8,

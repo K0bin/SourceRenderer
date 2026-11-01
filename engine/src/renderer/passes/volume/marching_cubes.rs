@@ -5,7 +5,7 @@ use crate::renderer::asset::{
 };
 use crate::renderer::drawable::RendererVolumeDrawable;
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
+use crate::renderer::renderer_resources::{BufferAccessor, HistoryResourceEntry, RendererResources};
 use bevy_ecs::entity::Entity;
 use bytemuck::{Pod, Zeroable};
 use smallvec::{smallvec, SmallVec};
@@ -770,7 +770,7 @@ impl MarchingCubesPass {
         command_buffer.begin_label("Clearing");
 
         // Access all of them here to batch barriers
-        let mut buffer_slices = HashMap::<String, Ref<Arc<BufferSlice>>>::with_capacity(pass_params.scene.scene.volume_mesh_instances().len());
+        let mut buffer_slices = HashMap::<String, BufferAccessor>::with_capacity(pass_params.scene.scene.volume_mesh_instances().len());
         for RendererVolumeDrawable { entity, volume_texture, texture_lod, render_as_cubes, .. } in pass_params.scene.scene.volume_mesh_instances() {
             let buffer_name = Self::index_buffer_name(*entity);
             let culling_name = Self::culling_buffer_name(*entity);
@@ -824,7 +824,7 @@ impl MarchingCubesPass {
 
         for (_, slice) in buffer_slices.iter() {
             command_buffer.copy_clear_buffer(
-                BufferRef::Regular(&slice),
+                slice.buffer_ref(),
                 0u64,
                 slice.length() / 4,
                 0u32,
@@ -859,7 +859,7 @@ impl MarchingCubesPass {
         // Culling pass
 
         // Access all of them here to batch barriers
-        let mut buffer_slices: SmallVec<[(String, Ref<Arc<BufferSlice>>); 2]> =
+        let mut buffer_slices: SmallVec<[(String, BufferAccessor); 2]> =
             SmallVec::with_capacity(pass_params.scene.scene.volume_mesh_instances().len());
 
         if options.culling {
@@ -978,13 +978,13 @@ impl MarchingCubesPass {
     fn dispatch_culling_batch(&self,
                       command_buffer: &mut CommandBuffer,
                       pass_params: &RenderPassParameters,
-                      buffer_slices: &[(String, Ref<Arc<BufferSlice>>)],
+                      buffer_slices: &[(String, BufferAccessor)],
                       batch: &Batch,
                       use_mesh_shader: bool,)
     {
         assert!(!batch.drawables.is_empty());
 
-        let mut batch_buffer_slices = SmallVec::<[&Ref<Arc<BufferSlice>>; 4]>::new();
+        let mut batch_buffer_slices = SmallVec::<[&BufferAccessor; 4]>::new();
         let mut thresholds = SmallVec::<[f32; 4]>::new();
 
         if !use_mesh_shader {
@@ -1032,7 +1032,7 @@ impl MarchingCubesPass {
         let entries: SmallVec<[BufferArrayEntry; 2]> = batch_buffer_slices
             .iter()
             .map(|slice| BufferArrayEntry {
-                buffer: BufferRef::Regular(slice),
+                buffer: slice.buffer_ref(),
                 offset: 0,
                 length: WHOLE_BUFFER,
             })
@@ -1135,7 +1135,7 @@ impl MarchingCubesPass {
     fn dispatch_batch(&self,
         command_buffer: &mut CommandBuffer,
         pass_params: &RenderPassParameters,
-        buffer_slices: &[(String, Ref<Arc<BufferSlice>>)],
+        buffer_slices: &[(String, BufferAccessor)],
         chunk_first_element_atomics_offset: usize,
         offsets_map: &OffsetsMap,
         batch: &Batch,
@@ -1143,7 +1143,7 @@ impl MarchingCubesPass {
     {
         assert!(!batch.drawables.is_empty());
 
-        let mut batch_buffer_slices = SmallVec::<[&Ref<Arc<BufferSlice>>; 4]>::new();
+        let mut batch_buffer_slices = SmallVec::<[&BufferAccessor; 4]>::new();
         let mut thresholds = SmallVec::<[f32; 4]>::new();
 
         let culling_name = Self::culling_dispatch_buffer_name(batch.dispatch.handle, batch.dispatch.lod, batch.dispatch.as_cubes);
@@ -1182,7 +1182,7 @@ impl MarchingCubesPass {
         let entries: SmallVec<[BufferArrayEntry; 2]> = batch_buffer_slices
             .iter()
             .map(|slice| BufferArrayEntry {
-                buffer: BufferRef::Regular(slice),
+                buffer: slice.buffer_ref(),
                 offset: 0,
                 length: WHOLE_BUFFER,
             })
@@ -1279,7 +1279,7 @@ impl MarchingCubesPass {
         command_buffer.bind_storage_buffer(
             BindingFrequency::Frequent,
             5,
-            BufferRef::Regular(draw_indirect_slice),
+            draw_indirect_slice.buffer_ref(),
             chunk_first_element_atomics_offset as u64,
             WHOLE_BUFFER,
         );
@@ -1287,7 +1287,7 @@ impl MarchingCubesPass {
         command_buffer.bind_storage_buffer(
             BindingFrequency::Frequent,
             6,
-            BufferRef::Regular(culling_indirect_slice),
+            culling_indirect_slice.buffer_ref(),
             0u64,
             WHOLE_BUFFER,
         );
@@ -1296,7 +1296,7 @@ impl MarchingCubesPass {
 
         if extent.x > 0 && extent.y > 0 && extent.z > 0 {
             if culling {
-                command_buffer.dispatch_indirect(&BufferRef::Regular(culling_indirect_slice), 0u64);
+                command_buffer.dispatch_indirect(culling_indirect_slice.buffer_ref(), 0u64);
             } else {
                 command_buffer.dispatch((extent.x + 3) / 4, (extent.y + 3) / 4, (extent.z + 3) / 4);
             }

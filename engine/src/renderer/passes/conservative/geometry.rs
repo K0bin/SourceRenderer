@@ -13,7 +13,7 @@ use crate::renderer::passes::light_binning;
 use crate::renderer::passes::rt_shadows::RTShadowPass;
 use crate::renderer::passes::ssao::SsaoPass;
 use crate::renderer::render_path::RenderPassParameters;
-use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
+use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources, TextureAccessor};
 
 #[allow(unused)]
 #[repr(C)]
@@ -192,7 +192,7 @@ impl GeometryPass {
             (info.width, info.height)
         };
 
-        let rtv_ref = pass_params.resources.access_view(
+        let rtv = pass_params.resources.access_view(
             cmd_buffer,
             Self::GEOMETRY_PASS_TEXTURE_NAME,
             BarrierSync::RENDER_TARGET,
@@ -202,9 +202,8 @@ impl GeometryPass {
             &TextureViewInfo::default(),
             HistoryResourceEntry::Current,
         );
-        let rtv = &*rtv_ref;
 
-        let prepass_depth_ref = pass_params.resources.access_view(
+        let prepass_depth = pass_params.resources.access_view(
             cmd_buffer,
             depth_name,
             BarrierSync::EARLY_DEPTH | BarrierSync::LATE_DEPTH,
@@ -214,9 +213,8 @@ impl GeometryPass {
             &TextureViewInfo::default(),
             HistoryResourceEntry::Current,
         );
-        let prepass_depth = &*prepass_depth_ref;
 
-        let ssao_ref = pass_params.resources.access_view(
+        let ssao = pass_params.resources.access_view(
             cmd_buffer,
             SsaoPass::SSAO_TEXTURE_NAME,
             BarrierSync::FRAGMENT_SHADER | BarrierSync::COMPUTE_SHADER,
@@ -226,18 +224,16 @@ impl GeometryPass {
             &TextureViewInfo::default(),
             HistoryResourceEntry::Current,
         );
-        let ssao = &*ssao_ref;
 
-        let light_bitmask_buffer_ref = pass_params.resources.access_buffer(
+        let light_bitmask_buffer = pass_params.resources.access_buffer(
             cmd_buffer,
             light_binning::LightBinningPass::LIGHT_BINNING_BUFFER_NAME,
             BarrierSync::FRAGMENT_SHADER,
             BarrierAccess::STORAGE_READ,
             HistoryResourceEntry::Current,
         );
-        let light_bitmask_buffer = &*light_bitmask_buffer_ref;
 
-        let rt_shadows: Ref<Arc<TextureView>>;
+        let rt_shadows: TextureAccessor;
         let shadows = if pass_params.device.supports_ray_tracing_pipeline() {
             rt_shadows = pass_params.resources.access_view(
                 cmd_buffer,
@@ -249,7 +245,7 @@ impl GeometryPass {
                 &TextureViewInfo::default(),
                 HistoryResourceEntry::Current,
             );
-            Some(&*rt_shadows)
+            Some(rt_shadows)
         } else {
             None
         };
@@ -262,8 +258,7 @@ impl GeometryPass {
                 BarrierSync::FRAGMENT_SHADER,
                 BarrierAccess::STORAGE_READ,
                 HistoryResourceEntry::Current,
-            )
-            .clone();
+            );
 
         let assets = &pass_params.assets;
         let lightmap = pass_params.scene.lightmap;

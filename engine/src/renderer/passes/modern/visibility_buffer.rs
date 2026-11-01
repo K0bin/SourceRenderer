@@ -193,18 +193,18 @@ impl VisibilityBufferPass {
         cmd_buffer.begin_render_pass(&RenderPassBeginInfo {
             render_targets: &[
                 RenderTarget {
-                    view: &primitive_id_rtv,
+                    view: primitive_id_rtv.view(),
                     load_op: LoadOpColor::Clear(ClearColor::BLACK),
                     store_op: StoreOp::Store,
                 },
                 RenderTarget {
-                    view: &barycentrics_rtv,
+                    view: barycentrics_rtv.view(),
                     load_op: LoadOpColor::Clear(ClearColor::BLACK),
                     store_op: StoreOp::Store,
                 },
             ],
             depth_stencil: Some(&DepthStencilAttachment {
-                view: &dsv,
+                view: dsv.view(),
                 load_op: LoadOpDepthStencil::Clear(ClearDepthStencilValue::DEPTH_ONE),
                 store_op: StoreOp::Store,
             }),
@@ -212,7 +212,7 @@ impl VisibilityBufferPass {
             resume_suspend: RenderPassResumeSuspend::empty(),
         });
 
-        let rtv_info = barycentrics_rtv.texture().unwrap().info();
+        let rtv_info = barycentrics_rtv.texture().info();
         let pipeline = params.assets.get_graphics_pipeline(self.pipeline).unwrap();
         cmd_buffer.set_pipeline(PipelineBinding::Graphics(&pipeline));
         cmd_buffer.set_viewports(&[Viewport {
@@ -231,9 +231,9 @@ impl VisibilityBufferPass {
 
         cmd_buffer.finish_binding();
         cmd_buffer.draw_indexed_indirect_count(
-            BufferRef::Regular(&draw_buffer),
+            draw_buffer.buffer_ref(),
             4,
-            BufferRef::Regular(&draw_buffer),
+            draw_buffer.buffer_ref(),
             0,
             DRAW_CAPACITY,
             20,

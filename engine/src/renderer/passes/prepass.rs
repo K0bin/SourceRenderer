@@ -157,7 +157,7 @@ impl Prepass {
             HistoryResourceEntry::Current,
         );
 
-        let info = depth_buffer.texture().unwrap().info();
+        let info = depth_buffer.texture().info();
         let per_frame = FrameData {
             swapchain_transform,
             halton_point: scaled_halton_point(info.width, info.height, (frame % 8) as u32 + 1),

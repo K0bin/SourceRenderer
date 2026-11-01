@@ -121,7 +121,7 @@ impl DrawPrepPass {
             cmd_buffer.bind_storage_buffer(
                 BindingFrequency::VeryFrequent,
                 0,
-                BufferRef::Regular(&*buffer),
+                buffer.buffer_ref(),
                 0,
                 WHOLE_BUFFER,
             );
@@ -148,7 +148,7 @@ impl DrawPrepPass {
             cmd_buffer.bind_sampling_view(
                 BindingFrequency::VeryFrequent,
                 2,
-                &*hi_z,
+                hi_z.view(),
             );
             let culling_pipeline = pass_params
                 .assets
@@ -175,7 +175,7 @@ impl DrawPrepPass {
                 HistoryResourceEntry::Current,
             );
             cmd_buffer.flush_barriers();
-            cmd_buffer.copy_clear_buffer(BufferRef::Regular(&draw_buffer), 0, 4, 0);
+            cmd_buffer.copy_clear_buffer(draw_buffer.buffer_ref(), 0, 4, 0);
         }
 
         assert!(pass_params.scene.scene.static_drawables().len() as u32 <= DRAWABLE_CAPACITY);
@@ -212,14 +212,14 @@ impl DrawPrepPass {
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
             0,
-            BufferRef::Regular(&*visibility_buffer),
+            visibility_buffer.buffer_ref(),
             0,
             WHOLE_BUFFER,
         );
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
             1,
-            BufferRef::Regular(&*draw_buffer),
+            draw_buffer.buffer_ref(),
             0,
             WHOLE_BUFFER,
         );

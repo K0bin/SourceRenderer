@@ -88,7 +88,7 @@ impl HierarchicalZPass {
                 HistoryResourceEntry::Current,
             );
             init_cmd_buffer.flush_barriers();
-            init_cmd_buffer.copy_clear_buffer(BufferRef::Regular(&counter_buffer), 0, 4, 0);
+            init_cmd_buffer.copy_clear_buffer(counter_buffer.buffer_ref(), 0, 4, 0);
         }
 
         Self {
@@ -139,8 +139,7 @@ impl HierarchicalZPass {
                 true,
                 &TextureViewInfo::default(),
                 HistoryResourceEntry::Current,
-            )
-            .clone();
+            );
         let copy_pipeline = pass_params
             .assets
             .get_compute_pipeline(self.copy_pipeline)
@@ -149,9 +148,9 @@ impl HierarchicalZPass {
         cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             0,
-            &src_texture,
+            src_texture.view(),
         );
-        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, &dst_mip0);
+        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1, dst_mip0.view());
         cmd_buffer.flush_barriers();
         cmd_buffer.finish_binding();
         cmd_buffer.dispatch((width + 7) / 8, (height + 7) / 8, 1);
@@ -184,8 +183,7 @@ impl HierarchicalZPass {
                             plane: TexturePlane::Primary,
                         },
                         HistoryResourceEntry::Current,
-                    )
-                    .clone(),
+                    ).view().clone()
             );
         }
         let mut texture_refs = SmallVec::<[&TextureView; 12]>::new();
@@ -204,13 +202,13 @@ impl HierarchicalZPass {
         cmd_buffer.bind_sampling_view(
             BindingFrequency::VeryFrequent,
             0,
-            &src_texture,
+            src_texture.view(),
         );
         cmd_buffer.bind_storage_view_array(BindingFrequency::VeryFrequent, 1, &texture_refs);
         cmd_buffer.bind_storage_buffer(
             BindingFrequency::VeryFrequent,
             2,
-            BufferRef::Regular(&counter_buffer),
+            counter_buffer.buffer_ref(),
             0,
             WHOLE_BUFFER,
         );
