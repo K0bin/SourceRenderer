@@ -601,7 +601,7 @@ impl GeometryPass {
         }]);
         cmd_buffer.set_stencil_reference(1u32);
 
-        let mut base_pass = |ray_march_normals: bool| {
+        let base_pass = |cmd_buffer: &mut CommandBuffer, ray_march_normals: bool| {
             cmd_buffer.bind_sampling_view(
                 BindingFrequency::Frequent,
                 4u32,
@@ -636,8 +636,12 @@ impl GeometryPass {
         };
 
         // Iterate over the meshes twice to reduce pipeline binding changes.
-        base_pass(true);
-        base_pass(false);
+        cmd_buffer.begin_label("Opaque");
+        base_pass(cmd_buffer, false);
+        cmd_buffer.end_label();
+        cmd_buffer.begin_label("Opaque with ray marched normals");
+        base_pass(cmd_buffer, true);
+        cmd_buffer.end_label();
 
         // Geometry 2 - Non overlapping
 
@@ -652,6 +656,7 @@ impl GeometryPass {
         transparent_drawables.sort_by_key(|d| (d.min_threshold * 1000.0f32) as u32); // good enough
 
         // Decide pipeline per-mesh here because he have a fixed order.
+        cmd_buffer.begin_label("Non overlapping");
         for drawable in &transparent_drawables {
             if !has_opaque {
                 break;
@@ -662,10 +667,12 @@ impl GeometryPass {
             self.draw(cmd_buffer, params.assets, color_tex_extent, marching_cubes_map, &slices,
                       use_mesh_shader, GeometryPassPipelineType::NonOverlapping, options.culling, tris_table, drawable);
         }
+        cmd_buffer.end_label();
 
         // Geometry 2 - Depth prepass
 
         // Decide pipeline per-mesh here because we have a fixed order.
+        cmd_buffer.begin_label("Transparency depth prepass");
         for drawable in &transparent_drawables {
             if drawable.transparent == VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque {
                 if !has_opaque {
@@ -678,9 +685,11 @@ impl GeometryPass {
             self.draw(cmd_buffer, params.assets, color_tex_extent, marching_cubes_map, &slices,
                       use_mesh_shader, GeometryPassPipelineType::TransparentPrepass, options.culling, tris_table, drawable);
         }
+        cmd_buffer.end_label();
 
         // Geometry 2 - Transparent
 
+        cmd_buffer.begin_label("Transparent");
         for drawable in &transparent_drawables {
             if drawable.transparent == VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque {
                 if !has_opaque {
@@ -693,6 +702,7 @@ impl GeometryPass {
             self.draw(cmd_buffer, params.assets, color_tex_extent, marching_cubes_map, &slices,
                        use_mesh_shader, GeometryPassPipelineType::Transparent, options.culling, tris_table, drawable);
         }
+        cmd_buffer.end_label();
 
         cmd_buffer.end_render_pass();
 
