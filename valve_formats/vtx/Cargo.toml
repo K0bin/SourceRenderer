@@ -6,6 +6,6 @@ edition = "2024"
 
 [dependencies]
 bitflags = "2.13"
-bevy_math = "0.19"
+bevy_math = "0.20"
 futures-io = "0.3"
 io_util = { path = "../../io_util" }

@@ -29,7 +29,6 @@ log = "0.4"
 console_log = "1.0"
 futures-lite = "2.6"
 async-lock = "3.4"
-async-task = "4.7"
 atomic_refcell = "0.1"
 web-task = "1.1"
 

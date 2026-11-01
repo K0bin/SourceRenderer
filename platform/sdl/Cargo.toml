@@ -6,7 +6,7 @@ edition = "2024"
 build = "build.rs"
 
 [dependencies]
-sdl3 = { version = "0.20.0", features = ["raw-window-handle"] }
+sdl3 = { version = "0.21", features = ["raw-window-handle"] }
 sdl3-sys = "0.7.1+SDL-3.4.16"
 raw-window-handle = "0.6"
 bitset-core = "0.1"
@@ -18,9 +18,9 @@ simple_logger = "5.2"
 notify = "8.0"
 crossbeam-channel = "0.5"
 log = "0.4"
-bevy_input = "0.19"
-bevy_ecs = "0.19"
-bevy_tasks = "0.19"
+bevy_input = "0.20"
+bevy_ecs = "0.20"
+bevy_tasks = "0.20"
 sourcerenderer_game = { path = "../../game" }
 async-fs = "2.2"
 

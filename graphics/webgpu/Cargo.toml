@@ -153,7 +153,7 @@ web-sys = { version = "0.3", features = [
 wasm-bindgen-futures = { version = "0.4", features = ["futures-core-03-stream"] }
 js-sys = "0.3"
 log = "0.4"
-smallvec = "1.15"
+smallvec = "1.16"
 bitflags = "2.13"
 atomic_refcell = "0.1"
 bytemuck = { version = "1.25", features = ["extern_crate_std"] }

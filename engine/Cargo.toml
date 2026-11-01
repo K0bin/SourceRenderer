@@ -20,7 +20,7 @@ sourcerenderer_mdl = { path = "../valve_formats/mdl" }
 sourcerenderer_vtx = { path = "../valve_formats/vtx" }
 sourcerenderer_vvd = { path = "../valve_formats/vvd" }
 io_util = { path = "../io_util", features = ["async"] }
-smallvec = { version = "1.15", features = ["union", "const_generics", "const_new"] }
+smallvec = { version = "1.16", features = ["union", "const_generics", "const_new"] }
 gltf = { version = "1.4", features = ["KHR_lights_punctual"] }
 rand = "0.10"
 bitset-core = "0.1"
@@ -37,21 +37,21 @@ bumpalo = { version = "3.17", features = ["collections", "boxed"] }
 futures-io = "0.3"
 async-lock = "3.4"
 futures-lite = "2.6"
-parking_lot = "0.12"
+parking_lot = "0.13"
 bytemuck = { version = "1.25", features = ["extern_crate_std"] }
 itertools = "0.15.0"
 target-tuple = "1.0.2"
 
-bevy_app = "0.19"
-bevy_math = "0.19"
-bevy_ecs = "0.19"
-bevy_transform = "0.19"
-bevy_tasks = { version = "0.19" }
-bevy_utils = "0.19"
-bevy_time = "0.19"
-bevy_input = { version = "0.19", features = ["mouse", "keyboard", "gamepad", "touch"] }
-bevy_diagnostic = "0.19"
-bevy_platform = "0.19"
+bevy_app = "0.20"
+bevy_math = "0.20"
+bevy_ecs = "0.20"
+bevy_transform = "0.20"
+bevy_tasks = { version = "0.20" }
+bevy_utils = "0.20"
+bevy_time = "0.20"
+bevy_input = { version = "0.20", features = ["mouse", "keyboard", "gamepad", "touch"] }
+bevy_diagnostic = "0.20"
+bevy_platform = "0.20"
 
 slab = "0.4"
 
@@ -62,7 +62,7 @@ sourcerenderer_vulkan = { path = "../graphics/vulkan" }
 objc2 = { version = "0.6", features = ["std", "disable-encoding-assertions"] } # disable-encoding-assertions is required otherwise the Metal debugger doesn't work
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-dear-imgui-rs = "0.21"
+dear-imgui-rs = "0.22"
 
 # Force rand crate to use getrandom with wasm-js feature
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -72,8 +72,8 @@ wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 web-sys = { version = "0.3", features = ["OffscreenCanvas", "Navigator", "DedicatedWorkerGlobalScope", "WorkerNavigator"] }
 js-sys = "0.3"
 wasm-bindgen-futures = "0.4"
-bevy_platform = { version = "0.19", features = ["web"] }
-bevy_app = { version = "0.19", features = ["web"] }
+bevy_platform = { version = "0.20", features = ["web"] }
+bevy_app = { version = "0.20", features = ["web"] }
 
 [features]
 default = ["ecs_threading"]

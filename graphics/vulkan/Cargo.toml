@@ -11,9 +11,9 @@ sourcerenderer_core = { path = "../../core" }
 bitflags = "2.13"
 thread_local = "1.1"
 crossbeam-channel = "0.5"
-smallvec = { version = "1.15", features = ["union", "const_generics", "const_new"] }
+smallvec = { version = "1.16", features = ["union", "const_generics", "const_new"] }
 crossbeam-utils = "0.8"
-parking_lot = "0.12"
+parking_lot = "0.13"
 serde_json = "1.0"
 log = "0.4"
 bytemuck = { version = "1.25", features = ["extern_crate_std"] }

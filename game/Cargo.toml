@@ -12,13 +12,13 @@ test_game = []
 sourcerenderer_core = { path = "../core" }
 sourcerenderer_engine = { path = "../engine", default-features = false }
 log = "0.4"
-bevy_app = "0.19"
-bevy_math = { version = "0.19", features = ["serialize"] }
-bevy_ecs = "0.19"
-bevy_transform = "0.19"
-bevy_tasks = "0.19"
-bevy_utils = "0.19"
-bevy_time = "0.19"
-bevy_input = "0.19"
+bevy_app = "0.20"
+bevy_math = { version = "0.20", features = ["serialize"] }
+bevy_ecs = "0.20"
+bevy_transform = "0.20"
+bevy_tasks = "0.20"
+bevy_utils = "0.20"
+bevy_time = "0.20"
+bevy_input = "0.20"
 bytemuck = { version = "1.25", features = ["extern_crate_std"] }
-smallvec = { version = "1.15", features = ["union", "const_generics", "const_new"] }
+smallvec = { version = "1.16", features = ["union", "const_generics", "const_new"] }

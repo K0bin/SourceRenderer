@@ -4,7 +4,6 @@ use std::{
 };
 
 use smallvec::SmallVec;
-use smartstring::alias::String;
 
 #[allow(dead_code)]
 pub struct Command {
