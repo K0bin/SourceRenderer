@@ -95,18 +95,17 @@ void main() {
     uint minMaxTextureLod = mipLod - 1u; // the min/max textures don't have the top mip
     float maxDensity = texelFetch(sampler3D(densityImageMax, samplerNearest), ivec3(gl_GlobalInvocationID), int(minMaxTextureLod)).r;
     float minDensity = texelFetch(sampler3D(densityImageMin, samplerNearest), ivec3(gl_GlobalInvocationID), int(minMaxTextureLod)).r;
-    bool dispatchBatch = PrepareBatchedDispatch;
+    bool dispatchBatch = false;
     for (uint i = 0u; i < finalThresholdsCount; i++) {
         float threshold = minThresholds[i];
         bool notEmpty = maxDensity >= threshold;
         bool notFull = minDensity < threshold;
-        dispatchBatch = dispatchBatch && notEmpty;
-        dispatchBatch = dispatchBatch && notFull;
+        dispatchBatch = dispatchBatch || (notEmpty && notFull);
 
         if (!PrepareBatchedDispatch && notEmpty && notFull)
             spawnWorkgroups(workgroups, cullingVoxelSize, i);
     }
 
-    if (dispatchBatch)
+    if (PrepareBatchedDispatch && dispatchBatch)
         spawnWorkgroups(workgroups, cullingVoxelSize, 0u);
 }
