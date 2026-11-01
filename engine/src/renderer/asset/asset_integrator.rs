@@ -313,8 +313,22 @@ impl AssetIntegrator {
         handle: ShaderHandle,
         shader: ShaderData,
     ) -> RendererShader {
-        let name = format!("{:?}", handle);
-        let shader = Arc::new(self.device.create_shader(&shader, Some(&name)));
+        let str: String;
+        if let Some(path) = assets.get_path(handle.into()) {
+            let shader_built_dir = env!("SHADERS_BUILT_DIR");
+            let shaders_idx = path.find(shader_built_dir);
+            if let Some(mut shaders_idx) = shaders_idx {
+                shaders_idx += shader_built_dir.len() + 1;
+                str = (&path[shaders_idx..]).to_string();
+            } else {
+                str = path;
+            }
+        } else {
+            let asset_handle: AssetHandle = handle.into();
+            str = format!("Shader {}", asset_handle.index());
+        }
+
+        let shader = Arc::new(self.device.create_shader(&shader, Some(&str)));
         shader_manager.queue_pipelines_containing_shader(assets, handle, &shader);
         shader
     }
