@@ -699,7 +699,7 @@ impl MarchingCubesPass {
                         false,
                     );
                 }
-                active_buffer_names.insert(name);
+                assert!(active_buffer_names.insert(name));
             } else {
                 // Legacy graphics needs 1 index buffer per entity 1 culling buffer per dispatch (grouped by texture + lod + cube?
 
@@ -745,7 +745,7 @@ impl MarchingCubesPass {
                         false,
                     );
                 }
-                active_buffer_names.insert(name);
+                assert!(active_buffer_names.insert(name));
             }
         }
 
