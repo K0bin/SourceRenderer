@@ -14,5 +14,8 @@ use shader_manager::*;
 pub use shader_manager::{
     ComputePipelineHandle, GraphicsPipelineHandle, GraphicsPipelineInfo,
     MeshGraphicsPipelineHandle, MeshGraphicsPipelineInfo, PathPipelineShaderStage,
-    RayTracingPipelineHandle, RayTracingPipelineInfo,
+    RayTracingPipelineHandle, RayTracingPipelineInfo, GraphicsPipelinePermutations,
+    MeshGraphicsPipelinePermutations,
+    ComputePipelinePermutations,
+    PipelinePermutations, PipelineHandle
 };
