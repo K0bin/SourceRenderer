@@ -370,6 +370,7 @@ pub struct GraphicsPipelineInfo<'a, B: GPUBackend> {
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum SpecConstValue {
+    None,
     Float(f32),
     UInt(u32),
     Int(i32),
@@ -379,6 +380,7 @@ pub enum SpecConstValue {
 impl SpecConstValue {
     pub fn as_raw_u32(self) -> u32 {
         match self {
+            SpecConstValue::None => 0u32,
             SpecConstValue::Bool(b) => b as u32,
             SpecConstValue::Float(f) => f.to_bits(),
             SpecConstValue::Int(i) => i as u32,
@@ -388,10 +390,11 @@ impl SpecConstValue {
 
     fn kind(self) -> u32 {
         match self {
-            SpecConstValue::UInt(_) => 0,
-            SpecConstValue::Int(_) => 1,
-            SpecConstValue::Float(_) => 2,
-            SpecConstValue::Bool(_) => 3,
+            SpecConstValue::None => 0,
+            SpecConstValue::UInt(_) => 1,
+            SpecConstValue::Int(_) => 2,
+            SpecConstValue::Float(_) => 3,
+            SpecConstValue::Bool(_) => 4,
         }
     }
 }
@@ -404,9 +407,15 @@ impl Hash for SpecConstValue {
     }
 }
 
+impl Default for SpecConstValue {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
 pub struct PipelineShaderStage<'a, B: GPUBackend> {
     pub shader: &'a B::Shader,
-    pub spec_consts: &'a HashMap<u32, SpecConstValue>,
+    pub spec_consts: &'a [SpecConstValue],
 }
 
 impl<B: GPUBackend> Clone for PipelineShaderStage<'_, B> {

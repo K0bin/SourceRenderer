@@ -90,39 +90,39 @@ impl MarchingCubesPass {
         // Compile optimized pipelines for 1-3 thresholds
         let pipelines = ComputePipelinePermutations::request(assets, &PathPipelineShaderStage {
             shader_path,
-            spec_consts: None
+            spec_consts: &[]
         }, &[
-            [Some(SpecConstValue::UInt(0)), Some(SpecConstValue::Bool(false)), Some(SpecConstValue::Bool(false)), None, None, None, None, None],
-            [Some(SpecConstValue::UInt(1)), Some(SpecConstValue::Bool(false)), Some(SpecConstValue::Bool(false)), None, None, None, None, None],
-            [Some(SpecConstValue::UInt(2)), Some(SpecConstValue::Bool(false)), Some(SpecConstValue::Bool(false)), None, None, None, None, None],
-            [Some(SpecConstValue::UInt(3)), Some(SpecConstValue::Bool(false)), Some(SpecConstValue::Bool(false)), None, None, None, None, None],
-            [Some(SpecConstValue::UInt(0)), Some(SpecConstValue::Bool(true)),  Some(SpecConstValue::Bool(false)), None, None, None, None, None],
-            [Some(SpecConstValue::UInt(1)), Some(SpecConstValue::Bool(true)),  Some(SpecConstValue::Bool(false)), None, None, None, None, None],
-            [Some(SpecConstValue::UInt(2)), Some(SpecConstValue::Bool(true)),  Some(SpecConstValue::Bool(false)), None, None, None, None, None],
-            [Some(SpecConstValue::UInt(3)), Some(SpecConstValue::Bool(true)),  Some(SpecConstValue::Bool(false)), None, None, None, None, None],
-            [Some(SpecConstValue::UInt(0)), Some(SpecConstValue::Bool(true)),  Some(SpecConstValue::Bool(true)),  None, None, None, None, None],
-            [Some(SpecConstValue::UInt(1)), Some(SpecConstValue::Bool(true)),  Some(SpecConstValue::Bool(true)),  None, None, None, None, None],
-            [Some(SpecConstValue::UInt(2)), Some(SpecConstValue::Bool(true)),  Some(SpecConstValue::Bool(true)),  None, None, None, None, None],
-            [Some(SpecConstValue::UInt(3)), Some(SpecConstValue::Bool(true)),  Some(SpecConstValue::Bool(true)),  None, None, None, None, None],
-            [Some(SpecConstValue::UInt(0)), Some(SpecConstValue::Bool(false)), Some(SpecConstValue::Bool(true)),  None, None, None, None, None],
-            [Some(SpecConstValue::UInt(1)), Some(SpecConstValue::Bool(false)), Some(SpecConstValue::Bool(true)),  None, None, None, None, None],
-            [Some(SpecConstValue::UInt(2)), Some(SpecConstValue::Bool(false)), Some(SpecConstValue::Bool(true)),  None, None, None, None, None],
-            [Some(SpecConstValue::UInt(3)), Some(SpecConstValue::Bool(false)), Some(SpecConstValue::Bool(true)),  None, None, None, None, None],
+            [SpecConstValue::UInt(0), SpecConstValue::Bool(false), SpecConstValue::Bool(false), SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
+            [SpecConstValue::UInt(1), SpecConstValue::Bool(false), SpecConstValue::Bool(false), SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
+            [SpecConstValue::UInt(2), SpecConstValue::Bool(false), SpecConstValue::Bool(false), SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
+            [SpecConstValue::UInt(3), SpecConstValue::Bool(false), SpecConstValue::Bool(false), SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
+            [SpecConstValue::UInt(0), SpecConstValue::Bool(true),  SpecConstValue::Bool(false), SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
+            [SpecConstValue::UInt(1), SpecConstValue::Bool(true),  SpecConstValue::Bool(false), SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
+            [SpecConstValue::UInt(2), SpecConstValue::Bool(true),  SpecConstValue::Bool(false), SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
+            [SpecConstValue::UInt(3), SpecConstValue::Bool(true),  SpecConstValue::Bool(false), SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
+            [SpecConstValue::UInt(0), SpecConstValue::Bool(true),  SpecConstValue::Bool(true),  SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
+            [SpecConstValue::UInt(1), SpecConstValue::Bool(true),  SpecConstValue::Bool(true),  SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
+            [SpecConstValue::UInt(2), SpecConstValue::Bool(true),  SpecConstValue::Bool(true),  SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
+            [SpecConstValue::UInt(3), SpecConstValue::Bool(true),  SpecConstValue::Bool(true),  SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
+            [SpecConstValue::UInt(0), SpecConstValue::Bool(false), SpecConstValue::Bool(true),  SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
+            [SpecConstValue::UInt(1), SpecConstValue::Bool(false), SpecConstValue::Bool(true),  SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
+            [SpecConstValue::UInt(2), SpecConstValue::Bool(false), SpecConstValue::Bool(true),  SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
+            [SpecConstValue::UInt(3), SpecConstValue::Bool(false), SpecConstValue::Bool(true),  SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
         ]);
 
         let culling_shader_path = crate::renderer::shader_path!("marching_cubes_precull.comp");
         let culling_pipelines = ComputePipelinePermutations::request(assets, &PathPipelineShaderStage {
             shader_path: culling_shader_path,
-            spec_consts: None
+            spec_consts: &[]
         }, &[
-            [Some(SpecConstValue::UInt(0)), Some(SpecConstValue::UInt(WORK_GROUP_SIZE.x)), Some(SpecConstValue::UInt(WORK_GROUP_SIZE.y)), Some(SpecConstValue::UInt(WORK_GROUP_SIZE.z)), Some(SpecConstValue::Bool(true)), None, None, None],
-            [Some(SpecConstValue::UInt(1)), Some(SpecConstValue::UInt(WORK_GROUP_SIZE.x)), Some(SpecConstValue::UInt(WORK_GROUP_SIZE.y)), Some(SpecConstValue::UInt(WORK_GROUP_SIZE.z)), Some(SpecConstValue::Bool(true)), None, None, None],
-            [Some(SpecConstValue::UInt(2)), Some(SpecConstValue::UInt(WORK_GROUP_SIZE.x)), Some(SpecConstValue::UInt(WORK_GROUP_SIZE.y)), Some(SpecConstValue::UInt(WORK_GROUP_SIZE.z)), Some(SpecConstValue::Bool(true)), None, None, None],
-            [Some(SpecConstValue::UInt(3)), Some(SpecConstValue::UInt(WORK_GROUP_SIZE.x)), Some(SpecConstValue::UInt(WORK_GROUP_SIZE.y)), Some(SpecConstValue::UInt(WORK_GROUP_SIZE.z)), Some(SpecConstValue::Bool(true)), None, None, None],
-            [Some(SpecConstValue::UInt(0)), Some(SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.x)), Some(SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.y)), Some(SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.z)), Some(SpecConstValue::Bool(false)), None, None, None],
-            [Some(SpecConstValue::UInt(1)), Some(SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.x)), Some(SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.y)), Some(SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.z)), Some(SpecConstValue::Bool(false)), None, None, None],
-            [Some(SpecConstValue::UInt(2)), Some(SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.x)), Some(SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.y)), Some(SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.z)), Some(SpecConstValue::Bool(false)), None, None, None],
-            [Some(SpecConstValue::UInt(3)), Some(SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.x)), Some(SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.y)), Some(SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.z)), Some(SpecConstValue::Bool(false)), None, None, None],
+            [SpecConstValue::UInt(0), SpecConstValue::UInt(WORK_GROUP_SIZE.x), SpecConstValue::UInt(WORK_GROUP_SIZE.y), SpecConstValue::UInt(WORK_GROUP_SIZE.z), SpecConstValue::Bool(true), SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
+            [SpecConstValue::UInt(1), SpecConstValue::UInt(WORK_GROUP_SIZE.x), SpecConstValue::UInt(WORK_GROUP_SIZE.y), SpecConstValue::UInt(WORK_GROUP_SIZE.z), SpecConstValue::Bool(true), SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
+            [SpecConstValue::UInt(2), SpecConstValue::UInt(WORK_GROUP_SIZE.x), SpecConstValue::UInt(WORK_GROUP_SIZE.y), SpecConstValue::UInt(WORK_GROUP_SIZE.z), SpecConstValue::Bool(true), SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
+            [SpecConstValue::UInt(3), SpecConstValue::UInt(WORK_GROUP_SIZE.x), SpecConstValue::UInt(WORK_GROUP_SIZE.y), SpecConstValue::UInt(WORK_GROUP_SIZE.z), SpecConstValue::Bool(true), SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
+            [SpecConstValue::UInt(0), SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.x), SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.y), SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.z), SpecConstValue::Bool(false), SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
+            [SpecConstValue::UInt(1), SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.x), SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.y), SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.z), SpecConstValue::Bool(false), SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
+            [SpecConstValue::UInt(2), SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.x), SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.y), SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.z), SpecConstValue::Bool(false), SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
+            [SpecConstValue::UInt(3), SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.x), SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.y), SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.z), SpecConstValue::Bool(false), SpecConstValue::None, SpecConstValue::None, SpecConstValue::None],
         ]);
 
         const EDGE_TABLE: [u32; 256] = [
@@ -906,22 +906,22 @@ impl MarchingCubesPass {
             })
             .collect();
 
-        let mut spec_consts = [Option::<SpecConstValue>::None; 8];
-        spec_consts[0] = Some(SpecConstValue::UInt(thresholds.len() as u32));
+        let mut spec_consts = [SpecConstValue::None; 8];
+        spec_consts[0] = SpecConstValue::UInt(thresholds.len() as u32);
         if !use_mesh_shader {
-            spec_consts[1] = Some(SpecConstValue::UInt(WORK_GROUP_SIZE.x));
-            spec_consts[2] = Some(SpecConstValue::UInt(WORK_GROUP_SIZE.y));
-            spec_consts[3] = Some(SpecConstValue::UInt(WORK_GROUP_SIZE.z));
-            spec_consts[4] = Some(SpecConstValue::Bool(true));
+            spec_consts[1] = SpecConstValue::UInt(WORK_GROUP_SIZE.x);
+            spec_consts[2] = SpecConstValue::UInt(WORK_GROUP_SIZE.y);
+            spec_consts[3] = SpecConstValue::UInt(WORK_GROUP_SIZE.z);
+            spec_consts[4] = SpecConstValue::Bool(true);
         } else {
-            spec_consts[1] = Some(SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.x));
-            spec_consts[2] = Some(SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.y));
-            spec_consts[3] = Some(SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.z));
-            spec_consts[4] = Some(SpecConstValue::Bool(false));
+            spec_consts[1] = SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.x);
+            spec_consts[2] = SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.y);
+            spec_consts[3] = SpecConstValue::UInt(MESH_WORK_GROUP_SIZE.z);
+            spec_consts[4] = SpecConstValue::Bool(false);
         }
         let mut pipeline_opt = self.culling_pipelines.get_pipeline(pass_params.assets, &spec_consts);
         if pipeline_opt.is_none() {
-            spec_consts[0] = Some(SpecConstValue::UInt(0)); // Spec const value 0 makes it use the dynamic value
+            spec_consts[0] = SpecConstValue::UInt(0); // Spec const value 0 makes it use the dynamic value
             pipeline_opt = self.culling_pipelines.get_pipeline(pass_params.assets, &spec_consts);
         }
         let pipeline = pipeline_opt.unwrap();
@@ -1072,14 +1072,14 @@ impl MarchingCubesPass {
         }
         let culling = culling_enabled && Self::use_culling(extent);
 
-        let mut spec_consts = [Option::<SpecConstValue>::None; 8];
-        spec_consts[0] = Some(SpecConstValue::UInt(thresholds.len() as u32));
-        spec_consts[1] = Some(SpecConstValue::Bool(batch.dispatch.as_cubes));
-        spec_consts[2] = Some(SpecConstValue::Bool(culling));
+        let mut spec_consts = [SpecConstValue::None; 8];
+        spec_consts[0] = SpecConstValue::UInt(thresholds.len() as u32);
+        spec_consts[1] = SpecConstValue::Bool(batch.dispatch.as_cubes);
+        spec_consts[2] = SpecConstValue::Bool(culling);
 
         let mut pipeline_opt = self.pipelines.get_pipeline(pass_params.assets, &spec_consts);
         if pipeline_opt.is_none() {
-            spec_consts[0] = Some(SpecConstValue::UInt(0)); // Spec const value 0 makes it use the dynamic value
+            spec_consts[0] = SpecConstValue::UInt(0); // Spec const value 0 makes it use the dynamic value
             pipeline_opt = self.pipelines.get_pipeline(pass_params.assets, &spec_consts);
         }
         let pipeline = pipeline_opt.unwrap();

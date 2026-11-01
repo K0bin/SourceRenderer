@@ -1,5 +1,5 @@
 use crate::graphics::*;
-use crate::renderer::asset::{GraphicsPipelineHandle, GraphicsPipelineInfo, MeshGraphicsPipelineInfo, MeshGraphicsPipelineHandle, PathPipelineShaderStage, RendererAssets, RendererAssetsReadOnly, RendererMaterial, PipelinePermutations, PipelineHandle, GraphicsPipelinePermutations, MeshGraphicsPipelinePermutations};
+use crate::renderer::asset::{GraphicsPipelineHandle, GraphicsPipelineInfo, MeshGraphicsPipelineInfo, MeshGraphicsPipelineHandle, PathPipelineShaderStage, RendererAssets, RendererAssetsReadOnly, RendererMaterial, PipelinePermutations, PipelineHandle, GraphicsPipelinePermutations, MeshGraphicsPipelinePermutations, SPEC_CONST_COUNT};
 use crate::renderer::drawable::{RendererVolumeDrawable, VolumeDrawableTransparencyMode};
 use crate::renderer::passes::volume::ibl::ImageBasedLightingTextures;
 use crate::renderer::passes::volume::marching_cubes::{
@@ -69,14 +69,14 @@ impl<T: PipelineHandle, const PIPELINE_SHADER_STAGES: usize> GeometryPassPipelin
 
 impl GeometryPassPipelines<GraphicsPipelineHandle, 2> {
     fn get<'a>(&self, renderer_assets: &'a RendererAssetsReadOnly<'a>, pipeline_type: GeometryPassPipelineType, raymarch_normals: bool) -> Option<&'a Arc<GraphicsPipeline>> {
-        let mut fs_spec_consts: [Option::<SpecConstValue>; 8] = [None; 8];
-        fs_spec_consts[0] = Some(SpecConstValue::Bool(raymarch_normals));
+        let mut fs_spec_consts = [SpecConstValue::None; SPEC_CONST_COUNT];
+        fs_spec_consts[0] = SpecConstValue::Bool(raymarch_normals);
 
         match pipeline_type {
-            GeometryPassPipelineType::Opaque => self.opaque.get_pipeline(renderer_assets, &[None; 8], &fs_spec_consts),
-            GeometryPassPipelineType::NonOverlapping => self.non_overlapping.get_pipeline(renderer_assets, &[None; 8], &fs_spec_consts),
-            GeometryPassPipelineType::Transparent => self.transparent.get_pipeline(renderer_assets, &[None; 8], &fs_spec_consts),
-            GeometryPassPipelineType::TransparentPrepass => self.transparent_prepass.get_pipeline(renderer_assets, &[None; 8], &[None; 8]),
+            GeometryPassPipelineType::Opaque => self.opaque.get_pipeline(renderer_assets, &[SpecConstValue::None; SPEC_CONST_COUNT], &fs_spec_consts),
+            GeometryPassPipelineType::NonOverlapping => self.non_overlapping.get_pipeline(renderer_assets, &[SpecConstValue::None; SPEC_CONST_COUNT], &fs_spec_consts),
+            GeometryPassPipelineType::Transparent => self.transparent.get_pipeline(renderer_assets, &[SpecConstValue::None; SPEC_CONST_COUNT], &fs_spec_consts),
+            GeometryPassPipelineType::TransparentPrepass => self.transparent_prepass.get_pipeline(renderer_assets, &[SpecConstValue::None; SPEC_CONST_COUNT], &[SpecConstValue::None; SPEC_CONST_COUNT]),
         }
     }
 }
@@ -84,17 +84,17 @@ impl GeometryPassPipelines<GraphicsPipelineHandle, 2> {
 impl GeometryPassPipelines<MeshGraphicsPipelineHandle, 3> {
     fn get<'a>(&self, renderer_assets: &'a RendererAssetsReadOnly<'a>, pipeline_type: GeometryPassPipelineType,
                raymarch_normals: bool, render_as_cubes: bool, culled: bool) -> Option<&'a Arc<MeshGraphicsPipeline>> {
-        let mut ts_spec_consts: [Option::<SpecConstValue>; 8] = [None; 8];
-        ts_spec_consts[0] = Some(SpecConstValue::Bool(render_as_cubes));
-        ts_spec_consts[1] = Some(SpecConstValue::Bool(culled));
-        let mut fs_spec_consts: [Option::<SpecConstValue>; 8] = [None; 8];
-        fs_spec_consts[0] = Some(SpecConstValue::Bool(raymarch_normals));
+        let mut ts_spec_consts = [SpecConstValue::None; SPEC_CONST_COUNT];
+        ts_spec_consts[0] = SpecConstValue::Bool(render_as_cubes);
+        ts_spec_consts[1] = SpecConstValue::Bool(culled);
+        let mut fs_spec_consts = [SpecConstValue::None; SPEC_CONST_COUNT];
+        fs_spec_consts[0] = SpecConstValue::Bool(raymarch_normals);
 
         match pipeline_type {
-            GeometryPassPipelineType::Opaque => self.opaque.get_pipeline(renderer_assets, &ts_spec_consts, &[None; 8], &fs_spec_consts),
-            GeometryPassPipelineType::NonOverlapping => self.non_overlapping.get_pipeline(renderer_assets, &ts_spec_consts, &[None; 8], &fs_spec_consts),
-            GeometryPassPipelineType::Transparent => self.transparent.get_pipeline(renderer_assets, &ts_spec_consts, &[None; 8], &fs_spec_consts),
-            GeometryPassPipelineType::TransparentPrepass => self.transparent_prepass.get_pipeline(renderer_assets, &ts_spec_consts, &[None; 8], &[None; 8]),
+            GeometryPassPipelineType::Opaque => self.opaque.get_pipeline(renderer_assets, &ts_spec_consts, &[SpecConstValue::None; SPEC_CONST_COUNT], &fs_spec_consts),
+            GeometryPassPipelineType::NonOverlapping => self.non_overlapping.get_pipeline(renderer_assets, &ts_spec_consts, &[SpecConstValue::None; SPEC_CONST_COUNT], &fs_spec_consts),
+            GeometryPassPipelineType::Transparent => self.transparent.get_pipeline(renderer_assets, &ts_spec_consts, &[SpecConstValue::None; SPEC_CONST_COUNT], &fs_spec_consts),
+            GeometryPassPipelineType::TransparentPrepass => self.transparent_prepass.get_pipeline(renderer_assets, &ts_spec_consts, &[SpecConstValue::None; SPEC_CONST_COUNT], &[SpecConstValue::None; SPEC_CONST_COUNT]),
         }
     }
 }
@@ -125,27 +125,27 @@ impl GeometryPass {
         let ts_stage_path_opt = Some(PathPipelineShaderStage::empty_spec_consts(ts_path));
         let ms_stage_path = PathPipelineShaderStage::empty_spec_consts(ms_path);
 
-        let mut ts_spec_consts: [Option::<SpecConstValue>; 8] = [None; 8];
-        ts_spec_consts[0] = Some(SpecConstValue::Bool(false));
-        ts_spec_consts[1] = Some(SpecConstValue::Bool(false));
+        let mut ts_spec_consts = [SpecConstValue::None; SPEC_CONST_COUNT];
+        ts_spec_consts[0] = SpecConstValue::Bool(false);
+        ts_spec_consts[1] = SpecConstValue::Bool(false);
 
-        let mut ts_culled_cube_spec_consts: [Option::<SpecConstValue>; 8] = [None; 8];
-        ts_culled_cube_spec_consts[0] = Some(SpecConstValue::Bool(true));
-        ts_culled_cube_spec_consts[1] = Some(SpecConstValue::Bool(true));
+        let mut ts_culled_cube_spec_consts = [SpecConstValue::None; SPEC_CONST_COUNT];
+        ts_culled_cube_spec_consts[0] = SpecConstValue::Bool(true);
+        ts_culled_cube_spec_consts[1] = SpecConstValue::Bool(true);
 
-        let mut ts_culled_spec_consts: [Option::<SpecConstValue>; 8] = [None; 8];
-        ts_culled_spec_consts[0] = Some(SpecConstValue::Bool(false));
-        ts_culled_spec_consts[1] = Some(SpecConstValue::Bool(true));
+        let mut ts_culled_spec_consts = [SpecConstValue::None; SPEC_CONST_COUNT];
+        ts_culled_spec_consts[0] = SpecConstValue::Bool(false);
+        ts_culled_spec_consts[1] = SpecConstValue::Bool(true);
 
-        let mut ts_cube_spec_consts: [Option::<SpecConstValue>; 8] = [None; 8];
-        ts_cube_spec_consts[0] = Some(SpecConstValue::Bool(true));
-        ts_cube_spec_consts[1] = Some(SpecConstValue::Bool(false));
+        let mut ts_cube_spec_consts = [SpecConstValue::None; SPEC_CONST_COUNT];
+        ts_cube_spec_consts[0] = SpecConstValue::Bool(true);
+        ts_cube_spec_consts[1] = SpecConstValue::Bool(false);
 
-        let mut fs_spec_consts: [Option::<SpecConstValue>; 8] = [None; 8];
-        fs_spec_consts[0] = Some(SpecConstValue::Bool(false));
+        let mut fs_spec_consts = [SpecConstValue::None; SPEC_CONST_COUNT];
+        fs_spec_consts[0] = SpecConstValue::Bool(false);
 
-        let mut fs_spec_consts_raymarched: [Option::<SpecConstValue>; 8] = [None; 8];
-        fs_spec_consts_raymarched[0] = Some(SpecConstValue::Bool(true));
+        let mut fs_spec_consts_raymarched = [SpecConstValue::None; SPEC_CONST_COUNT];
+        fs_spec_consts_raymarched[0] = SpecConstValue::Bool(true);
 
         let fs_permutations = [
             fs_spec_consts,
@@ -162,8 +162,8 @@ impl GeometryPass {
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
             vs: PathPipelineShaderStage::empty_spec_consts(&vs_path),
             fs: Some(PathPipelineShaderStage::empty_spec_consts(&fs_path)),
-            primitive_type: PrimitiveType::Triangles,
-            //primitive_type: PrimitiveType::Points, // Uncomment to debug culling
+            //primitive_type: PrimitiveType::Triangles,
+            primitive_type: PrimitiveType::Points, // Uncomment to debug culling
             vertex_layout: VertexLayoutInfo {
                 input_assembler: &[],
                 shader_inputs: &[],

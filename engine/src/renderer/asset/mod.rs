@@ -17,5 +17,5 @@ pub use shader_manager::{
     RayTracingPipelineHandle, RayTracingPipelineInfo, GraphicsPipelinePermutations,
     MeshGraphicsPipelinePermutations,
     ComputePipelinePermutations,
-    PipelinePermutations, PipelineHandle
+    PipelinePermutations, PipelineHandle, SPEC_CONST_COUNT
 };

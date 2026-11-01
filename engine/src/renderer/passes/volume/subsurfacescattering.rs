@@ -115,11 +115,11 @@ impl SSSPass {
         let picked_kernel = &KERNEL_17;
 
         let shader_path = crate::renderer::shader_path!("subsurface_scattering.comp");
-        let mut spec_consts = HashMap::<u32, SpecConstValue>::new();
-        spec_consts.insert(0, SpecConstValue::UInt(picked_kernel.len() as u32));
+        let mut spec_consts = [SpecConstValue::None; SPEC_CONST_COUNT];
+        spec_consts[0] = SpecConstValue::UInt(picked_kernel.len() as u32);
         let pipeline = assets.request_compute_pipeline(PathPipelineShaderStage {
             shader_path: &shader_path,
-            spec_consts: Some(&spec_consts),
+            spec_consts: &spec_consts,
         });
 
         let kernel_buffer = device

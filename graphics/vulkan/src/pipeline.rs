@@ -422,7 +422,7 @@ fn add_bindless_set_if_used(
 
 impl VkPipeline {
     unsafe fn get_spec_map(
-        spec_consts: &HashMap<u32, SpecConstValue>,
+        spec_consts: &[SpecConstValue],
     ) -> (
         vk::SpecializationInfo<'_>,
         Box<[u32]>,
@@ -430,9 +430,12 @@ impl VkPipeline {
     ) {
         let mut spec_data = Vec::<u32>::with_capacity(spec_consts.len());
         let mut spec_map = Vec::<vk::SpecializationMapEntry>::with_capacity(spec_consts.len());
-        for (idx, value) in spec_consts.iter() {
+        for (idx, value) in spec_consts.iter().enumerate() {
+            if *value == SpecConstValue::None {
+                continue;
+            }
             let map_entry = vk::SpecializationMapEntry {
-                constant_id: *idx,
+                constant_id: idx as u32,
                 offset: (spec_data.len() * std::mem::size_of::<u32>()) as u32,
                 size: std::mem::size_of::<u32>(),
             };
