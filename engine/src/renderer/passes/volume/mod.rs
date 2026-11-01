@@ -247,7 +247,7 @@ impl RenderPath for VolumeRenderer {
         cmd_buffer.bind_sampler(BindingFrequency::Frame, 1, params.resources.linear_sampler());
         cmd_buffer.bind_sampler(BindingFrequency::Frame, 2, params.resources.nearest_sampler());
 
-        let marching_cubes_map = self
+        self
             .marching_cubes_pass
             .execute(&mut cmd_buffer, &mut params, &self.options);
 
@@ -266,7 +266,6 @@ impl RenderPath for VolumeRenderer {
             &mut cmd_buffer,
             &params,
             &self.options,
-            &marching_cubes_map,
             self.marching_cubes_pass.tris_table(),
             &ibl_textures,
         );

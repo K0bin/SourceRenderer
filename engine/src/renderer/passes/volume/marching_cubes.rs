@@ -17,8 +17,6 @@ use bevy_math::UVec3;
 use crate::renderer::VolumeRendererOptions;
 
 // TODO:
-//  - Switch to transient buffers
-//  - Remove indirect commands buffer and put it into the start of every indices buffer
 //  - Move culling to separate file
 
 pub const MAX_SIZE: u32 = 512;
@@ -74,8 +72,6 @@ pub struct MarchingCubesPass {
     tris_buffer: Arc<BufferSlice>,
 }
 
-pub type OffsetsMap = HashMap::<Entity, u32>;
-
 #[derive(PartialEq)]
 struct Dispatch {
     handle: TextureHandle,
@@ -89,8 +85,6 @@ struct Batch<'a> {
 }
 
 impl MarchingCubesPass {
-    pub const ATOMICS_BUFFER_NAME: &'static str = "marchingcubes_atomics";
-
     #[allow(unused)]
     pub fn new(
         device: &Device,
@@ -170,21 +164,6 @@ impl MarchingCubesPass {
                 spec_consts: Some(&spec_consts),
             }));
         }
-
-        // Allocate enough room for 16 draws
-        resources.create_buffer(
-            Self::ATOMICS_BUFFER_NAME,
-            &BufferInfo {
-                size: std::mem::size_of::<MarchingCubesIndirectCall>() as u64 * 16u64,
-                usage: BufferUsage::COPY_DST
-                    | BufferUsage::STORAGE
-                    | BufferUsage::CONSTANT
-                    | BufferUsage::INDIRECT,
-                sharing_mode: QueueSharingMode::Exclusive,
-            },
-            MemoryUsage::GPUMemory,
-            false,
-        );
 
         const EDGE_TABLE: [u32; 256] = [
             0x0, 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c, 0x80c, 0x905, 0xa0f, 0xb06,
@@ -625,20 +604,6 @@ impl MarchingCubesPass {
         &self.tris_buffer
     }
 
-    fn build_drawing_map(&self,
-                         batches: &SmallVec<[Batch; 2]>)
-    -> OffsetsMap {
-        let mut indirect_buffer_offset = 0u32;
-        let mut offset_map = OffsetsMap::with_capacity(batches.len() * 2);
-        for Batch { drawables, .. } in batches {
-            for RendererVolumeDrawable { entity, .. } in  drawables {
-                offset_map.insert(*entity, indirect_buffer_offset);
-                indirect_buffer_offset += std::mem::size_of::<MarchingCubesIndirectCall>() as u32;
-            }
-        }
-        offset_map
-    }
-
     fn build_batches<'a>(&self,
                      pass_params: &'a RenderPassParameters)
     ->  SmallVec<[Batch<'a>; 2]> {
@@ -721,8 +686,8 @@ impl MarchingCubesPass {
                 resolution_multiplied /= 50;
                 let index_buffer = cmd_buffer.create_temporary_buffer(
                     &BufferInfo {
-                        size: (std::mem::size_of::<u32>() * 15 * resolution_multiplied) as u64,
-                        usage: BufferUsage::STORAGE | BufferUsage::INDEX | BufferUsage::COPY_DST,
+                        size: (std::mem::size_of::<MarchingCubesIndirectCall>() + std::mem::size_of::<u32>() * 15 * resolution_multiplied) as u64,
+                        usage: BufferUsage::STORAGE | BufferUsage::INDEX | BufferUsage::INDIRECT | BufferUsage::COPY_DST,
                         sharing_mode: QueueSharingMode::Exclusive,
                     },
                     MemoryUsage::GPUMemory
@@ -785,13 +750,6 @@ impl MarchingCubesPass {
             }
         }
 
-        buffer_slices.insert(Self::ATOMICS_BUFFER_NAME.to_string(), pass_params.resources.access_buffer(
-            command_buffer,
-            Self::ATOMICS_BUFFER_NAME,
-            BarrierSync::CLEAR,
-            BarrierAccess::CLEAR_WRITE,
-            HistoryResourceEntry::Current,
-        ));
         command_buffer.flush_barriers();
 
         for (_, slice) in buffer_slices.iter() {
@@ -815,7 +773,7 @@ impl MarchingCubesPass {
         command_buffer: &mut CommandBuffer,
         pass_params: &mut RenderPassParameters<'_>,
         options: &VolumeRendererOptions,
-    ) -> OffsetsMap {
+    ) {
         command_buffer.clear_all_bindings(BindingFrequency::Frequent);
         command_buffer.clear_all_bindings(BindingFrequency::VeryFrequent);
 
@@ -825,7 +783,6 @@ impl MarchingCubesPass {
 
         self.manage_buffers(command_buffer, pass_params, use_mesh_shader);
         let batches = self.build_batches(pass_params);
-        let map = self.build_drawing_map(&batches);
         self.clear_buffers(command_buffer, pass_params);
 
         // Culling pass
@@ -877,7 +834,7 @@ impl MarchingCubesPass {
 
         if use_mesh_shader {
             command_buffer.end_label();
-            return map;
+            return;
         }
 
         // Marching cubes pass
@@ -885,13 +842,6 @@ impl MarchingCubesPass {
         command_buffer.begin_label("Marching cubes");
 
         buffer_slices.clear();
-        let atomics_slice = pass_params.resources.access_buffer(
-            command_buffer,
-            Self::ATOMICS_BUFFER_NAME,
-            BarrierSync::COMPUTE_SHADER,
-            BarrierAccess::STORAGE_WRITE | BarrierAccess::STORAGE_READ,
-            HistoryResourceEntry::Current,
-        );
         for RendererVolumeDrawable { entity, volume_texture, texture_lod, render_as_cubes, .. } in pass_params.scene.scene.volume_mesh_instances() {
             let buffer_name = Self::index_buffer_name(*entity);
             let buffer_slice = pass_params.resources.access_buffer(
@@ -930,21 +880,15 @@ impl MarchingCubesPass {
                 }
             }
         }
-        buffer_slices.push((Self::ATOMICS_BUFFER_NAME.to_string(), atomics_slice));
 
         command_buffer.flush_barriers();
 
-        let mut chunk_first_element_atomics_offset = 0usize;
         for batch in &batches {
-            self.dispatch_batch(command_buffer, pass_params, &buffer_slices, chunk_first_element_atomics_offset, &map, batch, options.culling);
-
-            chunk_first_element_atomics_offset +=
-                batch.drawables.len() * std::mem::size_of::<MarchingCubesIndirectCall>();
+            self.dispatch_batch(command_buffer, pass_params, &buffer_slices, batch, options.culling);
         }
 
         command_buffer.end_label();
         command_buffer.end_label();
-        map
     }
 
     fn dispatch_culling_batch(&self,
@@ -1108,8 +1052,6 @@ impl MarchingCubesPass {
         command_buffer: &mut CommandBuffer,
         pass_params: &RenderPassParameters,
         buffer_slices: &[(String, BufferAccessor)],
-        chunk_first_element_atomics_offset: usize,
-        offsets_map: &OffsetsMap,
         batch: &Batch,
         culling_enabled: bool,)
     {
@@ -1120,14 +1062,8 @@ impl MarchingCubesPass {
 
         let culling_name = Self::culling_dispatch_buffer_name(batch.dispatch.handle, batch.dispatch.lod, batch.dispatch.as_cubes);
         let culling_indirect_slice = buffer_slices.iter().find_map(|(name, slice)| if name == &culling_name { Some(slice) } else { None }).unwrap();
-        let draw_indirect_slice = buffer_slices.iter().find_map(|(name, slice)| if name == Self::ATOMICS_BUFFER_NAME { Some(slice) } else { None }).unwrap();
 
         for (index, d) in batch.drawables.iter().enumerate() {
-            let indirect_buffer_offset = *(offsets_map.get(&d.entity).unwrap()) as usize;
-            assert_eq!(
-                chunk_first_element_atomics_offset + index * std::mem::size_of::<MarchingCubesIndirectCall>(),
-                indirect_buffer_offset
-            );
             thresholds.push(d.min_threshold);
 
             // Quadratic but fine due to tiny counts
@@ -1246,14 +1182,6 @@ impl MarchingCubesPass {
                 extent,
                 thresholds_count: thresholds.len() as u32,
             }],
-        );
-
-        command_buffer.bind_storage_buffer(
-            BindingFrequency::Frequent,
-            5,
-            draw_indirect_slice.buffer_ref(),
-            chunk_first_element_atomics_offset as u64,
-            WHOLE_BUFFER,
         );
 
         command_buffer.bind_storage_buffer(

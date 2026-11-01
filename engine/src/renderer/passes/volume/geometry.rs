@@ -412,7 +412,6 @@ impl GeometryPass {
         cmd_buffer: &mut CommandBuffer,
         params: &RenderPassParameters,
         options: &VolumeRendererOptions,
-        marching_cubes_map: &super::marching_cubes::OffsetsMap,
         tris_table: &Arc<BufferSlice>,
         ibl_textures: &ImageBasedLightingTextures,
     ) {
@@ -465,14 +464,6 @@ impl GeometryPass {
             HistoryResourceEntry::Current,
         );
 
-        let marchingcubes_indirect = resources.access_buffer(
-            cmd_buffer,
-            MarchingCubesPass::ATOMICS_BUFFER_NAME,
-            BarrierSync::INDIRECT,
-            BarrierAccess::INDIRECT_READ,
-            HistoryResourceEntry::Current,
-        );
-
         let integration_lut = resources.access_view(
             cmd_buffer,
             ibl_textures.preintegration_nap_texture_name,
@@ -522,8 +513,8 @@ impl GeometryPass {
                 let slice = resources.access_buffer(
                     cmd_buffer,
                     &MarchingCubesPass::index_buffer_name(drawable.entity),
-                    BarrierSync::INDEX_INPUT,
-                    BarrierAccess::INDEX_READ,
+                    BarrierSync::INDEX_INPUT | BarrierSync::INDIRECT,
+                    BarrierAccess::INDEX_READ | BarrierAccess::INDIRECT_READ,
                     HistoryResourceEntry::Current,
                 );
                 slices.push((name, slice));
@@ -541,7 +532,6 @@ impl GeometryPass {
                 slices.push((name, slice));
             }
         }
-        slices.push((MarchingCubesPass::ATOMICS_BUFFER_NAME.to_string(), marchingcubes_indirect));
 
         cmd_buffer.flush_barriers();
 
@@ -620,7 +610,7 @@ impl GeometryPass {
                 if drawable.ray_march_normals != ray_march_normals {
                     continue;
                 }
-                self.draw(cmd_buffer, params.assets, color_tex_extent, marching_cubes_map, &slices,
+                self.draw(cmd_buffer, params.assets, color_tex_extent, &slices,
                           use_mesh_shader, GeometryPassPipelineType::Opaque, options.culling, tris_table, drawable);
             }
         };
@@ -654,7 +644,7 @@ impl GeometryPass {
             if drawable.transparent != VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque {
                 continue;
             }
-            self.draw(cmd_buffer, params.assets, color_tex_extent, marching_cubes_map, &slices,
+            self.draw(cmd_buffer, params.assets, color_tex_extent, &slices,
                       use_mesh_shader, GeometryPassPipelineType::NonOverlapping, options.culling, tris_table, drawable);
         }
         cmd_buffer.end_label();
@@ -672,7 +662,7 @@ impl GeometryPass {
             } else if drawable.transparent == VolumeDrawableTransparencyMode::Transparent {
                 cmd_buffer.set_stencil_reference(0u32);
             }
-            self.draw(cmd_buffer, params.assets, color_tex_extent, marching_cubes_map, &slices,
+            self.draw(cmd_buffer, params.assets, color_tex_extent, &slices,
                       use_mesh_shader, GeometryPassPipelineType::TransparentPrepass, options.culling, tris_table, drawable);
         }
         cmd_buffer.end_label();
@@ -689,7 +679,7 @@ impl GeometryPass {
             } else if drawable.transparent == VolumeDrawableTransparencyMode::Transparent {
                 cmd_buffer.set_stencil_reference(0u32);
             }
-            self.draw(cmd_buffer, params.assets, color_tex_extent, marching_cubes_map, &slices,
+            self.draw(cmd_buffer, params.assets, color_tex_extent, &slices,
                        use_mesh_shader, GeometryPassPipelineType::Transparent, options.culling, tris_table, drawable);
         }
         cmd_buffer.end_label();
@@ -768,7 +758,6 @@ impl GeometryPass {
         cmd_buffer: &mut CommandBuffer,
         assets: &RendererAssetsReadOnly,
         rt_extent: Vec2UI,
-        marching_cubes_map: &super::marching_cubes::OffsetsMap,
         buffers: &[(String, BufferAccessor)],
         use_mesh_shader: bool,
         pipeline_type: GeometryPassPipelineType,
@@ -842,16 +831,13 @@ impl GeometryPass {
         if !use_mesh_shader {
             let ibo = &(buffers.iter()
                 .find(|(name, _)| name == &MarchingCubesPass::index_buffer_name(drawable.entity)).unwrap().1);
-            let indirect_buffer = &(buffers.iter()
-                .find(|(name, _)| name == MarchingCubesPass::ATOMICS_BUFFER_NAME).unwrap().1);
-
-            let indirect_buffer_offset = *(marching_cubes_map.get(&drawable.entity).unwrap());
-            cmd_buffer.set_index_buffer(ibo.buffer_ref(), 0u64, IndexFormat::U32);
+            cmd_buffer.set_index_buffer(ibo.buffer_ref(), std::mem::size_of::<MarchingCubesIndirectCall>() as u64,
+                                        IndexFormat::U32);
 
             cmd_buffer.finish_binding();
             cmd_buffer.draw_indexed_indirect(
-                indirect_buffer.buffer_ref(),
-                indirect_buffer_offset as u64,
+                ibo.buffer_ref(),
+                0u64,
                 1u32,
                 std::mem::size_of::<MarchingCubesIndirectCall>() as u32,
             );

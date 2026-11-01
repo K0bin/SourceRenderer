@@ -30,13 +30,6 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 1, std430) uniform TriTable {
 };
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 2) uniform texture3D densityImage;
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 3, std430) buffer indicesBuffer {
-    uint[] indices;
-} indicesBuffers[16u];
-
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 4, scalar) uniform thresholds {
-    float[16u] minThresholds;
-};
 
 struct IndirectCommand {
     uint indexCount;
@@ -48,8 +41,13 @@ struct IndirectCommand {
     uint _pad_to_16_1;
     uint _pad_to_16_2;
 };
-layout(set = DESCRIPTOR_SET_FREQUENT, binding = 5, scalar) buffer bufferatomics {
-    IndirectCommand[] commands;
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 3, std430) buffer indicesBuffer {
+    IndirectCommand command;
+    uint[] indices;
+} indicesBuffers[16u];
+
+layout(set = DESCRIPTOR_SET_FREQUENT, binding = 4, scalar) uniform thresholds {
+    float[16u] minThresholds;
 };
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 6, scalar) readonly buffer indirectBuffer {
@@ -132,8 +130,8 @@ void main() {
     uvec3 base = workgroupBase + gl_LocalInvocationID;
 
     if (debugCullingAsPoints) {
-        uint firstIndex = atomicAdd(commands[0u].indexCount, 1);
-        commands[0u].instanceCount = 1u;
+        uint firstIndex = atomicAdd(indicesBuffers[0u].command.indexCount, 1);
+        indicesBuffers[0u].command.instanceCount = 1u;
         if (firstIndex < maxIndices)
             indicesBuffers[0u].indices[firstIndex] = vertexKey(base, base);
 
@@ -196,12 +194,12 @@ void main() {
         uint subgroupTotalIndices = subgroupAdd(indexCount);
         uint subgroupFirstIndex;
         if (subgroupElect())
-        subgroupFirstIndex = atomicAdd(commands[j].indexCount, subgroupTotalIndices);
+        subgroupFirstIndex = atomicAdd(indicesBuffers[j].command.indexCount, subgroupTotalIndices);
 
         subgroupFirstIndex = subgroupBroadcastFirst(subgroupFirstIndex);
         uint firstIndex = subgroupFirstIndex + subgroupExclusiveAdd(indexCount);
 
-        commands[j].instanceCount = 1u;
+        indicesBuffers[j].command.instanceCount = 1u;
 
         if (!renderDebugCube) {
             for (uint i = 0u; i < indexCount && firstIndex + indexCount < maxIndices; i += 3u) {
