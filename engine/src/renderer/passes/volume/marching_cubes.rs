@@ -145,6 +145,7 @@ impl MarchingCubesPass {
             }));
         }
 
+        spec_consts.clear();
         let culling_shader_path = crate::renderer::shader_path!("marching_cubes_precull.comp");
         let mut culling_pipelines = SmallVec::<[ComputePipelineHandle; 4]>::with_capacity(4);
         spec_consts.insert(1u32, SpecConstValue::UInt(WORK_GROUP_SIZE.x));
@@ -1014,6 +1015,11 @@ impl MarchingCubesPass {
         assert!(batch_buffer_slices.len() <= 16);
         assert!(!batch_buffer_slices.is_empty());
         assert!(!thresholds.is_empty());
+        if !use_mesh_shader {
+            assert_eq!(batch_buffer_slices.len(), 1);
+        } else {
+            assert_eq!(batch_buffer_slices.len(), thresholds.len());
+        }
 
         command_buffer.begin_label(&format!(
             "Marching Cube Texture: {:?} with lod: {}",
@@ -1029,8 +1035,8 @@ impl MarchingCubesPass {
             })
             .collect();
 
-        let pipeline_index = if entries.len() < self.culling_pipelines.len() {
-            entries.len()
+        let pipeline_index = if thresholds.len() < self.culling_pipelines.len() {
+            thresholds.len()
         } else {
             0 // Spec const value 0 makes it use the dynamic value
         };
@@ -1161,6 +1167,7 @@ impl MarchingCubesPass {
         assert!(batch_buffer_slices.len() <= 16);
         assert!(!batch_buffer_slices.is_empty());
         assert!(!thresholds.is_empty());
+        assert_eq!(batch_buffer_slices.len(), thresholds.len());
 
         command_buffer.begin_label(&format!(
             "Marching Cube Texture: {:?} with lod: {}",
@@ -1194,8 +1201,8 @@ impl MarchingCubesPass {
         }
         let culling = culling_enabled && Self::use_culling(extent);
 
-        let pipeline_index = if entries.len() < self.pipelines.len() {
-            entries.len()
+        let pipeline_index = if thresholds.len() < self.pipelines.len() {
+            thresholds.len()
         } else {
             0 // Spec const value 0 makes it use the dynamic value
         };

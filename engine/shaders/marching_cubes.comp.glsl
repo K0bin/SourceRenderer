@@ -128,13 +128,15 @@ const uvec3 cubeIndices[12] = uvec3[12](
 const uint cubeIndexCount = 12u * 3u;
 
 void main() {
-    uvec3 workgroupBase = false && culling ? workgroupPositions[gl_WorkGroupID.x].xyz : (gl_WorkGroupID * gl_WorkGroupSize);
+    uvec3 workgroupBase = culling ? workgroupPositions[gl_WorkGroupID.x].xyz : (gl_WorkGroupID * gl_WorkGroupSize);
     uvec3 base = workgroupBase + gl_LocalInvocationID;
 
     if (debugCullingAsPoints) {
         uint firstIndex = atomicAdd(commands[0u].indexCount, 1);
         commands[0u].instanceCount = 1u;
-        indicesBuffers[0u].indices[firstIndex] = vertexKey(base, base);
+        if (firstIndex < maxIndices)
+            indicesBuffers[0u].indices[firstIndex] = vertexKey(base, base);
+
         return;
     }
 
@@ -201,7 +203,7 @@ void main() {
 
         commands[j].instanceCount = 1u;
 
-        if (true || !renderDebugCube) {
+        if (!renderDebugCube) {
             for (uint i = 0u; i < indexCount && firstIndex + indexCount < maxIndices; i += 3u) {
                 indicesBuffers[j].indices[firstIndex + i + 0u] = marchingCubesVertexKey(base, tris[voxelKey][1u + i + 0u]);
                 indicesBuffers[j].indices[firstIndex + i + 1u] = marchingCubesVertexKey(base, tris[voxelKey][1u + i + 1u]);
