@@ -108,7 +108,7 @@ uint marchingCubesVertexKey(uvec3 invocationPos, uint index) {
 
 const uint maxIndices = (512u * 512u * 512u) / 100u * 15u;
 
-const bool debugCullingAsPoints = true;
+const bool debugCullingAsPoints = false;
 
 layout(constant_id = 1) const bool renderDebugCube = false;
 const uvec3 cubePositions[8] = uvec3[8](
