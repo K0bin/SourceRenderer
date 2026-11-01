@@ -309,6 +309,7 @@ impl Renderer {
         #[cfg(target_arch = "wasm32")]
         self.device.flush();
 
+        self.resources.remove_transient_buffers();
         self.resources.swap_history_resources();
         self.frame += 1;
 

@@ -639,4 +639,25 @@ impl RendererResources {
             view_type: inner,
         }
     }
+
+    pub fn track_transient_buffer(&mut self, name: &str, buffer: TransientBufferSlice) {
+        self.buffers.insert(name.to_string(), AB {
+            a: RefCell::new(TrackedBuffer {
+                stages: BarrierSync::empty(),
+                access: BarrierAccess::empty() ,
+                buffer: TrackedBufferType::Transient(buffer),
+            }),
+            b: None
+        });
+    }
+
+    pub fn remove_transient_buffers(&mut self) {
+        self.buffers.retain(|_, buffer| {
+            if let &TrackedBufferType::Regular(_) = &buffer.a.borrow().buffer {
+                true
+            } else {
+                false
+            }
+        });
+    }
 }
