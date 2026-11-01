@@ -25,6 +25,7 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 7, std430) uniform TriTable {
 };
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 8, scalar) readonly buffer indirectBuffer {
+    uvec4 _padding;
     uvec4[] workgroupPositions;
 };
 
@@ -42,9 +43,10 @@ struct TaskPayload {
 taskPayloadSharedEXT TaskPayload payload;
 
 layout(constant_id = 0) const bool renderDebugCube = false;
+layout(constant_id = 1) const bool culling = true;
 
 void main() {
-    uvec3 workgroupBase = workgroupPositions[gl_WorkGroupID.x].xyz;
+    uvec3 workgroupBase = culling ? workgroupPositions[gl_WorkGroupID.x].xyz : (gl_WorkGroupID * gl_WorkGroupSize);
     uvec3 base = workgroupBase + gl_LocalInvocationID;
 
     uint8_t voxelKey = uint8_t(0u);

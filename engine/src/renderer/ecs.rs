@@ -40,6 +40,7 @@ pub struct VolumeMeshInstance {
 pub struct VolumeRendererOptions {
     pub background_hdri: Option<String>,
     pub use_mesh_shader: bool,
+    pub culling: bool,
 }
 
 impl Default for VolumeRendererOptions {
@@ -47,6 +48,7 @@ impl Default for VolumeRendererOptions {
         Self {
             background_hdri: None,
             use_mesh_shader: false,
+            culling: true,
         }
     }
 }

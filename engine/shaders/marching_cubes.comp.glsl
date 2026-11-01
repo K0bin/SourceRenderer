@@ -13,6 +13,7 @@
 #extension GL_EXT_nonuniform_qualifier : enable
 
 layout(constant_id = 0) const uint thresholdsCountConst = 0u;
+layout(constant_id = 2) const bool culling = true;
 
 layout(local_size_x = 4u, local_size_y = 4u, local_size_z = 4u) in;
 
@@ -52,6 +53,7 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 5, scalar) buffer bufferatomics 
 };
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 6, scalar) readonly buffer indirectBuffer {
+    uvec4 _padding;
     uvec4[] workgroupPositions;
 };
 
@@ -106,7 +108,7 @@ uint marchingCubesVertexKey(uvec3 invocationPos, uint index) {
 
 const uint maxIndices = (512u * 512u * 512u) / 100u * 15u;
 
-const bool debugCullingAsPoints = false;
+const bool debugCullingAsPoints = true;
 
 layout(constant_id = 1) const bool renderDebugCube = false;
 const uvec3 cubePositions[8] = uvec3[8](
@@ -126,7 +128,7 @@ const uvec3 cubeIndices[12] = uvec3[12](
 const uint cubeIndexCount = 12u * 3u;
 
 void main() {
-    uvec3 workgroupBase = workgroupPositions[gl_WorkGroupID.x].xyz;
+    uvec3 workgroupBase = false && culling ? workgroupPositions[gl_WorkGroupID.x].xyz : (gl_WorkGroupID * gl_WorkGroupSize);
     uvec3 base = workgroupBase + gl_LocalInvocationID;
 
     if (debugCullingAsPoints) {
@@ -199,7 +201,7 @@ void main() {
 
         commands[j].instanceCount = 1u;
 
-        if (!renderDebugCube) {
+        if (true || !renderDebugCube) {
             for (uint i = 0u; i < indexCount && firstIndex + indexCount < maxIndices; i += 3u) {
                 indicesBuffers[j].indices[firstIndex + i + 0u] = marchingCubesVertexKey(base, tris[voxelKey][1u + i + 0u]);
                 indicesBuffers[j].indices[firstIndex + i + 1u] = marchingCubesVertexKey(base, tris[voxelKey][1u + i + 1u]);
