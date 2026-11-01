@@ -1,6 +1,7 @@
 use crate::graphics::*;
-use std::cell::{Ref, RefCell};
+use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::sync::Arc;
 
 struct AB<T> {
@@ -49,13 +50,6 @@ pub enum HistoryResourceEntry {
     Past,
 }
 
-#[derive(Debug)]
-struct GlobalMemoryBarrier {
-    stages: BarrierSync,
-    access: BarrierAccess,
-}
-
-const USE_GLOBAL_MEMORY_BARRIERS_FOR_BUFFERS: bool = true;
 const USE_COARSE_BARRIERS_FOR_TEXTURES: bool = false;
 const USE_COARSE_BARRIERS_FOR_BUFFERS: bool = false;
 const WARN_ABOUT_READ_TO_READ_BARRIERS: bool = false;
@@ -75,7 +69,6 @@ pub struct RendererResources {
     nearest_sampler: Arc<Sampler>,
     linear_sampler: Arc<Sampler>,
     current_pass: ABEntry,
-    global: RefCell<GlobalMemoryBarrier>,
 }
 
 impl RendererResources {
@@ -120,10 +113,6 @@ impl RendererResources {
             linear_sampler,
             nearest_sampler,
             current_pass: ABEntry::A,
-            global: RefCell::new(GlobalMemoryBarrier {
-                stages: BarrierSync::empty(),
-                access: BarrierAccess::empty(),
-            }),
         }
     }
 
@@ -516,7 +505,10 @@ impl RendererResources {
                     | BarrierAccess::MEMORY_READ
                     | BarrierAccess::MEMORY_WRITE
                     | BarrierAccess::HOST_READ
-                    | BarrierAccess::HOST_WRITE),
+                    | BarrierAccess::HOST_WRITE
+                    | BarrierAccess::CLEAR_WRITE
+                    | BarrierAccess::BLIT_READ
+                    | BarrierAccess::BLIT_WRITE),
             BarrierAccess::empty()
         );
         debug_assert_eq!(
@@ -529,7 +521,9 @@ impl RendererResources {
                     | BarrierSync::INDEX_INPUT
                     | BarrierSync::INDIRECT
                     | BarrierSync::ACCELERATION_STRUCTURE_BUILD
-                    | BarrierSync::RAY_TRACING_SHADER),
+                    | BarrierSync::RAY_TRACING_SHADER
+                    | BarrierSync::BLIT
+                    | BarrierSync::CLEAR),
             BarrierSync::empty()
         );
 
@@ -562,79 +556,46 @@ impl RendererResources {
             == (self.current_pass == ABEntry::A)
             && buffer_ab.b.is_some();
 
-        if !USE_GLOBAL_MEMORY_BARRIERS_FOR_BUFFERS {
-            let mut buffer_mut = if !use_b_resource {
-                buffer_ab.a.borrow_mut()
-            } else {
-                buffer_ab.b.as_ref().unwrap().borrow_mut()
-            };
-
-            let needs_barrier = access.is_write()
-                || buffer_mut.access.is_write()
-                || !buffer_mut.access.contains(access)
-                || !buffer_mut.stages.contains(stages);
-            if needs_barrier {
-                if WARN_ABOUT_READ_TO_READ_BARRIERS
-                    && !access.is_write()
-                    && !buffer_mut.access.is_write()
-                {
-                    log::warn!(
-                        "READ TO READ BARRIER: Buffer: \"{}\", stage: {:?}, access: {:?}",
-                        name,
-                        stages,
-                        access
-                    );
-                }
-
-                cmd_buffer.barrier(&[Barrier::BufferBarrier {
-                    old_sync: buffer_mut.stages,
-                    new_sync: stages,
-                    old_access: buffer_mut.access & BarrierAccess::write_mask(),
-                    new_access: access,
-                    buffer: BufferRef::Regular(&buffer_mut.buffer),
-                    queue_ownership: None,
-                }]);
-                if access.is_write() || buffer_mut.access.is_write() {
-                    buffer_mut.access = access;
-                } else {
-                    buffer_mut.access |= access;
-                }
-                buffer_mut.stages = stages;
-            }
+        let mut buffer_mut = if !use_b_resource {
+            buffer_ab.a.borrow_mut()
         } else {
-            let mut global_mut = self.global.borrow_mut();
-            let needs_barrier = access.is_write()
-                || global_mut.access.is_write()
-                || !global_mut.access.contains(access)
-                || !global_mut.stages.contains(stages);
-            if needs_barrier {
-                if WARN_ABOUT_READ_TO_READ_BARRIERS
-                    && !access.is_write()
-                    && !global_mut.access.is_write()
-                {
-                    log::warn!(
-                        "READ TO READ BARRIER: Buffer: \"{}\", stage: {:?}, access: {:?}",
-                        name,
-                        stages,
-                        access
-                    );
-                }
+            buffer_ab.b.as_ref().unwrap().borrow_mut()
+        };
 
-                cmd_buffer.barrier(&[Barrier::GlobalBarrier {
-                    old_sync: global_mut.stages,
-                    new_sync: stages,
-                    old_access: global_mut.access & BarrierAccess::write_mask(),
-                    new_access: access,
-                }]);
-                if access.is_write() || global_mut.access.is_write() {
-                    global_mut.access = access;
-                } else {
-                    global_mut.access |= access;
-                }
-                global_mut.stages = stages;
+        let needs_barrier = access.is_write()
+            || buffer_mut.access.is_write()
+            || !buffer_mut.access.contains(access)
+            || !buffer_mut.stages.contains(stages);
+        if needs_barrier {
+            if WARN_ABOUT_READ_TO_READ_BARRIERS
+                && !access.is_write()
+                && !buffer_mut.access.is_write()
+            {
+                log::warn!(
+                    "READ TO READ BARRIER: Buffer: \"{}\", stage: {:?}, access: {:?}",
+                    name,
+                    stages,
+                    access
+                );
             }
+
+            cmd_buffer.barrier(&[Barrier::BufferBarrier {
+                old_sync: buffer_mut.stages,
+                new_sync: stages,
+                old_access: buffer_mut.access & BarrierAccess::write_mask(),
+                new_access: access,
+                buffer: BufferRef::Regular(&buffer_mut.buffer),
+                queue_ownership: None,
+            }]);
+            if access.is_write() || buffer_mut.access.is_write() {
+                buffer_mut.access = access;
+            } else {
+                buffer_mut.access |= access;
+            }
+            buffer_mut.stages = stages;
         }
 
+        std::mem::drop(buffer_mut);
         let buffer_ref = if !use_b_resource {
             buffer_ab.a.borrow()
         } else {
