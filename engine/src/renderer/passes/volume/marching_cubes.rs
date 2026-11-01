@@ -1022,9 +1022,11 @@ impl MarchingCubesPass {
             assert_eq!(batch_buffer_slices.len(), thresholds.len());
         }
 
+        let texture_name = pass_params.assets.get_path(batch.dispatch.handle.into())
+            .unwrap_or_else(|| format!("{:?}", batch.dispatch.handle));
         command_buffer.begin_label(&format!(
-            "Marching Cube Texture: {:?} with lod: {}",
-            batch.dispatch.handle, batch.dispatch.lod
+            "Marching Cube Texture: {} with lod: {}",
+            texture_name, batch.dispatch.lod
         ));
 
         let entries: SmallVec<[BufferArrayEntry; 2]> = batch_buffer_slices
@@ -1170,9 +1172,11 @@ impl MarchingCubesPass {
         assert!(!thresholds.is_empty());
         assert_eq!(batch_buffer_slices.len(), thresholds.len());
 
+        let texture_name = pass_params.assets.get_path(batch.dispatch.handle.into())
+            .unwrap_or_else(|| format!("{:?}", batch.dispatch.handle));
         command_buffer.begin_label(&format!(
-            "Marching Cube Texture: {:?} with lod: {}",
-            batch.dispatch.handle, batch.dispatch.lod
+            "Marching Cube Texture: {} with lod: {}",
+            texture_name, batch.dispatch.lod
         ));
 
         let entries: SmallVec<[BufferArrayEntry; 2]> = batch_buffer_slices
