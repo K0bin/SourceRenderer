@@ -627,6 +627,26 @@ impl<'a> CommandBuffer<'a> {
         }
     }
 
+    pub fn dispatch_indirect(&mut self, buffer: &BufferRef, offset: u64) {
+        if DEBUG_FORCE_FAT_BARRIER {
+            self.fat_barrier();
+        }
+
+        let BufferHandleRef {
+            handle: buffer_handle,
+            offset: buffer_offset,
+            length: _,
+        } = buffer.deconstruct(self.generation());
+        unsafe {
+            self.cmd_buffer_handle
+                .dispatch_indirect(buffer_handle, buffer_offset + offset);
+        }
+
+        if DEBUG_FORCE_FAT_BARRIER {
+            self.fat_barrier();
+        }
+    }
+
     pub fn set_stencil_reference(&mut self, reference: u32) {
         unsafe {
             self.cmd_buffer_handle.set_stencil_reference(reference);
