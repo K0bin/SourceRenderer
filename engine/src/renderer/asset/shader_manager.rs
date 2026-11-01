@@ -6,7 +6,7 @@ use itertools::Itertools;
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{GPUMaybeSend, GPUMaybeSync, SpecConstValue};
 
-use super::{RendererAssetWithHandle, RendererAssetsReadOnly, RendererShader};
+use super::{RendererAssetWithHandle, RendererAssets, RendererAssetsReadOnly, RendererShader};
 use crate::asset::{AssetHandle, AssetLoadPriority, AssetManager, AssetType, ShaderHandle};
 use crate::graphics::gpu::Shader as _;
 use crate::graphics::{
@@ -21,17 +21,24 @@ use crate::{Condvar, Mutex};
 // COMMON
 //
 
+pub trait PipelineHandle : Hash
+    + PartialEq
+    + Eq
+    + Clone
+    + Copy
+    + From<AssetHandle>
+    + Into<AssetHandle>
+    + Send
+    + Sync
+    + std::fmt::Debug {}
+
+impl PipelineHandle for GraphicsPipelineHandle {}
+impl PipelineHandle for MeshGraphicsPipelineHandle {}
+impl PipelineHandle for ComputePipelineHandle {}
+impl PipelineHandle for RayTracingPipelineHandle {}
+
 pub trait PipelineCompileTask: Clone + Sized {
-    type TPipelineHandle: Hash
-        + PartialEq
-        + Eq
-        + Clone
-        + Copy
-        + From<AssetHandle>
-        + Into<AssetHandle>
-        + Send
-        + Sync
-        + std::fmt::Debug;
+    type TPipelineHandle: PipelineHandle;
 
     type TShaders: GPUMaybeSend;
     type TPipeline: GPUMaybeSend + GPUMaybeSync;
@@ -1469,5 +1476,169 @@ impl ShaderManager {
             || has_mesh_graphics_compiles
             || has_compute_compiles
             || has_rt_compiles
+    }
+}
+
+
+////////////////
+// Permutations
+////////////////
+
+const SPEC_CONST_COUNT: usize = 8;
+
+pub struct PipelinePermutations<THandle : PipelineHandle, const PIPELINE_SHADER_STAGES: usize> {
+    pipelines: HashMap<([[Option<SpecConstValue>; SPEC_CONST_COUNT]; PIPELINE_SHADER_STAGES]), THandle>
+}
+pub type ComputePipelinePermutations = PipelinePermutations<ComputePipeline, 1>;
+pub type GraphicsPipelinePermutations = PipelinePermutations<GraphicsPipelineHandle, 2>;
+pub type MeshGraphicsPipelinePermutations = PipelinePermutations<MeshGraphicsPipelineHandle, 3>;
+
+impl<THandle : PipelineHandle, const PIPELINE_SHADER_STAGES: usize> PipelinePermutations<THandle, PIPELINE_SHADER_STAGES> {
+    pub fn all_ready(&self, manager: &RendererAssetsReadOnly) -> bool {
+        for (_, pipeline) in &self.pipelines {
+            if !manager.has_pipeline((*pipeline).into()) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+fn array_into_spec_const_hashmap<'a>(map: &'a mut HashMap<u32, SpecConstValue>, spec_consts: &[Option<SpecConstValue>; SPEC_CONST_COUNT]) -> Option<&'a HashMap<u32, SpecConstValue>> {
+    map.clear();
+    for (i, spec_const) in spec_consts.iter().enumerate() {
+        if let Some(spec_const) = spec_const {
+            map.insert(i as u32, *spec_const);
+        }
+    }
+    if map.is_empty() {
+        None
+    } else {
+        Some(map)
+    }
+}
+
+fn spec_const_hashmap_from_array(spec_consts: &[Option<SpecConstValue>; SPEC_CONST_COUNT]) -> HashMap<u32, SpecConstValue> {
+    let mut result = HashMap::new();
+    for (i, spec_const) in spec_consts.iter().enumerate() {
+        if let Some(spec_const) = spec_const {
+            result.insert(i as u32, *spec_const);
+        }
+    }
+    result
+}
+
+fn opt_spec_const_hashmap_from_array(spec_consts: &[Option<SpecConstValue>; SPEC_CONST_COUNT]) -> Option<HashMap<u32, SpecConstValue>> {
+    let map = spec_const_hashmap_from_array(spec_consts);
+    if map.is_empty() {
+        return None;
+    }
+    Some(map)
+}
+
+impl PipelinePermutations<ComputePipelineHandle, 1> {
+    pub fn request(manager: &RendererAssets, info: &PathPipelineShaderStage,
+                            vs_spec_constants_permutations: &[[Option<SpecConstValue>; SPEC_CONST_COUNT]]) -> Self {
+        let mut pipelines: HashMap<[[Option<SpecConstValue>; SPEC_CONST_COUNT]; 1], ComputePipelineHandle> = HashMap::new();
+
+        let empty_permutations = [[None; SPEC_CONST_COUNT]];
+        let sanitized_spec_permutations = if vs_spec_constants_permutations.is_empty() { &empty_permutations } else { vs_spec_constants_permutations };
+
+        for permutation in sanitized_spec_permutations {
+            let mut cs_info = info.clone();
+            let spec_consts = opt_spec_const_hashmap_from_array(permutation);
+            cs_info.spec_consts = spec_consts.as_ref();
+            pipelines.insert([permutation.clone()], manager.request_compute_pipeline(cs_info));
+        }
+
+        Self {
+            pipelines
+        }
+    }
+
+    pub fn get_pipeline<'a>(&self, manager: &'a RendererAssetsReadOnly,
+                            spec_constants: &[Option<SpecConstValue>; SPEC_CONST_COUNT]) -> Option<&'a Arc<ComputePipeline>> {
+        let handle = *(self.pipelines.get(&[spec_constants.clone()])?);
+        manager.get_compute_pipeline(handle)
+    }
+}
+
+impl PipelinePermutations<GraphicsPipelineHandle, 2> {
+    pub fn request(manager: &RendererAssets, info: &GraphicsPipelineInfo,
+                            vs_spec_constants_permutations: &[[Option<SpecConstValue>; SPEC_CONST_COUNT]],
+                            fs_spec_constants_permutations: &[[Option<SpecConstValue>; SPEC_CONST_COUNT]]) -> Self {
+        let mut pipelines: HashMap<[[Option<SpecConstValue>; SPEC_CONST_COUNT]; 2], GraphicsPipelineHandle> = HashMap::new();
+
+        let empty_permutations = [[None; SPEC_CONST_COUNT]];
+        let sanitized_vs_spec_permutations = if vs_spec_constants_permutations.is_empty() { &empty_permutations } else { vs_spec_constants_permutations };
+        let sanitized_fs_spec_permutations = if fs_spec_constants_permutations.is_empty() || info.fs.is_none() { &empty_permutations } else { fs_spec_constants_permutations };
+
+        for vs_permutation in sanitized_vs_spec_permutations {
+            let mut vs_info = info.clone();
+            let vs_spec_consts = opt_spec_const_hashmap_from_array(vs_permutation);
+            vs_info.vs.spec_consts = vs_spec_consts.as_ref();
+            for fs_permutation in sanitized_fs_spec_permutations {
+                let mut fs_info = vs_info.clone();
+                let fs_spec_consts = opt_spec_const_hashmap_from_array(fs_permutation);
+                fs_info.fs.as_mut().map(|fs| fs.spec_consts = fs_spec_consts.as_ref());
+                pipelines.insert([vs_permutation.clone(), fs_permutation.clone()], manager.request_graphics_pipeline(&fs_info));
+            }
+        }
+
+        Self {
+            pipelines
+        }
+    }
+
+    pub fn get_pipeline<'a>(&self, manager: &'a RendererAssetsReadOnly,
+                            vs_spec_constants: &[Option<SpecConstValue>; SPEC_CONST_COUNT],
+                            fs_spec_constants: &[Option<SpecConstValue>; SPEC_CONST_COUNT]) -> Option<&'a Arc<GraphicsPipeline>> {
+        let handle = *(self.pipelines.get(&[vs_spec_constants.clone(), fs_spec_constants.clone()])?);
+        manager.get_graphics_pipeline(handle)
+    }
+}
+
+impl PipelinePermutations<MeshGraphicsPipelineHandle, 3> {
+    pub fn request(manager: &RendererAssets, info: &MeshGraphicsPipelineInfo,
+                            ts_spec_constants_permutations: &[[Option<SpecConstValue>; SPEC_CONST_COUNT]],
+                            ms_spec_constants_permutations: &[[Option<SpecConstValue>; SPEC_CONST_COUNT]],
+                            fs_spec_constants_permutations: &[[Option<SpecConstValue>; SPEC_CONST_COUNT]]) -> Self {
+        let mut pipelines: HashMap<[[Option<SpecConstValue>; SPEC_CONST_COUNT]; 3], MeshGraphicsPipelineHandle> = HashMap::new();
+
+        let empty_permutations = [[None; SPEC_CONST_COUNT]];
+        let sanitized_ms_spec_permutations = if ms_spec_constants_permutations.is_empty() { &empty_permutations } else { ms_spec_constants_permutations };
+        let sanitized_ts_spec_permutations = if ts_spec_constants_permutations.is_empty() || info.ts.is_none() { &empty_permutations } else { ts_spec_constants_permutations };
+        let sanitized_fs_spec_permutations = if fs_spec_constants_permutations.is_empty() || info.fs.is_none() { &empty_permutations } else { fs_spec_constants_permutations };
+
+        for ms_permutation in sanitized_ms_spec_permutations {
+            let mut ms_info = info.clone();
+            let ms_spec_consts = opt_spec_const_hashmap_from_array(ms_permutation);
+            ms_info.ms.spec_consts = ms_spec_consts.as_ref();
+
+            for ts_permutation in sanitized_ts_spec_permutations {
+                let mut ts_info = ms_info.clone();
+                let ts_spec_consts = opt_spec_const_hashmap_from_array(ts_permutation);
+                ts_info.ts.as_mut().map(|ts| ts.spec_consts = ts_spec_consts.as_ref());
+
+                for fs_permutation in sanitized_fs_spec_permutations {
+                    let mut fs_info = ts_info.clone();
+                    let fs_spec_consts = opt_spec_const_hashmap_from_array(fs_permutation);
+                    fs_info.fs.as_mut().map(|fs| fs.spec_consts = fs_spec_consts.as_ref());
+                    pipelines.insert([ts_permutation.clone(), ms_permutation.clone(), fs_permutation.clone()], manager.request_mesh_graphics_pipeline(&fs_info));
+                }
+            }
+        }
+
+        Self {
+            pipelines
+        }
+    }
+
+    pub fn get_pipeline<'a>(&self, manager: &'a RendererAssetsReadOnly,
+                            ts_spec_constants: &[Option<SpecConstValue>; SPEC_CONST_COUNT],
+                            ms_spec_constants: &[Option<SpecConstValue>; SPEC_CONST_COUNT],
+                            fs_spec_constants: &[Option<SpecConstValue>; SPEC_CONST_COUNT]) -> Option<&'a Arc<MeshGraphicsPipeline>> {
+        let handle = *(self.pipelines.get(&[ts_spec_constants.clone(), ms_spec_constants.clone(), fs_spec_constants.clone()])?);
+        manager.get_mesh_graphics_pipeline(handle)
     }
 }
