@@ -57,9 +57,9 @@ pub struct MarchingCubesIndirectCall {
     first_index: u32,
     vertex_offset: i32,
     first_instance: u32,
-    vertex_count: u32,
     _pad_to_16_0: u32,
     _pad_to_16_1: u32,
+    _pad_to_16_2: u32,
 }
 
 const WORK_GROUP_SIZE: UVec3 = UVec3::new(4, 4, 4);
@@ -792,8 +792,8 @@ impl MarchingCubesPass {
                 let culling_slice = pass_params.resources.access_buffer(
                     command_buffer,
                     &culling_name,
-                    BarrierSync::COPY,
-                    BarrierAccess::COPY_WRITE,
+                    BarrierSync::CLEAR,
+                    BarrierAccess::CLEAR_WRITE,
                     HistoryResourceEntry::Current,
                 );
                 buffer_slices.insert(culling_name, culling_slice);
@@ -817,8 +817,8 @@ impl MarchingCubesPass {
         buffer_slices.insert(Self::ATOMICS_BUFFER_NAME.to_string(), pass_params.resources.access_buffer(
             command_buffer,
             Self::ATOMICS_BUFFER_NAME,
-            BarrierSync::COPY,
-            BarrierAccess::COPY_WRITE,
+            BarrierSync::CLEAR,
+            BarrierAccess::CLEAR_WRITE,
             HistoryResourceEntry::Current,
         ));
         command_buffer.flush_barriers();
@@ -900,7 +900,6 @@ impl MarchingCubesPass {
             for batch in &batches {
                 self.dispatch_culling_batch(command_buffer, pass_params, &buffer_slices, batch, use_mesh_shader);
             }
-            buffer_slices.clear();
 
             command_buffer.end_label();
         }
@@ -914,6 +913,7 @@ impl MarchingCubesPass {
 
         command_buffer.begin_label("Marching cubes");
 
+        buffer_slices.clear();
         let atomics_slice = pass_params.resources.access_buffer(
             command_buffer,
             Self::ATOMICS_BUFFER_NAME,
@@ -959,12 +959,13 @@ impl MarchingCubesPass {
                 }
             }
         }
+        buffer_slices.push((Self::ATOMICS_BUFFER_NAME.to_string(), atomics_slice));
 
         command_buffer.flush_barriers();
 
         let mut chunk_first_element_atomics_offset = 0usize;
         for batch in &batches {
-            self.dispatch_batch(command_buffer, pass_params, &atomics_slice, &buffer_slices, chunk_first_element_atomics_offset, &map, batch, options.culling);
+            self.dispatch_batch(command_buffer, pass_params, &buffer_slices, chunk_first_element_atomics_offset, &map, batch, options.culling);
 
             chunk_first_element_atomics_offset +=
                 batch.drawables.len() * std::mem::size_of::<MarchingCubesIndirectCall>();
@@ -1135,7 +1136,6 @@ impl MarchingCubesPass {
     fn dispatch_batch(&self,
         command_buffer: &mut CommandBuffer,
         pass_params: &RenderPassParameters,
-        atomics_slice: &Arc<BufferSlice>,
         buffer_slices: &[(String, Ref<Arc<BufferSlice>>)],
         chunk_first_element_atomics_offset: usize,
         offsets_map: &OffsetsMap,
@@ -1148,7 +1148,8 @@ impl MarchingCubesPass {
         let mut thresholds = SmallVec::<[f32; 4]>::new();
 
         let culling_name = Self::culling_dispatch_buffer_name(batch.dispatch.handle, batch.dispatch.lod, batch.dispatch.as_cubes);
-        let indirect_slice = buffer_slices.iter().find_map(|(name, slice)| if name == &culling_name { Some(slice) } else { None }).unwrap();
+        let culling_indirect_slice = buffer_slices.iter().find_map(|(name, slice)| if name == &culling_name { Some(slice) } else { None }).unwrap();
+        let draw_indirect_slice = buffer_slices.iter().find_map(|(name, slice)| if name == Self::ATOMICS_BUFFER_NAME { Some(slice) } else { None }).unwrap();
 
         for (index, d) in batch.drawables.iter().enumerate() {
             let indirect_buffer_offset = *(offsets_map.get(&d.entity).unwrap()) as usize;
@@ -1279,7 +1280,7 @@ impl MarchingCubesPass {
         command_buffer.bind_storage_buffer(
             BindingFrequency::Frequent,
             5,
-            BufferRef::Regular(&atomics_slice),
+            BufferRef::Regular(draw_indirect_slice),
             chunk_first_element_atomics_offset as u64,
             WHOLE_BUFFER,
         );
@@ -1287,7 +1288,7 @@ impl MarchingCubesPass {
         command_buffer.bind_storage_buffer(
             BindingFrequency::Frequent,
             6,
-            BufferRef::Regular(indirect_slice),
+            BufferRef::Regular(culling_indirect_slice),
             0u64,
             WHOLE_BUFFER,
         );
@@ -1296,10 +1297,12 @@ impl MarchingCubesPass {
 
         if extent.x > 0 && extent.y > 0 && extent.z > 0 {
             if culling {
-                command_buffer.dispatch_indirect(&BufferRef::Regular(indirect_slice), 0u64);
+                command_buffer.dispatch_indirect(&BufferRef::Regular(culling_indirect_slice), 0u64);
             } else {
                 command_buffer.dispatch((extent.x + 3) / 4, (extent.y + 3) / 4, (extent.z + 3) / 4);
             }
+        } else {
+            log::error!("Marching cubes texture mip has an extent of 0");
         }
 
         command_buffer.end_label();

@@ -12,10 +12,9 @@ use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{SpecConstValue, StencilOp, TexturePlane};
 use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec3UI};
 use std::cell::Ref;
-use std::collections::HashMap;
 use std::default::Default;
 use std::sync::Arc;
-use crate::asset::{AssetHandle, MaterialHandle};
+use crate::asset::MaterialHandle;
 use crate::renderer::VolumeRendererOptions;
 
 #[repr(C)]
@@ -47,6 +46,7 @@ struct MaterialData {
     _padding2: u32,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 enum GeometryPassPipelineType {
     Opaque, NonOverlapping, Transparent, TransparentPrepass
 }
@@ -68,26 +68,22 @@ impl<T: PipelineHandle, const PIPELINE_SHADER_STAGES: usize> GeometryPassPipelin
 }
 
 impl GeometryPassPipelines<GraphicsPipelineHandle, 2> {
-    fn get<'a>(&self, renderer_assets: &'a RendererAssetsReadOnly<'a>, pipeline_type: GeometryPassPipelineType, raymarch_normals: bool) -> &'a GraphicsPipeline {
+    fn get<'a>(&self, renderer_assets: &'a RendererAssetsReadOnly<'a>, pipeline_type: GeometryPassPipelineType, raymarch_normals: bool) -> Option<&'a Arc<GraphicsPipeline>> {
         let mut fs_spec_consts: [Option::<SpecConstValue>; 8] = [None; 8];
         fs_spec_consts[0] = Some(SpecConstValue::Bool(raymarch_normals));
 
         match pipeline_type {
-            GeometryPassPipelineType::Opaque => self.opaque.get_pipeline(renderer_assets, &[None; 8], &fs_spec_consts)
-                .expect("Pipeline is not compiled yet"),
-            GeometryPassPipelineType::NonOverlapping => self.non_overlapping.get_pipeline(renderer_assets, &[None; 8], &fs_spec_consts)
-                .expect("Pipeline is not compiled yet"),
-            GeometryPassPipelineType::Transparent => self.transparent.get_pipeline(renderer_assets, &[None; 8], &fs_spec_consts)
-                .expect("Pipeline is not compiled yet"),
-            GeometryPassPipelineType::TransparentPrepass => self.transparent_prepass.get_pipeline(renderer_assets, &[None; 8], &[None; 8])
-                .expect("Pipeline is not compiled yet"),
+            GeometryPassPipelineType::Opaque => self.opaque.get_pipeline(renderer_assets, &[None; 8], &fs_spec_consts),
+            GeometryPassPipelineType::NonOverlapping => self.non_overlapping.get_pipeline(renderer_assets, &[None; 8], &fs_spec_consts),
+            GeometryPassPipelineType::Transparent => self.transparent.get_pipeline(renderer_assets, &[None; 8], &fs_spec_consts),
+            GeometryPassPipelineType::TransparentPrepass => self.transparent_prepass.get_pipeline(renderer_assets, &[None; 8], &[None; 8]),
         }
     }
 }
 
 impl GeometryPassPipelines<MeshGraphicsPipelineHandle, 3> {
     fn get<'a>(&self, renderer_assets: &'a RendererAssetsReadOnly<'a>, pipeline_type: GeometryPassPipelineType,
-               raymarch_normals: bool, render_as_cubes: bool, culled: bool) -> &'a MeshGraphicsPipeline {
+               raymarch_normals: bool, render_as_cubes: bool, culled: bool) -> Option<&'a Arc<MeshGraphicsPipeline>> {
         let mut ts_spec_consts: [Option::<SpecConstValue>; 8] = [None; 8];
         ts_spec_consts[0] = Some(SpecConstValue::Bool(render_as_cubes));
         ts_spec_consts[1] = Some(SpecConstValue::Bool(culled));
@@ -95,14 +91,10 @@ impl GeometryPassPipelines<MeshGraphicsPipelineHandle, 3> {
         fs_spec_consts[0] = Some(SpecConstValue::Bool(raymarch_normals));
 
         match pipeline_type {
-            GeometryPassPipelineType::Opaque => self.opaque.get_pipeline(renderer_assets, &ts_spec_consts, &[None; 8], &fs_spec_consts)
-                .expect("Pipeline is not compiled yet"),
-            GeometryPassPipelineType::NonOverlapping => self.non_overlapping.get_pipeline(renderer_assets, &ts_spec_consts, &[None; 8], &fs_spec_consts)
-                .expect("Pipeline is not compiled yet"),
-            GeometryPassPipelineType::Transparent => self.transparent.get_pipeline(renderer_assets, &ts_spec_consts, &[None; 8], &fs_spec_consts)
-                .expect("Pipeline is not compiled yet"),
-            GeometryPassPipelineType::TransparentPrepass => self.transparent_prepass.get_pipeline(renderer_assets, &ts_spec_consts, &[None; 8], &[None; 8])
-                .expect("Pipeline is not compiled yet"),
+            GeometryPassPipelineType::Opaque => self.opaque.get_pipeline(renderer_assets, &ts_spec_consts, &[None; 8], &fs_spec_consts),
+            GeometryPassPipelineType::NonOverlapping => self.non_overlapping.get_pipeline(renderer_assets, &ts_spec_consts, &[None; 8], &fs_spec_consts),
+            GeometryPassPipelineType::Transparent => self.transparent.get_pipeline(renderer_assets, &ts_spec_consts, &[None; 8], &fs_spec_consts),
+            GeometryPassPipelineType::TransparentPrepass => self.transparent_prepass.get_pipeline(renderer_assets, &ts_spec_consts, &[None; 8], &[None; 8]),
         }
     }
 }
@@ -170,8 +162,8 @@ impl GeometryPass {
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
             vs: PathPipelineShaderStage::empty_spec_consts(&vs_path),
             fs: Some(PathPipelineShaderStage::empty_spec_consts(&fs_path)),
-            //primitive_type: PrimitiveType::Triangles,
-            primitive_type: PrimitiveType::Points, // Uncomment to debug culling
+            primitive_type: PrimitiveType::Triangles,
+            //primitive_type: PrimitiveType::Points, // Uncomment to debug culling
             vertex_layout: VertexLayoutInfo {
                 input_assembler: &[],
                 shader_inputs: &[],
@@ -788,6 +780,7 @@ impl GeometryPass {
         let volume_texture = assets.get_texture(drawable.volume_texture);
         let volume_texture_base_opt = volume_texture.view.texture();
         if volume_texture_base_opt.is_none() {
+            log::error!("Could not load texture for volume geometry pass: {:?}", drawable.volume_texture);
             return false;
         }
         let volume_texture_base = volume_texture_base_opt.unwrap();
@@ -808,9 +801,13 @@ impl GeometryPass {
         ));
 
         let pipeline = if !use_mesh_shader {
-            PipelineBinding::Graphics(self.pipelines.get(assets, pipeline_type, drawable.ray_march_normals))
+            PipelineBinding::Graphics(self.pipelines
+                .get(assets, pipeline_type, drawable.ray_march_normals)
+                .expect("Pipeline is not compiled yet"))
         } else {
-            PipelineBinding::MeshGraphics(self.mesh_pipelines.as_ref().unwrap().get(assets, pipeline_type, drawable.ray_march_normals, drawable.render_as_cubes, drawable_culling))
+            PipelineBinding::MeshGraphics(self.mesh_pipelines.as_ref().unwrap()
+                .get(assets, pipeline_type, drawable.ray_march_normals, drawable.render_as_cubes, drawable_culling)
+                .expect("Pipeline is not compiled yet"))
         };
         cmd_buffer.set_pipeline(pipeline);
 
@@ -868,15 +865,14 @@ impl GeometryPass {
                 .find(|(name, _)| name == &MarchingCubesPass::culling_buffer_name(drawable.entity)).unwrap().1);
             cmd_buffer.bind_storage_buffer(BindingFrequency::Frequent, 8,
                                            BufferRef::Regular(&culling_buffer), 0u64, WHOLE_BUFFER);
+            cmd_buffer.finish_binding();
 
             if drawable_culling {
-                cmd_buffer.finish_binding();
                 cmd_buffer.draw_mesh_tasks_indirect(
                     BufferRef::Regular(&culling_buffer),
                     0, 1, (3 * std::mem::size_of::<u32>()) as u32
                 );
             } else {
-                cmd_buffer.finish_binding();
                 cmd_buffer.draw_mesh_tasks(
                     (volume_texture_lod_extents.x + 3) / 4,
                     (volume_texture_lod_extents.y + 3) / 4,

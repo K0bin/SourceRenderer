@@ -83,5 +83,5 @@ void main(void) {
     gl_Position = mvp * vec4(pos, 1.0);
     out_worldPosition = (model * vec4(pos, 1.0)).xyz;
 
-    gl_PointSize = 3.0f;
+    gl_PointSize = 15.0f;
 }

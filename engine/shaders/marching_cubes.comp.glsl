@@ -13,7 +13,7 @@
 #extension GL_EXT_nonuniform_qualifier : enable
 
 layout(constant_id = 0) const uint thresholdsCountConst = 0u;
-layout(constant_id = 2) const bool culling = true;
+layout(constant_id = 2) const bool culling = false;
 
 layout(local_size_x = 4u, local_size_y = 4u, local_size_z = 4u) in;
 
@@ -44,9 +44,9 @@ struct IndirectCommand {
     uint firstIndex;
     int vertexOffset;
     uint firstInstance;
-    uint vertexCount;
     uint _pad_to_16_0;
     uint _pad_to_16_1;
+    uint _pad_to_16_2;
 };
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 5, scalar) buffer bufferatomics {
     IndirectCommand[] commands;

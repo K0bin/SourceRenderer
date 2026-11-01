@@ -43,7 +43,7 @@ struct TaskPayload {
 taskPayloadSharedEXT TaskPayload payload;
 
 layout(constant_id = 0) const bool renderDebugCube = false;
-layout(constant_id = 1) const bool culling = true;
+layout(constant_id = 1) const bool culling = false;
 
 void main() {
     uvec3 workgroupBase = culling ? workgroupPositions[gl_WorkGroupID.x].xyz : (gl_WorkGroupID * gl_WorkGroupSize);
