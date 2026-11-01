@@ -257,7 +257,6 @@ fn shader_stage_to_string(assets: &RendererAssetsReadOnly, stage: &HandlePipelin
         }
         str.truncate(str.len() - 1)
     }
-    println!("Naming shaders: found: {:?}", &str);
     str
 }
 
@@ -1064,6 +1063,8 @@ impl ShaderManager {
                 .into(),
             spec_consts: fs.spec_consts.map(|s| (*s).clone()).unwrap_or_default(),
         });
+
+        log::info!("MeshGraphicsPipeline: {:?}", ts_handle.as_ref().map(|ts| &ts.spec_consts));
 
         let handle: MeshGraphicsPipelineHandle = asset_manager
             .reserve_handle_without_path(AssetType::MeshGraphicsPipeline)
