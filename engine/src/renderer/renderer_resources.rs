@@ -419,11 +419,12 @@ impl RendererResources {
                         || subresource_clone.layout != layout
                     {
                         subresource_clone.access = access;
+                        subresource_clone.stages = stages;
+                        subresource_clone.layout = layout;
                     } else {
                         subresource_clone.access |= access;
+                        subresource_clone.stages |= stages;
                     }
-                    subresource_clone.stages = stages;
-                    subresource_clone.layout = layout;
                     *subresource_mut = subresource_clone;
                 }
 
