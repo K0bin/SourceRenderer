@@ -520,12 +520,13 @@ impl GeometryPass {
                 slices.push((name, slice));
             }
         } else {
+            let task_stage_if_supported = if params.device.supports_mesh_shader() { BarrierSync::TASK_SHADER } else { BarrierSync::empty() };
             for drawable in params.scene.scene.volume_mesh_instances() {
                 let name = MarchingCubesPass::culling_buffer_name(drawable.entity);
                 let slice = resources.access_buffer(
                     cmd_buffer,
                     &name,
-                    BarrierSync::INDIRECT | BarrierSync::TASK_SHADER,
+                    BarrierSync::INDIRECT | task_stage_if_supported,
                     BarrierAccess::INDIRECT_READ | BarrierAccess::STORAGE_READ,
                     HistoryResourceEntry::Current,
                 );

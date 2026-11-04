@@ -717,7 +717,7 @@ impl MarchingCubesPass {
     }
 
     pub fn use_culling(lod_extent: UVec3) -> bool {
-        lod_extent.x >= 128 || lod_extent.y >= 128 || lod_extent.z >= 128
+        lod_extent.x >= 128 && lod_extent.y >= 128 && lod_extent.z >= 128
     }
 
     pub fn execute(
@@ -890,6 +890,37 @@ impl MarchingCubesPass {
             assert_eq!(batch_buffer_slices.len(), thresholds.len());
         }
 
+        let volume_texture = pass_params.assets.get_texture(batch.dispatch.handle);
+        let volume_texture_min = pass_params
+            .assets
+            .get_texture(batch.drawables.first().unwrap().volume_texture_min);
+        let volume_texture_max = pass_params
+            .assets
+            .get_texture(batch.drawables.first().unwrap().volume_texture_max);
+
+        let target_work_group_size = if use_mesh_shader {
+            MESH_WORK_GROUP_SIZE
+        } else {
+            WORK_GROUP_SIZE
+        };
+        let max_group_size_dimension = target_work_group_size.x
+            .max(target_work_group_size.y)
+            .max(target_work_group_size.z);
+        let reduction = 2u32.max(max_group_size_dimension.ilog2());
+
+        let mut extent = Vec3UI::new(512, 512, 512);
+        let texture_view = &volume_texture.view;
+        if let Some(texture) = texture_view.texture().as_ref() {
+            let texture_info = texture.info();
+            extent.x = (texture_info.width >> batch.dispatch.lod).max(1);
+            extent.y = (texture_info.height >> batch.dispatch.lod).max(1);
+            extent.z = (texture_info.depth >> batch.dispatch.lod).max(1);
+        }
+
+        if !Self::use_culling(extent) {
+            return;
+        }
+
         let texture_name = pass_params.assets.get_path(batch.dispatch.handle.into())
             .unwrap_or_else(|| format!("{:?}", batch.dispatch.handle));
         command_buffer.begin_label(&format!(
@@ -929,13 +960,6 @@ impl MarchingCubesPass {
 
         command_buffer.bind_storage_buffer_array(BindingFrequency::Frequent, 3, &entries);
 
-        let volume_texture = pass_params.assets.get_texture(batch.dispatch.handle);
-        let volume_texture_min = pass_params
-            .assets
-            .get_texture(batch.drawables.first().unwrap().volume_texture_min);
-        let volume_texture_max = pass_params
-            .assets
-            .get_texture(batch.drawables.first().unwrap().volume_texture_max);
         command_buffer.bind_sampling_view(BindingFrequency::Frequent, 0, &volume_texture.view);
         command_buffer.bind_sampling_view(
             BindingFrequency::Frequent,
@@ -953,28 +977,6 @@ impl MarchingCubesPass {
             3,
             &entries,
         );
-
-        let target_work_group_size = if use_mesh_shader {
-            MESH_WORK_GROUP_SIZE
-        } else {
-            WORK_GROUP_SIZE
-        };
-        let max_group_size_dimension = target_work_group_size.x
-            .max(target_work_group_size.y)
-            .max(target_work_group_size.z);
-        let reduction = 2u32.max(max_group_size_dimension.ilog2());
-
-        let mut extent = Vec3UI::new(512, 512, 512);
-        let texture_view = &volume_texture.view;
-        if let Some(texture) = texture_view.texture().as_ref() {
-            let texture_info = texture.info();
-            extent.x = texture_info.width >> batch.dispatch.lod;
-            extent.y = texture_info.height >> batch.dispatch.lod;
-            extent.z = texture_info.depth >> batch.dispatch.lod;
-        }
-        if !Self::use_culling(extent) {
-            return;
-        }
 
         let thresholds_buffer = command_buffer
             .upload_dynamic_data(pass_params.device, &thresholds, BufferUsage::CONSTANT)
@@ -998,7 +1000,11 @@ impl MarchingCubesPass {
 
         command_buffer.finish_binding();
 
-        let culling_extent = Vec3UI::new(extent.x >> reduction, extent.y >> reduction, extent.z >> reduction);
+        let culling_extent = Vec3UI::new(
+            (extent.x >> reduction).max(1),
+            (extent.y >> reduction).max(1),
+            (extent.z >> reduction).max(1)
+        );
         command_buffer.dispatch((culling_extent.x + 3) / 4,
                                 (culling_extent.y + 3) / 4,
                                 (culling_extent.z + 3) / 4);
