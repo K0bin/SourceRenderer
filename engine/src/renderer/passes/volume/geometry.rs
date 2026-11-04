@@ -162,8 +162,8 @@ impl GeometryPass {
         let pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
             vs: PathPipelineShaderStage::empty_spec_consts(&vs_path),
             fs: Some(PathPipelineShaderStage::empty_spec_consts(&fs_path)),
-            //primitive_type: PrimitiveType::Triangles,
-            primitive_type: PrimitiveType::Points, // Uncomment to debug culling
+            primitive_type: PrimitiveType::Triangles,
+            //primitive_type: PrimitiveType::Points, // Uncomment to debug culling
             vertex_layout: VertexLayoutInfo {
                 input_assembler: &[],
                 shader_inputs: &[],
