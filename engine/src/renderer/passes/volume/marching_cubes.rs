@@ -669,8 +669,8 @@ impl MarchingCubesPass {
                 let slice = pass_params.resources.access_buffer(
                     command_buffer,
                     &buffer_name,
-                    BarrierSync::COPY,
-                    BarrierAccess::COPY_WRITE,
+                    BarrierSync::CLEAR,
+                    BarrierAccess::CLEAR_WRITE,
                     HistoryResourceEntry::Current,
                 );
                 buffer_slices.insert(buffer_name, slice);
@@ -693,8 +693,8 @@ impl MarchingCubesPass {
                     let culling_buffer_slice = pass_params.resources.access_buffer(
                         command_buffer,
                         &dispatch_buffer_name,
-                        BarrierSync::COPY,
-                        BarrierAccess::COPY_WRITE,
+                        BarrierSync::CLEAR,
+                        BarrierAccess::CLEAR_WRITE,
                         HistoryResourceEntry::Current,
                     );
                     buffer_slices.insert(dispatch_buffer_name, culling_buffer_slice);
