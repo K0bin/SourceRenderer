@@ -128,6 +128,7 @@ fn format_to_vertex_format(format: gpu::Format) -> GpuVertexFormat {
         gpu::Format::RGBA8Srgb => panic!("Unsupported vertex format"),
         gpu::Format::BGR8UNorm => panic!("Unsupported vertex format"),
         gpu::Format::BGRA8UNorm => GpuVertexFormat::Unorm8x4Bgra,
+        gpu::Format::BGRA8Srgb => panic!("Unsupported vertex format"),
         gpu::Format::RGBA16UNorm => GpuVertexFormat::Unorm16x4,
         gpu::Format::RG32UInt => GpuVertexFormat::Uint32x2,
         gpu::Format::BC1 => panic!("Unsupported vertex format"),
