@@ -5,10 +5,11 @@ use super::*;
 pub trait Surface<B: GPUBackend> {
     unsafe fn create_swapchain(
         self,
+        device: &B::Device,
         width: u32,
         height: u32,
         vsync: bool,
-        device: &B::Device,
+        srgb: bool,
     ) -> Result<B::Swapchain, SwapchainError>;
 }
 

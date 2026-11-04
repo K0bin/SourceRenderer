@@ -12,6 +12,7 @@ pub enum Format {
     RGBA8Srgb,
     BGR8UNorm,
     BGRA8UNorm,
+    BGRA8Srgb,
     BC1,
     BC1Alpha,
     BC2,
@@ -75,6 +76,7 @@ impl Format {
             Format::RGBA16UNorm => 2,
             Format::BGR8UNorm => 1,
             Format::BGRA8UNorm => 1,
+            Format::BGRA8Srgb => 1,
             Format::BC1 => 8,
             Format::BC1Alpha => 8,
             Format::BC2 => 16,
@@ -157,7 +159,8 @@ impl Format {
 
     pub fn is_srgb(&self) -> bool {
         match self {
-            Format::RGBA8Srgb => true,
+            Format::RGBA8Srgb
+            | Format::BGRA8Srgb => true,
             _ => false,
         }
     }
@@ -173,6 +176,25 @@ impl Format {
         match self {
             Format::R16SInt | Format::RG16SInt => true,
             _ => false,
+        }
+    }
+
+    pub fn to_srgb(&self) -> Option<Self> {
+        match self {
+            Format::RGBA8UNorm => Some(Format::RGBA8Srgb),
+            Format::BGRA8UNorm => Some(Format::BGRA8Srgb),
+            _ => None,
+        }
+    }
+
+    pub fn to_unorm(&self) -> Option<Self> {
+        match self {
+            Format::RGBA8Srgb => Some(Format::RGBA8UNorm),
+            Format::R16UInt | Format::R16Float | Format::R16SNorm => Some(Format::R16UNorm),
+            Format::R32UInt => Some(Format::R32UNorm),
+            Format::RGBA16Float => Some(Format::RGBA16UNorm),
+            Format::BGRA8Srgb => Some(Format::BGRA8UNorm),
+            _ => None,
         }
     }
 }

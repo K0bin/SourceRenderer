@@ -94,11 +94,12 @@ impl Drop for VkSurface {
 impl gpu::Surface<VkBackend> for VkSurface {
     unsafe fn create_swapchain(
         self,
+        device: &VkDevice,
         width: u32,
         height: u32,
         vsync: bool,
-        device: &VkDevice,
+        srgb: bool,
     ) -> Result<VkSwapchain, gpu::SwapchainError> {
-        VkSwapchain::new(vsync, width, height, device.inner(), self)
+        VkSwapchain::new(device.inner(), width, height, vsync, srgb, self)
     }
 }

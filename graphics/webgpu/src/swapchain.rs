@@ -1,7 +1,7 @@
 use js_sys::wasm_bindgen::JsValue;
 use sourcerenderer_core::{Matrix4, gpu};
 use std::marker::PhantomData;
-use web_sys::{gpu_texture_usage, GpuCanvasAlphaMode, GpuCanvasConfiguration, GpuCanvasContext, GpuDevice};
+use web_sys::{gpu_texture_usage, GpuCanvasAlphaMode, GpuCanvasConfiguration, GpuCanvasContext, GpuDevice, GpuTextureFormat};
 
 use crate::{
     WebGPUBackend, WebGPUInstance, surface::WebGPUSurface, texture::WebGPUTexture,
@@ -29,7 +29,7 @@ pub struct WebGPUSwapchain {
 }
 
 impl WebGPUSwapchain {
-    pub fn new(device: &GpuDevice, surface: WebGPUSurface, width: u32, height: u32) -> Self {
+    pub fn new(device: &GpuDevice, surface: WebGPUSurface, width: u32, height: u32, srgb: bool) -> Self {
         let context_obj: JsValue = surface
             .canvas()
             .get_context("webgpu")
@@ -38,11 +38,18 @@ impl WebGPUSwapchain {
             .into();
         let context: GpuCanvasContext = context_obj.into();
         let instance = WebGPUInstance::get_webgpu();
+
         let preferred_format = instance.get_preferred_canvas_format();
+        let mut format = format_from_webgpu(preferred_format);
+        if srgb && !format.is_srgb() {
+            format = format.to_srgb().unwrap();
+        } else if !srgb && format.is_srgb() {
+            format = format.to_unorm().unwrap();
+        }
 
         let texture_info = gpu::TextureInfo {
             dimension: gpu::TextureDimension::Dim2D,
-            format: format_from_webgpu(preferred_format),
+            format,
             width,
             height,
             depth: 1,

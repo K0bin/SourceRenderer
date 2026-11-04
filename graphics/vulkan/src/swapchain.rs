@@ -60,6 +60,7 @@ impl VkSwapchain {
         width: u32,
         height: u32,
         vsync: bool,
+        srgb: bool,
         old_swapchain: Option<&vk::SwapchainKHR>,
     ) -> (vk::SwapchainKHR, SmallVec<[VkTexture; 5]>, Matrix4, u32) {
         unsafe {
@@ -99,7 +100,7 @@ impl VkSwapchain {
                     }
                 },
             };
-            let format = VkSwapchain::pick_format(&formats);
+            let format = VkSwapchain::pick_format(&formats, srgb);
 
             let extent = VkSwapchain::pick_extent(&capabilities, width, height);
 
@@ -176,6 +177,18 @@ impl VkSwapchain {
             let swapchain = {
                 let surface_handle = surface.surface_handle();
 
+                let mut usage = vk::ImageUsageFlags::empty();
+                if capabilities.supported_usage_flags.contains(vk::ImageUsageFlags::COLOR_ATTACHMENT) {
+                    // This should always be the case!
+                    usage |= vk::ImageUsageFlags::COLOR_ATTACHMENT;
+                }
+                if capabilities.supported_usage_flags.contains(vk::ImageUsageFlags::STORAGE) {
+                    usage |= vk::ImageUsageFlags::STORAGE;
+                }
+                if capabilities.supported_usage_flags.contains(vk::ImageUsageFlags::TRANSFER_DST) {
+                    usage |= vk::ImageUsageFlags::TRANSFER_DST;
+                }
+
                 let swapchain_create_info = vk::SwapchainCreateInfoKHR {
                     surface: surface_handle,
                     min_image_count: image_count,
@@ -184,7 +197,6 @@ impl VkSwapchain {
                     image_extent: extent,
                     image_array_layers: 1,
                     image_usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
-                        | vk::ImageUsageFlags::STORAGE
                         | vk::ImageUsageFlags::TRANSFER_DST,
                     present_mode,
                     image_sharing_mode: vk::SharingMode::EXCLUSIVE,
@@ -250,10 +262,11 @@ impl VkSwapchain {
     }
 
     pub fn new(
-        vsync: bool,
+        device: &Arc<RawVkDevice>,
         width: u32,
         height: u32,
-        device: &Arc<RawVkDevice>,
+        vsync: bool,
+        srgb: bool,
         surface: VkSurface,
     ) -> Result<Self, SwapchainError> {
         let swapchain_device = SwapchainDevice::load(&device.instance.instance, &device.device);
@@ -264,6 +277,7 @@ impl VkSwapchain {
             width,
             height,
             vsync,
+            srgb,
             None,
         );
 
@@ -318,19 +332,29 @@ impl VkSwapchain {
         }
     }
 
-    pub fn pick_format(formats: &[vk::SurfaceFormatKHR]) -> vk::SurfaceFormatKHR {
+    pub fn pick_format(formats: &[vk::SurfaceFormatKHR], srgb: bool) -> vk::SurfaceFormatKHR {
+        let bgra_format: vk::Format;
+        let rgba_format: vk::Format;
+        if srgb {
+            bgra_format = vk::Format::B8G8R8A8_SRGB;
+            rgba_format = vk::Format::R8G8B8A8_SRGB;
+        } else {
+            bgra_format = vk::Format::B8G8R8A8_UNORM;
+            rgba_format = vk::Format::R8G8B8A8_UNORM;
+        }
+
         if formats.len() == 1 && formats[0].format == vk::Format::UNDEFINED {
             vk::SurfaceFormatKHR {
-                format: vk::Format::B8G8R8A8_UNORM,
+                format: bgra_format,
                 color_space: vk::ColorSpaceKHR::SRGB_NONLINEAR,
             }
         } else {
             *formats
                 .iter()
                 .find(|&format| {
-                    (format.format == vk::Format::B8G8R8A8_UNORM
+                    (format.format == bgra_format
                         && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR)
-                        || (format.format == vk::Format::R8G8B8A8_UNORM
+                        || (format.format == rgba_format
                             && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR)
                 })
                 .expect("No compatible format found")
@@ -487,6 +511,7 @@ impl Swapchain<VkBackend> for VkSwapchain {
             width,
             height,
             self.vsync,
+            self.textures[0].info().format.is_srgb(),
             Some(&self.swapchain),
         );
         self.swapchain = swapchain;
@@ -581,6 +606,8 @@ fn surface_vk_format_to_core(format: vk::Format) -> Format {
     match format {
         vk::Format::B8G8R8A8_UNORM => Format::BGRA8UNorm,
         vk::Format::R8G8B8A8_UNORM => Format::RGBA8UNorm,
+        vk::Format::R8G8B8A8_SRGB => Format::RGBA8Srgb,
+        vk::Format::B8G8R8A8_SRGB => Format::BGRA8Srgb,
         _ => panic!("Unsupported format: {:?}", format),
     }
 }

@@ -40,11 +40,12 @@ impl WebGPUSurface {
 impl gpu::Surface<WebGPUBackend> for WebGPUSurface {
     unsafe fn create_swapchain(
         self,
+        device: &WebGPUDevice,
         width: u32,
         height: u32,
         _vsync: bool,
-        device: &WebGPUDevice,
+        srgb: bool,
     ) -> Result<WebGPUSwapchain, gpu::SwapchainError> {
-        Ok(WebGPUSwapchain::new(device.handle(), self, width, height))
+        Ok(WebGPUSwapchain::new(device.handle(), self, width, height, srgb))
     }
 }
