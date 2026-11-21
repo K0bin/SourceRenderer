@@ -26,6 +26,7 @@ layout(local_size_x = 8,
 
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform texture2D envMap;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, rgba16f) uniform coherent writeonly imageCube outputTexture;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform sampler samplerRepeat;
 
 // Calculate normalized sampling direction vector based on current fragment coordinates (gl_GlobalInvocationID.xyz).
 // This is essentially "inverse-sampling": we reconstruct what the sampling vector would be if we wanted it to "hit"
@@ -33,8 +34,8 @@ layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, rgba16f) uniform coheren
 // See: OpenGL core profile specs, section 8.13.
 vec3 getSamplingVector()
 {
-    vec2 st = gl_GlobalInvocationID.xy/vec2(imageSize(outputTexture));
-    vec2 uv = 2.0 * vec2(st.x, 1.0-st.y) - vec2(1.0);
+    vec2 st = (gl_GlobalInvocationID.xy + vec2(0.5)) / vec2(imageSize(outputTexture));
+    vec2 uv = 2.0 * vec2(st.x, 1.0 - st.y) - vec2(1.0);
 
     vec3 ret;
     switch (gl_GlobalInvocationID.z) {
@@ -52,7 +53,7 @@ vec2 directionToSphericalEnvmap(vec3 dir) {
     // Convert Cartesian direction vector to spherical coordinates.
     float phi   = atan(dir.z, dir.x);
     float theta = acos(dir.y);
-    return vec2(0.5 - phi/TwoPI, theta/PI);
+    return vec2(phi / TwoPI, theta / PI);
 }
 
 void main(void) {
@@ -61,7 +62,7 @@ void main(void) {
     vec2 sphericalUV = directionToSphericalEnvmap(v);
 
     // Sample equirectangular texture.
-    vec4 color = textureLod(sampler2D(envMap, samplerLinear), sphericalUV, 0.0);
+    vec4 color = textureLod(sampler2D(envMap, samplerRepeat), sphericalUV, 0.0);
 
     // Write out color to output cubemap.
     imageStore(outputTexture, ivec3(gl_GlobalInvocationID), color);

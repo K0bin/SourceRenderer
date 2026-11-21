@@ -1,15 +1,11 @@
 use crate::asset::{AssetLoadPriority, AssetType, TextureHandle};
-use crate::graphics::{CommandBuffer, PipelineBinding};
+use crate::graphics::{CommandBuffer, PipelineBinding, Sampler};
 use crate::renderer::asset::{
     ComputePipelineHandle, PathPipelineShaderStage, RendererAssets, RendererAssetsReadOnly,
 };
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
-use sourcerenderer_core::gpu::{
-    BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, Format, SampleCount,
-    ShaderType, TextureDimension, TextureInfo, TextureLayout, TexturePlane, TextureUsage,
-    TextureViewInfo,
-};
+use sourcerenderer_core::gpu::{AddressMode, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, Filter, Format, SampleCount, SamplerInfo, TextureDimension, TextureInfo, TextureLayout, TexturePlane, TextureUsage, TextureViewInfo};
 use std::sync::Arc;
 
 pub struct ImageBasedLightingTextures {
@@ -20,6 +16,7 @@ pub struct ImageBasedLightingTextures {
 
 pub struct ImageBasedLightingPreparation {
     handle: Option<TextureHandle>,
+    repeat_sampler: Sampler,
     project_to_cube_pipeline: ComputePipelineHandle,
     prefilter_diffuse_pipeline: ComputePipelineHandle,
     prefilter_specular_pipeline: ComputePipelineHandle,
@@ -42,7 +39,7 @@ impl ImageBasedLightingPreparation {
         "BlankFilteredSpecularEnvironmentMap";
 
     pub(crate) fn new(
-        _device: &Arc<crate::graphics::Device>,
+        device: &Arc<crate::graphics::Device>,
         assets: &RendererAssets,
         init_cmd_buffer: &mut crate::graphics::CommandBuffer,
         resources: &mut RendererResources,
@@ -63,6 +60,20 @@ impl ImageBasedLightingPreparation {
             },
             false,
         );
+
+        let repeat_sampler = device.create_sampler(&SamplerInfo {
+            mag_filter: Filter::Linear,
+            min_filter: Filter::Linear,
+            mip_filter: Filter::Linear,
+            address_mode_u: AddressMode::Repeat,
+            address_mode_v: AddressMode::Repeat,
+            address_mode_w: AddressMode::Repeat,
+            mip_bias: 0.0,
+            max_anisotropy: 0.0,
+            compare_op: None,
+            min_lod: 0.0,
+            max_lod: None,
+        }, Some("IBL Repeat Sampler"));
 
         let project_to_pipeline_shader_path = crate::renderer::shader_path!("project_equirectangular.comp");
         let prefilter_diffuse_shader_path = crate::renderer::shader_path!("prefilter_env_map_diffuse.comp");
@@ -85,6 +96,7 @@ impl ImageBasedLightingPreparation {
 
         Self {
             handle: None,
+            repeat_sampler,
             project_to_cube_pipeline,
             prefilter_diffuse_pipeline,
             prefilter_specular_pipeline,
@@ -230,6 +242,7 @@ impl ImageBasedLightingPreparation {
             &texture.view,
         );
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1u32, cube.view());
+        cmd_buffer.bind_sampler(BindingFrequency::VeryFrequent, 2u32, &self.repeat_sampler);
         cmd_buffer.finish_binding();
         cmd_buffer.dispatch((size + 7) / 8, (size + 7) / 8, 6);
         cmd_buffer.end_label();
@@ -430,7 +443,7 @@ impl ImageBasedLightingPreparation {
 
         if !self.preintegration_lut_computed {
             self.calculate_preintegration_lut(cmd_buffer, pass_params);
-            self.preintegration_lut_computed = true;
+            //self.preintegration_lut_computed = true;
         }
 
         let texture_ready = self
@@ -442,7 +455,7 @@ impl ImageBasedLightingPreparation {
         }
         self.deproject_env_map(cmd_buffer, pass_params);
         self.filter_env_map(cmd_buffer, pass_params);
-        self.prepared = true;
+        //self.prepared = true;
     }
 
     pub fn get_texture(&self) -> ImageBasedLightingTextures {
