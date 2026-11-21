@@ -15,6 +15,8 @@ impl ImageLoader {
     }
 }
 
+const REDUCE_32_BIT_PRECISION: bool = true;
+
 impl AssetLoader for ImageLoader {
     fn matches(&self, file: &mut AssetFile) -> bool {
         file.path().ends_with(".png")
@@ -64,23 +66,34 @@ impl AssetLoader for ImageLoader {
                 (Format::RGBA16UNorm, bytes)
             }
             image::DynamicImage::ImageRgba32F(data) => {
-                let mut reduced_precision = Vec::<f16>::with_capacity((data.width() * data.height() * 4) as usize * std::mem::size_of::<f16>());
-                for pixel in data.into_raw() {
-                    reduced_precision.push(f16::from_f32(pixel));
+                if REDUCE_32_BIT_PRECISION {
+                    let mut reduced_precision = Vec::<f16>::with_capacity((data.width() * data.height() * 4) as usize * std::mem::size_of::<f16>());
+                    for pixel in data.into_raw() {
+                        reduced_precision.push(f16::from_f32(pixel));
+                    }
+                    let bytes = box_bytes_of(reduced_precision.into_boxed_slice());
+                    (Format::RGBA16Float, bytes)
+                } else {
+                    let bytes = box_bytes_of(data.into_raw().into_boxed_slice());
+                    (Format::RGBA32Float, bytes)
                 }
-                let bytes = box_bytes_of(reduced_precision.into_boxed_slice());
-                (Format::RGBA16Float, bytes)
             }
             image::DynamicImage::ImageRgb32F(data) => {
-                let mut reduced_precision = Vec::<f16>::with_capacity((data.width() * data.height() * 4 * 4) as usize * std::mem::size_of::<f16>());
-                for pixel in data.into_raw() {
-                    reduced_precision.push(f16::from_f32(pixel));
-                    if reduced_precision.len() % 4 == 3 {
-                        reduced_precision.push(f16::from_f32(1.0f32));
+                if REDUCE_32_BIT_PRECISION {
+                    let mut reduced_precision = Vec::<f16>::with_capacity((data.width() * data.height() * 4 * 4) as usize * std::mem::size_of::<f16>());
+                    for pixel in data.into_raw() {
+                        reduced_precision.push(f16::from_f32(pixel));
+                        if reduced_precision.len() % 4 == 3 {
+                            reduced_precision.push(f16::from_f32(1.0f32));
+                        }
                     }
+                    let bytes = box_bytes_of(reduced_precision.into_boxed_slice());
+                    (Format::RGBA16Float, bytes)
+                } else {
+                    let img = image::DynamicImage::ImageRgb32F(data);
+                    let bytes = box_bytes_of(img.into_rgba32f().into_raw().into_boxed_slice());
+                    (Format::RGBA32Float, bytes)
                 }
-                let bytes = box_bytes_of(reduced_precision.into_boxed_slice());
-                (Format::RGBA16Float, bytes)
             }
             _ => {
                 log::warn!("Unsupported image format, using RGBA8UNorm");
