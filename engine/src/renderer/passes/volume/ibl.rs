@@ -430,7 +430,7 @@ impl ImageBasedLightingPreparation {
 
         if !self.preintegration_lut_computed {
             self.calculate_preintegration_lut(cmd_buffer, pass_params);
-            //self.preintegration_lut_computed = true;
+            self.preintegration_lut_computed = true;
         }
 
         let texture_ready = self
@@ -442,7 +442,7 @@ impl ImageBasedLightingPreparation {
         }
         self.deproject_env_map(cmd_buffer, pass_params);
         self.filter_env_map(cmd_buffer, pass_params);
-        //self.prepared = true;
+        self.prepared = true;
     }
 
     pub fn get_texture(&self) -> ImageBasedLightingTextures {
