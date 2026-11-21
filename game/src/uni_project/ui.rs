@@ -341,9 +341,9 @@ fn import_materials_ui_system(
         };
 
         const TEXTURE_WIDTH: u32 = 128;
-        update_texture(&albedo_path, TEXTURE_WIDTH, false, &material_ui.albedo, &asset_manager);
-        update_texture(&roughness_path, TEXTURE_WIDTH, true, &material_ui.roughness, &asset_manager);
-        update_texture(&metalness_path, TEXTURE_WIDTH, true, &material_ui.metalness, &asset_manager);
+        update_texture(&albedo_path, TEXTURE_WIDTH, 4, &material_ui.albedo, &asset_manager);
+        update_texture(&roughness_path, TEXTURE_WIDTH, 1, &material_ui.roughness, &asset_manager);
+        update_texture(&metalness_path, TEXTURE_WIDTH, 1, &material_ui.metalness, &asset_manager);
         state.materials.insert(material_path, material_ui);
     }
 }
@@ -436,15 +436,15 @@ fn materials_ui_system(
                         ui.text("Albedo:");
                         if color_gradient(ui,false, &mut material.albedo.positions, &mut material.albedo.values,
                                           &format!("albedo{:?}", material_path), albedo_handle) {
-                            update_texture(&albedo_path, TEXTURE_WIDTH, false, &material.albedo, &asset_manager);
+                            update_texture(&albedo_path, TEXTURE_WIDTH, 4, &material.albedo, &asset_manager);
                         }
                         ui.text("Roughness:");
                         if color_gradient(ui, true, &mut material.roughness.positions, &mut material.roughness.values, &format!("roughness{:?}", material_path), roughness_handle) {
-                            update_texture(&roughness_path, TEXTURE_WIDTH, true, &material.roughness, &asset_manager);
+                            update_texture(&roughness_path, TEXTURE_WIDTH, 1, &material.roughness, &asset_manager);
                         }
                         ui.text("Metalness:");
                         if color_gradient(ui, true, &mut material.metalness.positions, &mut material.metalness.values, &format!("metalness{:?}", material_path), metalness_handle) {
-                            update_texture(&metalness_path, TEXTURE_WIDTH, true, &material.metalness, &asset_manager);
+                            update_texture(&metalness_path, TEXTURE_WIDTH, 1, &material.metalness, &asset_manager);
                         }
 
                         // TODO: Rate limit updates
@@ -470,6 +470,36 @@ fn materials_ui_system(
             });
         });
 
+}
+
+fn linear_to_srgb(linear_color: [f32; 4]) -> [f32; 4] {
+    let mut srgb_color: [f32; 4] = [0.0f32; 4];
+    for i in 0..linear_color.len() {
+        let c = linear_color[i];
+        let higher = 1.055 * c.powf(1.0 / 2.4) - 0.055;
+        let lower = c * 12.92;
+        srgb_color[i] = if c > 0.0031308 {
+            higher
+        } else {
+            lower
+        };
+    }
+    srgb_color
+}
+fn srgb_to_linear(srgb_color: [f32; 4]) -> [f32; 4] {
+    let mut linear_color: [f32; 4] = [0.0f32; 4];
+    for i in 0..linear_color.len() {
+        let c = srgb_color[i];
+        let cutoff = c <= 0.04058;
+        let higher = ((c + 0.055) / 1.055).powf(2.4);
+        let lower = c / 12.92;
+        linear_color[i] = if cutoff {
+            lower
+        } else {
+            higher
+        };
+    }
+    linear_color
 }
 
 fn color_gradient<const STEPS: usize>(ui: &dear_imgui_rs::Ui, greyscale: bool, positions: &mut [f32; STEPS], colors: &mut [[f32; 4]; STEPS], imgui_label_internal: &str, texture_handle: TextureHandle) -> bool {
@@ -527,8 +557,8 @@ fn color_gradient<const STEPS: usize>(ui: &dear_imgui_rs::Ui, greyscale: bool, p
     changed
 }
 
-fn update_texture(path: &str, width: u32, greyscale: bool, colors: &Colors<TEXTURE_GRADIENT_STEPS>, asset_manager: &Arc<AssetManager>) {
-    let data = build_texture_data::<TEXTURE_GRADIENT_STEPS>(width, &colors.positions, greyscale, &colors.values);
+fn update_texture(path: &str, width: u32, components: usize, colors: &Colors<TEXTURE_GRADIENT_STEPS>, asset_manager: &Arc<AssetManager>) {
+    let data = build_texture_data::<TEXTURE_GRADIENT_STEPS>(width, &colors.positions, components, &colors.values);
     let data_bytemuck = box_bytes_of(data);
 
     asset_manager.add_asset_data(
@@ -543,8 +573,12 @@ fn update_texture(path: &str, width: u32, greyscale: bool, colors: &Colors<TEXTU
                 array_length: 1,
                 samples: SampleCount::Samples1,
                 usage: TextureUsage::SAMPLED | TextureUsage::INITIAL_COPY,
-                supports_srgb: false,
-                format: if greyscale { Format::R8UNorm } else { Format::RGBA8UNorm }
+                supports_srgb: true,
+                format: match components {
+                    1 => Format::R8UNorm,
+                    4 => Format::RGBA8UNorm,
+                    _ => unreachable!()
+                }
             },
             data: smallvec![data_bytemuck]
         }),
@@ -553,10 +587,12 @@ fn update_texture(path: &str, width: u32, greyscale: bool, colors: &Colors<TEXTU
 }
 
 
-fn build_texture_data<const STEPS: usize>(width: u32, positions: &[f32; STEPS], greyscale: bool, colors: &[[f32; 4]; STEPS]) -> Box<[u8]> {
-    let components: usize = if greyscale { 1 } else { 4 };
+fn build_texture_data<const STEPS: usize>(width: u32, positions: &[f32; STEPS], components: usize, colors: &[[f32; 4]; STEPS]) -> Box<[u8]> {
     let mut data = Vec::<u8>::with_capacity((width as usize) * components);
     let mut start_pos_index = 0usize;
+
+    let linear_colors: [[f32; 4]; STEPS] = colors.map(|color| srgb_to_linear(color));
+
     for i in 0..width {
         let pos = (i as f32) / (width as f32);
         if start_pos_index != STEPS - 2 && pos >= positions[start_pos_index + 1] {
@@ -564,8 +600,8 @@ fn build_texture_data<const STEPS: usize>(width: u32, positions: &[f32; STEPS], 
         }
         let start_position = positions[start_pos_index];
         let end_position = positions[start_pos_index + 1];
-        let start_color = colors[start_pos_index];
-        let end_color = colors[start_pos_index + 1];
+        let start_color = linear_colors[start_pos_index];
+        let end_color = linear_colors[start_pos_index + 1];
 
         let lerp_pos = ((pos - start_position) / (end_position - start_position)).max(0.0).min(1.0);
         for j in 0..components  {
