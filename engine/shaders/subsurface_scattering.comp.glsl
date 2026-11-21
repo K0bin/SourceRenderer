@@ -46,7 +46,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 #include "util.inc.glsl"
 #include "frame_set_common.inc.glsl"
 
-layout (constant_id = 0) const uint kernelSize = 17;
+layout (constant_id = 0) const uint kernelSize = 25u;
 
 layout(push_constant, std430) uniform Params {
     vec2 dir;
@@ -63,6 +63,8 @@ layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3) uniform Kernel {
 
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 4) uniform texture2D sssIntensityImage;
 
+const bool followSurface = true;
+
 void main() {
     ivec2 outputPx = ivec2(gl_GlobalInvocationID.xy);
 
@@ -73,15 +75,15 @@ void main() {
 
     vec2 texcoord = (vec2(outputPx) + 0.5) / vec2(outputSize);
 
-    vec4 colorM = textureLod(sampler2D(sourceImage, samplerLinear), texcoord, 0.0);
-    float sssIntensity = textureLod(sampler2D(sssIntensityImage, samplerLinear), texcoord, 0.0).r;
+    vec4 colorM = textureLod(sampler2D(sourceImage, samplerNearest), texcoord, 0.0);
+    float sssIntensity = textureLod(sampler2D(sssIntensityImage, samplerNearest), texcoord, 0.0).r;
 
-    if (sssIntensity == 0.0) {
+    if (sssIntensity < 0.01 || params.sssWidth < 0.01) {
         imageStore(destImage, outputPx, colorM);
         return;
     }
 
-    float depth = textureLod(sampler2D(sourceDepth, samplerLinear), texcoord, 0.0).r;
+    float depth = textureLod(sampler2D(sourceDepth, samplerNearest), texcoord, 0.0).r;
     float depthM = linearizeDepth(depth, camera.zNear, camera.zFar);
 
     // Calculate the sssWidth scale (1.0 for a unit plane sitting on the
@@ -104,13 +106,14 @@ void main() {
         vec2 offset = texcoord + kernel[i].a * finalStep;
         vec4 color = textureLod(sampler2D(sourceImage, samplerLinear), offset, 0.0);
 
-        #ifdef SSSS_FOLLOW_SURFACE
-        // If the difference in depth is huge, we lerp color back to "colorM":
-        float depth = linearizeDepth(camera, textureLod(sampler2D(sourceDepth, samplerLinear), offset, 0.0).r);
-        float s = clamp(300.0f * distanceToProjectionWindow *
-        params.sssWidth * abs(depthM - depth), 0.0, 1.0);
-        color.rgb = mix(color.rgb, colorM.rgb, s);
-        #endif
+        if (followSurface) {
+            // If the difference in depth is huge, we lerp color back to "colorM":
+            float offsetDepth = textureLod(sampler2D(sourceDepth, samplerLinear), offset, 0.0).r;
+            float linearDepth = linearizeDepth(offsetDepth, camera.zNear, camera.zFar);
+            float s = clamp(300.0f * distanceToProjectionWindow *
+            params.sssWidth * abs(depthM - linearDepth), 0.0, 1.0);
+            color.rgb = mix(color.rgb, colorM.rgb, s);
+        }
 
         // Accumulate
         colorBlurred.rgb += kernel[i].rgb * color.rgb;
