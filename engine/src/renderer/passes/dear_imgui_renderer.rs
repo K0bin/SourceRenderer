@@ -496,7 +496,8 @@ impl DearImguiRenderer {
                                 } else {
                                     let asset_handle = AssetHandle::new(id.id(), AssetType::Texture);
                                     let texture = assets_readonly.get_texture_opt(asset_handle.into());
-                                    texture.map(|t| &t.view).unwrap_or(&assets_readonly.get_placeholder_texture_black().view)
+                                    texture.map(|t| t.srgb_view.as_ref().unwrap_or(&t.view))
+                                        .unwrap_or(&assets_readonly.get_placeholder_texture_black().view)
                                 }
                             }
                             dear_imgui_rs::TextureBinding::Managed(id) => {
