@@ -44,7 +44,7 @@ impl VkTexture {
         device: &RawVkDevice,
         mut target: Pin<&mut VkImageCreateInfoCollection>,
         info: &gpu::TextureInfo,
-    ) {
+    ) -> Result<(), gpu::TextureError> {
         let mut array_layers = info.array_length;
         let mut flags = vk::ImageCreateFlags::empty();
 
@@ -154,9 +154,8 @@ impl VkTexture {
                     device.physical_device,
                     &format_info,
                     &mut props,
-                )
-                .unwrap()
-        };
+                ).map_err(|_| gpu::TextureError::Unsupported)
+        }?;
 
         if target
             .create_info
@@ -166,6 +165,8 @@ impl VkTexture {
         {
             target.create_info.usage = texture_usage_to_vk(info.usage, false);
         }
+
+        Ok(())
     }
 
     pub(crate) unsafe fn new(
@@ -173,7 +174,7 @@ impl VkTexture {
         info: &gpu::TextureInfo,
         memory: ResourceMemory,
         name: Option<&str>,
-    ) -> Result<Self, gpu::OutOfMemoryError> {
+    ) -> Result<Self, gpu::TextureError> {
         let memory_type_index = match &memory {
             ResourceMemory::Suballocated { memory, .. } => memory.memory_type_index(),
             ResourceMemory::Dedicated { memory_type_index } => *memory_type_index,
@@ -181,7 +182,7 @@ impl VkTexture {
 
         let mut create_info_collection = VkImageCreateInfoCollection::default();
         let mut pinned = Pin::new(&mut create_info_collection);
-        Self::build_create_info(device, pinned.as_mut(), info);
+        Self::build_create_info(device, pinned.as_mut(), info)?;
 
         if pinned
             .create_info
@@ -223,7 +224,7 @@ impl VkTexture {
             if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
                 || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
             {
-                return Err(gpu::OutOfMemoryError {});
+                return Err(gpu::TextureError::OutOfMemory(gpu::OutOfMemoryError));
             }
         }
         let image = image_res.unwrap();
@@ -264,7 +265,7 @@ impl VkTexture {
                             || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
                         {
                             device.destroy_image(image, None);
-                            return Err(gpu::OutOfMemoryError {});
+                            return Err(gpu::TextureError::OutOfMemory(gpu::OutOfMemoryError));
                         }
                     }
                     memory_result.unwrap()
@@ -282,7 +283,7 @@ impl VkTexture {
                             || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
                         {
                             device.destroy_image(image, None);
-                            return Err(gpu::OutOfMemoryError {});
+                            return Err(gpu::TextureError::OutOfMemory(gpu::OutOfMemoryError));
                         }
                     }
                 }
@@ -302,7 +303,7 @@ impl VkTexture {
                         || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
                     {
                         device.destroy_image(image, None);
-                        return Err(gpu::OutOfMemoryError {});
+                        return Err(gpu::TextureError::OutOfMemory(gpu::OutOfMemoryError));
                     }
                 }
 

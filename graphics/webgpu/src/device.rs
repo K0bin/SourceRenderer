@@ -312,8 +312,8 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         info: &gpu::TextureInfo,
         _memory_type_index: u32,
         name: Option<&str>,
-    ) -> Result<WebGPUTexture, gpu::OutOfMemoryError> {
-        WebGPUTexture::new(&self.device, info, name).map_err(|_e| gpu::OutOfMemoryError {})
+    ) -> Result<WebGPUTexture, gpu::TextureError> {
+        WebGPUTexture::new(&self.device, info, name)
     }
 
     fn create_shader(&self, shader: &gpu::PackedShader, name: Option<&str>) -> WebGPUShader {

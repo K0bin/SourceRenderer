@@ -96,7 +96,7 @@ impl Device {
         &self,
         info: &TextureInfo,
         name: Option<&str>,
-    ) -> Result<Arc<super::Texture>, OutOfMemoryError> {
+    ) -> Result<Arc<super::Texture>, gpu::TextureError> {
         super::Texture::new(&self.device, &self.allocator, &self.destroyer, info, name)
     }
 

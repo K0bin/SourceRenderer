@@ -1,3 +1,4 @@
+use crate::gpu;
 use super::*;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -38,8 +39,8 @@ pub struct MemoryInfo {
     pub memory_kind: MemoryKind,
 }
 
-#[derive(Debug)]
-pub struct OutOfMemoryError {}
+#[derive(Debug, Clone)]
+pub struct OutOfMemoryError;
 
 pub trait Heap<B: GPUBackend> {
     fn memory_type_index(&self) -> u32;
@@ -54,5 +55,5 @@ pub trait Heap<B: GPUBackend> {
         info: &TextureInfo,
         offset: u64,
         name: Option<&str>,
-    ) -> Result<B::Texture, OutOfMemoryError>;
+    ) -> Result<B::Texture, gpu::TextureError>;
 }

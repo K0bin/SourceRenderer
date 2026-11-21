@@ -54,7 +54,7 @@ pub trait Device<B: GPUBackend> {
         info: &TextureInfo,
         memory_type_index: u32,
         name: Option<&str>,
-    ) -> Result<B::Texture, OutOfMemoryError>;
+    ) -> Result<B::Texture, TextureError>;
     fn create_shader(&self, shader: &PackedShader, name: Option<&str>) -> B::Shader;
     fn create_texture_view(
         &self,

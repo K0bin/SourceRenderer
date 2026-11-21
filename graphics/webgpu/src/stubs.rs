@@ -45,7 +45,7 @@ impl gpu::Heap<WebGPUBackend> for WebGPUHeap {
         name: Option<&str>,
     ) -> Result<WebGPUBuffer, gpu::OutOfMemoryError> {
         WebGPUBuffer::new(&self.device, info, self.mappable, name)
-            .map_err(|_| gpu::OutOfMemoryError {})
+            .map_err(|_| gpu::OutOfMemoryError)
     }
 
     unsafe fn create_texture(
@@ -53,7 +53,7 @@ impl gpu::Heap<WebGPUBackend> for WebGPUHeap {
         info: &gpu::TextureInfo,
         _offset: u64,
         name: Option<&str>,
-    ) -> Result<WebGPUTexture, gpu::OutOfMemoryError> {
-        WebGPUTexture::new(&self.device, info, name).map_err(|_| gpu::OutOfMemoryError {})
+    ) -> Result<WebGPUTexture, gpu::TextureError> {
+        WebGPUTexture::new(&self.device, info, name)
     }
 }

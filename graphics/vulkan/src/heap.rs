@@ -66,7 +66,7 @@ impl VkMemoryHeap {
             if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
                 || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
             {
-                return Err(gpu::OutOfMemoryError {});
+                return Err(gpu::OutOfMemoryError);
             }
         }
         let memory = memory_result.unwrap();
@@ -154,7 +154,7 @@ impl gpu::Heap<VkBackend> for VkMemoryHeap {
         info: &gpu::TextureInfo,
         offset: u64,
         name: Option<&str>,
-    ) -> Result<VkTexture, gpu::OutOfMemoryError> {
+    ) -> Result<VkTexture, gpu::TextureError> {
         unsafe {
             VkTexture::new(
                 &self.device,

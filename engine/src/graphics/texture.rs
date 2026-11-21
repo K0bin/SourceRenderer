@@ -27,7 +27,7 @@ impl Texture {
         destroyer: &Arc<DeferredDestroyer>,
         info: &TextureInfo,
         name: Option<&str>,
-    ) -> Result<Arc<Self>, OutOfMemoryError> {
+    ) -> Result<Arc<Self>, gpu::TextureError> {
         let heap_info = device.get_texture_heap_info(info);
         let (texture, allocation) = if heap_info.dedicated_allocation_preference
             == gpu::DedicatedAllocationPreference::RequireDedicated
@@ -35,8 +35,8 @@ impl Texture {
                 == gpu::DedicatedAllocationPreference::PreferDedicated
         {
             let memory_types = device.memory_type_infos();
-            let mut texture: Result<active_gpu_backend::Texture, OutOfMemoryError> =
-                Err(OutOfMemoryError {});
+            let mut texture: Result<active_gpu_backend::Texture, gpu::TextureError> =
+                Err(gpu::TextureError::OutOfMemory(gpu::OutOfMemoryError));
 
             let mask = allocator.find_memory_type_mask(
                 MemoryUsage::GPUMemory,
@@ -47,8 +47,10 @@ impl Texture {
                     continue;
                 }
                 texture = device.create_texture(info, i, name);
-                if texture.is_ok() {
-                    break;
+                match texture {
+                    Ok(_) => break,
+                    Err(gpu::TextureError::OutOfMemory(_)) => continue,
+                    Err(e) => return Err(e),
                 }
             }
 
@@ -85,7 +87,8 @@ impl Texture {
             }
             (texture?, None)
         } else {
-            let allocation = allocator.allocate(MemoryUsage::GPUMemory, &heap_info)?;
+            let allocation = allocator.allocate(MemoryUsage::GPUMemory, &heap_info)
+                .map_err(|e| gpu::TextureError::OutOfMemory(e))?;
             let texture = unsafe {
                 allocation.as_ref().data().create_texture(
                     info,

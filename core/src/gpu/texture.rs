@@ -125,6 +125,12 @@ impl TextureDimension {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum TextureError {
+    OutOfMemory(OutOfMemoryError),
+    Unsupported,
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct TextureInfo {
     pub dimension: TextureDimension,

@@ -109,7 +109,7 @@ impl WebGPUTexture {
         device: &GpuDevice,
         info: &gpu::TextureInfo,
         name: Option<&str>,
-    ) -> Result<Self, ()> {
+    ) -> Result<Self, gpu::TextureError> {
         let mut size = [
             js_sys::Number::from(0),
             js_sys::Number::from(0),
@@ -197,7 +197,7 @@ impl WebGPUTexture {
         }
         let texture = device.create_texture(&descriptor).map_err(|e| {
             log::error!("Failed to create texture: {:?}", e);
-            ()
+            gpu::TextureError::Unsupported
         })?;
 
         Ok(Self {

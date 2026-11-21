@@ -106,7 +106,7 @@ impl gpu::Device<VkBackend> for VkDevice {
         info: &gpu::TextureInfo,
         memory_type_index: u32,
         name: Option<&str>,
-    ) -> Result<VkTexture, gpu::OutOfMemoryError> {
+    ) -> Result<VkTexture, gpu::TextureError> {
         unsafe {
             VkTexture::new(
                 &self.device,

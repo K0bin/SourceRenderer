@@ -59,7 +59,7 @@ impl VkBuffer {
                 if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
                     || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
                 {
-                    return Err(gpu::OutOfMemoryError {});
+                    return Err(gpu::OutOfMemoryError);
                 }
             }
             buffer_res.unwrap()
@@ -113,7 +113,7 @@ impl VkBuffer {
                         if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
                             || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
                         {
-                            return Err(gpu::OutOfMemoryError {});
+                            return Err(gpu::OutOfMemoryError);
                         }
                     }
                     memory_result.unwrap()
@@ -130,7 +130,7 @@ impl VkBuffer {
                         if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
                             || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
                         {
-                            return Err(gpu::OutOfMemoryError {});
+                            return Err(gpu::OutOfMemoryError);
                         }
                     }
                 }
@@ -175,7 +175,7 @@ impl VkBuffer {
                         if e == vk::Result::ERROR_OUT_OF_DEVICE_MEMORY
                             || e == vk::Result::ERROR_OUT_OF_HOST_MEMORY
                         {
-                            return Err(gpu::OutOfMemoryError {});
+                            return Err(gpu::OutOfMemoryError);
                         }
                     }
                 }
