@@ -334,12 +334,31 @@ fn import_materials_ui_system(
         let _ = asset_manager.get_or_reserve_handle(&roughness_path, AssetType::Texture);
         let _ = asset_manager.get_or_reserve_handle(&metalness_path, AssetType::Texture);
 
-        let material_ui = MaterialUIState::default();
+        let material_ui = if material_path != "default0" {
+            MaterialUIState::default()
+        } else {
+            default_material()
+        };
+
         const TEXTURE_WIDTH: u32 = 128;
         update_texture(&albedo_path, TEXTURE_WIDTH, false, &material_ui.albedo, &asset_manager);
         update_texture(&roughness_path, TEXTURE_WIDTH, true, &material_ui.roughness, &asset_manager);
         update_texture(&metalness_path, TEXTURE_WIDTH, true, &material_ui.metalness, &asset_manager);
         state.materials.insert(material_path, material_ui);
+    }
+}
+
+fn default_material() -> MaterialUIState<TEXTURE_GRADIENT_STEPS> {
+    MaterialUIState {
+        albedo: Colors::<TEXTURE_GRADIENT_STEPS> {
+            positions: [0.303, 0.495, 0.615],
+            values: [[0.86, 0.524, 0.524, 0.9], [0.814, 0.218, 0.176, 0.9], [1.0, 0.821, 0.662, 1.0]],
+        },
+        roughness: Colors::<TEXTURE_GRADIENT_STEPS> {
+        positions: [0.303, 0.495, 0.615],
+        values: [[0.66, 0.0, 0.0, 0.0], [0.26, 0.0, 0.0, 0.0], [0.885, 0.0, 0.0, 0.0]],
+        },
+        metalness: Default::default(),
     }
 }
 
