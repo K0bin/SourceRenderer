@@ -3,6 +3,7 @@
 #extension GL_GOOGLE_include_directive: enable
 
 #include "descriptor_sets.inc.glsl"
+#include "util.inc.glsl"
 
 layout(location = 0) in vec2 in_uv;
 layout(location = 1) in vec4 in_color;
@@ -14,6 +15,6 @@ layout (set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform sampler samp;
 
 void main(void) {
     vec4 color = in_color;
-    color *= textureLod(sampler2D(texture, samp), in_uv, 0);
+    color *= linearToSRGB(textureLod(sampler2D(texture, samp), in_uv, 0));
     out_color = color;
 }
