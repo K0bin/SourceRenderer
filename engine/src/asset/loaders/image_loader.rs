@@ -2,9 +2,10 @@ use crate::asset::asset_manager::{AssetFile, AssetLoader};
 use crate::asset::{AssetData, AssetLoadPriority, AssetLoaderProgress, AssetManager, TextureData};
 use crate::graphics::*;
 use bytemuck::box_bytes_of;
-use image::{EncodableLayout, GenericImageView, ImageFormat, ImageReader};
+use image::{GenericImageView, ImageFormat, ImageReader};
 use smallvec::smallvec;
 use std::sync::Arc;
+use half::f16;
 
 pub struct ImageLoader {}
 
@@ -54,19 +55,37 @@ impl AssetLoader for ImageLoader {
         let (width, height) = img.dimensions();
 
         let (format, data) = match img {
-            image::DynamicImage::ImageRgba8(data) => (Format::RGBA8UNorm, data.as_raw().clone()),
+            image::DynamicImage::ImageRgba8(data) => {
+                let bytes = box_bytes_of(data.into_raw().into_boxed_slice());
+                (Format::RGBA8UNorm, bytes)
+            }
             image::DynamicImage::ImageRgba16(data) => {
-                (Format::RGBA16UNorm, Vec::<u8>::from(data.as_bytes()))
+                let bytes = box_bytes_of(data.into_raw().into_boxed_slice());
+                (Format::RGBA16UNorm, bytes)
             }
             image::DynamicImage::ImageRgba32F(data) => {
-                (Format::RGBA32Float, Vec::<u8>::from(data.as_bytes()))
+                let mut reduced_precision = Vec::<f16>::with_capacity((data.width() * data.height() * 4) as usize * std::mem::size_of::<f16>());
+                for pixel in data.into_raw() {
+                    reduced_precision.push(f16::from_f32(pixel));
+                }
+                let bytes = box_bytes_of(reduced_precision.into_boxed_slice());
+                (Format::RGBA16Float, bytes)
             }
-            image::DynamicImage::ImageRgb32F(_) => {
-                (Format::RGBA32Float, Vec::<u8>::from(img.to_rgba32f().as_bytes()))
+            image::DynamicImage::ImageRgb32F(data) => {
+                let mut reduced_precision = Vec::<f16>::with_capacity((data.width() * data.height() * 4 * 4) as usize * std::mem::size_of::<f16>());
+                for pixel in data.into_raw() {
+                    reduced_precision.push(f16::from_f32(pixel));
+                    if reduced_precision.len() % 4 == 3 {
+                        reduced_precision.push(f16::from_f32(1.0f32));
+                    }
+                }
+                let bytes = box_bytes_of(reduced_precision.into_boxed_slice());
+                (Format::RGBA16Float, bytes)
             }
             _ => {
                 log::warn!("Unsupported image format, using RGBA8UNorm");
-                (Format::RGBA8UNorm, img.into_rgba8().into_raw())
+                let bytes = box_bytes_of(img.into_rgb8().into_raw().into_boxed_slice());
+                (Format::RGBA8UNorm, bytes)
             },
         };
 
@@ -85,7 +104,7 @@ impl AssetLoader for ImageLoader {
                     usage: TextureUsage::SAMPLED | TextureUsage::INITIAL_COPY,
                     supports_srgb: false,
                 },
-                data: smallvec![box_bytes_of(data.into_boxed_slice())],
+                data: smallvec![data],
             }),
             Some(progress),
             priority,
