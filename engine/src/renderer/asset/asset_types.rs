@@ -10,6 +10,7 @@ use crate::math::BoundingBox;
 
 pub struct RendererTexture {
     pub(crate) view: Arc<TextureView>,
+    pub(crate) srgb_view: Option<Arc<TextureView>>,
     pub(crate) bindless_index: Option<BindlessSlot>,
 }
 

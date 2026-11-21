@@ -1,5 +1,4 @@
 use std::sync::Arc;
-
 use super::*;
 use crate::Mutex;
 use crate::asset::{
@@ -117,8 +116,46 @@ impl AssetIntegrator {
         priority: AssetLoadPriority,
         texture_data: TextureData,
     ) -> (RendererTexture, Option<QueueFenceValue>) {
-        let (view, fence) =
-            self.upload_texture(handle, name, texture_data, priority == AssetLoadPriority::Low);
+        let name = name.map_or_else(|| format!("{:?}", handle), |n| n.to_string());
+
+        let (texture, fence) =
+            self.upload_texture(handle, Some(&name), texture_data, priority == AssetLoadPriority::Low);
+
+        let view = self.device.create_texture_view(
+            &texture,
+            &TextureViewInfo {
+                base_mip_level: 0,
+                mip_level_length: texture.info().mip_levels,
+                base_array_layer: 0,
+                array_layer_length: 1,
+                format: None,
+                plane: TexturePlane::Primary,
+            },
+            Some(&name),
+        );
+        let srgb_view = if texture.info().supports_srgb {
+            let srgb_format = texture.info().format.to_srgb();
+            if let Some(srgb_format) = srgb_format {
+                Some(self.device.create_texture_view(
+                    &texture,
+                    &TextureViewInfo {
+                        base_mip_level: 0,
+                        mip_level_length: texture.info().mip_levels,
+                        base_array_layer: 0,
+                        array_layer_length: 1,
+                        format: Some(srgb_format),
+                        plane: TexturePlane::Primary,
+                    },
+                    Some(&name),
+                ))
+            } else {
+                log::warn!("SRGB compatibility enabled but format {:?} doesn't have an SRGB equivalent", texture.info().format);
+                None
+            }
+        } else {
+            None
+        };
+        
         let bindless_index = if self.device.supports_bindless() {
             self.device.insert_texture_into_bindless_heap(&view)
         } else {
@@ -126,6 +163,7 @@ impl AssetIntegrator {
         };
         let renderer_texture = RendererTexture {
             view: view.clone(),
+            srgb_view,
             bindless_index,
         };
         (renderer_texture, fence)
@@ -217,25 +255,25 @@ impl AssetIntegrator {
         &self,
         handle: TextureHandle,
         name: Option<&str>,
-        texture: TextureData,
+        texture_data: TextureData,
         do_async: bool,
-    ) -> (Arc<TextureView>, Option<QueueFenceValue>) {
+    ) -> (Arc<Texture>, Option<QueueFenceValue>) {
         let name = name.map_or_else(|| format!("{:?}", handle), |n| n.to_string());
-        let gpu_texture = self
+        let texture = self
             .device
-            .create_texture(&texture.info, Some(&name))
+            .create_texture(&texture_data.info, Some(&name))
             .unwrap();
-        let subresources = texture.info.array_length * texture.info.mip_levels;
+        let subresources = texture_data.info.array_length * texture_data.info.mip_levels;
         let mut fence = Option::<QueueFenceValue>::None;
         for subresource in 0..subresources {
-            let mip_level = subresource % texture.info.mip_levels;
-            let array_index = subresource / texture.info.mip_levels;
+            let mip_level = subresource % texture_data.info.mip_levels;
+            let array_index = subresource / texture_data.info.mip_levels;
             if do_async {
                 fence = self
                     .device
                     .init_texture_async(
-                        &texture.data[subresource as usize][..],
-                        &gpu_texture,
+                        &texture_data.data[subresource as usize][..],
+                        &texture,
                         mip_level,
                         array_index,
                     )
@@ -243,28 +281,15 @@ impl AssetIntegrator {
             } else {
                 self.device
                     .init_texture(
-                        &texture.data[subresource as usize][..],
-                        &gpu_texture,
+                        &texture_data.data[subresource as usize][..],
+                        &texture,
                         mip_level,
                         array_index,
                     )
                     .unwrap();
             }
         }
-        let view = self.device.create_texture_view(
-            &gpu_texture,
-            &TextureViewInfo {
-                base_mip_level: 0,
-                mip_level_length: texture.info.mip_levels,
-                base_array_layer: 0,
-                array_layer_length: 1,
-                format: None,
-                plane: TexturePlane::Primary,
-            },
-            Some(&name),
-        );
-
-        (view, fence)
+        (texture, fence)
     }
 
     fn integrate_material(

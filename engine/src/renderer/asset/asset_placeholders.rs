@@ -47,6 +47,7 @@ impl AssetPlaceholders {
         };
         let zero_rtexture = RendererTexture {
             view: zero_view,
+            srgb_view: None,
             bindless_index: zero_index,
         };
 
@@ -83,6 +84,7 @@ impl AssetPlaceholders {
         };
         let zero_rtexture_black = RendererTexture {
             view: zero_view_black,
+            srgb_view: None,
             bindless_index: zero_black_index,
         };
         let placeholder_material =

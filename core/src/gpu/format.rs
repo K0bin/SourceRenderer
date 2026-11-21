@@ -5,9 +5,9 @@ use crate::Vec2UI;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Format {
     Unknown,
-    R32UNorm,
     R16UNorm,
     R8UNorm,
+    R8Srgb,
     RGBA8UNorm,
     RGBA8Srgb,
     BGR8UNorm,
@@ -82,7 +82,6 @@ impl Format {
             Format::BC2 => 16,
             Format::BC3 => 16,
             Format::Unknown => panic!("Unknown format"),
-            Format::R32UNorm => 4,
             Format::R16UNorm => 2,
             Format::R8UNorm => 1,
             Format::RGBA8Srgb => 1,
@@ -102,6 +101,7 @@ impl Format {
             Format::D32 => 4,
             Format::D32S8 => 5,
             Format::D24S8 => 4,
+            Format::R8Srgb => 1,
         }
     }
 
@@ -139,7 +139,6 @@ impl Format {
         match self {
             Format::R8UNorm
             | Format::R16UNorm
-            | Format::R32UNorm
             | Format::RG8UNorm
             | Format::BGR8UNorm
             | Format::RG16UNorm
@@ -160,7 +159,8 @@ impl Format {
     pub fn is_srgb(&self) -> bool {
         match self {
             Format::RGBA8Srgb
-            | Format::BGRA8Srgb => true,
+            | Format::BGRA8Srgb
+            | Format::R8Srgb => true,
             _ => false,
         }
     }
@@ -183,6 +183,7 @@ impl Format {
         match self {
             Format::RGBA8UNorm => Some(Format::RGBA8Srgb),
             Format::BGRA8UNorm => Some(Format::BGRA8Srgb),
+            Format::R8UNorm => Some(Format::R8Srgb),
             _ => None,
         }
     }
@@ -191,9 +192,9 @@ impl Format {
         match self {
             Format::RGBA8Srgb => Some(Format::RGBA8UNorm),
             Format::R16UInt | Format::R16Float | Format::R16SNorm => Some(Format::R16UNorm),
-            Format::R32UInt => Some(Format::R32UNorm),
             Format::RGBA16Float => Some(Format::RGBA16UNorm),
             Format::BGRA8Srgb => Some(Format::BGRA8UNorm),
+            Format::R8Srgb => Some(Format::R8UNorm),
             _ => None,
         }
     }

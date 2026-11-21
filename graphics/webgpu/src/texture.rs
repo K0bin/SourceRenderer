@@ -10,7 +10,6 @@ use web_sys::{
 pub(crate) fn format_to_webgpu(format: gpu::Format) -> GpuTextureFormat {
     match format {
         gpu::Format::Unknown => GpuTextureFormat::__Invalid,
-        gpu::Format::R32UNorm => panic!("Unsupported format"),
         gpu::Format::R16UNorm => panic!("Unsupported format"),
         gpu::Format::R8UNorm => GpuTextureFormat::R8unorm,
         gpu::Format::RG32UInt => GpuTextureFormat::R32uint,
@@ -46,6 +45,7 @@ pub(crate) fn format_to_webgpu(format: gpu::Format) -> GpuTextureFormat {
         gpu::Format::D32 => GpuTextureFormat::Depth32float,
         gpu::Format::D32S8 => GpuTextureFormat::Depth32floatStencil8,
         gpu::Format::D24S8 => GpuTextureFormat::Depth24plusStencil8,
+        gpu::Format::R8Srgb => panic!("Unsupported format"),
     }
 }
 
