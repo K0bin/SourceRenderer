@@ -28,7 +28,7 @@ layout(push_constant, std430) uniform Params {
 };
 
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform textureCube envMap;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, rgba8) uniform coherent writeonly imageCube outputTexture;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, rgba16f) uniform coherent writeonly imageCube outputTexture;
 
 // from http://holger.dammertz.org/stuff/notes_HammersleyOnHemisphere.html
 // Hacker's Delight, Henry S. Warren, 2001
@@ -76,7 +76,6 @@ mat3 getNormalMat(vec3 normal) {
 }
 
 // Returns a halfway vector that was sampled according to GGX
-const float PI = 3.141592;
 vec3 importantSampleGGX(vec2 uniformSample, float roughness) {
     float phi = 2.0 * PI * uniformSample.x;
     float u = uniformSample.y;

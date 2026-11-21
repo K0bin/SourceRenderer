@@ -4,8 +4,7 @@
 
 #include "descriptor_sets.inc.glsl"
 #include "frame_set_common.inc.glsl"
-
-const float PI = 3.14159265359;
+#include "util.inc.glsl"
 
 layout(location = 0) in vec3 in_worldPosition;
 layout(location = 1) in vec3 in_normal;

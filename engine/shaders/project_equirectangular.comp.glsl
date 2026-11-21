@@ -25,10 +25,7 @@ layout(local_size_x = 8,
 #include "frame_set_common.inc.glsl"
 
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform texture2D envMap;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, rgba8) uniform coherent writeonly imageCube outputTexture;
-
-const float PI = 3.141592;
-const float TwoPI = 2 * PI;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, rgba16f) uniform coherent writeonly imageCube outputTexture;
 
 // Calculate normalized sampling direction vector based on current fragment coordinates (gl_GlobalInvocationID.xyz).
 // This is essentially "inverse-sampling": we reconstruct what the sampling vector would be if we wanted it to "hit"
@@ -64,7 +61,7 @@ void main(void) {
     vec2 sphericalUV = directionToSphericalEnvmap(v);
 
     // Sample equirectangular texture.
-    vec4 color = texture(sampler2D(envMap, samplerLinear), sphericalUV);
+    vec4 color = textureLod(sampler2D(envMap, samplerLinear), sphericalUV, 0.0);
 
     // Write out color to output cubemap.
     imageStore(outputTexture, ivec3(gl_GlobalInvocationID), color);

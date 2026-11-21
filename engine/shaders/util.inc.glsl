@@ -1,6 +1,8 @@
 #ifndef UTIL_H
 #define UTIL_H
 
+#include "consts.inc.glsl"
+
 float linearizeDepth(float d, float zNear, float zFar) {
   //equivalent to: return 2.0 * zFar * zNear / (zNear + zFar - (2.0 * d - 1.0) * (zFar - zNear));
   return zNear * zFar / (zFar + d * (zNear - zFar));

@@ -25,7 +25,7 @@ layout(local_size_x = 8,
 #include "frame_set_common.inc.glsl"
 
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform textureCube envMap;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, rgba8) uniform coherent writeonly imageCube outputTexture;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, rgba16f) uniform coherent writeonly imageCube outputTexture;
 
 // from http://holger.dammertz.org/stuff/notes_HammersleyOnHemisphere.html
 // Hacker's Delight, Henry S. Warren, 2001
@@ -51,8 +51,6 @@ vec2 sampleHammersley(uint i)
 // Cosine-weighted sampling would be a better fit for Lambertian BRDF but since this
 // compute shader runs only once as a pre-processing step performance is not *that* important.
 // See: "Physically Based Rendering" 2nd ed., section 13.6.1.
-const float PI = 3.141592;
-const float TwoPI = 2 * PI;
 vec3 sampleHemisphere(float u1, float u2)
 {
 	const float theta = asin(sqrt(u1));
@@ -68,8 +66,8 @@ vec3 sampleHemisphere(float u1, float u2)
 // See: OpenGL core profile specs, section 8.13.
 vec3 getSamplingVector()
 {
-    vec2 st = gl_GlobalInvocationID.xy/vec2(imageSize(outputTexture));
-    vec2 uv = 2.0 * vec2(st.x, 1.0-st.y) - vec2(1.0);
+    vec2 st = (vec2(gl_GlobalInvocationID.xy) + vec2(0.5)) / vec2(imageSize(outputTexture));
+    vec2 uv = 2.0 * vec2(st.x, 1.0 - st.y) - vec2(1.0);
 
     vec3 ret;
     // Sadly 'switch' doesn't seem to work, at least on NVIDIA.
