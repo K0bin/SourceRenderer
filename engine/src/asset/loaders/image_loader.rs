@@ -69,7 +69,7 @@ impl AssetLoader for ImageLoader {
                 if REDUCE_32_BIT_PRECISION {
                     let mut reduced_precision = Vec::<f16>::with_capacity((data.width() * data.height() * 4) as usize * std::mem::size_of::<f16>());
                     for pixel in data.into_raw() {
-                        reduced_precision.push(f16::from_f32(pixel));
+                        reduced_precision.push(f16::from_f32(pixel.clamp(f16::MIN.to_f32(), f16::MAX.to_f32())));
                     }
                     let bytes = box_bytes_of(reduced_precision.into_boxed_slice());
                     (Format::RGBA16Float, bytes)
@@ -82,7 +82,7 @@ impl AssetLoader for ImageLoader {
                 if REDUCE_32_BIT_PRECISION {
                     let mut reduced_precision = Vec::<f16>::with_capacity((data.width() * data.height() * 4 * 4) as usize * std::mem::size_of::<f16>());
                     for pixel in data.into_raw() {
-                        reduced_precision.push(f16::from_f32(pixel));
+                        reduced_precision.push(f16::from_f32(pixel.clamp(f16::MIN.to_f32(), f16::MAX.to_f32())));
                         if reduced_precision.len() % 4 == 3 {
                             reduced_precision.push(f16::from_f32(1.0f32));
                         }
