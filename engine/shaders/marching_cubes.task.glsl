@@ -58,9 +58,7 @@ void main() {
 
                 uvec3 pos = base + offset;
                 float density = texelFetch(sampler3D(densityMap, samplerNearest), ivec3(pos), int(lod)).x;
-                bool cutOff = pos.x > sliceCut.x
-                    || pos.y > sliceCut.y
-                    || pos.z > sliceCut.z;
+                bool cutOff = any(greaterThan(pos, sliceCut));
                 density = !cutOff ? density : 0.001f;
 
                 uint index = ((x + z) & 1u) + z * 2u + y * 4u;

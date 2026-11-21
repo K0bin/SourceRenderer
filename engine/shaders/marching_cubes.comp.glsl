@@ -169,9 +169,7 @@ void main() {
                 uint index = ((x + z) & 1u) + z * 2u + y * 4u;
 
                 for (uint i = 0u; i < finalThresholdsCount; i++) {
-                    bool cutOff = pos.x > minThresholds[i].sliceCut.x
-                        || pos.y > minThresholds[i].sliceCut.y
-                        || pos.z > minThresholds[i].sliceCut.z;
+                    bool cutOff = any(greaterThan(pos, minThresholds[i].sliceCut));
                     float densityI = !cutOff ? density : 0.001f;
 
                     bool passes = densityI >= minThresholds[i].threshold;

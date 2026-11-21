@@ -21,32 +21,28 @@ layout(push_constant) uniform VeryHighFrequencyUbo {
 
 layout (set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform texture3D densityMap;
 
-
+const bool averageDebug = false;
 vec4 interpolateVertices(uvec3 pos1, uvec3 pos2) {
     vec3 fpos1 = vec3(pos1) + 0.5;
     vec3 fpos2 = vec3(pos2) + 0.5;
 
     float value1 = texelFetch(sampler3D(densityMap, samplerNearest), ivec3(pos1), int(lod)).x;
-    bool cutOff1 = pos1.x > sliceCut.x
-        || pos1.y > sliceCut.y
-        || pos1.z > sliceCut.z;
-    value1 = !cutOff1 ? value1 : 0.001f;
-
     float value2 = texelFetch(sampler3D(densityMap, samplerNearest), ivec3(pos2), int(lod)).x;
-    bool cutOff2 = pos2.x > sliceCut.x
-        || pos2.y > sliceCut.y
-        || pos2.z > sliceCut.z;
-    value2 = !cutOff2 ? value2 : 0.001f;
 
-    if (abs(value1 - threshold) < 0.00001 || abs(value1 - value2) < 0.00001) {
+    if (abs(value1 - threshold) < 0.00001
+        || abs(value1 - value2) < 0.00001
+        || any(greaterThan(pos2, sliceCut)))
         return vec4(fpos1, value1);
-    }
-    if (abs(value2 - threshold) < 0.00001) {
+
+    if (abs(value2 - threshold) < 0.00001
+        || any(greaterThan(pos1, sliceCut)))
         return vec4(fpos2, value2);
-    }
-    float a = (threshold - value1) / (value2 - value1);
-    return mix(vec4(fpos1, value1), vec4(fpos2, value2), a);
-    //return (vec4(fpos1, value1) + vec4(fpos2, value2)) / 2.0; // debug with simple average
+
+    if (!averageDebug) {
+        float a = (threshold - value1) / (value2 - value1);
+        return mix(vec4(fpos1, value1), vec4(fpos2, value2), a);
+    } else
+        return (vec4(fpos1, value1) + vec4(fpos2, value2)) / 2.0; // debug with simple average
 }
 
 
@@ -88,7 +84,7 @@ void main(void) {
     out_densityMapUV = densityMapPosition;
     vec3 normal = calculateNormal(densityMapPosition, lod);
 
-    out_density = texture(sampler3D(densityMap, samplerNearest), densityMapPosition).r;
+    out_density = density;
 
     mat4 mvp = camera.viewProj * model;
     gl_Position = mvp * vec4(pos, 1.0);
