@@ -105,7 +105,7 @@ impl VkTexture {
         let main_format = target.create_info.format;
         target.compatible_vk_formats.push(main_format);
         if info.supports_srgb {
-            let srgb_format_opt = info.format.srgb_format();
+            let srgb_format_opt = info.format.to_srgb();
             if srgb_format_opt.is_none() {
                 panic!(
                     "Format {:?} does not have an equivalent srgb format",

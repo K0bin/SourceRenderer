@@ -183,7 +183,7 @@ impl WebGPUTexture {
         let srgb_format = info
             .supports_srgb
             .then_some(true)
-            .and_then(|_| info.format.srgb_format());
+            .and_then(|_| info.format.to_srgb());
         if let Some(srgb_format) = srgb_format {
             let mut formats_array: [JsString; 2] = Default::default();
             formats_array[0] =

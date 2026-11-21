@@ -105,13 +105,6 @@ impl Format {
         }
     }
 
-    pub fn srgb_format(&self) -> Option<Format> {
-        match self {
-            Format::RGBA8UNorm => Some(Format::RGBA8Srgb),
-            _ => None,
-        }
-    }
-
     pub fn block_size(&self) -> Vec2UI {
         match self {
             Format::BC1 | Format::BC1Alpha | Format::BC2 | Format::BC3 => Vec2UI::new(4, 4),
