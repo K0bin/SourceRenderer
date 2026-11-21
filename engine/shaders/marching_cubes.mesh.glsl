@@ -29,6 +29,7 @@ layout(push_constant, std430) uniform Config {
     mat4 model;
     uvec3 lodExtents;
     float threshold;
+    uvec3 sliceCut;
     uint lod;
 };
 
@@ -56,8 +57,19 @@ taskPayloadSharedEXT TaskPayload payload;
 vec4 interpolateVertices(uvec3 pos1, uvec3 pos2) {
     vec3 fpos1 = vec3(pos1) + 0.5;
     vec3 fpos2 = vec3(pos2) + 0.5;
+
     float value1 = texelFetch(sampler3D(densityMap, samplerNearest), ivec3(pos1), int(lod)).x;
+    bool cutOff1 = pos1.x > sliceCut.x
+    || pos1.y > sliceCut.y
+    || pos1.z > sliceCut.z;
+    value1 = !cutOff1 ? value1 : 0.001f;
+
     float value2 = texelFetch(sampler3D(densityMap, samplerNearest), ivec3(pos2), int(lod)).x;
+    bool cutOff2 = pos2.x > sliceCut.x
+    || pos2.y > sliceCut.y
+    || pos2.z > sliceCut.z;
+    value2 = !cutOff2 ? value2 : 0.001f;
+
     if (abs(value1 - threshold) < 0.00001 || abs(value1 - value2) < 0.00001) {
         return vec4(fpos1, value1);
     }

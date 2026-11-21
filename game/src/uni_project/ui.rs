@@ -17,6 +17,7 @@ use sourcerenderer_engine::transform::InterpolatedTransform;
 use sourcerenderer_engine::{DearImgui, VolumeDrawableTransparencyMode, dear_imgui_rs};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use sourcerenderer_core::Vec3;
 
 pub(super) struct UIPlugin;
 
@@ -166,6 +167,7 @@ fn volume_meshes_ui_system(
                                     transparent: VolumeDrawableTransparencyMode::Opaque,
                                     render_as_cubes: false,
                                     ray_march_normals: false,
+                                    slice_cut: Vec3::new(1.0f32, 1.0f32, 1.0f32),
                                 },
                                 InterpolatedTransform(Affine3A::from_mat4(mesh_transform(0))),
                             ));
@@ -241,6 +243,43 @@ fn volume_meshes_ui_system(
                         ui.checkbox(
                             format!("##raymarchnormals{:?}", entity),
                             &mut mesh.ray_march_normals,
+                        );
+
+                        let space = unsafe { ui.style() }.item_spacing()[0];
+                        let size = (ui.content_region_avail()[0] - (2.0f32 * space)) * (1.0f32 / 3.0f32);
+                        ui.text("Slicing:");
+                        ui.text("X:");
+                        ui.same_line();
+                        ui.set_cursor_pos_x(size + space);
+                        ui.text("Y:");
+                        ui.same_line();
+                        ui.set_cursor_pos_x((size + space) * 2.0f32);
+                        ui.text("Z:");
+
+                        ui.set_next_item_width(size);
+                        ui.slider(
+                            format!("##slicex{:?}", entity),
+                            0.0f32,
+                            1.0f32,
+                            &mut mesh.slice_cut.x,
+                        );
+                        ui.same_line();
+                        ui.set_cursor_pos_x(size + space);
+                        ui.set_next_item_width(size);
+                        ui.slider(
+                            format!("##slicey{:?}", entity),
+                            0.0f32,
+                            1.0f32,
+                            &mut mesh.slice_cut.y,
+                        );
+                        ui.same_line();
+                        ui.set_cursor_pos_x((size + space) * 2.0f32);
+                        ui.set_next_item_width(size);
+                        ui.slider(
+                            format!("##slicez{:?}", entity),
+                            0.0f32,
+                            1.0f32,
+                            &mut mesh.slice_cut.z,
                         );
 
                         let mut current_idx = material_paths.iter().enumerate().find_map(|(idx, path)| if path == &mesh.material_path {

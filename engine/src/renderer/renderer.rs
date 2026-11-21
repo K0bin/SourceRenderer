@@ -376,6 +376,7 @@ impl Renderer {
                     render_as_cubes,
                     ray_march_normals,
                     material_path,
+                    slice_cut,
                 } => {
                     let (texture_handle, _) =
                         self.assets.asset_manager().request_asset(
@@ -412,6 +413,7 @@ impl Renderer {
                         render_as_cubes,
                         ray_march_normals,
                         material_handle.into(),
+                        slice_cut,
                     );
                 }
 
@@ -490,6 +492,7 @@ impl Renderer {
                     transparent,
                     render_as_cubes,
                     ray_march_normals,
+                    slice_cut,
                 } => {
                     let (volume_texture_handle, _) = self.assets.asset_manager().request_asset(
                         &texture_path,
@@ -528,6 +531,7 @@ impl Renderer {
                             material_handle: material_handle.into(),
                             render_as_cubes,
                             ray_march_normals,
+                            slice_cut,
                         },
                     );
                 }
@@ -727,6 +731,7 @@ impl RendererSender {
                 material_path: renderable.material_path.clone(),
                 render_as_cubes: renderable.render_as_cubes,
                 ray_march_normals: renderable.ray_march_normals,
+                slice_cut: renderable.slice_cut,
             })
             .map_err(|_| SendError(()))
     }
@@ -799,6 +804,7 @@ impl RendererSender {
                 render_as_cubes: renderable.render_as_cubes,
                 ray_march_normals: renderable.ray_march_normals,
                 material_path: renderable.material_path.clone(),
+                slice_cut: renderable.slice_cut,
             })
             .map_err(|_| SendError(()))
     }

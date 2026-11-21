@@ -6,6 +6,8 @@ use bevy_math::Affine3A;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(super) use dear_imgui_rs::FrameSnapshot as ImguiFrameSnapshot;
+use sourcerenderer_core::Vec3;
+
 #[cfg(target_arch = "wasm32")]
 pub(super) type ImguiFrameSnapshot = ();
 
@@ -41,6 +43,7 @@ pub enum RendererCommand {
         transparent: VolumeDrawableTransparencyMode,
         render_as_cubes: bool,
         ray_march_normals: bool,
+        slice_cut: Vec3,
     },
     UnregisterVolume(Entity),
     UpdateTransform {
@@ -61,6 +64,7 @@ pub enum RendererCommand {
         render_as_cubes: bool,
         ray_march_normals: bool,
         material_path: String,
+        slice_cut: Vec3,
     },
     SetLightmap(String),
     EndFrame,

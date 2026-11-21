@@ -7,7 +7,7 @@ use crate::renderer::renderer_resources::{BufferAccessor, HistoryResourceEntry, 
 use bevy_ecs::entity::Entity;
 use bytemuck::{Pod, Zeroable};
 use smallvec::{smallvec, SmallVec};
-use sourcerenderer_core::{Vec3UI, Vec4UI};
+use sourcerenderer_core::{Vec3, Vec3UI, Vec4UI};
 use sourcerenderer_core::gpu::SpecConstValue;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -54,6 +54,13 @@ pub struct MarchingCubesIndirectCall {
     _pad_to_16_0: u32,
     _pad_to_16_1: u32,
     _pad_to_16_2: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Zeroable, Pod)]
+struct ThresholdAndCut {
+    slice_cut: UVec3,
+    threshold: f32,
 }
 
 const WORK_GROUP_SIZE: UVec3 = UVec3::new(4, 4, 4);
@@ -852,8 +859,39 @@ impl MarchingCubesPass {
     {
         assert!(!batch.drawables.is_empty());
 
+        let volume_texture = pass_params.assets.get_texture(batch.dispatch.handle);
+        let volume_texture_min = pass_params
+            .assets
+            .get_texture(batch.drawables.first().unwrap().volume_texture_min);
+        let volume_texture_max = pass_params
+            .assets
+            .get_texture(batch.drawables.first().unwrap().volume_texture_max);
+
+        let target_work_group_size = if use_mesh_shader {
+            MESH_WORK_GROUP_SIZE
+        } else {
+            WORK_GROUP_SIZE
+        };
+        let max_group_size_dimension = target_work_group_size.x
+            .max(target_work_group_size.y)
+            .max(target_work_group_size.z);
+        let reduction = 2u32.max(max_group_size_dimension.ilog2());
+
+        let mut lod_extent = Vec3UI::new(512, 512, 512);
+        let texture_view = &volume_texture.view;
+        if let Some(texture) = texture_view.texture().as_ref() {
+            let texture_info = texture.info();
+            lod_extent.x = (texture_info.width >> batch.dispatch.lod).max(1);
+            lod_extent.y = (texture_info.height >> batch.dispatch.lod).max(1);
+            lod_extent.z = (texture_info.depth >> batch.dispatch.lod).max(1);
+        }
+
+        if !Self::use_culling(lod_extent) {
+            return;
+        }
+
         let mut batch_buffer_slices = SmallVec::<[&BufferAccessor; 4]>::new();
-        let mut thresholds = SmallVec::<[f32; 4]>::new();
+        let mut thresholds = SmallVec::<[ThresholdAndCut; 4]>::new();
 
         if !use_mesh_shader {
             // Find the buffer for the entire dispatch
@@ -866,7 +904,14 @@ impl MarchingCubesPass {
             }
         }
         for d in &batch.drawables {
-            thresholds.push(d.min_threshold);
+            thresholds.push(ThresholdAndCut {
+                threshold: d.min_threshold,
+                slice_cut: UVec3::new(
+                    ((lod_extent.x as f32) * d.slice_cut.x + 0.5f32) as u32,
+                    ((lod_extent.y as f32) * d.slice_cut.y + 0.5f32) as u32,
+                    ((lod_extent.z as f32) * d.slice_cut.z + 0.5f32) as u32,
+                )
+            });
 
             if !use_mesh_shader {
                 continue;
@@ -888,37 +933,6 @@ impl MarchingCubesPass {
             assert_eq!(batch_buffer_slices.len(), 1);
         } else {
             assert_eq!(batch_buffer_slices.len(), thresholds.len());
-        }
-
-        let volume_texture = pass_params.assets.get_texture(batch.dispatch.handle);
-        let volume_texture_min = pass_params
-            .assets
-            .get_texture(batch.drawables.first().unwrap().volume_texture_min);
-        let volume_texture_max = pass_params
-            .assets
-            .get_texture(batch.drawables.first().unwrap().volume_texture_max);
-
-        let target_work_group_size = if use_mesh_shader {
-            MESH_WORK_GROUP_SIZE
-        } else {
-            WORK_GROUP_SIZE
-        };
-        let max_group_size_dimension = target_work_group_size.x
-            .max(target_work_group_size.y)
-            .max(target_work_group_size.z);
-        let reduction = 2u32.max(max_group_size_dimension.ilog2());
-
-        let mut extent = Vec3UI::new(512, 512, 512);
-        let texture_view = &volume_texture.view;
-        if let Some(texture) = texture_view.texture().as_ref() {
-            let texture_info = texture.info();
-            extent.x = (texture_info.width >> batch.dispatch.lod).max(1);
-            extent.y = (texture_info.height >> batch.dispatch.lod).max(1);
-            extent.z = (texture_info.depth >> batch.dispatch.lod).max(1);
-        }
-
-        if !Self::use_culling(extent) {
-            return;
         }
 
         let texture_name = pass_params.assets.get_path(batch.dispatch.handle.into())
@@ -993,7 +1007,7 @@ impl MarchingCubesPass {
         command_buffer.set_push_constant_data(
             &[MarchingCubesCullingConfig {
                 lod: batch.dispatch.lod,
-                extent,
+                extent: lod_extent,
                 thresholds_count: thresholds.len() as u32,
             }],
         );
@@ -1001,9 +1015,9 @@ impl MarchingCubesPass {
         command_buffer.finish_binding();
 
         let culling_extent = Vec3UI::new(
-            (extent.x >> reduction).max(1),
-            (extent.y >> reduction).max(1),
-            (extent.z >> reduction).max(1)
+            (lod_extent.x >> reduction).max(1),
+            (lod_extent.y >> reduction).max(1),
+            (lod_extent.z >> reduction).max(1)
         );
         command_buffer.dispatch((culling_extent.x + 3) / 4,
                                 (culling_extent.y + 3) / 4,
@@ -1021,14 +1035,38 @@ impl MarchingCubesPass {
     {
         assert!(!batch.drawables.is_empty());
 
+        let volume_texture = pass_params.assets.get_texture(batch.dispatch.handle);
+        let volume_texture_min = pass_params
+            .assets
+            .get_texture(batch.drawables.first().unwrap().volume_texture_min);
+        let volume_texture_max = pass_params
+            .assets
+            .get_texture(batch.drawables.first().unwrap().volume_texture_max);
+        command_buffer.bind_sampling_view(BindingFrequency::Frequent, 2, &volume_texture.view);
+        let mut lod_extent = Vec3UI::new(512, 512, 512);
+        let texture_view = &volume_texture.view;
+        if let Some(texture) = texture_view.texture().as_ref() {
+            let texture_info = texture.info();
+            lod_extent.x = (texture_info.width >> batch.dispatch.lod).max(1);
+            lod_extent.y = (texture_info.height >> batch.dispatch.lod).max(1);
+            lod_extent.z = (texture_info.depth >> batch.dispatch.lod).max(1);
+        }
+
         let mut batch_buffer_slices = SmallVec::<[&BufferAccessor; 4]>::new();
-        let mut thresholds = SmallVec::<[f32; 4]>::new();
+        let mut thresholds = SmallVec::<[ThresholdAndCut; 4]>::new();
 
         let culling_name = Self::culling_dispatch_buffer_name(batch.dispatch.handle, batch.dispatch.lod, batch.dispatch.as_cubes);
         let culling_indirect_slice = buffer_slices.iter().find_map(|(name, slice)| if name == &culling_name { Some(slice) } else { None }).unwrap();
 
-        for (index, d) in batch.drawables.iter().enumerate() {
-            thresholds.push(d.min_threshold);
+        for d in batch.drawables.iter() {
+            thresholds.push(ThresholdAndCut {
+                threshold: d.min_threshold,
+                slice_cut: UVec3::new(
+                    ((lod_extent.x as f32) * d.slice_cut.x + 0.5f32) as u32,
+                    ((lod_extent.y as f32) * d.slice_cut.y + 0.5f32) as u32,
+                    ((lod_extent.z as f32) * d.slice_cut.z + 0.5f32) as u32,
+                )
+            });
 
             // Quadratic but fine due to tiny counts
             let drawable_buffer_name = Self::index_buffer_name(d.entity);
@@ -1060,23 +1098,7 @@ impl MarchingCubesPass {
             })
             .collect();
 
-        let volume_texture = pass_params.assets.get_texture(batch.dispatch.handle);
-        let volume_texture_min = pass_params
-            .assets
-            .get_texture(batch.drawables.first().unwrap().volume_texture_min);
-        let volume_texture_max = pass_params
-            .assets
-            .get_texture(batch.drawables.first().unwrap().volume_texture_max);
-        command_buffer.bind_sampling_view(BindingFrequency::Frequent, 2, &volume_texture.view);
-        let mut extent = Vec3UI::new(512, 512, 512);
-        let texture_view = &volume_texture.view;
-        if let Some(texture) = texture_view.texture().as_ref() {
-            let texture_info = texture.info();
-            extent.x = texture_info.width >> batch.dispatch.lod;
-            extent.y = texture_info.height >> batch.dispatch.lod;
-            extent.z = texture_info.depth >> batch.dispatch.lod;
-        }
-        let culling = culling_enabled && Self::use_culling(extent);
+        let culling = culling_enabled && Self::use_culling(lod_extent);
 
         let mut spec_consts = [SpecConstValue::None; 8];
         spec_consts[0] = SpecConstValue::UInt(thresholds.len() as u32);
@@ -1133,7 +1155,7 @@ impl MarchingCubesPass {
         command_buffer.set_push_constant_data(
             &[MarchingCubesConfig {
                 lod: batch.dispatch.lod,
-                extent,
+                extent: lod_extent,
                 thresholds_count: thresholds.len() as u32,
             }],
         );
@@ -1148,11 +1170,11 @@ impl MarchingCubesPass {
 
         command_buffer.finish_binding();
 
-        if extent.x > 0 && extent.y > 0 && extent.z > 0 {
+        if lod_extent.x > 0 && lod_extent.y > 0 && lod_extent.z > 0 {
             if culling {
                 command_buffer.dispatch_indirect(culling_indirect_slice.buffer_ref(), 0u64);
             } else {
-                command_buffer.dispatch((extent.x + 3) / 4, (extent.y + 3) / 4, (extent.z + 3) / 4);
+                command_buffer.dispatch((lod_extent.x + 3) / 4, (lod_extent.y + 3) / 4, (lod_extent.z + 3) / 4);
             }
         } else {
             log::error!("Marching cubes texture mip has an extent of 0");

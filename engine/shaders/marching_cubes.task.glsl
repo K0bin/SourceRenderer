@@ -33,6 +33,7 @@ layout(push_constant, std430) uniform Config {
     mat4 model;
     uvec3 lodExtents;
     float threshold;
+    uvec3 sliceCut;
     uint lod;
 };
 
@@ -57,6 +58,10 @@ void main() {
 
                 uvec3 pos = base + offset;
                 float density = texelFetch(sampler3D(densityMap, samplerNearest), ivec3(pos), int(lod)).x;
+                bool cutOff = pos.x > sliceCut.x
+                    || pos.y > sliceCut.y
+                    || pos.z > sliceCut.z;
+                density = !cutOff ? density : 0.001f;
 
                 uint index = ((x + z) & 1u) + z * 2u + y * 4u;
 

@@ -11,9 +11,9 @@ use bytemuck::{Pod, Zeroable};
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{SpecConstValue, StencilOp, TexturePlane};
 use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec3UI};
-use std::cell::Ref;
 use std::default::Default;
 use std::sync::Arc;
+use bevy_math::UVec3;
 use crate::asset::MaterialHandle;
 use crate::renderer::VolumeRendererOptions;
 
@@ -23,10 +23,8 @@ struct PushConstantData {
     model_matrix: Matrix4,
     lod_extents: Vec3UI,
     threshold: f32,
+    slice_cut: UVec3,
     lod: u32,
-    _padding0: u32,
-    _padding1: u32,
-    _padding2: u32,
     material_data: MaterialData,
 }
 
@@ -812,6 +810,11 @@ impl GeometryPass {
                 threshold: drawable.min_threshold,
                 lod_extents: volume_texture_lod_extents,
                 lod: drawable.texture_lod,
+                slice_cut: UVec3::new(
+                    ((volume_texture_lod_extents.x as f32) * drawable.slice_cut.x + 0.5f32) as u32,
+                    ((volume_texture_lod_extents.y as f32) * drawable.slice_cut.y + 0.5f32) as u32,
+                    ((volume_texture_lod_extents.z as f32) * drawable.slice_cut.z + 0.5f32) as u32,
+                ),
                 material_data: MaterialData {
                     roughness: 0.6f32,
                     metalness: 0.3f32,
@@ -825,7 +828,6 @@ impl GeometryPass {
                     threshold: drawable.min_threshold,
                     ..Zeroable::zeroed()
                 },
-                ..Zeroable::zeroed()
             }],
         );
 

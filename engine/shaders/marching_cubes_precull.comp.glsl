@@ -39,8 +39,12 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 3, scalar) buffer indirectbuffer
     uvec4[] workgroupPositions;
 } indirectBuffers[16u];
 
+struct ThresholdAndCut {
+    uvec3 sliceCut;
+    float threshold;
+};
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 4, scalar) uniform thresholds {
-    float[16u] minThresholds;
+    ThresholdAndCut[16u] minThresholds;
 };
 
 layout(push_constant, std430) uniform Config {
@@ -97,9 +101,11 @@ void main() {
     float minDensity = texelFetch(sampler3D(densityImageMin, samplerNearest), ivec3(gl_GlobalInvocationID), int(minMaxTextureLod)).r;
     bool dispatchBatch = false;
     for (uint i = 0u; i < finalThresholdsCount; i++) {
-        float threshold = minThresholds[i];
+        float threshold = minThresholds[i].threshold;
         bool notEmpty = maxDensity >= threshold;
-        bool notFull = minDensity < threshold;
+        // We can only cull full workgroups if we're not slicing.
+        // (We could also calculate if the cut is inside the workgroup but that's just gonna lead to annoying bugs with rounding.)
+        bool notFull = minDensity < threshold || any(lessThan(minThresholds[i].sliceCut, targetLodExtents));
         dispatchBatch = dispatchBatch || (notEmpty && notFull);
 
         if (!PrepareBatchedDispatch && notEmpty && notFull)

@@ -46,8 +46,12 @@ layout(set = DESCRIPTOR_SET_FREQUENT, binding = 3, std430) buffer indicesBuffer 
     uint[] indices;
 } indicesBuffers[16u];
 
+struct ThresholdAndCut {
+    uvec3 sliceCut;
+    float threshold;
+};
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 4, scalar) uniform thresholds {
-    float[16u] minThresholds;
+    ThresholdAndCut[16u] minThresholds;
 };
 
 layout(set = DESCRIPTOR_SET_FREQUENT, binding = 6, scalar) readonly buffer indirectBuffer {
@@ -159,12 +163,18 @@ void main() {
                 uvec3 offset = uvec3(x, y, z);
 
                 uvec3 pos = base + offset;
+
                 float density = texelFetch(sampler3D(densityImage, samplerNearest), ivec3(pos), int(lod)).x;
 
                 uint index = ((x + z) & 1u) + z * 2u + y * 4u;
 
                 for (uint i = 0u; i < finalThresholdsCount; i++) {
-                    bool passes = density >= minThresholds[i];
+                    bool cutOff = pos.x > minThresholds[i].sliceCut.x
+                        || pos.y > minThresholds[i].sliceCut.y
+                        || pos.z > minThresholds[i].sliceCut.z;
+                    float densityI = !cutOff ? density : 0.001f;
+
+                    bool passes = densityI >= minThresholds[i].threshold;
                     empty = empty && !passes;
                     full = full && passes;
                     voxelKeys[i] |= uint(passes) << index;

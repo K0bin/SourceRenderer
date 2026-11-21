@@ -1,6 +1,7 @@
 use crate::renderer::drawable::VolumeDrawableTransparencyMode;
 use bevy_ecs::component::Component;
 use bevy_ecs::resource::Resource;
+use bevy_math::Vec3;
 
 #[derive(Clone, Debug, PartialEq, Component)]
 pub struct StaticRenderableComponent {
@@ -34,6 +35,7 @@ pub struct VolumeMeshInstance {
     pub transparent: VolumeDrawableTransparencyMode,
     pub render_as_cubes: bool,
     pub ray_march_normals: bool,
+    pub slice_cut: Vec3
 }
 
 #[derive(Clone, Debug, PartialEq, Resource)]

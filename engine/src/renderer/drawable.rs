@@ -38,6 +38,7 @@ pub struct RendererVolumeDrawable {
     pub min_threshold: f32,
     pub render_as_cubes: bool,
     pub ray_march_normals: bool,
+    pub slice_cut: Vec3,
 }
 
 #[derive(Clone)]

@@ -9,6 +9,7 @@ use sourcerenderer_engine::VolumeDrawableTransparencyMode;
 use sourcerenderer_engine::renderer::{RendererType, VolumeMeshInstance};
 use sourcerenderer_engine::transform::InterpolatedTransform;
 use std::marker::PhantomData;
+use sourcerenderer_core::Vec3;
 /* TODO:
  * - DLSS/FSR/XeSS/MetalFX
  * - DearImgui controls
@@ -40,6 +41,7 @@ impl<IO: PlatformIO> Plugin for UniProjectPlugin<IO> {
                     transparent: VolumeDrawableTransparencyMode::TransparentInFrontOfOpaque,
                     render_as_cubes: false,
                     ray_march_normals: false,
+                    slice_cut: Vec3::new(1.0f32, 1.0f32, 1.0f32),
                 },
                 InterpolatedTransform(Affine3A::from_mat4(mesh_transform(0))),
             ));
@@ -52,6 +54,7 @@ impl<IO: PlatformIO> Plugin for UniProjectPlugin<IO> {
                     transparent: VolumeDrawableTransparencyMode::Opaque,
                     render_as_cubes: false,
                     ray_march_normals: false,
+                    slice_cut: Vec3::new(1.0f32, 1.0f32, 1.0f32),
                 },
                 InterpolatedTransform(Affine3A::from_mat4(mesh_transform(0))),
             ));

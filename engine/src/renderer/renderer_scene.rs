@@ -245,6 +245,7 @@ impl RendererScene {
         render_as_cubes: bool,
         ray_march_normals: bool,
         material: MaterialHandle,
+        slice_cut: Vec3,
     ) {
         let volume_mesh_opt = self.volume_meshes.get_mut(entity);
         if let Some(volume_mesh) = volume_mesh_opt {
@@ -257,6 +258,7 @@ impl RendererScene {
             volume_mesh.volume_texture = texture_handle;
             volume_mesh.volume_texture_max = texture_max_handle;
             volume_mesh.volume_texture_min = texture_min_handle;
+            volume_mesh.slice_cut = slice_cut;
             return;
         }
 
