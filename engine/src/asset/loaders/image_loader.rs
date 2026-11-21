@@ -61,7 +61,13 @@ impl AssetLoader for ImageLoader {
             image::DynamicImage::ImageRgba32F(data) => {
                 (Format::RGBA32Float, Vec::<u8>::from(data.as_bytes()))
             }
-            _ => (Format::RGBA8UNorm, img.into_rgba8().into_raw()),
+            image::DynamicImage::ImageRgb32F(_) => {
+                (Format::RGBA32Float, Vec::<u8>::from(img.to_rgba32f().as_bytes()))
+            }
+            _ => {
+                log::warn!("Unsupported image format, using RGBA8UNorm");
+                (Format::RGBA8UNorm, img.into_rgba8().into_raw())
+            },
         };
 
         manager.add_asset_data_with_progress(
