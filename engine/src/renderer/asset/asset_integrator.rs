@@ -136,6 +136,7 @@ impl AssetIntegrator {
         let srgb_view = if texture.info().supports_srgb {
             let srgb_format = texture.info().format.to_srgb();
             if let Some(srgb_format) = srgb_format {
+                let srgb_name = format!("{}_srgb", &name);
                 Some(self.device.create_texture_view(
                     &texture,
                     &TextureViewInfo {
@@ -146,7 +147,7 @@ impl AssetIntegrator {
                         format: Some(srgb_format),
                         plane: TexturePlane::Primary,
                     },
-                    Some(&name),
+                    Some(&srgb_name),
                 ))
             } else {
                 log::warn!("SRGB compatibility enabled but format {:?} doesn't have an SRGB equivalent", texture.info().format);
@@ -155,7 +156,7 @@ impl AssetIntegrator {
         } else {
             None
         };
-        
+
         let bindless_index = if self.device.supports_bindless() {
             self.device.insert_texture_into_bindless_heap(&view)
         } else {
