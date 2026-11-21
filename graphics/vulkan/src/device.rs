@@ -318,10 +318,12 @@ impl gpu::Device<VkBackend> for VkDevice {
         }
     }
 
-    fn get_texture_heap_info(&self, info: &gpu::TextureInfo) -> gpu::ResourceHeapInfo {
+    fn get_texture_heap_info(&self, info: &gpu::TextureInfo) -> Result<gpu::ResourceHeapInfo, gpu::TextureError> {
         let mut create_info_collection = VkImageCreateInfoCollection::default();
         let mut pinned = Pin::new(&mut create_info_collection);
-        VkTexture::build_create_info(&self.device, pinned.as_mut(), info);
+        if VkTexture::build_create_info(&self.device, pinned.as_mut(), info, true).is_err() {
+            VkTexture::build_create_info(&self.device, pinned.as_mut(), info, false)?;
+        }
 
         let mut requirements = vk::MemoryRequirements2::default();
         let mut dedicated_requirements = vk::MemoryDedicatedRequirements::default();
@@ -480,10 +482,10 @@ impl gpu::Device<VkBackend> for VkDevice {
                     &result,
                     &result_without_host_image_copy
                 );
-                return result_without_host_image_copy;
+                return Ok(result_without_host_image_copy);
             }
         }
-        result
+        Ok(result)
     }
 
     unsafe fn insert_texture_into_bindless_heap(&self, slot: u32, texture: &VkTextureView) {

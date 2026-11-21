@@ -44,6 +44,7 @@ impl VkTexture {
         device: &RawVkDevice,
         mut target: Pin<&mut VkImageCreateInfoCollection>,
         info: &gpu::TextureInfo,
+        use_host_image_copy: bool,
     ) -> Result<(), gpu::TextureError> {
         let mut array_layers = info.array_length;
         let mut flags = vk::ImageCreateFlags::empty();
@@ -60,7 +61,7 @@ impl VkTexture {
             tiling: vk::ImageTiling::OPTIMAL,
             initial_layout: vk::ImageLayout::UNDEFINED,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
-            usage: texture_usage_to_vk(info.usage, device.host_image_copy.is_some()),
+            usage: texture_usage_to_vk(info.usage, device.host_image_copy.is_some() && use_host_image_copy),
             image_type: match info.dimension {
                 gpu::TextureDimension::Dim1DArray | gpu::TextureDimension::Dim1D => {
                     vk::ImageType::TYPE_1D
@@ -182,7 +183,9 @@ impl VkTexture {
 
         let mut create_info_collection = VkImageCreateInfoCollection::default();
         let mut pinned = Pin::new(&mut create_info_collection);
-        Self::build_create_info(device, pinned.as_mut(), info)?;
+        if Self::build_create_info(device, pinned.as_mut(), info, true).is_err() {
+            Self::build_create_info(device, pinned.as_mut(), info, false)?
+        }
 
         if pinned
             .create_info

@@ -412,13 +412,13 @@ impl gpu::Device<WebGPUBackend> for WebGPUDevice {
         }
     }
 
-    fn get_texture_heap_info(&self, info: &gpu::TextureInfo) -> gpu::ResourceHeapInfo {
-        gpu::ResourceHeapInfo {
+    fn get_texture_heap_info(&self, info: &gpu::TextureInfo) -> Result<gpu::ResourceHeapInfo, gpu::TextureError> {
+        Ok(gpu::ResourceHeapInfo {
             dedicated_allocation_preference: gpu::DedicatedAllocationPreference::PreferDedicated,
             memory_type_mask: 0b11,
             alignment: 4,
             size: (info.width * info.height * info.array_length * (4 * 4)) as u64, // TODO: We just assume RGBA Float32, make this take the format into account properly
-        }
+        })
     }
 
     unsafe fn insert_texture_into_bindless_heap(&self, _slot: u32, _texture: &WebGPUTextureView) {

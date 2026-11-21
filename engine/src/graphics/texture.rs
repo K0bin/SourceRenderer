@@ -28,7 +28,7 @@ impl Texture {
         info: &TextureInfo,
         name: Option<&str>,
     ) -> Result<Arc<Self>, gpu::TextureError> {
-        let heap_info = device.get_texture_heap_info(info);
+        let heap_info = device.get_texture_heap_info(info)?;
         let (texture, allocation) = if heap_info.dedicated_allocation_preference
             == gpu::DedicatedAllocationPreference::RequireDedicated
             || heap_info.dedicated_allocation_preference

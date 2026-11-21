@@ -84,7 +84,7 @@ pub trait Device<B: GPUBackend> {
     fn memory_type_infos(&self) -> &[MemoryTypeInfo];
     fn create_heap(&self, memory_type_index: u32, size: u64) -> Result<B::Heap, OutOfMemoryError>;
     fn get_buffer_heap_info(&self, info: &BufferInfo) -> ResourceHeapInfo;
-    fn get_texture_heap_info(&self, info: &TextureInfo) -> ResourceHeapInfo;
+    fn get_texture_heap_info(&self, info: &TextureInfo) -> Result<ResourceHeapInfo, TextureError>;
     unsafe fn insert_texture_into_bindless_heap(&self, slot: u32, texture: &B::TextureView);
     unsafe fn copy_to_texture(
         &self,
