@@ -158,7 +158,7 @@ vec4 shadeFragment(float densityNormalized, vec3 worldPosition, vec3 normal, out
     vec3 lightDir = normalize(-vec3(0.1, 1.0, 0.3));
     vec3 viewDir = normalize(camera.position.xyz - worldPosition);
     vec3 lightPower = vec3(0.5);
-    radiance += pbr(lightDir, viewDir, normal.xyz, f0, albedo, lightPower, roughness, metalness);
+    radiance += pbr(lightDir, viewDir, normal.xyz, f0, albedo, lightPower, roughness, metalness, true);
 
     // Image based lighting (diffuse)
     vec3 rhoDiffuse = (1.0 - metalness) * albedo;

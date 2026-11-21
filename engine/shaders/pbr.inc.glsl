@@ -3,17 +3,17 @@
 
 #include "consts.inc.glsl"
 
-vec3 pbr(vec3 lightDir, vec3 viewDir, vec3 normal, vec3 f0, vec3 albedo, vec3 radiance, float roughness, float metalness);
+vec3 pbr(vec3 lightDir, vec3 viewDir, vec3 normal, vec3 f0, vec3 albedo, vec3 radiance, float roughness, float metalness, bool direct);
 float distributionGGX(vec3 normal, vec3 halfway, float roughness);
-float schlickGGX(float nDotV, float roughness, bool direct);
+float geometrySchlickGGX(float nDotV, float roughness, bool direct);
 float geometrySmith(vec3 normal, vec3 viewDir, vec3 lightDir, float k, bool direct);
 vec3 fresnelSchlick(float cosTheta, vec3 f0);
 
-vec3 pbr(vec3 lightDir, vec3 viewDir, vec3 normal, vec3 f0, vec3 albedo, vec3 radiance, float roughness, float metalness) {
+vec3 pbr(vec3 lightDir, vec3 viewDir, vec3 normal, vec3 f0, vec3 albedo, vec3 radiance, float roughness, float metalness, bool direct) {
   vec3 halfway = normalize(viewDir + lightDir);
 
   float ndf = distributionGGX(normal, halfway, roughness);
-  float g = geometrySmith(normal, viewDir, lightDir, roughness, false);
+  float g = geometrySmith(normal, viewDir, lightDir, roughness, direct);
   vec3 f = fresnelSchlick(max(dot(halfway, viewDir), 0.0), f0);
 
   vec3 kS = f;
@@ -40,7 +40,7 @@ float geometrySchlickGGX(float nDotV, float roughness, bool direct) {
   if (direct) {
     k = (r*r) / 8.0;
   } else {
-    k = (roughness * roughness) / 2;
+    k = (roughness * roughness) / 2.0;
   }
   return nDotV / (nDotV * (1.0 - k) + k);
 }
