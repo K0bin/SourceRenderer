@@ -170,7 +170,11 @@ impl ImageBasedLightingPreparation {
             AssetType::Texture,
             AssetLoadPriority::Normal,
         );
-        self.handle = Some(TextureHandle::from(ibl_map_handle));
+        let texture_handle = TextureHandle::from(ibl_map_handle);
+        if self.handle == Some(texture_handle) {
+            return;
+        }
+        self.handle = Some(texture_handle);
         self.prepared = false;
     }
 
