@@ -352,7 +352,7 @@ fn default_material() -> MaterialUIState<TEXTURE_GRADIENT_STEPS> {
     MaterialUIState {
         albedo: Colors::<TEXTURE_GRADIENT_STEPS> {
             positions: [0.303, 0.495, 0.615],
-            values: [[0.86, 0.524, 0.524, 0.9], [0.814, 0.218, 0.176, 0.9], [1.0, 0.821, 0.662, 1.0]],
+            values: [[0.9, 0.55, 0.476, 0.9], [0.814, 0.218, 0.176, 0.9], [1.0, 0.821, 0.662, 1.0]],
         },
         roughness: Colors::<TEXTURE_GRADIENT_STEPS> {
         positions: [0.303, 0.495, 0.615],
