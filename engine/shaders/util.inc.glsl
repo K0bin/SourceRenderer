@@ -28,6 +28,25 @@ vec3 worldSpaceNormalToViewSpace(vec3 worldSpaceNormal, mat4 view) {
   return viewSpaceNormal;
 }
 
+vec4 linearToSRGB(vec4 color) {
+    vec4 higher = 1.055 * pow(color, vec4(1.0 / 2.4)) - 0.055;
+    vec4 lower  = color * 12.92;
+    return mix(lower, higher, vec4(greaterThan(color, vec4(0.0031308))));
+}
+vec3 linearToSRGB(vec3 color) {
+    return linearToSRGB(vec4(color, 1.0)).xyz;
+}
+
+vec4 srgbToLinear(vec4 srgb) {
+    bvec4 cutoff = lessThanEqual(srgb, vec4(0.04045));
+    vec4 higher = pow((srgb + vec4(0.055)) / vec4(1.055), vec4(2.4));
+    vec4 lower = srgb / vec4(12.92);
+    return mix(higher, lower, cutoff);
+}
+vec3 srgbToLinear(vec3 srgb) {
+    return srgbToLinear(vec4(srgb, 1.0)).xyz;
+}
+
 #ifdef FS
 vec3 reconstructNormalFS(vec2 uv, float depth, mat4 invViewProj) {
   vec3 position = worldSpacePosition(uv, depth, invViewProj);
