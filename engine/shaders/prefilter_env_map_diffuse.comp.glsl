@@ -39,23 +39,24 @@ float radicalInverse(uint bits) {
 }
 
 // Sample i-th point from Hammersley point set of NumSamples points total.
-//const uint NumSamples = 4096;
-const uint NumSamples = 128;
+const uint NumSamples = 8u * 1024u;
 const float InvNumSamples = 1.0 / float(NumSamples);
 vec2 sampleHammersley(uint i)
 {
 	return vec2(i * InvNumSamples, radicalInverse(i));
 }
 
-// Uniformly sample point on a hemisphere.
-// Cosine-weighted sampling would be a better fit for Lambertian BRDF but since this
-// compute shader runs only once as a pre-processing step performance is not *that* important.
+// Sample point on a hemisphere.
 // See: "Physically Based Rendering" 2nd ed., section 13.6.1.
 vec3 sampleHemisphere(float u1, float u2)
 {
 	const float theta = asin(sqrt(u1));
 	const float phi = TwoPI * u2;
+
+    // Cosine-weighted
 	return vec3(cos(phi) * sin(theta), sin(theta) * sin(phi), cos(theta));
+
+    // Uniform
 	//const float u1p = sqrt(max(0.0, 1.0 - u1*u1));
 	//return vec3(cos(phi) * u1p, sin(phi) * u1p, u1);
 }
@@ -96,9 +97,9 @@ void main(void) {
 
 	// Monte Carlo integration of hemispherical irradiance.
 	vec3 irradiance = vec3(0);
-	for(uint i=0; i<NumSamples; ++i) {
-		vec2 uniformRandomSamples  = sampleHammersley(i);
-		vec3 hemisphereDir = sampleHemisphere(uniformRandomSamples.x, uniformRandomSamples.y);
+	for(uint i = 0u; i < NumSamples; i++) {
+		vec2 samplePos = sampleHammersley(i);
+		vec3 hemisphereDir = sampleHemisphere(samplePos.x, samplePos.y);
 		vec3 worldSpaceDir = normalMat * hemisphereDir;
 
 		irradiance += textureLod(samplerCube(envMap, samplerLinear), worldSpaceDir, 0).rgb;
