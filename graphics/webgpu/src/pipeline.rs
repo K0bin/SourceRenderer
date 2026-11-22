@@ -121,7 +121,6 @@ pub struct WebGPUGraphicsPipeline {
 fn format_to_vertex_format(format: gpu::Format) -> GpuVertexFormat {
     match format {
         gpu::Format::Unknown => GpuVertexFormat::__Invalid,
-        gpu::Format::R32UNorm => panic!("Unsupported vertex format"),
         gpu::Format::R16UNorm => GpuVertexFormat::Unorm16,
         gpu::Format::R8UNorm => GpuVertexFormat::Unorm8,
         gpu::Format::RGBA8UNorm => GpuVertexFormat::Unorm8x4,
@@ -157,6 +156,7 @@ fn format_to_vertex_format(format: gpu::Format) -> GpuVertexFormat {
         gpu::Format::D32 => panic!("Unsupported vertex format"),
         gpu::Format::D32S8 => panic!("Unsupported vertex format"),
         gpu::Format::D24S8 => panic!("Unsupported vertex format"),
+        gpu::Format::R8Srgb => panic!("Unsupported vertex format"),
     }
 }
 
