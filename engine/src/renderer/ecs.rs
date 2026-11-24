@@ -52,7 +52,9 @@ impl Default for VolumeRendererOptions {
             background_hdri: None,
             use_mesh_shader: false,
             culling: true,
-            sss_width: 0.015,
+            // 1.5cm (0.015) is typical for human skin but that assumes 1 = 1m and a head actually has the
+            // dimensions of a head. Our models can end up being much larger so pick something big.
+            sss_width: 0.5,
         }
     }
 }

@@ -63,7 +63,7 @@ layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3) uniform Kernel {
 
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 4) uniform texture2D sssIntensityImage;
 
-const bool followSurface = true;
+const bool followSurface = false;
 
 void main() {
     ivec2 outputPx = ivec2(gl_GlobalInvocationID.xy);
@@ -89,7 +89,8 @@ void main() {
     // Calculate the sssWidth scale (1.0 for a unit plane sitting on the
     // projection window)
     float fovY = calculateVerticalFov(camera.fov, float(outputSize.x) / float(outputSize.y));
-    float distanceToProjectionWindow = 1.0 / tan(0.5 * radians(fovY));
+    // No need to convert the FOV to radians, the value in the camera buffer is in radians.
+    float distanceToProjectionWindow = 1.0 / tan(0.5 * fovY);
     float scale = distanceToProjectionWindow / depthM;
 
     // Calculate the final step to fetch the surrounding pixels
@@ -108,7 +109,9 @@ void main() {
 
         if (followSurface) {
             // If the difference in depth is huge, we lerp color back to "colorM":
-            float offsetDepth = textureLod(sampler2D(sourceDepth, samplerLinear), offset, 0.0).r;
+            // The original shader converts the depth too linear in an earlier pass.
+            // My shader does it here. So I cannot use linear sampling here.
+            float offsetDepth = textureLod(sampler2D(sourceDepth, samplerNearest), offset, 0.0).r;
             float linearDepth = linearizeDepth(offsetDepth, camera.zNear, camera.zFar);
             float s = clamp(300.0f * distanceToProjectionWindow *
             params.sssWidth * abs(depthM - linearDepth), 0.0, 1.0);

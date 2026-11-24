@@ -69,11 +69,13 @@ fn renderer_options_ui_system(
             ui.same_line();
             ui.checkbox("##culling", &mut options.culling);
 
+            // Our models can end up much larger than they should be given what was scanned for the CT.
+            // So we need a larger range here.
             ui.text("SSS Width");
             ui.slider(
                 "##ssswidth",
                 0.0f32,
-                0.4f32,
+                4.0f32,
                 &mut options.sss_width,
             );
         });
