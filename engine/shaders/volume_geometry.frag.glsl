@@ -56,7 +56,7 @@ vec3 calculateGradient(vec3 densityMapUV, uint normalLod) {
 }
 
 vec3 calculateNormal(vec3 densityMapUV, uint normalLod) {
-    return normalize(calculateGradient(densityMapUV, normalLod));
+    return normalize(calculateGradient(densityMapUV, normalLod) + 1e-6);
 }
 
 

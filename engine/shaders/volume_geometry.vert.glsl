@@ -68,7 +68,7 @@ vec3 calculateNormal(vec3 densityMapUV, uint normalLod) {
     - textureLod(sampler3D(densityMap, samplerLinear), densityMapUV + vec3(0, singlePixel.y, 0), normalLod).x;
     normal.z = textureLod(sampler3D(densityMap, samplerLinear), densityMapUV - vec3(0, 0, singlePixel.z), normalLod).x
     - textureLod(sampler3D(densityMap, samplerLinear), densityMapUV + vec3(0, 0, singlePixel.z), normalLod).x;
-    return normalize(normal);
+    return normalize(normal + 1e-6);
 }
 
 
