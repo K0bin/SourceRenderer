@@ -215,7 +215,7 @@ impl GeometryPass {
                     },
                 ],
             },
-            render_target_formats: &[Format::RGBA16UNorm, Format::R8UNorm],
+            render_target_formats: &[Format::RGBA16Float, Format::R8UNorm],
             depth_stencil_format: Format::D32S8, // I'd prefer D24S8 but AMD & Apple don't support that.
         };
         let pipeline = GraphicsPipelinePermutations::request(
@@ -351,7 +351,7 @@ impl GeometryPass {
             Self::COLOR_TEXTURE_NAME,
             &TextureInfo {
                 dimension: TextureDimension::Dim2D,
-                format: Format::RGBA16UNorm,
+                format: Format::RGBA16Float,
                 width: resolution.x,
                 height: resolution.y,
                 depth: 1,

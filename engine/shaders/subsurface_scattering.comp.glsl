@@ -54,7 +54,7 @@ layout(push_constant, std430) uniform Params {
 } params;
 
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform texture2D sourceImage;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform restrict writeonly image2D destImage;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1, rgba16f) uniform restrict writeonly image2D destImage;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform texture2D sourceDepth;
 
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 3) uniform Kernel {

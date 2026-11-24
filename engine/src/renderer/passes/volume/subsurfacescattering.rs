@@ -150,7 +150,7 @@ impl SSSPass {
             Self::SSS_INTERNAL_TEMP_TEXTURE_NAME,
             &TextureInfo {
                 dimension: TextureDimension::Dim2D,
-                format: Format::RGBA16UNorm,
+                format: Format::RGBA16Float,
                 width: resolution.x,
                 height: resolution.y,
                 depth: 1,
