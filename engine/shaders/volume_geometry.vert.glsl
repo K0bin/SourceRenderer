@@ -22,7 +22,7 @@ layout(push_constant) uniform VeryHighFrequencyUbo {
 layout (set = DESCRIPTOR_SET_FREQUENT, binding = 0) uniform texture3D densityMap;
 
 const bool averageDebug = false;
-vec4 interpolateVertices(uvec3 pos1, uvec3 pos2) {
+vec3 interpolateVertices(uvec3 pos1, uvec3 pos2) {
     vec3 fpos1 = vec3(pos1) + 0.5;
     vec3 fpos2 = vec3(pos2) + 0.5;
 
@@ -32,21 +32,21 @@ vec4 interpolateVertices(uvec3 pos1, uvec3 pos2) {
     if (abs(value1 - threshold) < 0.00001
         || abs(value1 - value2) < 0.00001
         || any(greaterThan(pos2, sliceCut)))
-        return vec4(fpos1, value1);
+        return fpos1;
 
     if (abs(value2 - threshold) < 0.00001
         || any(greaterThan(pos1, sliceCut)))
-        return vec4(fpos2, value2);
+        return fpos2;
 
     if (!averageDebug) {
         float a = (threshold - value1) / (value2 - value1);
-        return mix(vec4(fpos1, value1), vec4(fpos2, value2), a);
+        return mix(fpos1, fpos2, a);
     } else
-        return (vec4(fpos1, value1) + vec4(fpos2, value2)) / 2.0; // debug with simple average
+        return (fpos1 + fpos2) / 2.0; // debug with simple average
 }
 
 
-vec4 vertexPosFromKey(uint vertexKey) {
+vec3 vertexPosFromKey(uint vertexKey) {
     uvec3 size = uvec3(512u * 2u + 1u);
     uvec3 pos = vectorFromMortonCode(vertexKey, size);
 
@@ -76,15 +76,17 @@ void main(void) {
     vec3 densityMapSize = vec3(lodExtents);
     uint vtxkey = gl_VertexIndex;
 
-    vec4 posAndDensity = vertexPosFromKey(vtxkey);
-    vec3 pos = posAndDensity.xyz;
-    float density = posAndDensity.w;
+    vec3 pos = vertexPosFromKey(vtxkey);
 
     vec3 densityMapPosition = pos / densityMapSize;
     out_densityMapUV = densityMapPosition;
     vec3 normal = calculateNormal(densityMapPosition, lod);
 
-    out_density = density;
+    // Look a bit inside the voxel. Interpolation moves the position to the point where we hit the threshold,
+    // so look a bit under the surface.
+    vec3 densityLookupPosition = densityMapPosition - normal * (1.0 / length(densityMapSize));
+    out_density = textureLod(sampler3D(densityMap, samplerLinear), densityLookupPosition, lod).x;
+    // out_density = threshold;
 
     mat4 mvp = camera.viewProj * model;
     gl_Position = mvp * vec4(pos, 1.0);
