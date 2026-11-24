@@ -2,10 +2,10 @@ use crate::graphics::{GraphicsContext, *};
 use crate::renderer::VolumeRendererOptions;
 use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::passes::DearImguiRenderer;
+use crate::renderer::passes::ssao::SsaoPass;
 use crate::renderer::passes::volume::background::BackgroundPass;
 use crate::renderer::passes::volume::compositing::CompositingPass;
 use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
-use crate::renderer::passes::volume::ssao::SsaoPass;
 use crate::renderer::passes::volume::subsurfacescattering::SSSPass;
 use crate::renderer::render_path::{
     FrameInfo, RenderPassParameters, RenderPath, RenderPathResult, SceneInfo,
@@ -21,7 +21,6 @@ mod compositing;
 mod geometry;
 mod ibl;
 mod marching_cubes;
-mod ssao;
 mod subsurfacescattering;
 
 pub use self::geometry::GeometryPass;

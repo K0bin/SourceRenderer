@@ -90,7 +90,7 @@ impl ConservativeRenderer {
         let geometry = GeometryPass::new(device, resolution, resources, assets);
         let taa = TAAPass::new(resolution, resources, assets, false);
         let sharpen = SharpenPass::new(resolution, resources, assets);
-        let ssao = SsaoPass::new(device, resolution, resources, assets, false);
+        let ssao = SsaoPass::new(device, resources, assets, resolution, false);
         //let occlusion = OcclusionPass::new(device, shader_manager);
         let rt_passes = device.supports_ray_tracing_pipeline().then(|| RTPasses {
             acceleration_structure_update: AccelerationStructureUpdatePass::new(
@@ -410,11 +410,6 @@ impl RenderPath for ConservativeRenderer {
             &mut cmd_buf,
             &params,
             Prepass::DEPTH_TEXTURE_NAME,
-            Some("TODO"),
-            &camera_buffer,
-            self.blue_noise.frame(frame_info.frame),
-            self.blue_noise.sampler(),
-            false,
         );
         if let Some(rt_passes) = self.rt_passes.as_mut() {
             rt_passes.shadows.execute(

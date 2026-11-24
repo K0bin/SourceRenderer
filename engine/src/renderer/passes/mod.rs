@@ -16,7 +16,6 @@ pub(crate) mod path_tracing;
 pub(crate) mod prepass;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod sharpen;
-#[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod ssao;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod ssr;
@@ -26,14 +25,8 @@ pub(crate) mod taa;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod modern;
 
-use std::sync::Arc;
 #[cfg(not(target_arch = "wasm32"))]
 use modern::rt_shadows;
-use sourcerenderer_core::gpu::Format;
-use crate::graphics::{BackendTexture, CommandBuffer, Device, TextureView};
-use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
-use crate::renderer::command::ImguiFrameSnapshot;
-use crate::renderer::renderer_resources::RendererResources;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod dear_imgui_renderer;

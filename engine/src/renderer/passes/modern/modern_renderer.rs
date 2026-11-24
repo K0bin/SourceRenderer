@@ -71,7 +71,7 @@ impl ModernRenderer {
 
         let clustering = ClusteringPass::new(resources, assets);
         let light_binning = LightBinningPass::new(resources, assets);
-        let ssao = SsaoPass::new(device, resolution, resources, assets, true);
+        let ssao = SsaoPass::new(device, resources, assets, resolution, true);
         let rt_passes = (device.supports_ray_tracing_pipeline() && false).then(|| RTPasses {
             acceleration_structure_update: AccelerationStructureUpdatePass::new(
                 device,
