@@ -547,7 +547,7 @@ fn create_renderer(
 
     let core_swapchain = unsafe {
         surface
-            .create_swapchain(device.handle(), swapchain_width, swapchain_height, false, false)
+            .create_swapchain(device.handle(), swapchain_width, swapchain_height, true, false)
             .unwrap()
     };
     let swapchain = Swapchain::new(core_swapchain, &device);
