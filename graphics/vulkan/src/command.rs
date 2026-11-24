@@ -359,7 +359,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                     i as u32,
                     &[vk::Viewport {
                         x: viewport.position.x,
-                        y: viewport.extent.y - viewport.position.y,
+                        y: viewport.position.y + viewport.extent.y,
                         width: viewport.extent.x,
                         height: -viewport.extent.y,
                         min_depth: viewport.min_depth,
