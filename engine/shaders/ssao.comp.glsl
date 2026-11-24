@@ -10,8 +10,9 @@ layout(local_size_x = 8,
 #include "camera.inc.glsl"
 #include "frame_set_common.inc.glsl"
 
+const uint kernelSize = 64u;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0, std140) uniform SSAOKernel {
-  vec4 samples[64];
+  vec4 samples[kernelSize];
 };
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform texture2D noise;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform texture2D depthMap;
@@ -34,14 +35,15 @@ void main() {
       return;
   }
 
-  vec2 texCoord = (vec2(outputPx) + 0.5) / vec2(outputSize);
+  // 0.25 because our output may be half-res and 0.5 would put us between two texels.
+  vec2 texCoord = (vec2(outputPx) + 0.25) / vec2(outputSize);
 
   float depth = textureLod(sampler2D(depthMap, samplerNearest), texCoord, 0).x;
   vec3 fragPos = viewSpacePosition(texCoord, depth, camera.invProj);
   vec3 normal = reconstructViewSpaceNormalCS(depthMap, samplerNearest, texCoord, camera.invProj);
 
-  vec2 noiseScale = vec2(textureSize(sampler2D(depthMap, samplerNearest), 0)) / vec2(textureSize(sampler2D(noise, samplerNearest), 0));
-  vec2 noiseXY = texture(sampler2D(noise, noiseSampler), texCoord * noiseScale).xy * 2.0 - 1.0;
+  ivec2 noiseTexCoord = ivec2(gl_GlobalInvocationID.xy) % textureSize(sampler2D(noise, samplerNearest), 0);
+  vec2 noiseXY = texelFetch(sampler2D(noise, noiseSampler), ivec2(noiseTexCoord), 0).xy;
   vec3 randomVec = normalize(vec3(noiseXY, 0.0));
 
   vec3 tangent = normalize(randomVec - normal * dot(randomVec, normal));
@@ -51,7 +53,6 @@ void main() {
   float bias = 0.025;
   float occlusion = 0.0;
 
-  const uint kernelSize = 64;
   const float radius = 0.8;
 
   for (uint i = 0; i < kernelSize; i++) {
@@ -64,11 +65,11 @@ void main() {
     offset.xy /= offset.w;
     offset.xy = offset.xy * 0.5 + 0.5;
 
-    float sampleDepth = textureLod(sampler2D(depthMap, samplerLinear), offset.xy, 0).x;
+    float sampleDepth = textureLod(sampler2D(depthMap, samplerNearest), offset.xy, 0).x;
     float sampleZ = linearizeDepth(sampleDepth, camera.zNear, camera.zFar);
 
     float rangeCheck = smoothstep(0.0, 1.0, radius / abs(fragPos.z - sampleZ));
-    occlusion += (sampleZ <= samplePos.z - bias ? 1.0 : 0.0) * rangeCheck;
+    occlusion += float(sampleZ <= samplePos.z - bias) * rangeCheck;
   }
   occlusion = 1.0 - (occlusion / kernelSize);
   imageStore(outputTexture, outputPx, vec4(occlusion, 0.0, 0.0, 0.0));

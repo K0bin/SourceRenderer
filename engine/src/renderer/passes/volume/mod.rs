@@ -275,6 +275,13 @@ impl RenderPath for VolumeRenderer {
             GeometryPass::DEPTH_TEXTURE_NAME,
         );
 
+        self.vbao.execute(
+            &mut cmd_buffer,
+            &params,
+            GeometryPass::COLOR_TEXTURE_NAME,
+            GeometryPass::DEPTH_TEXTURE_NAME,
+        );
+
         /*
          * Renderer tries to use 1 unit = 1 meter
          * SSS width for skin is typically between 0.012 to 0.015.

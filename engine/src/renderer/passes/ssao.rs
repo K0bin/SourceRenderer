@@ -21,8 +21,7 @@ fn lerp(a: f32, b: f32, f: f32) -> f32 {
 }
 
 impl SsaoPass {
-    const SSAO_INTERNAL_TEXTURE_NAME: &'static str = "SSAO";
-    pub const SSAO_TEXTURE_NAME: &'static str = "SSAOBlurred";
+    pub const SSAO_TEXTURE_NAME: &'static str = "SSAO";
 
     #[allow(unused)]
     pub fn new(
@@ -76,23 +75,6 @@ impl SsaoPass {
     }
 
     pub fn create_textures(resources: &mut RendererResources, resolution: Vec2UI) {
-        resources.create_texture(
-            Self::SSAO_INTERNAL_TEXTURE_NAME,
-            &TextureInfo {
-                dimension: TextureDimension::Dim2D,
-                format: Format::R16Float,
-                width: resolution.x / 2,
-                height: resolution.y / 2,
-                depth: 1,
-                mip_levels: 1,
-                array_length: 1,
-                samples: SampleCount::Samples1,
-                usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
-                supports_srgb: false,
-            },
-            false,
-        );
-
         resources.create_texture(
             Self::SSAO_TEXTURE_NAME,
             &TextureInfo {
@@ -217,7 +199,7 @@ impl SsaoPass {
 
         let ssao_uav = pass_params.resources.access_view(
             cmd_buffer,
-            Self::SSAO_INTERNAL_TEXTURE_NAME,
+            Self::SSAO_TEXTURE_NAME,
             BarrierSync::COMPUTE_SHADER,
             BarrierAccess::STORAGE_WRITE,
             TextureLayout::Storage,
@@ -277,70 +259,6 @@ impl SsaoPass {
 
         std::mem::drop(ssao_uav);
 
-        cmd_buffer.end_label();
-
-        // Blurring
-
-        let ssao_sampling_view = pass_params.resources.access_view(
-            cmd_buffer,
-            Self::SSAO_INTERNAL_TEXTURE_NAME,
-            BarrierSync::COMPUTE_SHADER,
-            BarrierAccess::SAMPLING_READ,
-            TextureLayout::Sampled,
-            false,
-            &TextureViewInfo::default(),
-            HistoryResourceEntry::Current,
-        );
-        let smoothed_ssao_view = pass_params.resources.access_view(
-            cmd_buffer,
-            Self::SSAO_TEXTURE_NAME,
-            BarrierSync::COMPUTE_SHADER,
-            BarrierAccess::STORAGE_WRITE,
-            TextureLayout::Storage,
-            true,
-            &TextureViewInfo::default(),
-            HistoryResourceEntry::Current,
-        );
-        let smoothed_ssao_history_view = pass_params.resources.access_view(
-            cmd_buffer,
-            Self::SSAO_TEXTURE_NAME,
-            BarrierSync::COMPUTE_SHADER,
-            BarrierAccess::SAMPLING_READ,
-            TextureLayout::Sampled,
-            false,
-            &TextureViewInfo::default(),
-            HistoryResourceEntry::Past,
-        );
-        cmd_buffer.begin_label("SSAO smoothing pass");
-        let pipeline = pass_params
-            .assets
-            .get_compute_pipeline(self.blur_pipeline)
-            .unwrap();
-        cmd_buffer.set_pipeline(PipelineBinding::Compute(&pipeline));
-        cmd_buffer.flush_barriers();
-        cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 0u32, smoothed_ssao_view.view());
-        cmd_buffer.bind_sampling_view(
-            BindingFrequency::VeryFrequent,
-            1u32,
-            ssao_sampling_view.view(),
-        );
-        cmd_buffer.bind_sampling_view(
-            BindingFrequency::VeryFrequent,
-            2u32,
-            smoothed_ssao_history_view.view(),
-        );
-        cmd_buffer.bind_sampler(
-            BindingFrequency::VeryFrequent,
-            5u32,
-            pass_params.resources.linear_sampler(),
-        );
-        cmd_buffer.finish_binding();
-        let smoothed_info = smoothed_ssao_view.texture().info();
-        cmd_buffer.dispatch(
-            (smoothed_info.width + 7u32) / 8u32,
-            (smoothed_info.height + 7u32) / 8u32,
-            smoothed_info.depth,
-        );
         cmd_buffer.end_label();
     }
 }

@@ -10,10 +10,29 @@ layout(location = 0) in vec2 in_uv;
 layout(location = 0) out vec4 out_color;
 
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0) uniform texture2D color;
-layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform texture2D ssao;
+layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform texture2D ssaoTex;
+
+float blurSsao(vec2 uv) {
+    uvec2 ssaoTextureSize = textureSize(sampler2D(ssaoTex, samplerNearest), 0);
+
+    // TODO: Use linear sampling more explicitly to reduce samples
+    vec2 texel = vec2(1.0 / float(ssaoTextureSize.x), 1.0 / float(ssaoTextureSize.y));
+    float sum = 0.0;
+    const int kernelSize = 4;
+    for (int x = 0; x < kernelSize; x++) {
+        for (int y = 0; y < kernelSize; y++) {
+            vec2 offset = vec2(float(x - kernelSize / 2), float(y - kernelSize / 2));
+            sum += texture(sampler2D(ssaoTex, samplerLinear), uv + offset * texel).r;
+        }
+    }
+    sum /= kernelSize * kernelSize;
+
+    return sum;
+}
 
 void main(void) {
-    vec4 withSSAO = textureLod(sampler2D(color, samplerLinear), in_uv, 0) * vec4(textureLod(sampler2D(ssao, samplerLinear), in_uv, 0).x);
+    float ssao = blurSsao(in_uv);
+    vec4 withSSAO = textureLod(sampler2D(color, samplerLinear), in_uv, 0) * ssao;
 
     // We need to do color conversion manually here because DearImgui expects rendering to a linear image
     // and it renders to the swapchain image.
