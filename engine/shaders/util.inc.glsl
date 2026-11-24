@@ -10,8 +10,8 @@ float linearizeDepth(float d, float zNear, float zFar) {
 
 vec3 worldSpacePosition(vec2 uv, float depth, mat4 invViewProj) {
   vec4 clipSpacePosition = vec4(uv * 2.0 - 1.0, depth, 1.0);
-  clipSpacePosition.y = -clipSpacePosition.y;
   vec4 worldSpacePosTemp = invViewProj * clipSpacePosition;
+  worldSpacePosTemp.y = -worldSpacePosTemp.y;
   return worldSpacePosTemp.xyz / worldSpacePosTemp.w;
 }
 
