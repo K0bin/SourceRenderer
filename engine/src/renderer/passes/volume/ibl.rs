@@ -11,7 +11,7 @@ use std::sync::Arc;
 pub struct ImageBasedLightingTextures {
     pub filtered_diffuse_environment_map_texture_name: &'static str,
     pub filtered_specular_environment_map_teture_name: &'static str,
-    pub preintegration_nap_texture_name: &'static str,
+    pub preintegration_map_texture_name: &'static str,
 }
 
 pub struct ImageBasedLightingPreparation {
@@ -27,6 +27,12 @@ pub struct ImageBasedLightingPreparation {
 
 impl ImageBasedLightingPreparation {
     const ENVIRONMENT_MAP_TEXTURE_NAME: &'static str = "EnvironmentMap";
+    const ENVIRONMENT_MAP_GREYSCALE_TEXTURE_NAME: &'static str =
+        "EnvironmentMapGreyscale";
+    const ENVIRONMENT_MAP_GREYSCALE_ROW_AVERAGE_TEXTURE_NAME: &'static str =
+        "EnvironmentMapGreyscaleRowAvg";
+    const ENVIRONMENT_MAP_GREYSCALE_AVERAGE_TEXTURE_NAME: &'static str =
+        "EnvironmentMapGreyscaleColumnAvg";
     const FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME: &'static str =
         "FilteredDiffuseEnvironmentMap";
     const FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME: &'static str =
@@ -186,12 +192,6 @@ impl ImageBasedLightingPreparation {
         pass_params
             .resources
             .destroy_texture(Self::ENVIRONMENT_MAP_TEXTURE_NAME);
-        pass_params
-            .resources
-            .destroy_texture(Self::FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME);
-        pass_params
-            .resources
-            .destroy_texture(Self::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME);
 
         cmd_buffer.begin_label("Environment Map deprojecting");
         let texture = pass_params.assets.get_texture_opt(self.handle.unwrap());
@@ -252,29 +252,49 @@ impl ImageBasedLightingPreparation {
         cmd_buffer.end_label();
     }
 
-    fn filter_env_map(
+    fn filter_env_map_diffuse(
         &mut self,
         cmd_buffer: &mut CommandBuffer,
         pass_params: &mut RenderPassParameters<'_>,
+        env_map_info: &TextureInfo,
     ) {
-        cmd_buffer.begin_label("Environment Map prefiltering");
-        let mut info = pass_params
+        pass_params
             .resources
-            .texture_info(Self::ENVIRONMENT_MAP_TEXTURE_NAME)
-            .clone();
+            .destroy_texture(Self::FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME);
 
         pass_params.resources.create_texture(
             Self::FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME,
-            &info,
+            env_map_info,
             false,
         );
 
-        info.mip_levels = 32u32 - u32::leading_zeros(info.width);
         pass_params.resources.create_texture(
-            Self::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
-            &info,
+            Self::ENVIRONMENT_MAP_GREYSCALE_TEXTURE_NAME,
+            env_map_info,
             false,
         );
+
+        pass_params.resources.create_texture(
+            Self::ENVIRONMENT_MAP_GREYSCALE_ROW_AVERAGE_TEXTURE_NAME,
+            &TextureInfo {
+                height: 1,
+                ..env_map_info.clone()
+            },
+            false,
+        );
+
+        pass_params.resources.create_texture(
+            Self::ENVIRONMENT_MAP_GREYSCALE_AVERAGE_TEXTURE_NAME,
+            &TextureInfo {
+                width: 1,
+                height: 1,
+                ..env_map_info.clone()
+            },
+            false,
+        );
+
+
+        cmd_buffer.begin_label("Diffuse");
 
         let pipeline = pass_params
             .assets
@@ -323,7 +343,44 @@ impl ImageBasedLightingPreparation {
         );
         cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1u32, filtered_cube.view());
         cmd_buffer.finish_binding();
-        cmd_buffer.dispatch((info.width + 7) / 8, (info.height + 7) / 8, 6);
+        cmd_buffer.dispatch((env_map_info.width + 7) / 8, (env_map_info.height + 7) / 8, 6);
+
+        cmd_buffer.end_label();
+        std::mem::drop(cube);
+        std::mem::drop(filtered_cube);
+
+        // Destroy intermediate textures
+        pass_params
+            .resources
+            .destroy_texture(Self::ENVIRONMENT_MAP_GREYSCALE_TEXTURE_NAME);
+        pass_params
+            .resources
+            .destroy_texture(Self::ENVIRONMENT_MAP_GREYSCALE_ROW_AVERAGE_TEXTURE_NAME);
+        pass_params
+            .resources
+            .destroy_texture(Self::ENVIRONMENT_MAP_GREYSCALE_AVERAGE_TEXTURE_NAME);
+    }
+
+    fn filter_env_map_specular(
+        &mut self,
+        cmd_buffer: &mut CommandBuffer,
+        pass_params: &mut RenderPassParameters<'_>,
+        env_map_info: &TextureInfo,
+    ) {
+        pass_params
+            .resources
+            .destroy_texture(Self::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME);
+
+        pass_params.resources.create_texture(
+            Self::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
+            &TextureInfo {
+                mip_levels: 32u32 - u32::leading_zeros(env_map_info.width),
+                ..env_map_info.clone()
+            },
+            false,
+        );
+
+        cmd_buffer.begin_label("Specular");
 
         let pipeline = pass_params
             .assets
@@ -336,7 +393,7 @@ impl ImageBasedLightingPreparation {
             Self::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
             &BarrierTextureRange {
                 base_mip_level: 0u32,
-                mip_level_length: info.mip_levels,
+                mip_level_length: env_map_info.mip_levels,
                 base_array_layer: 0u32,
                 array_layer_length: 1u32,
             },
@@ -348,9 +405,9 @@ impl ImageBasedLightingPreparation {
         );
         std::mem::drop(texture_temp);
 
-        for i in 0..info.mip_levels {
+        for i in 0..env_map_info.mip_levels {
             cmd_buffer.set_push_constant_data(
-                &[(1.0f32 / ((info.mip_levels - 1u32) as f32)) * (i as f32)],
+                &[(1.0f32 / ((env_map_info.mip_levels - 1u32) as f32)) * (i as f32)],
             );
             let output_view = pass_params.resources.get_view(
                 Self::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
@@ -366,8 +423,26 @@ impl ImageBasedLightingPreparation {
             );
             cmd_buffer.bind_storage_texture(BindingFrequency::VeryFrequent, 1u32, &output_view);
             cmd_buffer.finish_binding();
-            cmd_buffer.dispatch(((info.width >> i) + 7) / 8, ((info.height >> i) + 7) / 8, 6);
+            cmd_buffer.dispatch(((env_map_info.width >> i) + 7) / 8, ((env_map_info.height >> i) + 7) / 8, 6);
         }
+
+        cmd_buffer.end_label();
+    }
+
+    fn filter_env_map(
+        &mut self,
+        cmd_buffer: &mut CommandBuffer,
+        pass_params: &mut RenderPassParameters<'_>,
+    ) {
+        let info = pass_params
+            .resources
+            .texture_info(Self::ENVIRONMENT_MAP_TEXTURE_NAME)
+            .clone();
+
+        cmd_buffer.begin_label("Environment Map prefiltering");
+
+        self.filter_env_map_diffuse(cmd_buffer, pass_params, &info);
+        self.filter_env_map_specular(cmd_buffer, pass_params, &info);
 
         cmd_buffer.end_label();
     }
@@ -469,7 +544,7 @@ impl ImageBasedLightingPreparation {
                     Self::BLANK_FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME,
                 filtered_specular_environment_map_teture_name:
                     Self::BLANK_FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
-                preintegration_nap_texture_name: Self::PREINTEGRATION_MAP_TEXTURE_NAME,
+                preintegration_map_texture_name: Self::PREINTEGRATION_MAP_TEXTURE_NAME,
             }
         } else {
             ImageBasedLightingTextures {
@@ -477,7 +552,7 @@ impl ImageBasedLightingPreparation {
                     Self::FILTERED_DIFFUSE_ENVIRONMENT_MAP_TEXTURE_NAME,
                 filtered_specular_environment_map_teture_name:
                     Self::FILTERED_SPECULAR_ENVIRONMENT_MAP_TEXTURE_NAME,
-                preintegration_nap_texture_name: Self::PREINTEGRATION_MAP_TEXTURE_NAME,
+                preintegration_map_texture_name: Self::PREINTEGRATION_MAP_TEXTURE_NAME,
             }
         }
     }

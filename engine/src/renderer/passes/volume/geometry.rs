@@ -464,7 +464,7 @@ impl GeometryPass {
 
         let integration_lut = resources.access_view(
             cmd_buffer,
-            ibl_textures.preintegration_nap_texture_name,
+            ibl_textures.preintegration_map_texture_name,
             BarrierSync::FRAGMENT_SHADER,
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,
