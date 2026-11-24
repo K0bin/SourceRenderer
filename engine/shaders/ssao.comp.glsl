@@ -11,7 +11,7 @@ layout(local_size_x = 8,
 #include "frame_set_common.inc.glsl"
 
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 0, std140) uniform SSAOKernel {
-  vec4 samples[16];
+  vec4 samples[64];
 };
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 1) uniform texture2D noise;
 layout(set = DESCRIPTOR_SET_VERY_FREQUENT, binding = 2) uniform texture2D depthMap;
@@ -36,11 +36,11 @@ void main() {
 
   vec2 texCoord = (vec2(outputPx) + 0.5) / vec2(outputSize);
 
-  float depth = textureLod(sampler2D(depthMap, samplerLinear), texCoord, 0).x;
+  float depth = textureLod(sampler2D(depthMap, samplerNearest), texCoord, 0).x;
   vec3 fragPos = viewSpacePosition(texCoord, depth, camera.invProj);
-  vec3 normal = reconstructViewSpaceNormalCS(depthMap, samplerLinear, texCoord, camera.invProj);
+  vec3 normal = reconstructViewSpaceNormalCS(depthMap, samplerNearest, texCoord, camera.invProj);
 
-  vec2 noiseScale = textureSize(sampler2D(depthMap, samplerLinear), 0) / textureSize(sampler2D(noise, noiseSampler), 0);
+  vec2 noiseScale = vec2(textureSize(sampler2D(depthMap, samplerNearest), 0)) / vec2(textureSize(sampler2D(noise, samplerNearest), 0));
   vec2 noiseXY = texture(sampler2D(noise, noiseSampler), texCoord * noiseScale).xy * 2.0 - 1.0;
   vec3 randomVec = normalize(vec3(noiseXY, 0.0));
 
