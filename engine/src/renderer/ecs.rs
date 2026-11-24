@@ -43,6 +43,7 @@ pub struct VolumeRendererOptions {
     pub background_hdri: Option<String>,
     pub use_mesh_shader: bool,
     pub culling: bool,
+    pub sss_width: f32,
 }
 
 impl Default for VolumeRendererOptions {
@@ -51,6 +52,7 @@ impl Default for VolumeRendererOptions {
             background_hdri: None,
             use_mesh_shader: false,
             culling: true,
+            sss_width: 0.015,
         }
     }
 }

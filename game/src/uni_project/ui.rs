@@ -68,6 +68,14 @@ fn renderer_options_ui_system(
             ui.text("Culling pass");
             ui.same_line();
             ui.checkbox("##culling", &mut options.culling);
+
+            ui.text("SSS Width");
+            ui.slider(
+                "##ssswidth",
+                0.0f32,
+                0.4f32,
+                &mut options.sss_width,
+            );
         });
 }
 

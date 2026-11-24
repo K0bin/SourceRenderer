@@ -288,7 +288,7 @@ impl RenderPath for VolumeRenderer {
             GeometryPass::SSS_INTENSITY_TEXTURE_NAME,
             GeometryPass::DEPTH_TEXTURE_NAME,
             &camera_buffer,
-            0.015,
+            self.options.sss_width,
         );
 
         let backbuffer = swapchain.next_backbuffer()?;
