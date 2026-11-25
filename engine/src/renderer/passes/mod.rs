@@ -21,6 +21,8 @@ pub(crate) mod ssao;
 pub(crate) mod ssr;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod taa;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod vbao;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod modern;

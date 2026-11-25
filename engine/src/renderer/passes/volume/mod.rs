@@ -26,6 +26,7 @@ mod subsurfacescattering;
 pub use self::geometry::GeometryPass;
 
 pub use marching_cubes::MAX_SIZE as MARCHING_CUBES_MAX_SIZE;
+use crate::renderer::passes::vbao::VbaoPass;
 
 #[derive(Clone, Copy, Zeroable, Pod)]
 #[repr(C)]
@@ -49,6 +50,7 @@ pub struct VolumeRenderer {
     marching_cubes_pass: MarchingCubesPass,
     geometry: GeometryPass,
     ssao: SsaoPass,
+    vbao: VbaoPass,
     sss_pass: SSSPass,
     ibl_pass: ImageBasedLightingPreparation,
     compositing: CompositingPass,
@@ -76,6 +78,14 @@ impl VolumeRenderer {
         );
 
         let ssao = SsaoPass::new(
+            device,
+            resources,
+            assets,
+            Vec2UI::new(swapchain.width(), swapchain.height()),
+            false,
+        );
+
+        let vbao = VbaoPass::new(
             device,
             resources,
             assets,
@@ -119,6 +129,7 @@ impl VolumeRenderer {
             marching_cubes_pass,
             geometry: geometry_pass,
             ssao,
+            vbao,
             sss_pass: sss,
             ibl_pass: ibl_prep,
             compositing: comp,
@@ -154,7 +165,8 @@ impl RenderPath for VolumeRenderer {
             && self.background.is_ready(assets)
             && self.ibl_pass.is_ready(assets)
             && self.ssao.is_ready(assets)
-            && self.sss_pass.is_ready(assets);
+            && self.sss_pass.is_ready(assets)
+            && self.vbao.is_ready(assets);
 
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -319,7 +331,7 @@ impl RenderPath for VolumeRenderer {
             backbuffer_handle,
             &params,
             GeometryPass::COLOR_TEXTURE_NAME,
-            SsaoPass::SSAO_TEXTURE_NAME,
+            VbaoPass::SSAO_TEXTURE_NAME,
         );
 
         std::mem::drop(params);
