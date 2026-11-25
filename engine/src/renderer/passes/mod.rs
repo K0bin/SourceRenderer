@@ -21,8 +21,6 @@ pub(crate) mod ssao;
 pub(crate) mod ssr;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod taa;
-#[cfg(not(target_arch = "wasm32"))]
-pub(crate) mod vbao;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod modern;
@@ -39,6 +37,20 @@ use dear_imgui_renderer::DearImguiRenderer;
 pub(crate) mod web;
 
 pub(crate) mod volume;
+pub(crate) mod vbao;
+
+#[cfg(target_arch = "wasm32")]
+use crate::graphics::{BackendTexture, CommandBuffer, Device, TextureView};
+#[cfg(target_arch = "wasm32")]
+use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
+#[cfg(target_arch = "wasm32")]
+use crate::renderer::command::ImguiFrameSnapshot;
+#[cfg(target_arch = "wasm32")]
+use crate::renderer::renderer_resources::RendererResources;
+#[cfg(target_arch = "wasm32")]
+use sourcerenderer_core::gpu::Format;
+#[cfg(target_arch = "wasm32")]
+use std::sync::Arc;
 
 #[cfg(target_arch = "wasm32")]
 struct DearImguiRenderer(());
