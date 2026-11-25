@@ -22,8 +22,7 @@ float blurSsao(vec2 uv) {
     for (int x = 0; x < kernelSize; x++) {
         for (int y = 0; y < kernelSize; y++) {
             vec2 offset = vec2(float(x - kernelSize / 2), float(y - kernelSize / 2));
-            vec4 ssaoTexel = texture(sampler2D(ssaoTex, samplerLinear), uv + offset * texel);
-            sum += ssaoTexel.a;
+            sum += texture(sampler2D(ssaoTex, samplerLinear), uv + offset * texel).r;
         }
     }
     sum /= kernelSize * kernelSize;

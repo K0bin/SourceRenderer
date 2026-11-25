@@ -11,7 +11,7 @@ use smallvec::smallvec;
 use sourcerenderer_core::gpu::{Format, SampleCount, TextureDimension, TextureInfo, TextureUsage};
 use sourcerenderer_engine::asset::{AssetData, AssetHandle, AssetLoadPriority, AssetManager, AssetManagerECSResource, AssetType, TextureData, TextureHandle};
 use sourcerenderer_engine::dear_imgui_rs::{ChildWindow, ColorEditFlags, Condition, ListBox};
-use sourcerenderer_engine::renderer::VolumeMeshInstance;
+use sourcerenderer_engine::renderer::{AmbientOcclusionOption, VolumeMeshInstance};
 use sourcerenderer_engine::renderer::VolumeRendererOptions;
 use sourcerenderer_engine::transform::InterpolatedTransform;
 use sourcerenderer_engine::{DearImgui, VolumeDrawableTransparencyMode, dear_imgui_rs};
@@ -68,6 +68,26 @@ fn renderer_options_ui_system(
             ui.text("Culling pass");
             ui.same_line();
             ui.checkbox("##culling", &mut options.culling);
+
+            ui.text("Ambient occlusion");
+            if ui.radio_button(
+                "None##aonone",
+                options.ambient_occlusion == AmbientOcclusionOption::None,
+            ) {
+                options.ambient_occlusion = AmbientOcclusionOption::None;
+            }
+            if ui.radio_button(
+                "SSAO##aossao",
+                options.ambient_occlusion == AmbientOcclusionOption::SSAO,
+            ) {
+                options.ambient_occlusion = AmbientOcclusionOption::SSAO;
+            }
+            if ui.radio_button(
+                "VBAO##aovbao",
+                options.ambient_occlusion == AmbientOcclusionOption::VBAO,
+            ) {
+                options.ambient_occlusion = AmbientOcclusionOption::VBAO;
+            }
 
             // Our models can end up much larger than they should be given what was scanned for the CT.
             // So we need a larger range here.

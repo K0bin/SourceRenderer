@@ -33,7 +33,7 @@ pub use self::command::RendererCommand;
 pub use self::drawable::{DrawablePart, RendererStaticDrawable, VolumeDrawableTransparencyMode};
 pub use self::ecs::{
     DirectionalLightComponent, Lightmap, PointLightComponent, StaticRenderableComponent,
-    VolumeMeshInstance, VolumeRendererOptions,
+    VolumeMeshInstance, VolumeRendererOptions, AmbientOcclusionOption,
 };
 pub use self::light::PointLight;
 pub use self::renderer::Renderer;

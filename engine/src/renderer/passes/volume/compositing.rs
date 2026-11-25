@@ -8,7 +8,7 @@ use crate::renderer::asset::{
 };
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::HistoryResourceEntry;
-use sourcerenderer_core::gpu::{AttachmentBlendInfo, BarrierAccess, BarrierSync, BindingFrequency, BlendFactor, BlendInfo, BlendOp, ColorComponents, CompareFunc, CullMode, DepthStencilInfo, FillMode, Format, FrontFace, LoadOpColor, LogicOp, PrimitiveType, RasterizerInfo, RenderPassResumeSuspend, SampleCount, Scissor, Texture, TextureLayout, TexturePlane, TextureSwizzle, TextureViewInfo, VertexLayoutInfo, Viewport};
+use sourcerenderer_core::gpu::{AttachmentBlendInfo, BarrierAccess, BarrierSync, BindingFrequency, BlendFactor, BlendInfo, BlendOp, ColorComponents, CompareFunc, CullMode, DepthStencilInfo, FillMode, Format, FrontFace, LoadOpColor, LogicOp, PrimitiveType, RasterizerInfo, RenderPassResumeSuspend, SampleCount, Scissor, Texture, TextureComponent, TextureLayout, TexturePlane, TextureSwizzle, TextureViewInfo, VertexLayoutInfo, Viewport};
 use sourcerenderer_core::{Vec2, Vec2I, Vec2UI};
 use std::sync::Arc;
 
@@ -84,6 +84,7 @@ impl CompositingPass {
         params: &RenderPassParameters,
         color_name: &str,
         ssao_name: &str,
+        ssao_component: TextureComponent,
     ) {
         cmd_buffer.clear_all_bindings(BindingFrequency::Frequent);
         cmd_buffer.clear_all_bindings(BindingFrequency::VeryFrequent);
@@ -108,7 +109,15 @@ impl CompositingPass {
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,
             false,
-            &TextureViewInfo ::default(),
+            &TextureViewInfo {
+                swizzle: TextureSwizzle {
+                    r: ssao_component,
+                    g: ssao_component,
+                    b: ssao_component,
+                    a: ssao_component,
+                },
+                ..Default::default()
+            },
             HistoryResourceEntry::Current,
         );
 

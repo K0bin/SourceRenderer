@@ -1,5 +1,5 @@
 use crate::graphics::{GraphicsContext, *};
-use crate::renderer::VolumeRendererOptions;
+use crate::renderer::{AmbientOcclusionOption, VolumeRendererOptions};
 use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::passes::DearImguiRenderer;
 use crate::renderer::passes::ssao::SsaoPass;
@@ -24,6 +24,7 @@ mod subsurfacescattering;
 pub use self::geometry::GeometryPass;
 
 pub use marching_cubes::MAX_SIZE as MARCHING_CUBES_MAX_SIZE;
+use sourcerenderer_core::gpu::TextureComponent;
 use crate::renderer::passes::vbao::VbaoPass;
 
 #[derive(Clone, Copy, Zeroable, Pod)]
@@ -266,18 +267,34 @@ impl RenderPath for VolumeRenderer {
             &ibl_textures,
         );
 
-        self.ssao.execute(
-            &mut cmd_buffer,
-            &params,
-            GeometryPass::DEPTH_TEXTURE_NAME,
-        );
-
-        self.vbao.execute(
-            &mut cmd_buffer,
-            &params,
-            GeometryPass::COLOR_TEXTURE_NAME,
-            GeometryPass::DEPTH_TEXTURE_NAME,
-        );
+        let ssao_texture_name: &str;
+        let ssao_component: TextureComponent;
+        match self.options.ambient_occlusion {
+            AmbientOcclusionOption::SSAO => {
+                ssao_texture_name = SsaoPass::SSAO_TEXTURE_NAME;
+                ssao_component = TextureComponent::R;
+                self.ssao.execute(
+                    &mut cmd_buffer,
+                    &params,
+                    GeometryPass::DEPTH_TEXTURE_NAME,
+                );
+            }
+            AmbientOcclusionOption::VBAO => {
+                ssao_texture_name = VbaoPass::SSAO_TEXTURE_NAME;
+                ssao_component = TextureComponent::A;
+                self.vbao.execute(
+                    &mut cmd_buffer,
+                    &params,
+                    GeometryPass::COLOR_TEXTURE_NAME,
+                    GeometryPass::DEPTH_TEXTURE_NAME,
+                );
+            }
+            AmbientOcclusionOption::None => {
+                ssao_texture_name = SsaoPass::SSAO_TEXTURE_NAME;
+                ssao_component = TextureComponent::R;
+                SsaoPass::clear(&mut cmd_buffer, &params);
+            }
+        }
 
         /*
          * Renderer tries to use 1 unit = 1 meter
@@ -316,7 +333,8 @@ impl RenderPath for VolumeRenderer {
             backbuffer_handle,
             &params,
             GeometryPass::COLOR_TEXTURE_NAME,
-            VbaoPass::SSAO_TEXTURE_NAME,
+            ssao_texture_name,
+            ssao_component,
         );
 
         std::mem::drop(params);
