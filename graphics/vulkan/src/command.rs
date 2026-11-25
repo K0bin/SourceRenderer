@@ -1239,7 +1239,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                 self.device.cmd_clear_depth_stencil_image(
                     self.cmd_buffer,
                     texture.handle(),
-                    vk::ImageLayout::GENERAL,
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                     &vk::ClearDepthStencilValue {
                         depth: values[0] as f32,
                         stencil: values[1],
@@ -1250,7 +1250,7 @@ impl gpu::CommandBuffer<VkBackend> for VkCommandBuffer {
                 self.device.cmd_clear_color_image(
                     self.cmd_buffer,
                     texture.handle(),
-                    vk::ImageLayout::GENERAL,
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                     &vk::ClearColorValue { uint32: values },
                     &[range],
                 );
