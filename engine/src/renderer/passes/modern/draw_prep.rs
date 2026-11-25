@@ -1,6 +1,6 @@
 use bytemuck::{Pod, Zeroable};
 use sourcerenderer_core::Vec4;
-use sourcerenderer_core::gpu::TexturePlane;
+use sourcerenderer_core::gpu::{TexturePlane, TextureSwizzle};
 
 use crate::graphics::*;
 use crate::math::Frustum;
@@ -97,6 +97,7 @@ impl DrawPrepPass {
                     array_layer_length: 1,
                     format: None,
                     plane: TexturePlane::Primary,
+                    swizzle: TextureSwizzle::default(),
                 },
                 HistoryResourceEntry::Current,
             );

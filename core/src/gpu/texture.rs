@@ -168,12 +168,38 @@ pub enum TexturePlane {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[repr(u8)]
+pub enum TextureComponent {
+    R = 0, G = 1, B = 2, A = 3,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct TextureSwizzle {
+    pub r: TextureComponent,
+    pub g: TextureComponent,
+    pub b: TextureComponent,
+    pub a: TextureComponent,
+}
+
+impl Default for TextureSwizzle {
+    fn default() -> Self {
+        Self {
+            r: TextureComponent::R,
+            g: TextureComponent::G,
+            b: TextureComponent::B,
+            a: TextureComponent::A,
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct TextureViewInfo {
     pub base_mip_level: u32,
     pub mip_level_length: u32,
     pub base_array_layer: u32,
     pub array_layer_length: u32,
     pub plane: TexturePlane,
+    pub swizzle: TextureSwizzle,
     pub format: Option<Format>,
 }
 
@@ -185,6 +211,7 @@ impl Default for TextureViewInfo {
             base_array_layer: 0,
             array_layer_length: 1,
             plane: TexturePlane::Primary,
+            swizzle: TextureSwizzle::default(),
             format: None,
         }
     }

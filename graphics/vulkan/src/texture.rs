@@ -7,7 +7,7 @@ use std::sync::Arc;
 use super::*;
 use ash::vk;
 use ash::vk::Handle as _;
-use sourcerenderer_core::gpu::TextureDimension;
+use sourcerenderer_core::gpu::{TextureComponent, TextureDimension, TextureSwizzle};
 use sourcerenderer_core::{FixedSizeSmallVec, gpu};
 
 pub(crate) struct VkImageCreateInfoCollection<'a> {
@@ -482,6 +482,15 @@ fn address_mode_to_vk(address_mode: gpu::AddressMode) -> vk::SamplerAddressMode 
     }
 }
 
+fn component_to_vk(component: TextureComponent) -> vk::ComponentSwizzle {
+    match component {
+        TextureComponent::R => vk::ComponentSwizzle::R,
+        TextureComponent::G => vk::ComponentSwizzle::G,
+        TextureComponent::B => vk::ComponentSwizzle::B,
+        TextureComponent::A => vk::ComponentSwizzle::A,
+    }
+}
+
 pub struct VkTextureView {
     view: vk::ImageView,
     device: Arc<RawVkDevice>,
@@ -518,11 +527,15 @@ impl VkTextureView {
                 gpu::TextureDimension::CubeArray => vk::ImageViewType::CUBE_ARRAY,
             },
             format: format_to_vk(format, device.supports_d24),
-            components: vk::ComponentMapping {
-                r: vk::ComponentSwizzle::IDENTITY,
-                g: vk::ComponentSwizzle::IDENTITY,
-                b: vk::ComponentSwizzle::IDENTITY,
-                a: vk::ComponentSwizzle::IDENTITY,
+            components: if info.swizzle == TextureSwizzle::default() {
+                vk::ComponentMapping::default()
+            } else {
+                vk::ComponentMapping {
+                    r: component_to_vk(info.swizzle.r),
+                    g: component_to_vk(info.swizzle.g),
+                    b: component_to_vk(info.swizzle.b),
+                    a: component_to_vk(info.swizzle.a),
+                }
             },
             subresource_range: vk::ImageSubresourceRange {
                 aspect_mask: aspect_mask_from_format_with_plane(format, info.plane),

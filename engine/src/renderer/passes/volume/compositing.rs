@@ -8,12 +8,7 @@ use crate::renderer::asset::{
 };
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::HistoryResourceEntry;
-use sourcerenderer_core::gpu::{
-    AttachmentBlendInfo, BarrierAccess, BarrierSync, BindingFrequency, BlendFactor, BlendInfo,
-    BlendOp, ColorComponents, CompareFunc, CullMode, DepthStencilInfo, FillMode, Format, FrontFace,
-    LoadOpColor, LogicOp, PrimitiveType, RasterizerInfo, RenderPassResumeSuspend, SampleCount,
-    Scissor, Texture, TextureLayout, TexturePlane, TextureViewInfo, VertexLayoutInfo, Viewport,
-};
+use sourcerenderer_core::gpu::{AttachmentBlendInfo, BarrierAccess, BarrierSync, BindingFrequency, BlendFactor, BlendInfo, BlendOp, ColorComponents, CompareFunc, CullMode, DepthStencilInfo, FillMode, Format, FrontFace, LoadOpColor, LogicOp, PrimitiveType, RasterizerInfo, RenderPassResumeSuspend, SampleCount, Scissor, Texture, TextureLayout, TexturePlane, TextureSwizzle, TextureViewInfo, VertexLayoutInfo, Viewport};
 use sourcerenderer_core::{Vec2, Vec2I, Vec2UI};
 use std::sync::Arc;
 
@@ -102,14 +97,7 @@ impl CompositingPass {
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,
             false,
-            &TextureViewInfo {
-                base_mip_level: 0u32,
-                mip_level_length: 1u32,
-                base_array_layer: 0u32,
-                array_layer_length: 1u32,
-                format: None,
-                plane: TexturePlane::Primary,
-            },
+            &TextureViewInfo::default(),
             HistoryResourceEntry::Current,
         );
 
@@ -120,14 +108,7 @@ impl CompositingPass {
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,
             false,
-            &TextureViewInfo {
-                base_mip_level: 0u32,
-                mip_level_length: 1u32,
-                base_array_layer: 0u32,
-                array_layer_length: 1u32,
-                format: None,
-                plane: TexturePlane::Primary,
-            },
+            &TextureViewInfo ::default(),
             HistoryResourceEntry::Current,
         );
 

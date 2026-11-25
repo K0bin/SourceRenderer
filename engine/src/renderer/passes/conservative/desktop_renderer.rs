@@ -4,7 +4,7 @@ use super::geometry::GeometryPass;
 use super::light_binning::LightBinningPass;
 use bytemuck::{Pod, Zeroable};
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::TexturePlane;
+use sourcerenderer_core::gpu::{TexturePlane, TextureSwizzle};
 use sourcerenderer_core::{Matrix4, Vec2, Vec2UI, Vec3, Vec3UI, Vec4};
 use std::sync::Arc;
 //use super::occlusion::OcclusionPass;
@@ -476,14 +476,7 @@ impl RenderPath for ConservativeRenderer {
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,
             false,
-            &TextureViewInfo {
-                base_mip_level: 0,
-                mip_level_length: 1,
-                base_array_layer: 0,
-                array_layer_length: 1,
-                format: None,
-                plane: TexturePlane::Primary,
-            },
+            &TextureViewInfo::default(),
             HistoryResourceEntry::Current,
         );
         let sampler = params.resources.linear_sampler();

@@ -9,7 +9,7 @@ use crate::asset::{
 use crate::graphics::*;
 use log::trace;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::TexturePlane;
+use sourcerenderer_core::gpu::{TexturePlane, TextureSwizzle};
 
 struct DelayedAsset {
     fence: QueueFenceValue,
@@ -130,6 +130,7 @@ impl AssetIntegrator {
                 array_layer_length: 1,
                 format: None,
                 plane: TexturePlane::Primary,
+                swizzle: TextureSwizzle::default(),
             },
             Some(&name),
         );
@@ -146,6 +147,7 @@ impl AssetIntegrator {
                         array_layer_length: 1,
                         format: Some(srgb_format),
                         plane: TexturePlane::Primary,
+                        swizzle: TextureSwizzle::default(),
                     },
                     Some(&srgb_name),
                 ))

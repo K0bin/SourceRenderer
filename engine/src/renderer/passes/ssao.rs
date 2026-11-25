@@ -5,7 +5,6 @@ use crate::renderer::asset::*;
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use rand::random;
-use sourcerenderer_core::gpu::TexturePlane;
 use sourcerenderer_core::{Vec2UI, Vec4};
 
 pub struct SsaoPass {
@@ -86,7 +85,7 @@ impl SsaoPass {
                 mip_levels: 1,
                 array_length: 1,
                 samples: SampleCount::Samples1,
-                usage: TextureUsage::STORAGE | TextureUsage::SAMPLED,
+                usage: TextureUsage::STORAGE | TextureUsage::SAMPLED | TextureUsage::COPY_DST,
                 supports_srgb: false,
             },
             true,
@@ -168,14 +167,7 @@ impl SsaoPass {
 
         let noise_texture_view = device.create_texture_view(
             &noise_texture,
-            &TextureViewInfo {
-                base_mip_level: 0u32,
-                base_array_layer: 0u32,
-                array_layer_length: 1u32,
-                mip_level_length: 1u32,
-                format: None,
-                plane: TexturePlane::Primary,
-            },
+            &TextureViewInfo::default(),
             Some("SSAONoiseView"),
         );
 
@@ -260,5 +252,26 @@ impl SsaoPass {
         std::mem::drop(ssao_uav);
 
         cmd_buffer.end_label();
+    }
+
+    pub fn clear(
+        cmd_buffer: &mut CommandBuffer,
+        pass_params: &RenderPassParameters<'_>,
+    ) {
+        cmd_buffer.clear_all_bindings(BindingFrequency::Frequent);
+        cmd_buffer.clear_all_bindings(BindingFrequency::VeryFrequent);
+
+        let ssao = pass_params.resources.access_texture(
+            cmd_buffer,
+            Self::SSAO_TEXTURE_NAME,
+            &BarrierTextureRange::default(),
+            BarrierSync::COPY,
+            BarrierAccess::COPY_WRITE,
+            TextureLayout::CopyDst,
+            true,
+            HistoryResourceEntry::Current,
+        );
+        cmd_buffer.flush_barriers();
+        cmd_buffer.copy_clear_texture(ssao.texture(), 0, 0, [f32::to_bits(1.0f32); 4]);
     }
 }

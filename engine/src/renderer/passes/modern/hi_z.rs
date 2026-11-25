@@ -1,7 +1,7 @@
 use bytemuck::{Pod, Zeroable};
 use smallvec::SmallVec;
 use sourcerenderer_core::Vec2;
-use sourcerenderer_core::gpu::TexturePlane;
+use sourcerenderer_core::gpu::{TexturePlane, TextureSwizzle};
 use std::sync::Arc;
 
 use crate::graphics::*;
@@ -181,6 +181,7 @@ impl HierarchicalZPass {
                             array_layer_length: 1,
                             format: None,
                             plane: TexturePlane::Primary,
+                            swizzle: TextureSwizzle::default(),
                         },
                         HistoryResourceEntry::Current,
                     ).view().clone()

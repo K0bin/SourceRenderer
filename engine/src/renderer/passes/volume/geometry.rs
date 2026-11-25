@@ -541,14 +541,7 @@ impl GeometryPass {
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,
             false,
-            &TextureViewInfo {
-                base_mip_level: 0u32,
-                base_array_layer: 0u32,
-                array_layer_length: 1u32,
-                mip_level_length: env_specular_mips,
-                format: None,
-                plane: TexturePlane::Primary,
-            },
+            &TextureViewInfo::default(),
             HistoryResourceEntry::Current,
         );
 

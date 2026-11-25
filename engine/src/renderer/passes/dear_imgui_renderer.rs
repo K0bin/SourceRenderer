@@ -5,7 +5,7 @@ use crate::renderer::asset::{
 use crate::renderer::renderer_resources::RendererResources;
 use bytemuck::{Pod, Zeroable};
 use dear_imgui_rs;
-use sourcerenderer_core::gpu::{Texture as _, TexturePlane};
+use sourcerenderer_core::gpu::{Texture as _, TexturePlane, TextureSwizzle};
 use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec3UI};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -162,14 +162,7 @@ impl DearImguiRenderer {
 
                     let view = device.create_texture_view(
                         &texture,
-                        &TextureViewInfo {
-                            base_mip_level: 0,
-                            mip_level_length: 1,
-                            base_array_layer: 0,
-                            array_layer_length: 1,
-                            plane: TexturePlane::Primary,
-                            format: None,
-                        },
+                        &TextureViewInfo::default(),
                         Some(&format!("DearImgui view {}", id)),
                     );
 

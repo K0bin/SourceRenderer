@@ -13,7 +13,7 @@ use crate::renderer::render_path::{RenderPassParameters, SceneInfo};
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
 use bevy_math::Vec4Swizzles as _;
 use smallvec::SmallVec;
-use sourcerenderer_core::gpu::TexturePlane;
+use sourcerenderer_core::gpu::{TexturePlane, TextureSwizzle};
 use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec4};
 
 /*
@@ -310,6 +310,7 @@ impl ShadowMapPass {
                     array_layer_length: 1,
                     format: None,
                     plane: TexturePlane::Primary,
+                    swizzle: TextureSwizzle::default(),
                 },
                 HistoryResourceEntry::Current,
             );

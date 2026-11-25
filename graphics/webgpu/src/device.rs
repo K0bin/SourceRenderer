@@ -285,6 +285,7 @@ impl WebGPUDevice {
             "core-features-and-limits",
             "bgra8unorm-storage",
             "depth32float-stencil8",
+            "texture-component-swizzle",
         ]
     }
 }

@@ -1,6 +1,5 @@
 use sourcerenderer_core::Vec2UI;
-use sourcerenderer_core::gpu::TexturePlane;
-use std::cell::Ref;
+use sourcerenderer_core::gpu::{TexturePlane, TextureSwizzle};
 use std::sync::Arc;
 
 use super::rt_shadows::RTShadowPass;
@@ -201,6 +200,7 @@ impl ShadingPass {
                 base_mip_level: 0,
                 format: None,
                 plane: TexturePlane::Primary,
+                swizzle: TextureSwizzle::default(),
             },
             HistoryResourceEntry::Current,
         );

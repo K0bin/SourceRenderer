@@ -1,6 +1,6 @@
 use js_sys::JsString;
 use js_sys::wasm_bindgen::JsCast;
-use sourcerenderer_core::gpu::{self, Texture as _};
+use sourcerenderer_core::gpu::{self, Texture as _, TextureComponent, TextureSwizzle};
 use std::hash::Hash;
 use web_sys::{
     GpuDevice, GpuTexture, GpuTextureDescriptor, GpuTextureFormat, GpuTextureView,
@@ -72,6 +72,15 @@ pub(crate) fn texture_dimension_to_webgpu_view(
         gpu::TextureDimension::Dim2DArray => GpuTextureViewDimension::N2dArray,
         gpu::TextureDimension::Cube => GpuTextureViewDimension::Cube,
         gpu::TextureDimension::CubeArray => GpuTextureViewDimension::CubeArray,
+    }
+}
+
+pub(crate) fn component_to_str(component: TextureComponent) -> &'static str {
+    match component {
+        TextureComponent::R => "r",
+        TextureComponent::G => "g",
+        TextureComponent::B => "b",
+        TextureComponent::A => "a",
     }
 }
 
@@ -321,6 +330,13 @@ impl WebGPUTextureView {
         descriptor.set_mip_level_count(info.mip_level_length);
         descriptor.set_base_mip_level(info.base_mip_level);
         descriptor.set_dimension(texture_dimension_to_webgpu_view(texture.info().dimension));
+        if info.swizzle != TextureSwizzle::default() {
+            descriptor.set_swizzle(&format!("{}{}{}{}",
+                                            component_to_str(info.swizzle.r),
+                                            component_to_str(info.swizzle.g),
+                                            component_to_str(info.swizzle.b),
+                                            component_to_str(info.swizzle.a)));
+        }
         if let Some(format) = info.format {
             descriptor.set_format(format_to_webgpu(format));
         }

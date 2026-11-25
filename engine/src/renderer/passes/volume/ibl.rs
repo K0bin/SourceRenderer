@@ -5,7 +5,7 @@ use crate::renderer::asset::{
 };
 use crate::renderer::render_path::RenderPassParameters;
 use crate::renderer::renderer_resources::{HistoryResourceEntry, RendererResources};
-use sourcerenderer_core::gpu::{AddressMode, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, Filter, Format, SampleCount, SamplerInfo, TextureDimension, TextureInfo, TextureLayout, TexturePlane, TextureUsage, TextureViewInfo};
+use sourcerenderer_core::gpu::{AddressMode, BarrierAccess, BarrierSync, BarrierTextureRange, BindingFrequency, Filter, Format, SampleCount, SamplerInfo, TextureDimension, TextureInfo, TextureLayout, TexturePlane, TextureSwizzle, TextureUsage, TextureViewInfo};
 use std::sync::Arc;
 
 pub struct ImageBasedLightingTextures {
@@ -120,14 +120,7 @@ impl ImageBasedLightingPreparation {
             BarrierAccess::STORAGE_WRITE,
             TextureLayout::Storage,
             true,
-            &TextureViewInfo {
-                base_mip_level: 0u32,
-                mip_level_length: 1u32,
-                base_array_layer: 0u32,
-                array_layer_length: 1u32,
-                format: None,
-                plane: TexturePlane::Primary,
-            },
+            &TextureViewInfo::default(),
             HistoryResourceEntry::Current,
         );
 
@@ -229,14 +222,7 @@ impl ImageBasedLightingPreparation {
             BarrierAccess::STORAGE_WRITE,
             TextureLayout::Storage,
             true,
-            &TextureViewInfo {
-                base_mip_level: 0u32,
-                mip_level_length: 1u32,
-                base_array_layer: 0u32,
-                array_layer_length: 1u32,
-                format: None,
-                plane: TexturePlane::Primary,
-            },
+            &TextureViewInfo::default(),
             HistoryResourceEntry::Current,
         );
         cmd_buffer.flush_barriers();
@@ -289,14 +275,7 @@ impl ImageBasedLightingPreparation {
             BarrierAccess::SAMPLING_READ,
             TextureLayout::Sampled,
             false,
-            &TextureViewInfo {
-                base_mip_level: 0u32,
-                mip_level_length: 1u32,
-                base_array_layer: 0u32,
-                array_layer_length: 1u32,
-                format: None,
-                plane: TexturePlane::Primary,
-            },
+            &TextureViewInfo::default(),
             HistoryResourceEntry::Current,
         );
         let filtered_cube = pass_params.resources.access_view(
@@ -306,14 +285,7 @@ impl ImageBasedLightingPreparation {
             BarrierAccess::STORAGE_WRITE,
             TextureLayout::Storage,
             true,
-            &TextureViewInfo {
-                base_mip_level: 0u32,
-                mip_level_length: 1u32,
-                base_array_layer: 0u32,
-                array_layer_length: 1u32,
-                format: None,
-                plane: TexturePlane::Primary,
-            },
+            &TextureViewInfo::default(),
             HistoryResourceEntry::Current,
         );
         cmd_buffer.bind_sampling_view(
@@ -361,6 +333,7 @@ impl ImageBasedLightingPreparation {
                     base_mip_level: i,
                     format: None,
                     plane: TexturePlane::Primary,
+                    swizzle: TextureSwizzle::default(),
                 },
                 HistoryResourceEntry::Current,
             );

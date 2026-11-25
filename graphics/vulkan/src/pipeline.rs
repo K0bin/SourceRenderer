@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::ffi::CString;
 use std::hash::{Hash, Hasher};
 use std::os::raw::{c_char, c_void};

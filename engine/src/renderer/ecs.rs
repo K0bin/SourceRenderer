@@ -2,6 +2,7 @@ use crate::renderer::drawable::VolumeDrawableTransparencyMode;
 use bevy_ecs::component::Component;
 use bevy_ecs::resource::Resource;
 use bevy_math::Vec3;
+use crate::renderer::ecs::AmbientOcclusionOption::VBAO;
 
 #[derive(Clone, Debug, PartialEq, Component)]
 pub struct StaticRenderableComponent {
@@ -38,12 +39,20 @@ pub struct VolumeMeshInstance {
     pub slice_cut: Vec3
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum AmbientOcclusionOption {
+    None,
+    SSAO,
+    VBAO,
+}
+
 #[derive(Clone, Debug, PartialEq, Resource)]
 pub struct VolumeRendererOptions {
     pub background_hdri: Option<String>,
     pub use_mesh_shader: bool,
     pub culling: bool,
     pub sss_width: f32,
+    pub ambient_occlusion: AmbientOcclusionOption,
 }
 
 impl Default for VolumeRendererOptions {
@@ -52,6 +61,7 @@ impl Default for VolumeRendererOptions {
             background_hdri: None,
             use_mesh_shader: false,
             culling: true,
+            ambient_occlusion: AmbientOcclusionOption::VBAO,
             // 1.5cm (0.015) is typical for human skin but that assumes 1 = 1m and a head actually has the
             // dimensions of a head. Our models can end up being much larger so pick something big.
             sss_width: 0.5,
