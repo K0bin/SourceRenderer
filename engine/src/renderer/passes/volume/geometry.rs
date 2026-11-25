@@ -11,7 +11,6 @@ use bytemuck::{Pod, Zeroable};
 use smallvec::SmallVec;
 use sourcerenderer_core::gpu::{SpecConstValue, StencilOp, TexturePlane};
 use sourcerenderer_core::{Matrix4, Vec2, Vec2I, Vec2UI, Vec3, Vec3UI};
-use std::default::Default;
 use std::sync::Arc;
 use bevy_math::UVec3;
 use crate::asset::MaterialHandle;
@@ -100,6 +99,7 @@ impl GeometryPassPipelines<MeshGraphicsPipelineHandle, 3> {
 pub struct GeometryPass {
     pipelines: GeometryPassPipelines<GraphicsPipelineHandle, 2>,
     mesh_pipelines: Option<GeometryPassPipelines<MeshGraphicsPipelineHandle, 3>>,
+    background_pipeline: GraphicsPipelineHandle,
 }
 
 impl GeometryPass {
@@ -335,6 +335,53 @@ impl GeometryPass {
             None
         };
 
+
+        let background_vs_path = shader_path!("fullscreen_quad.vert");
+        let background_fs_path = shader_path!("background.frag");
+        let background_pipeline_info: GraphicsPipelineInfo = GraphicsPipelineInfo {
+            vs: PathPipelineShaderStage::empty_spec_consts(&background_vs_path),
+            fs: Some(PathPipelineShaderStage::empty_spec_consts(&background_fs_path)),
+            primitive_type: PrimitiveType::Triangles,
+            vertex_layout: VertexLayoutInfo {
+                input_assembler: &[],
+                shader_inputs: &[],
+            },
+            rasterizer: RasterizerInfo {
+                fill_mode: FillMode::Fill,
+                cull_mode: CullMode::None,
+                front_face: FrontFace::Clockwise,
+                sample_count: SampleCount::Samples1,
+            },
+            depth_stencil: DepthStencilInfo {
+                depth_test_enabled: false,
+                depth_write_enabled: false,
+                depth_func: CompareFunc::Always,
+                stencil_enable: false,
+                stencil_read_mask: 0u8,
+                stencil_write_mask: 0u8,
+                stencil_front: StencilInfo::default(),
+                stencil_back: StencilInfo::default(),
+            },
+            blend: BlendInfo {
+                alpha_to_coverage_enabled: false,
+                logic_op_enabled: false,
+                logic_op: LogicOp::And,
+                constants: [0f32, 0f32, 0f32, 0f32],
+                attachments: &[AttachmentBlendInfo {
+                    blend_enabled: false,
+                    write_mask: ColorComponents::all(),
+                    ..Default::default()
+                }, AttachmentBlendInfo {
+                    blend_enabled: false,
+                    write_mask: ColorComponents::empty(),
+                    ..Default::default()
+                }],
+            },
+            render_target_formats: pipeline_info.render_target_formats,
+            depth_stencil_format: pipeline_info.depth_stencil_format,
+        };
+        let background_pipeline = assets.request_graphics_pipeline(&background_pipeline_info);
+
         Self {
             pipelines: GeometryPassPipelines {
                 opaque: pipeline,
@@ -342,7 +389,8 @@ impl GeometryPass {
                 transparent: pipeline_transparent,
                 transparent_prepass: pipeline_transparent_prepass,
             },
-            mesh_pipelines
+            mesh_pipelines,
+            background_pipeline,
         }
     }
 
@@ -403,6 +451,7 @@ impl GeometryPass {
     pub(crate) fn is_ready(&self, assets: &RendererAssetsReadOnly<'_>) -> bool {
         self.pipelines.is_ready(assets)
         && self.mesh_pipelines.as_ref().map_or(true, |p| p.is_ready(assets))
+        && assets.has_pipeline(self.background_pipeline.into())
     }
 
     pub(crate) fn execute(
@@ -547,7 +596,7 @@ impl GeometryPass {
             render_targets: &[
                 RenderTarget {
                     view: color_view.view(),
-                    load_op: LoadOpColor::Load,
+                    load_op: LoadOpColor::DontCare,
                     store_op: StoreOp::Store,
                 },
                 RenderTarget {
@@ -578,6 +627,21 @@ impl GeometryPass {
             position: Vec2I::new(0, 0),
             extent: color_tex_extent,
         }]);
+
+        let background_pipeline: &Arc<GraphicsPipeline> = params
+            .assets
+            .get_graphics_pipeline(self.background_pipeline)
+            .expect("Pipeline is not compiled yet");
+        cmd_buffer.set_pipeline(PipelineBinding::Graphics(&background_pipeline));
+
+        cmd_buffer.bind_sampling_view(
+            BindingFrequency::Frequent,
+            0u32,
+            env_map_specular.view(),
+        );
+        cmd_buffer.finish_binding();
+        cmd_buffer.draw(3u32, 1u32, 0u32, 0u32);
+
         cmd_buffer.set_stencil_reference(1u32);
 
         let base_pass = |cmd_buffer: &mut CommandBuffer, ray_march_normals: bool| {

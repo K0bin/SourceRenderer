@@ -3,7 +3,6 @@ use crate::renderer::VolumeRendererOptions;
 use crate::renderer::asset::{RendererAssets, RendererAssetsReadOnly};
 use crate::renderer::passes::DearImguiRenderer;
 use crate::renderer::passes::ssao::SsaoPass;
-use crate::renderer::passes::volume::background::BackgroundPass;
 use crate::renderer::passes::volume::compositing::CompositingPass;
 use crate::renderer::passes::volume::ibl::ImageBasedLightingPreparation;
 use crate::renderer::passes::volume::subsurfacescattering::SSSPass;
@@ -16,7 +15,6 @@ use marching_cubes::MarchingCubesPass;
 use sourcerenderer_core::{Matrix4, Vec2UI, Vec4};
 use std::sync::Arc;
 
-mod background;
 mod compositing;
 mod geometry;
 mod ibl;
@@ -54,7 +52,6 @@ pub struct VolumeRenderer {
     sss_pass: SSSPass,
     ibl_pass: ImageBasedLightingPreparation,
     compositing: CompositingPass,
-    background: BackgroundPass,
     ui_pass: DearImguiRenderer,
 }
 
@@ -105,8 +102,6 @@ impl VolumeRenderer {
         let ibl_prep =
             ImageBasedLightingPreparation::new(device, assets, &mut init_cmd_buffer, resources);
 
-        let background = BackgroundPass::new(device, assets, &mut init_cmd_buffer, resources);
-
         let ui = DearImguiRenderer::new(device, resources, assets, swapchain.format());
 
         init_cmd_buffer.flush_barriers();
@@ -133,7 +128,6 @@ impl VolumeRenderer {
             sss_pass: sss,
             ibl_pass: ibl_prep,
             compositing: comp,
-            background,
             ui_pass: ui,
         }
     }
@@ -162,7 +156,6 @@ impl RenderPath for VolumeRenderer {
         let mut ready = self.marching_cubes_pass.is_ready(assets)
             && self.geometry.is_ready(assets)
             && self.compositing.is_ready(assets)
-            && self.background.is_ready(assets)
             && self.ibl_pass.is_ready(assets)
             && self.ssao.is_ready(assets)
             && self.sss_pass.is_ready(assets)
@@ -264,14 +257,6 @@ impl RenderPath for VolumeRenderer {
 
         self.ibl_pass.execute(&mut cmd_buffer, &mut params);
         let ibl_textures = self.ibl_pass.get_texture();
-
-        self.background.execute(
-            &mut cmd_buffer,
-            scene.scene,
-            main_view,
-            &params,
-            &ibl_textures,
-        );
 
         self.geometry.execute(
             &mut cmd_buffer,
